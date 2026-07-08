@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>Sign in · RentalOS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Space Grotesk,Inter,sans-serif' font-weight='800' font-size='19' fill='%23202058'%3ER%3C/text%3E%3C/svg%3E">
+  <style>
+    /* -------- design tokens (mirror the prototype's light-theme `pt`) -------- */
+    :root {
+      --ink:            #202058;   /* pt.ink   — near-black indigo, primary text */
+      --text:           #464a52;
+      --head:           #26235a;   /* pt.head  — heading / accent indigo */
+      --muted:          #8b9199;
+      --muted-strong:   #5b616b;
+      --card:           #ffffff;   /* pt.card  */
+      --bg:             #f6f7f9;   /* pt.bg    — page bg / right-panel */
+      --side:           #fcfcfd;   /* pt.side  — input bg */
+      --border:         #e6e8ec;
+      --border-strong:  #d8dbe0;
+      --accent-soft:    #ecebf4;   /* pt.accentSoft */
+      --orange:         #e88020;   /* brand orange — logo mark */
+      --focus:          #b9c0ee;
+
+      /* type stacks — Arzachel/Ponjoung first so real fonts slot in if loaded */
+      --font-display: 'Arzachel', 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-body:    'Ponjoung', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+
+      --shadow-card:    0 20px 48px -24px rgba(16, 24, 40, 0.28);
+      --shadow-btn:     0 6px 16px -6px rgba(32, 32, 88, 0.50);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: var(--font-body);
+      color: var(--ink);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    ::selection { background: #d9d8ea; }
+
+    /* -------- layout: split auth left / product-proof right -------- */
+    .page {
+      display: grid;
+      grid-template-columns: minmax(0, 480px) minmax(0, 1fr);
+      min-height: 100dvh;
+      background: var(--card);
+    }
+    /* on mobile: stack, and hide the right panel below the fold */
+    @media (max-width: 900px) {
+      .page { grid-template-columns: 1fr; }
+    }
+
+    /* =============== LEFT: auth =============== */
+    .auth {
+      padding: 52px 48px;
+      display: flex;
+      flex-direction: column;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      min-height: 100dvh;
+    }
+    @media (max-width: 900px) {
+      .auth { padding: 40px 24px 48px; border-right: none; min-height: auto; }
+    }
+
+    /* scanner-bracket mark: 4 corners + centre dot (from prototype line 391) */
+    .mark {
+      position: relative;
+      width: 56px;
+      height: 56px;
+      margin-bottom: 26px;
+      flex-shrink: 0;
+    }
+    .mark::before,
+    .mark::after,
+    .mark > i:nth-child(1),
+    .mark > i:nth-child(2) {
+      content: '';
+      position: absolute;
+      width: 20px;
+      height: 20px;
+    }
+    .mark::before { top: 0; left: 0;    border-top: 3px solid var(--ink); border-left:  3px solid var(--ink); border-radius: 5px 0 0 0; }
+    .mark::after  { top: 0; right: 0;   border-top: 3px solid var(--ink); border-right: 3px solid var(--ink); border-radius: 0 5px 0 0; }
+    .mark > i:nth-child(1) { bottom: 0; left: 0;  border-bottom: 3px solid var(--ink); border-left:  3px solid var(--ink); border-radius: 0 0 0 5px; }
+    .mark > i:nth-child(2) { bottom: 0; right: 0; border-bottom: 3px solid var(--ink); border-right: 3px solid var(--ink); border-radius: 0 0 5px 0; }
+    .mark > i.dot {
+      width: 22px; height: 22px;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: var(--head);
+    }
+
+    .kicker {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      color: var(--muted);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+    .h1 {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 36px;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      margin: 0 0 8px;
+    }
+    .subtitle {
+      font-size: 14.5px;
+      line-height: 1.5;
+      color: var(--muted);
+      margin: 0 0 32px;
+    }
+    .subtitle strong {
+      color: var(--ink);
+      font-weight: 600;
+      font-family: var(--font-display);
+      letter-spacing: 0.02em;
+    }
+
+    /* form */
+    form { display: flex; flex-direction: column; }
+
+    .field-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--muted-strong);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .field-label a {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: var(--head);
+      font-weight: 500;
+      text-decoration: none;
+      letter-spacing: 0;
+      text-transform: none;
+      transition: color 0.12s ease;
+    }
+    .field-label a:hover { color: var(--ink); }
+
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0 14px;
+      background: var(--side);
+      transition: border-color 0.14s ease, box-shadow 0.14s ease;
+    }
+    .field:focus-within {
+      border-color: var(--focus);
+      box-shadow: 0 0 0 4px rgba(185, 192, 238, 0.24);
+    }
+    .field.error {
+      border-color: #cc3340;
+      background: #fbeaeb;
+    }
+    .field.error:focus-within {
+      box-shadow: 0 0 0 4px rgba(204, 51, 64, 0.16);
+    }
+    .field svg { flex-shrink: 0; }
+    .field input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-family: var(--font-body);
+      font-size: 14.5px;
+      color: var(--ink);
+      padding: 13px 0;
+      min-width: 0;
+    }
+    .field input::placeholder { color: #b0b6bf; }
+    .field input:-webkit-autofill {
+      -webkit-box-shadow: 0 0 0 30px var(--side) inset;
+      -webkit-text-fill-color: var(--ink);
+    }
+
+    .field-group { margin-bottom: 20px; }
+    .field-group:last-of-type { margin-bottom: 24px; }
+
+    .toggle-pw {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 6px;
+      margin: 0 -6px 0 0;
+      color: var(--muted);
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.12s ease, background 0.12s ease;
+    }
+    .toggle-pw:hover { color: var(--ink); background: var(--accent-soft); }
+    .toggle-pw:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+    .field-error {
+      display: none;
+      font-size: 12px;
+      color: #a3272f;
+      margin-top: 6px;
+      padding-left: 2px;
+    }
+    .field-group.has-error .field-error { display: block; }
+
+    /* caps-lock indicator on the password field */
+    .caps-hint {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: #8a5a12;
+      background: #fbf2e2;
+      padding: 4px 8px;
+      border-radius: 6px;
+      text-transform: uppercase;
+    }
+    .caps-hint.on { display: inline-flex; }
+
+    /* primary submit — the deep indigo #202058 button from prototype line 417 */
+    .btn-submit {
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 14.5px;
+      color: #fff;
+      background: var(--ink);
+      border: none;
+      padding: 14px;
+      border-radius: 11px;
+      cursor: pointer;
+      box-shadow: var(--shadow-btn);
+      transition: background 0.14s ease, box-shadow 0.16s ease, transform 0.08s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 48px;
+    }
+    .btn-submit:hover { background: #171742; box-shadow: 0 8px 20px -6px rgba(32, 32, 88, 0.55); }
+    .btn-submit:active:not(:disabled) { transform: translateY(0.5px); }
+    .btn-submit:disabled { opacity: 0.7; cursor: wait; }
+    .btn-submit:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+    /* subtle spinner shown while submitting */
+    .spinner {
+      width: 15px;
+      height: 15px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    .btn-submit.loading .spinner { display: inline-block; }
+    .btn-submit.loading .btn-label { opacity: 0.85; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* role hint box — from prototype line 419 */
+    .hint {
+      margin-top: 20px;
+      padding: 12px 14px;
+      background: var(--bg);
+      border-radius: 10px;
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+    }
+    .hint svg { flex-shrink: 0; margin-top: 1px; }
+    .hint span { font-size: 12.5px; line-height: 1.5; color: var(--muted-strong); }
+    .hint strong { color: var(--ink); font-weight: 600; }
+
+    /* form-level error (network failure, wrong password, etc.) */
+    .form-error {
+      display: none;
+      margin-bottom: 16px;
+      padding: 11px 13px;
+      background: #fbeaeb;
+      border: 1px solid #f4c4c8;
+      border-radius: 10px;
+      font-size: 12.5px;
+      line-height: 1.45;
+      color: #a3272f;
+    }
+    .form-error.show { display: block; }
+
+    /* footer inside auth panel — brand + version */
+    .auth-foot {
+      margin-top: auto;
+      padding-top: 40px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .auth-foot .logo-mark {
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      background: var(--orange);
+      color: var(--ink);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+
+    /* =============== RIGHT: product proof =============== */
+    .proof {
+      padding: 52px 48px;
+      background: var(--bg);
+      position: relative;
+      overflow: hidden;
+    }
+    /* subtle 28px dot grid overlay (prototype line 428) */
+    .proof::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0, 0, 0, 0.024) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.024) 1px, transparent 1px);
+      background-size: 28px 28px;
+      pointer-events: none;
+    }
+    .proof-inner {
+      position: relative;
+      max-width: 640px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .proof h2 {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 30px;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      margin: 0 0 14px;
+      max-width: 460px;
+    }
+    .proof p.lede {
+      font-size: 14.5px;
+      line-height: 1.55;
+      color: var(--muted-strong);
+      margin: 0 0 36px;
+      max-width: 460px;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 26px 32px;
+      max-width: 580px;
+    }
+    .feature { display: flex; gap: 13px; }
+    .feature-code {
+      flex-shrink: 0;
+      width: 36px; height: 36px;
+      border-radius: 9px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--head);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .feature-title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 14.5px;
+      color: var(--ink);
+      margin-bottom: 3px;
+      letter-spacing: -0.005em;
+    }
+    .feature-desc {
+      font-size: 12.5px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    /* proof footer — quiet brand line */
+    .proof-foot {
+      margin-top: auto;
+      padding-top: 44px;
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .proof-foot .sep { color: var(--border-strong); }
+    .proof-foot .dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: #1f9d57;
+      display: inline-block;
+      transform: translateY(-1px);
+    }
+
+    /* hide the product-proof panel entirely on very small screens */
+    @media (max-width: 900px) {
+      .proof { display: none; }
+      .auth-foot { padding-top: 32px; }
+    }
+
+    /* -------- accessibility: reduced motion -------- */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <!-- ============ LEFT: auth ============ -->
+    <section class="auth" aria-labelledby="auth-title">
+      <div class="mark" aria-hidden="true">
+        <i></i><i></i><i class="dot"></i>
+      </div>
+
+      <div class="kicker">Rental Operating System</div>
+      <h1 id="auth-title" class="h1">Welcome back</h1>
+      <p class="subtitle">Signing in to <strong>DSLRSWALA</strong> · Vadodara</p>
+
+      <div id="form-error" class="form-error" role="alert"></div>
+
+      <form id="signin-form" novalidate>
+        <!-- Email -->
+        <div class="field-group" id="email-group">
+          <label class="field-label" for="email">Email</label>
+          <div class="field">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b0b6bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+              <path d="m3 7 9 6 9-6"></path>
+            </svg>
+            <input type="email" id="email" name="email" autocomplete="email" placeholder="you@dslrswala.com" required>
+          </div>
+          <div class="field-error" id="email-error">Enter a valid email address.</div>
+        </div>
+
+        <!-- Password -->
+        <div class="field-group" id="password-group">
+          <div class="field-label">
+            <label for="password">Password</label>
+            <span style="display:flex; align-items:center; gap:10px;">
+              <span class="caps-hint" id="caps-hint" aria-live="polite">⇪ Caps lock</span>
+              <a href="/forgot-password.html">Forgot?</a>
+            </span>
+          </div>
+          <div class="field">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b0b6bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="10" width="16" height="10" rx="2"></rect>
+              <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+            </svg>
+            <input type="password" id="password" name="password" autocomplete="current-password" placeholder="••••••••" required minlength="6">
+            <button type="button" class="toggle-pw" id="toggle-pw" aria-label="Show password" aria-pressed="false">
+              <svg id="eye-open" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <svg id="eye-closed" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none" aria-hidden="true">
+                <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-6.5 0-10-7-10-7a19.4 19.4 0 0 1 4.22-5.19"></path>
+                <path d="M9.9 4.24A10.5 10.5 0 0 1 12 4c6.5 0 10 7 10 7a19.4 19.4 0 0 1-3.13 4.13"></path>
+                <path d="M14.12 14.12a3 3 0 0 1-4.24-4.24"></path>
+                <path d="M1 1l22 22"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="field-error" id="password-error">Password must be at least 6 characters.</div>
+        </div>
+
+        <button type="submit" class="btn-submit" id="submit-btn">
+          <span class="btn-label">Sign in</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+      </form>
+
+      <div class="hint">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8b9199" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M12 11v5M12 8h.01"></path>
+        </svg>
+        <span>Role-based access — you'll land on the tools for your level:
+          <strong>admin</strong>, <strong>staff</strong>, <strong>client</strong> or <strong>investor</strong>.
+        </span>
+      </div>
+
+      <div class="auth-foot">
+        <span class="logo-mark" aria-hidden="true">R</span>
+        <span>RentalOS</span>
+        <span aria-hidden="true">·</span>
+        <span>v0.1</span>
+      </div>
+    </section>
+
+    <!-- ============ RIGHT: product proof ============ -->
+    <aside class="proof" aria-labelledby="proof-title">
+      <div class="proof-inner">
+        <h2 id="proof-title">One system to run the rental floor</h2>
+        <p class="lede">From quote to dispatch to deposit refund — with the money trail intact. Here's what's inside:</p>
+
+        <div class="features">
+          <div class="feature">
+            <div class="feature-code">BK</div>
+            <div>
+              <div class="feature-title">Orders &amp; quoting</div>
+              <div class="feature-desc">Multi-day pricing, offers, smart substitutes</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-code">QR</div>
+            <div>
+              <div class="feature-title">Scan &amp; dispatch</div>
+              <div class="feature-desc">OTP-gated handover with kit checklist</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-code">RT</div>
+            <div>
+              <div class="feature-title">Returns &amp; condition</div>
+              <div class="feature-desc">OTP returns with damage capture</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-code">IN</div>
+            <div>
+              <div class="feature-title">Invoicing</div>
+              <div class="feature-desc">GST + TDS, full invoice lifecycle</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-code">DP</div>
+            <div>
+              <div class="feature-title">Deposits &amp; payments</div>
+              <div class="feature-desc">Holds, refunds, append-only ledger</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-code">AS</div>
+            <div>
+              <div class="feature-title">Inventory &amp; upkeep</div>
+              <div class="feature-desc">Asset states, service log, hold &amp; retire</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-code">CL</div>
+            <div>
+              <div class="feature-title">Clients &amp; Trust 360</div>
+              <div class="feature-desc">Full history, trust score, guardrails</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-code">IV</div>
+            <div>
+              <div class="feature-title">Investors &amp; analytics</div>
+              <div class="feature-desc">Capital + equipment ROI, utilisation</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="proof-foot">
+          <span><span class="dot"></span>&nbsp;&nbsp;All systems operational</span>
+          <span class="sep">·</span>
+          <span>DSLRswala · Vadodara</span>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    // ---------- password show/hide ----------
+    (function () {
+      const btn = document.getElementById('toggle-pw');
+      const input = document.getElementById('password');
+      const eyeOpen = document.getElementById('eye-open');
+      const eyeClosed = document.getElementById('eye-closed');
+      btn.addEventListener('click', function () {
+        const showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        eyeOpen.style.display = showing ? '' : 'none';
+        eyeClosed.style.display = showing ? 'none' : '';
+        btn.setAttribute('aria-pressed', String(!showing));
+        btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+      });
+    })();
+
+    // ---------- caps-lock indicator on password ----------
+    (function () {
+      const pw = document.getElementById('password');
+      const hint = document.getElementById('caps-hint');
+      function check(e) {
+        if (!e.getModifierState) return;
+        hint.classList.toggle('on', e.getModifierState('CapsLock'));
+      }
+      pw.addEventListener('keydown', check);
+      pw.addEventListener('keyup', check);
+      pw.addEventListener('blur', function () { hint.classList.remove('on'); });
+    })();
+
+    // ---------- form submission ----------
+    (function () {
+      const form = document.getElementById('signin-form');
+      const emailInput = document.getElementById('email');
+      const passwordInput = document.getElementById('password');
+      const emailGroup = document.getElementById('email-group');
+      const passwordGroup = document.getElementById('password-group');
+      const submitBtn = document.getElementById('submit-btn');
+      const formError = document.getElementById('form-error');
+
+      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      function setFieldError(group, on) {
+        group.classList.toggle('has-error', !!on);
+        group.querySelector('.field').classList.toggle('error', !!on);
+      }
+
+      function showFormError(msg) {
+        formError.textContent = msg;
+        formError.classList.add('show');
+      }
+      function clearFormError() {
+        formError.classList.remove('show');
+        formError.textContent = '';
+      }
+
+      // clear per-field error as the user types
+      [emailInput, passwordInput].forEach(function (i) {
+        i.addEventListener('input', function () {
+          setFieldError(i === emailInput ? emailGroup : passwordGroup, false);
+          clearFormError();
+        });
+      });
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        clearFormError();
+
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+
+        const emailBad = !EMAIL_RE.test(email);
+        const pwBad = password.length < 6;
+        setFieldError(emailGroup, emailBad);
+        setFieldError(passwordGroup, pwBad);
+        if (emailBad) { emailInput.focus(); return; }
+        if (pwBad)    { passwordInput.focus(); return; }
+
+        submitBtn.disabled = true;
+        submitBtn.classList.add('loading');
+        submitBtn.querySelector('.btn-label').textContent = 'Signing in';
+
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ email: email, password: password })
+          });
+
+          if (res.ok) {
+            // backend returns {redirect: '/dashboard'} — fall back to '/' if not
+            let dest = '/';
+            try {
+              const data = await res.json();
+              if (data && data.redirect) dest = data.redirect;
+            } catch (_) {}
+            window.location.href = dest;
+            return;
+          }
+
+          // 401 → wrong credentials; other codes → generic
+          if (res.status === 401) {
+            showFormError("That email and password don't match. Try again or use Forgot?");
+          } else if (res.status === 429) {
+            showFormError('Too many attempts. Wait a minute, then try again.');
+          } else {
+            showFormError('Sign-in failed (' + res.status + '). Try again in a moment.');
+          }
+        } catch (err) {
+          // network error / backend not reachable yet
+          showFormError('Cannot reach the auth server. Check your connection or that /api/auth/login is running.');
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.classList.remove('loading');
+          submitBtn.querySelector('.btn-label').textContent = 'Sign in';
+        }
+      });
+
+      // focus email on load, without scrolling the page on mobile
+      window.addEventListener('load', function () {
+        if (window.innerWidth > 640) emailInput.focus({ preventScroll: true });
+      });
+    })();
+  </script>
+</body>
+</html>

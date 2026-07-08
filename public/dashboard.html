@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>Dashboard · RentalOS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Space Grotesk,Inter,sans-serif' font-weight='800' font-size='19' fill='%23202058'%3ER%3C/text%3E%3C/svg%3E">
+  <style>
+    /* ========== design tokens (identical to auth pages) ========== */
+    :root {
+      --ink:            #202058;
+      --text:           #464a52;
+      --head:           #26235a;
+      --muted:          #8b9199;
+      --muted-strong:   #5b616b;
+      --muted-soft:     #9aa1ad;
+      --card:           #ffffff;
+      --bg:             #f6f7f9;
+      --side:           #fcfcfd;
+      --chrome:         #f4f5f7;
+      --thead:          #fafbfc;
+      --border:         #e6e8ec;
+      --border-strong:  #d8dbe0;
+      --accent-soft:    #ecebf4;
+      --border-accent:  #d7dcf7;
+      --orange:         #e88020;
+      --orange-soft:    #fbe9d7;
+      --focus:          #b9c0ee;
+
+      --ok-solid:       #1f9d57;
+      --ok-soft:        #e8f6ee;
+      --ok-strong:      #177a45;
+      --warn-solid:     #b9791b;
+      --warn-soft:      #fbf2e2;
+      --warn-strong:    #8a5a12;
+      --bad-solid:      #cc3340;
+      --bad-soft:       #fbeaeb;
+      --bad-strong:     #a3272f;
+
+      --font-display: 'Arzachel', 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-body:    'Ponjoung', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+
+      --sb-w: 232px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: var(--font-body);
+      color: var(--ink);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    ::selection { background: #d9d8ea; }
+
+    /* base transitions match prototype */
+    button, a { transition: background-color .14s ease, color .14s ease, border-color .14s ease, box-shadow .16s ease, transform .08s ease; }
+    button:not(:disabled):active { transform: translateY(0.5px); }
+    ::-webkit-scrollbar { width: 11px; height: 11px; }
+    ::-webkit-scrollbar-thumb { background: #d3d7dd; border-radius: 7px; border: 3px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background: #bfc4cc; border: 3px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    /* ========== app shell ========== */
+    .app {
+      display: grid;
+      grid-template-columns: var(--sb-w) minmax(0, 1fr);
+      min-height: 100dvh;
+    }
+
+    /* ========== sidebar ========== */
+    .sb {
+      background: var(--side);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 18px 14px 14px;
+      position: sticky;
+      top: 0;
+      height: 100dvh;
+      overflow-y: auto;
+    }
+    .sb-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 6px 20px;
+    }
+    .sb-brand .logo {
+      width: 30px; height: 30px;
+      border-radius: 8px;
+      background: var(--orange);
+      color: var(--ink);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 17px;
+      letter-spacing: 0;
+      flex-shrink: 0;
+    }
+    .sb-brand .word {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 17px;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+    .sb-brand .env {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      color: var(--warn-strong);
+      background: var(--warn-soft);
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+    .sb-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    /* workspace switcher — for now single-tenant, but the affordance is there */
+    .sb-workspace {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      width: 100%;
+      margin: 14px 0 8px;
+      padding: 8px 10px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      text-align: left;
+      transition: border-color 0.14s ease, background 0.14s ease;
+    }
+    .sb-workspace:hover { border-color: var(--border-strong); background: var(--thead); }
+    .sb-workspace-name {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 12.5px;
+      letter-spacing: 0.02em;
+      color: var(--ink);
+    }
+    .sb-workspace-loc {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .sb-workspace svg {
+      margin-left: auto;
+      color: var(--muted);
+      align-self: center;
+    }
+    .sb-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 8px;
+      border-radius: 9px;
+      text-decoration: none;
+      color: var(--muted-strong);
+      font-size: 13px;
+      font-weight: 500;
+      position: relative;
+    }
+    .sb-item:hover { background: var(--bg); color: var(--ink); }
+    .sb-item.active {
+      background: var(--accent-soft);
+      color: var(--head);
+      font-weight: 600;
+    }
+    .sb-item .tile {
+      width: 26px; height: 26px;
+      border-radius: 7px;
+      background: #eef0f3;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .sb-item.active .tile { background: var(--head); color: #fff; }
+    .sb-item.new .tile { background: var(--orange); color: #fff; }
+    .sb-user {
+      margin-top: auto;
+      padding: 12px 8px 4px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .sb-user-avatar {
+      width: 30px; height: 30px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #26235a, #4b47a3);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .sb-user-info {
+      min-width: 0;
+      flex: 1;
+    }
+    .sb-user-name {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sb-user-role {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-top: 1px;
+    }
+    .sb-user-menu {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 4px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .sb-user-menu:hover { background: var(--bg); color: var(--ink); }
+
+    /* ========== main region ========== */
+    .main {
+      min-width: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ---- top bar ---- */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .greeting-kicker {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      color: var(--muted-soft);
+      text-transform: uppercase;
+    }
+    .greeting {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 17px;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+      margin-top: 1px;
+    }
+    .search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--thead);
+      cursor: text;
+      min-width: 260px;
+      color: var(--muted-soft);
+      transition: border-color 0.14s ease, background 0.14s ease;
+    }
+    .search:hover { border-color: var(--border-strong); background: var(--card); }
+    .search:focus-within {
+      border-color: var(--focus);
+      background: var(--card);
+      box-shadow: 0 0 0 4px rgba(185, 192, 238, 0.24);
+    }
+    .search input {
+      border: none;
+      outline: none;
+      background: transparent;
+      font-family: var(--font-body);
+      font-size: 12.5px;
+      color: var(--ink);
+      flex: 1;
+      min-width: 0;
+    }
+    .search input::placeholder { color: var(--muted-soft); }
+    .search kbd {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted);
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .topbar-actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .iconbtn {
+      position: relative;
+      width: 34px; height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      cursor: pointer;
+      color: var(--muted-strong);
+    }
+    .iconbtn:hover { background: var(--bg); border-color: var(--border-strong); color: var(--ink); }
+    .iconbtn .badge {
+      position: absolute;
+      top: 3px;
+      right: 4px;
+      min-width: 14px;
+      height: 14px;
+      padding: 0 3px;
+      border-radius: 999px;
+      background: var(--bad-solid);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 8px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .primary-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 14px;
+      background: var(--orange);
+      color: #fff;
+      border: none;
+      border-radius: 9px;
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 12.5px;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 4px 12px -4px rgba(232, 128, 32, 0.5);
+    }
+    .primary-cta:hover { background: #d97517; box-shadow: 0 6px 14px -4px rgba(232, 128, 32, 0.55); }
+
+    /* notification dropdown */
+    .notif-wrap { position: relative; }
+    .notif-drop {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      width: 344px;
+      background: var(--card);
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      box-shadow: 0 20px 44px -14px rgba(16, 24, 40, 0.4);
+      z-index: 70;
+      overflow: hidden;
+    }
+    .notif-wrap.open .notif-drop { display: block; }
+    .notif-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .notif-head-title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--ink);
+    }
+    .notif-head-count {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: 0.08em;
+      color: var(--muted-soft);
+    }
+    .notif-item {
+      display: flex;
+      gap: 10px;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      text-decoration: none;
+      align-items: flex-start;
+      color: inherit;
+    }
+    .notif-item:hover { background: var(--thead); }
+    .notif-item-icon {
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 700;
+    }
+    .notif-item-body { min-width: 0; flex: 1; }
+    .notif-item-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--head);
+    }
+    .notif-item-desc {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .notif-item-time {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: #c2c7ce;
+      flex-shrink: 0;
+    }
+    .notif-foot {
+      display: block;
+      text-align: center;
+      padding: 12px;
+      font-weight: 600;
+      font-size: 12.5px;
+      color: var(--head);
+      text-decoration: none;
+      background: var(--thead);
+    }
+
+    /* ---- content ---- */
+    .content { padding: 22px 24px 32px; }
+
+    .section-title {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin: 22px 0 12px;
+    }
+    .section-title h3 {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+      margin: 0;
+    }
+    .section-title .sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .section-title:first-child { margin-top: 0; }
+
+    /* attention tray — the "what needs my action right now" layer */
+    .attention-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .attention {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px 14px 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--muted-soft);
+      border-radius: 11px;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.14s ease, box-shadow 0.16s ease, transform 0.08s ease;
+    }
+    .attention:hover {
+      box-shadow: 0 10px 24px -14px rgba(16, 24, 40, 0.28);
+      transform: translateY(-1px);
+    }
+    .attention.bad  { border-left-color: var(--bad-solid); }
+    .attention.warn { border-left-color: var(--warn-solid); }
+    .attention-badge {
+      width: 34px; height: 34px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 15px;
+      font-variant-numeric: tabular-nums;
+    }
+    .attention.bad  .attention-badge { background: var(--bad-soft);  color: var(--bad-strong); }
+    .attention.warn .attention-badge { background: var(--warn-soft); color: var(--warn-strong); }
+    .attention-body { flex: 1; min-width: 0; }
+    .attention-title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 13.5px;
+      line-height: 1.25;
+      color: var(--ink);
+      letter-spacing: -0.005em;
+    }
+    .attention-meta {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: var(--muted);
+      margin-top: 3px;
+      letter-spacing: 0.02em;
+    }
+    .attention-action {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--head);
+      padding: 6px 4px 6px 8px;
+      transition: transform 0.12s ease;
+    }
+    .attention:hover .attention-action { transform: translateX(2px); }
+
+    @media (max-width: 900px) {
+      .attention-grid { grid-template-columns: 1fr; }
+    }
+
+    /* KPI grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .kpi {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 17px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      color: var(--ink);
+      text-decoration: none;
+      transition: box-shadow 0.16s ease, border-color 0.16s ease, transform 0.1s ease;
+    }
+    .kpi:hover {
+      box-shadow: 0 12px 26px -14px rgba(16, 24, 40, 0.30);
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+    .kpi-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .kpi-value {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 26px;
+      line-height: 1.05;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi-sub {
+      font-size: 11.5px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .kpi-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+    .kpi-chip.up   { background: var(--ok-soft);   color: var(--ok-strong); }
+    .kpi-chip.down { background: var(--bad-soft);  color: var(--bad-strong); }
+    .kpi-chip.warn { background: var(--warn-soft); color: var(--warn-strong); }
+    .kpi-chip.flat { background: #eceef1;          color: var(--muted-strong); }
+    .kpi-spark {
+      margin-top: auto;
+      width: 100%;
+      height: 30px;
+      display: block;
+    }
+    .kpi.alert { border-top: 3px solid var(--bad-solid); }
+
+    /* secondary KPI row (smaller tiles) */
+    .kpi-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .kpi-mini {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 13px 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .kpi-mini-label {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .kpi-mini-value {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 18px;
+      line-height: 1.1;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+      margin-top: 2px;
+    }
+    .kpi-mini-sub {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .kpi-mini-sub-txt {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+
+    /* two-column: going out / coming back */
+    .split-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel-title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: -0.005em;
+      color: var(--ink);
+    }
+    .panel-count {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      background: var(--bg);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .range-picker {
+      position: relative;
+      margin-left: auto;
+    }
+    .range-picker-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--thead);
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--muted-strong);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+    }
+    .range-picker-btn:hover { border-color: var(--border-strong); background: var(--card); }
+    .range-picker-drop {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      background: var(--card);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      box-shadow: 0 14px 32px -12px rgba(16, 24, 40, 0.28);
+      padding: 6px;
+      z-index: 30;
+      min-width: 160px;
+    }
+    .range-picker.open .range-picker-drop { display: block; }
+    .range-picker-opt {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 7px 10px;
+      border-radius: 7px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-family: var(--font-body);
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--muted-strong);
+    }
+    .range-picker-opt:hover { background: var(--bg); }
+    .range-picker-opt.active { background: var(--head); color: #fff; }
+
+    .order-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      text-decoration: none;
+      color: inherit;
+      transition: background 0.12s ease;
+    }
+    .order-row:first-child { border-top: none; }
+    .order-row:hover { background: var(--thead); }
+    .order-when {
+      flex-shrink: 0;
+      width: 88px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .order-body { flex: 1; min-width: 0; }
+    .order-client {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .order-items {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .order-id {
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--head);
+    }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px 3px 7px;
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .status-chip .dot { width: 4px; height: 4px; border-radius: 50%; }
+    .chip-out  { background: var(--accent-soft); color: var(--head); }
+    .chip-out .dot { background: var(--head); }
+    .chip-ok   { background: var(--ok-soft);   color: var(--ok-strong); }
+    .chip-ok .dot { background: var(--ok-solid); }
+    .chip-warn { background: var(--warn-soft); color: var(--warn-strong); }
+    .chip-warn .dot { background: var(--warn-solid); }
+    .chip-bad  { background: var(--bad-soft);  color: var(--bad-strong); }
+    .chip-bad .dot { background: var(--bad-solid); }
+    .chip-pend { background: #eceef1;         color: var(--muted-strong); }
+    .chip-pend .dot { background: var(--muted-soft); }
+
+    .empty-row {
+      padding: 22px 16px;
+      text-align: center;
+      font-size: 12.5px;
+      color: var(--muted-soft);
+    }
+
+    /* activity feed */
+    .activity {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .activity-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .activity-item:first-child { border-top: none; }
+    .activity-tag {
+      flex-shrink: 0;
+      width: 34px;
+      display: flex;
+      justify-content: center;
+      padding-top: 1px;
+    }
+    .activity-body { flex: 1; min-width: 0; }
+    .activity-text {
+      font-size: 13px;
+      color: var(--ink);
+      font-weight: 500;
+    }
+    .activity-meta {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .activity-time {
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: var(--muted-soft);
+      padding-top: 1px;
+    }
+
+    /* responsive: sidebar collapses to top on narrow screens */
+    @media (max-width: 1100px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .kpi-mini-grid { grid-template-columns: repeat(2, 1fr); }
+      .split-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+      .sb {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 12px 16px;
+      }
+      .sb-nav { display: none; }
+      .sb-user { display: none; }
+      .sb-brand { padding: 0; }
+      .search { min-width: 0; flex: 1; }
+    }
+    @media (max-width: 640px) {
+      .kpi-grid, .kpi-mini-grid { grid-template-columns: 1fr; }
+      .content { padding: 16px; }
+      .topbar { padding: 12px 16px; gap: 10px; }
+      .greeting-kicker, .greeting-block { display: none; }
+      .search { min-width: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- =========================================== SIDEBAR =========================================== -->
+    <aside class="sb">
+      <div class="sb-brand">
+        <span class="logo" aria-hidden="true">R</span>
+        <span class="word">RentalOS</span>
+        <span class="env">v0.1</span>
+      </div>
+
+      <a href="/new-order.html" class="sb-item new" style="margin-bottom:6px;">
+        <span class="tile">NB</span>
+        <span>New order</span>
+      </a>
+
+      <button class="sb-workspace" type="button" aria-label="Switch workspace" title="Workspace switcher — coming soon">
+        <span class="sb-workspace-name" id="ws-name">DSLRSWALA</span>
+        <span class="sb-workspace-loc" id="ws-loc">Vadodara</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <nav class="sb-nav" aria-label="Main">
+        <a href="/dashboard.html" class="sb-item active" aria-current="page">
+          <span class="tile">DB</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="/calendar.html" class="sb-item">
+          <span class="tile">CL</span>
+          <span>Calendar</span>
+        </a>
+        <a href="/orders.html" class="sb-item">
+          <span class="tile">RN</span>
+          <span>Orders</span>
+        </a>
+        <a href="/billing.html" class="sb-item">
+          <span class="tile">BL</span>
+          <span>Billing</span>
+        </a>
+        <a href="/inventory.html" class="sb-item">
+          <span class="tile">IN</span>
+          <span>Inventory</span>
+        </a>
+        <a href="/people.html" class="sb-item">
+          <span class="tile">PE</span>
+          <span>People</span>
+        </a>
+        <a href="/insights.html" class="sb-item">
+          <span class="tile">IS</span>
+          <span>Insights</span>
+        </a>
+        <a href="/settings.html" class="sb-item">
+          <span class="tile">SY</span>
+          <span>Settings</span>
+        </a>
+      </nav>
+
+      <div class="sb-user">
+        <span class="sb-user-avatar" id="user-avatar" aria-hidden="true">A</span>
+        <div class="sb-user-info">
+          <div class="sb-user-name" id="user-name">Aamir</div>
+          <div class="sb-user-role" id="user-role">Owner</div>
+        </div>
+        <button class="sb-user-menu" aria-label="Account menu">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- =========================================== MAIN =========================================== -->
+    <div class="main">
+      <!-- ================ top bar ================ -->
+      <header class="topbar">
+        <div class="greeting-block">
+          <div class="greeting-kicker">Dashboard</div>
+          <div class="greeting" id="greeting">Good evening, Aamir</div>
+        </div>
+
+        <label class="search" for="global-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
+          <input id="global-search" type="search" placeholder="Search orders, clients, gear…" autocomplete="off">
+          <kbd>⌘K</kbd>
+        </label>
+
+        <div class="topbar-actions">
+          <div class="notif-wrap" id="notif-wrap">
+            <button class="iconbtn" id="notif-btn" aria-label="Notifications">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              <span class="badge">4</span>
+            </button>
+            <div class="notif-drop" role="menu">
+              <div class="notif-head">
+                <span class="notif-head-title">Notifications</span>
+                <span class="notif-head-count">4 NEW</span>
+              </div>
+              <a class="notif-item" href="/orders.html">
+                <span class="notif-item-icon" style="background:var(--bad-soft);color:var(--bad-strong);">!</span>
+                <span class="notif-item-body">
+                  <span class="notif-item-title">Overdue return — Aputure 600d ×2</span>
+                  <span class="notif-item-desc">Skyline Events · BK-2176 · 6h ago</span>
+                </span>
+                <span class="notif-item-time">6h</span>
+              </a>
+              <a class="notif-item" href="/orders.html">
+                <span class="notif-item-icon" style="background:var(--ok-soft);color:var(--ok-strong);">₹</span>
+                <span class="notif-item-body">
+                  <span class="notif-item-title">Payment received ₹64,000</span>
+                  <span class="notif-item-desc">Nirvana Films · INV-1042</span>
+                </span>
+                <span class="notif-item-time">2h</span>
+              </a>
+              <a class="notif-item" href="/inventory.html">
+                <span class="notif-item-icon" style="background:var(--warn-soft);color:var(--warn-strong);">⚠</span>
+                <span class="notif-item-body">
+                  <span class="notif-item-title">Repair opened — Canon R5 shutter</span>
+                  <span class="notif-item-desc">RPR-087 · critical</span>
+                </span>
+                <span class="notif-item-time">3h</span>
+              </a>
+              <a class="notif-item" href="/orders.html">
+                <span class="notif-item-icon" style="background:var(--accent-soft);color:var(--head);">→</span>
+                <span class="notif-item-body">
+                  <span class="notif-item-title">Dispatched Sony FX3 +2 items</span>
+                  <span class="notif-item-desc">Aarav Studios · BK-2214</span>
+                </span>
+                <span class="notif-item-time">12m</span>
+              </a>
+              <a class="notif-foot" href="/notifications.html">View all notifications →</a>
+            </div>
+          </div>
+
+          <a href="/new-order.html" class="primary-cta">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+            New order
+          </a>
+        </div>
+      </header>
+
+      <!-- ================ content ================ -->
+      <div class="content">
+        <!-- attention tray — what needs action right now -->
+        <div class="section-title">
+          <h3>Needs your attention</h3>
+          <span class="sub">4 things blocking cash or capacity today</span>
+        </div>
+
+        <div class="attention-grid">
+          <a href="/orders.html?tab=overdue" class="attention bad">
+            <span class="attention-badge">3</span>
+            <div class="attention-body">
+              <div class="attention-title">Overdue returns</div>
+              <div class="attention-meta">₹96,000 exposure · 2 over 48h · Skyline, Aarav, one more</div>
+            </div>
+            <span class="attention-action">Call clients
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </span>
+          </a>
+
+          <a href="/repairs.html?ticket=RPR-091" class="attention warn">
+            <span class="attention-badge">1</span>
+            <div class="attention-body">
+              <div class="attention-title">Damage claim awaiting your verdict</div>
+              <div class="attention-meta">Sony 24–70 GM · Nirvana Films · charge deposit or repair?</div>
+            </div>
+            <span class="attention-action">Review claim
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </span>
+          </a>
+
+          <a href="/insights.html?tab=capital" class="attention warn">
+            <span class="attention-badge">7</span>
+            <div class="attention-body">
+              <div class="attention-title">Investor payouts due today</div>
+              <div class="attention-meta">₹1,18,400 across 7 investors · monthly distribution</div>
+            </div>
+            <span class="attention-action">Approve batch
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </span>
+          </a>
+
+          <a href="/orders.html?tab=quotes" class="attention warn">
+            <span class="attention-badge">4</span>
+            <div class="attention-body">
+              <div class="attention-title">Quotes cold for 3+ days</div>
+              <div class="attention-meta">₹2,84,000 in play · send a WhatsApp nudge from Shoaib</div>
+            </div>
+            <span class="attention-action">Send follow-ups
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </span>
+          </a>
+        </div>
+
+        <!-- primary KPIs -->
+        <div class="section-title" style="margin-top:24px;">
+          <h3>This month at a glance</h3>
+          <span class="sub">1 – 7 Jul · updated just now</span>
+        </div>
+
+        <div class="kpi-grid">
+          <!-- Revenue -->
+          <a href="/insights.html" class="kpi">
+            <div class="kpi-label">Revenue · Jul</div>
+            <div class="kpi-value">₹8,42,500</div>
+            <div class="kpi-sub">
+              <span class="kpi-chip up">▲ +12.4%</span>
+              <span>vs ₹7,49,000 · Jun</span>
+            </div>
+            <svg class="kpi-spark" viewBox="0 0 126 30" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points="0,26 18,24 36,25 54,18 72,20 90,12 108,14 126,6" fill="none" stroke="#1f9d57" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+              <polyline points="0,30 0,26 18,24 36,25 54,18 72,20 90,12 108,14 126,6 126,30" fill="#1f9d57" fill-opacity="0.08" stroke="none"/>
+            </svg>
+          </a>
+
+          <!-- Fleet utilisation -->
+          <a href="/inventory.html" class="kpi">
+            <div class="kpi-label">Fleet utilisation</div>
+            <div class="kpi-value">68%</div>
+            <div class="kpi-sub">
+              <span class="kpi-chip up">▲ +5 pts</span>
+              <span>112 of 164 units out</span>
+            </div>
+            <svg class="kpi-spark" viewBox="0 0 126 30" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points="0,20 18,22 36,18 54,19 72,14 90,15 108,10 126,9" fill="none" stroke="#26235a" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+              <polyline points="0,30 0,20 18,22 36,18 54,19 72,14 90,15 108,10 126,9 126,30" fill="#26235a" fill-opacity="0.08" stroke="none"/>
+            </svg>
+          </a>
+
+          <!-- Overdue returns (alert) -->
+          <a href="/orders.html?tab=overdue" class="kpi alert">
+            <div class="kpi-label">Overdue returns</div>
+            <div class="kpi-value">3</div>
+            <div class="kpi-sub">
+              <span class="kpi-chip down">2 over 48h</span>
+              <span>₹96,000 exposure</span>
+            </div>
+            <div class="kpi-spark" style="height:30px;display:flex;align-items:end;gap:4px;padding:0 2px;">
+              <span style="flex:1;height:60%;background:#f4c4c8;border-radius:2px;"></span>
+              <span style="flex:1;height:80%;background:#f4c4c8;border-radius:2px;"></span>
+              <span style="flex:1;height:100%;background:#cc3340;border-radius:2px;"></span>
+            </div>
+          </a>
+
+          <!-- Deposits held -->
+          <a href="/billing.html?tab=deposits" class="kpi">
+            <div class="kpi-label">Deposits held</div>
+            <div class="kpi-value">₹2,15,000</div>
+            <div class="kpi-sub">
+              <span class="kpi-chip flat">— refundable</span>
+              <span>14 active orders</span>
+            </div>
+            <div class="kpi-spark" style="height:30px;display:flex;align-items:center;padding:0 2px;">
+              <div style="flex:1;height:6px;background:var(--border);border-radius:999px;overflow:hidden;">
+                <div style="height:100%;width:64%;background:linear-gradient(90deg,var(--head),var(--orange));"></div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <!-- secondary KPIs -->
+        <div class="section-title" style="margin-top:22px;">
+          <h3>Money moving this week</h3>
+          <span class="sub">investor payouts, repair costs, dispatched value</span>
+        </div>
+
+        <div class="kpi-mini-grid">
+          <div class="kpi-mini">
+            <div class="kpi-mini-label">Investor payouts due</div>
+            <div class="kpi-mini-value">₹1,18,400</div>
+            <div class="kpi-mini-sub">
+              <span class="kpi-chip flat">7 investors</span>
+            </div>
+          </div>
+          <div class="kpi-mini">
+            <div class="kpi-mini-label">Open repair tickets</div>
+            <div class="kpi-mini-value">4</div>
+            <div class="kpi-mini-sub">
+              <span class="kpi-chip down">1 critical</span>
+            </div>
+          </div>
+          <div class="kpi-mini">
+            <div class="kpi-mini-label">Avg daily rate</div>
+            <div class="kpi-mini-value">₹2,940</div>
+            <div class="kpi-mini-sub">
+              <span class="kpi-chip up">▲ +3.1%</span>
+            </div>
+          </div>
+          <div class="kpi-mini">
+            <div class="kpi-mini-label">New orders · 7d</div>
+            <div class="kpi-mini-value">19</div>
+            <div class="kpi-mini-sub">
+              <span class="kpi-chip up">▲ +4</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- going out / coming back -->
+        <div class="section-title" style="margin-top:24px;">
+          <h3>On the floor today</h3>
+          <span class="sub">what's going out, what's coming back — filter by range</span>
+        </div>
+
+        <div class="split-grid">
+          <!-- GOING OUT -->
+          <section class="panel">
+            <header class="panel-head">
+              <span class="panel-title">Going out</span>
+              <span class="panel-count" id="go-count">2 today</span>
+              <div class="range-picker" id="go-picker">
+                <button class="range-picker-btn" data-picker="go">
+                  <span id="go-label">Today</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="range-picker-drop" data-picker-drop="go">
+                  <button class="range-picker-opt active" data-range="today"    data-side="go">Today</button>
+                  <button class="range-picker-opt"        data-range="tomorrow" data-side="go">Tomorrow</button>
+                  <button class="range-picker-opt"        data-range="next7"    data-side="go">Next 7 days</button>
+                  <button class="range-picker-opt"        data-range="nextweek" data-side="go">Next week</button>
+                  <button class="range-picker-opt"        data-range="nextmonth" data-side="go">Next month</button>
+                </div>
+              </div>
+            </header>
+            <div id="go-list"></div>
+          </section>
+
+          <!-- COMING BACK -->
+          <section class="panel">
+            <header class="panel-head">
+              <span class="panel-title">Coming back</span>
+              <span class="panel-count" id="cb-count">2 today</span>
+              <div class="range-picker" id="cb-picker">
+                <button class="range-picker-btn" data-picker="cb">
+                  <span id="cb-label">Today</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="range-picker-drop" data-picker-drop="cb">
+                  <button class="range-picker-opt active" data-range="today"    data-side="cb">Today</button>
+                  <button class="range-picker-opt"        data-range="tomorrow" data-side="cb">Tomorrow</button>
+                  <button class="range-picker-opt"        data-range="next7"    data-side="cb">Next 7 days</button>
+                  <button class="range-picker-opt"        data-range="nextweek" data-side="cb">Next week</button>
+                  <button class="range-picker-opt"        data-range="nextmonth" data-side="cb">Next month</button>
+                </div>
+              </div>
+            </header>
+            <div id="cb-list"></div>
+          </section>
+        </div>
+
+        <!-- activity feed -->
+        <div class="section-title" style="margin-top:24px;">
+          <h3>Recent activity</h3>
+          <span class="sub">last 12 hours across every hub</span>
+        </div>
+
+        <div class="activity">
+          <div class="activity-item">
+            <div class="activity-tag"><span class="status-chip chip-out">OUT</span></div>
+            <div class="activity-body">
+              <div class="activity-text">Dispatched Sony FX3 +2 items</div>
+              <div class="activity-meta">Aarav Studios · BK-2214</div>
+            </div>
+            <div class="activity-time">12m</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-tag"><span class="status-chip chip-ok">RTN</span></div>
+            <div class="activity-body">
+              <div class="activity-text">Returned DJI RS 3 Pro, condition OK</div>
+              <div class="activity-meta">Meera Kapadia · BK-2198</div>
+            </div>
+            <div class="activity-time">48m</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-tag"><span class="status-chip chip-ok">PAY</span></div>
+            <div class="activity-body">
+              <div class="activity-text">Payment received ₹64,000 (balance)</div>
+              <div class="activity-meta">Nirvana Films · INV-1042</div>
+            </div>
+            <div class="activity-time">2h</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-tag"><span class="status-chip chip-bad">RPR</span></div>
+            <div class="activity-body">
+              <div class="activity-text">Repair opened — Canon R5 shutter</div>
+              <div class="activity-meta">Ticket RPR-087 · critical</div>
+            </div>
+            <div class="activity-time">3h</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-tag"><span class="status-chip chip-warn">BKG</span></div>
+            <div class="activity-body">
+              <div class="activity-text">New order drafted — 3-day wedding</div>
+              <div class="activity-meta">Isha Trivedi · BK-2219</div>
+            </div>
+            <div class="activity-time">5h</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-tag"><span class="status-chip chip-bad">LATE</span></div>
+            <div class="activity-body">
+              <div class="activity-text">Overdue flagged — Aputure 600d ×2</div>
+              <div class="activity-meta">Skyline Events · BK-2176</div>
+            </div>
+            <div class="activity-time">6h</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { ensureAuth } from '/_lib/api.js';
+
+    // ---------- data (pulled from prototype's dashboard arrays) ----------
+    const goingOutAll = [
+      { day:0,  when:'Today · 10:30', client:'Aarav Studios',       items:'Sony FX3 +2',       id:'BK-2214', tone:'out',  status:'READY' },
+      { day:0,  when:'Today · 14:00', client:'Vadodara Weddings',   items:'Sony A7S III +3',   id:'BK-2221', tone:'out',  status:'READY' },
+      { day:1,  when:'Tue · 09:30',   client:'Nirvana Films',       items:'Canon R5 +4',       id:'BK-2205', tone:'pend', status:'CONFIRMED' },
+      { day:3,  when:'Thu · 11:00',   client:'Rangoli Productions', items:'Godox kit +5',      id:'BK-2223', tone:'pend', status:'CONFIRMED' },
+      { day:6,  when:'Sun · 08:00',   client:'Isha Trivedi',        items:'Wedding kit +6',    id:'BK-2219', tone:'warn', status:'DRAFT' },
+      { day:12, when:'15 Jul',        client:'Lens & Light',        items:'Sony A7S III +2',   id:'BK-2224', tone:'pend', status:'CONFIRMED' },
+      { day:20, when:'23 Jul',        client:'Pixel Story Co.',     items:'Sennheiser MKH ×2', id:'BK-2231', tone:'pend', status:'CONFIRMED' }
+    ];
+    const comingBackAll = [
+      { day:0,  when:'Today · 18:00', client:'Skyline Events',      items:'Aputure 600d ×2',   id:'BK-2176', tone:'bad',  status:'OVERDUE' },
+      { day:0,  when:'Today · 19:00', client:'Meera Kapadia',       items:'DJI RS 3 Pro',      id:'BK-2198', tone:'out',  status:'DUE' },
+      { day:1,  when:'Tue · 18:00',   client:'Aarav Studios',       items:'Sony FX3 +2',       id:'BK-2214', tone:'out',  status:'DUE' },
+      { day:3,  when:'Thu · 17:00',   client:'Nirvana Films',       items:'Canon R5 +4',       id:'BK-2205', tone:'pend', status:'ON TIME' },
+      { day:7,  when:'18 Jul',        client:'Vadodara Weddings',   items:'Sony A7S III +3',   id:'BK-2221', tone:'pend', status:'ON TIME' },
+      { day:15, when:'22 Jul',        client:'Rangoli Productions', items:'Godox kit +5',      id:'BK-2223', tone:'pend', status:'ON TIME' }
+    ];
+    const RANGES = {
+      today:     { label: 'Today',        min: 0, max: 0 },
+      tomorrow:  { label: 'Tomorrow',     min: 1, max: 1 },
+      next7:     { label: 'Next 7 days',  min: 0, max: 7 },
+      nextweek:  { label: 'Next week',    min: 7, max: 13 },
+      nextmonth: { label: 'Next month',   min: 0, max: 30 }
+    };
+
+    // ---------- render ----------
+    function renderList(sideKey, list, range) {
+      const container = document.getElementById(sideKey + '-list');
+      const label     = document.getElementById(sideKey + '-label');
+      const count     = document.getElementById(sideKey + '-count');
+      const { min, max, label: rLabel } = RANGES[range];
+      const filtered = list.filter(x => x.day >= min && x.day <= max);
+      label.textContent = rLabel;
+      count.textContent = filtered.length + (filtered.length === 1 ? ' order' : ' orders');
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-row">No orders in this range.</div>';
+        return;
+      }
+      container.innerHTML = filtered.map(function (r) {
+        return (
+          '<a href="/orders/' + r.id + '.html" class="order-row">' +
+            '<span class="order-when">' + r.when + '</span>' +
+            '<div class="order-body">' +
+              '<div class="order-client">' + r.client + '</div>' +
+              '<div class="order-items">' + r.items + '</div>' +
+            '</div>' +
+            '<span class="status-chip chip-' + r.tone + '">' +
+              '<span class="dot"></span>' + r.status +
+            '</span>' +
+            '<span class="order-id">' + r.id + '</span>' +
+          '</a>'
+        );
+      }).join('');
+    }
+
+    const state = { go: 'today', cb: 'today' };
+    renderList('go', goingOutAll,   state.go);
+    renderList('cb', comingBackAll, state.cb);
+
+    // ---------- range picker interactivity ----------
+    document.querySelectorAll('.range-picker-btn').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const side = btn.getAttribute('data-picker');
+        const picker = document.getElementById(side + '-picker');
+        // close the other one
+        document.querySelectorAll('.range-picker.open').forEach(function (p) {
+          if (p !== picker) p.classList.remove('open');
+        });
+        picker.classList.toggle('open');
+      });
+    });
+    document.querySelectorAll('.range-picker-opt').forEach(function (opt) {
+      opt.addEventListener('click', function () {
+        const side = opt.getAttribute('data-side');
+        const range = opt.getAttribute('data-range');
+        state[side] = range;
+        // update active state
+        document.querySelectorAll('.range-picker-opt[data-side="' + side + '"]').forEach(function (o) {
+          o.classList.toggle('active', o.getAttribute('data-range') === range);
+        });
+        renderList(side, side === 'go' ? goingOutAll : comingBackAll, range);
+        document.getElementById(side + '-picker').classList.remove('open');
+      });
+    });
+
+    // click-outside to close pickers + notif
+    document.addEventListener('click', function (e) {
+      document.querySelectorAll('.range-picker.open').forEach(function (p) {
+        if (!p.contains(e.target)) p.classList.remove('open');
+      });
+      const nw = document.getElementById('notif-wrap');
+      if (nw.classList.contains('open') && !nw.contains(e.target)) nw.classList.remove('open');
+    });
+
+    // ---------- notification dropdown ----------
+    document.getElementById('notif-btn').addEventListener('click', function (e) {
+      e.stopPropagation();
+      document.getElementById('notif-wrap').classList.toggle('open');
+    });
+
+    // ---------- identity hydration + time-aware greeting ----------
+    (async () => {
+      let firstName = 'Aamir';
+      try {
+        const { user, workspace } = await ensureAuth();
+        firstName = (user.displayName || '').split(' ')[0] || 'You';
+        document.getElementById('ws-name').textContent = workspace.name;
+        document.getElementById('ws-loc').textContent = workspace.location || '';
+        document.getElementById('user-name').textContent = firstName;
+        document.getElementById('user-role').textContent = user.role[0].toUpperCase() + user.role.slice(1);
+        document.getElementById('user-avatar').textContent = firstName[0]?.toUpperCase() ?? 'U';
+      } catch (err) {
+        // ensureAuth already redirected to /index.html on 401. Anything else
+        // is a genuine error; leave the hardcoded fallback name in place.
+        if (err.status !== 401) console.error('identity hydration failed', err);
+      }
+      const h = new Date().getHours();
+      let g;
+      if (h < 5)  g = `Working late, ${firstName}`;
+      else if (h < 12) g = `Good morning, ${firstName}`;
+      else if (h < 17) g = `Good afternoon, ${firstName}`;
+      else if (h < 22) g = `Good evening, ${firstName}`;
+      else g = `Working late, ${firstName}`;
+      document.getElementById('greeting').textContent = g;
+    })();
+
+    // ---------- keyboard shortcut: / or ⌘K to focus search ----------
+    document.addEventListener('keydown', function (e) {
+      const isMetaK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
+      const isSlash = e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey;
+      const tag = (e.target && e.target.tagName || '').toLowerCase();
+      const inField = tag === 'input' || tag === 'textarea';
+      if (isMetaK || (isSlash && !inField)) {
+        e.preventDefault();
+        document.getElementById('global-search').focus();
+      }
+    });
+  </script>
+</body>
+</html>
