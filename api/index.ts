@@ -1,8 +1,10 @@
 // Vercel entry: everything under /api/* is routed to this file.
-// Export app.fetch directly (Web fetch API) — Vercel's Node runtime
-// routes requests through it and handles the returned Response correctly.
-// Do NOT wrap in `handle()` — that adapter maps to a legacy Vercel signature
-// which now silently 504s.
+// Exporting a named `fetch` function is Vercel's unambiguous signal to use
+// the Web fetch API convention (Request in, Response out). A bare default
+// arrow export with a TypeScript type annotation looks like legacy Node
+// signature at runtime — TypeScript types are erased before Vercel sees the
+// module, so Vercel guesses wrong and waits for res.end() that never comes,
+// causing 504 timeouts on every request.
 import { app } from '../src/app.js';
 
-export default (request: Request) => app.fetch(request);
+export const fetch = app.fetch;
