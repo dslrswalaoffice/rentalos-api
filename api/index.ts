@@ -1,6 +1,8 @@
 // Vercel entry: everything under /api/* is routed to this file.
-// The Hono app is defined in ../src/app.ts.
-import { handle } from 'hono/vercel';
+// Export app.fetch directly (Web fetch API) — Vercel's Node runtime
+// routes requests through it and handles the returned Response correctly.
+// Do NOT wrap in `handle()` — that adapter maps to a legacy Vercel signature
+// which now silently 504s.
 import { app } from '../src/app.js';
 
-export default handle(app);
+export default (request: Request) => app.fetch(request);
