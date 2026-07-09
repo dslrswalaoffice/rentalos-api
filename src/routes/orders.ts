@@ -1,46 +1,62 @@
+import { Hono } from 'hono';
+import type { Context } from 'hono';
+import { z } from 'zod';
+import { sql, query } from '../db.js';
+import { audit } from '../lib/audit.js';
+import {
+  sessionMiddleware,
+  requireAuth,
+  type SessionUser,
+  type SessionWorkspace,
+} from '../middleware/session.js';
+
 // ============================================================================
 // src/routes/orders.ts
 // ----------------------------------------------------------------------------
 // Sub-turn 1 scope:
-//   * Create draft orders (customer + rental window + gear lines)
+//   * Create draft orders (customer + rental window)
 //   * List / detail with filters
 //   * Update draft
 //   * Add / update / remove order items
-//   * Advisory state transitions (draft -> quoted -> confirmed -> ... )
-//   * Every mutation emits an order_events row + an audit_events row
+//   * Advisory state transitions (draft -> quoted -> confirmed -> ...)
+//   * Every mutation writes to order_events AND audit_events
 //
 // Explicitly NOT here yet (later sub-turns):
-//   * Pricing engine (billable-day calc lives in src/lib/pricing.ts — Sub-turn 2)
-//   * Payment recording endpoints (Sub-turn 2)
-//   * Invoice generation (Sub-turn 2)
-//   * OTP handover + dispatch/return endpoints (Sub-turn 3)
-//   * Availability endpoint (separate file src/routes/availability.ts)
+//   * Pricing engine — Sub-turn 2 (src/lib/pricing.ts)
+//   * Payment endpoints — Sub-turn 2
+//   * Invoice generation — Sub-turn 2
+//   * OTP handover, dispatch, return — Sub-turn 3
+//   * Availability endpoint — separate file src/routes/availability.ts
 // ============================================================================
 
-import { Hono } from 'hono';
-import { sql } from '../lib/db.js';
-import { requireSession } from '../lib/auth.js';
-import { audit } from '../lib/audit.js';
+type SessionVar = {
+  sessionId: string;
+  user: SessionUser;
+  workspace: SessionWorkspace;
+} | null;
 
-export const orders = new Hono();
+type Env = {
+  Variables: {
+    session: SessionVar;
+  };
+};
+
+export const orders = new Hono<Env>();
+orders.use('*', sessionMiddleware, requireAuth);
 
 // ----------------------------------------------------------------------------
 // State machine (advisory — recorded, not enforced)
 // ----------------------------------------------------------------------------
-// We warn on non-canonical transitions but do not block, matching the rental
-// business reality where repeat customers skip quote, walk-ins skip 3 states,
-// and B2B negotiations bounce back and forth. The audit log is the source of
-// truth. If a workspace ever wants strict enforcement, we flip a setting.
+// Non-canonical jumps are allowed with { force: true } and logged distinctly.
+// This matches rental reality: walk-ins skip quotes, repeat customers skip
+// confirmation, B2B negotiations bounce back and forth. Enforcement can be
+// flipped on later via workspace.settings without a schema change.
 
-type OrderStatus =
-  | 'draft'
-  | 'quoted'
-  | 'confirmed'
-  | 'dispatched'
-  | 'active'
-  | 'returned'
-  | 'closed'
-  | 'cancelled';
+const ORDER_STATUSES = [
+  'draft', 'quoted', 'confirmed', 'dispatched',
+  'active', 'returned', 'closed', 'cancelled',
+] as const;
+type OrderStatus = typeof ORDER_STATUSES[number];
 
 const CANONICAL_NEXT: Record<OrderStatus, OrderStatus[]> = {
   draft:      ['quoted', 'confirmed', 'cancelled'],
@@ -57,34 +73,88 @@ function isCanonical(from: OrderStatus, to: OrderStatus): boolean {
   return CANONICAL_NEXT[from]?.includes(to) ?? false;
 }
 
+const ITEM_TYPES = [
+  'rental', 'delivery_fee', 'late_fee', 'damage',
+  'discount', 'tax', 'deposit', 'other',
+] as const;
+
+const DISPATCH_TYPES = ['pickup', 'delivery'] as const;
+const CHANNELS = ['walk_in', 'planned', 'whatsapp', 'phone', 'other'] as const;
+
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
-function ipOf(c: any): string | null {
-  return (
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    c.req.header('x-real-ip') ||
-    null
-  );
+function clientCtx(c: Context) {
+  const ipAddress =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
+    c.req.header('x-real-ip') ??
+    null;
+  const userAgent = c.req.header('user-agent') ?? null;
+  return { ipAddress, userAgent };
 }
 
-function uaOf(c: any): string | null {
-  return c.req.header('user-agent') || null;
-}
+type OrderRow = {
+  id: string;
+  workspace_id: string;
+  order_number: number;
+  customer_person_id: string;
+  status: OrderStatus;
+  rental_start: string | null;
+  rental_end: string | null;
+  dispatch_type: string;
+  delivery_address: string | null;
+  channel: string;
+  subtotal_paise: number;
+  tax_paise: number;
+  discount_paise: number;
+  total_paise: number;
+  deposit_paise: number;
+  paid_paise: number;
+  balance_paise: number;
+  notes: string | null;
+  internal_notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  customer_name?: string;
+  customer_phone?: string;
+  customer_email?: string | null;
+};
+
+type OrderItemRow = {
+  id: string;
+  order_id: string;
+  workspace_id: string;
+  parent_item_id: string | null;
+  item_type: string;
+  product_id: string | null;
+  description: string;
+  quantity: number;
+  daily_rate_paise: number | null;
+  billable_days: number | null;
+  unit_amount_paise: number;
+  total_amount_paise: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  product_name?: string | null;
+  product_sku?: string | null;
+};
 
 async function nextOrderNumber(workspaceId: string): Promise<number> {
   // Atomic: bump the counter and return the value we consumed.
-  const rows = await sql`
+  const rows = await query<{ n: number }>(sql`
     UPDATE workspaces
        SET next_order_number = next_order_number + 1
      WHERE id = ${workspaceId}
      RETURNING next_order_number - 1 AS n
-  `;
-  return Number(rows[0].n);
+  `);
+  return Number(rows[0]!.n);
 }
 
 async function loadOrder(orderId: string, workspaceId: string) {
-  const rows = await sql`
+  const rows = await query<OrderRow>(sql`
     SELECT
       o.*,
       p.display_name AS customer_name,
@@ -96,27 +166,33 @@ async function loadOrder(orderId: string, workspaceId: string) {
       AND o.workspace_id = ${workspaceId}
       AND o.deleted_at IS NULL
     LIMIT 1
-  `;
+  `);
   return rows[0] ?? null;
 }
 
 async function loadItems(orderId: string) {
-  return await sql`
+  return await query<OrderItemRow>(sql`
     SELECT
       oi.*,
-      pr.name  AS product_name,
-      pr.sku   AS product_sku
+      pr.name AS product_name,
+      pr.sku  AS product_sku
     FROM order_items oi
     LEFT JOIN products pr ON pr.id = oi.product_id
     WHERE oi.order_id = ${orderId}
     ORDER BY oi.sort_order ASC, oi.created_at ASC
-  `;
+  `);
 }
 
 async function loadEvents(orderId: string) {
-  return await sql`
+  return await query<{
+    id: string; event_type: string;
+    from_status: string | null; to_status: string | null;
+    payload: unknown; occurred_at: string;
+    actor_name: string | null;
+  }>(sql`
     SELECT
-      oe.id, oe.event_type, oe.from_status, oe.to_status,
+      oe.id, oe.event_type, oe.from_status::text AS from_status,
+      oe.to_status::text AS to_status,
       oe.payload, oe.occurred_at,
       u.display_name AS actor_name
     FROM order_events oe
@@ -124,7 +200,7 @@ async function loadEvents(orderId: string) {
     WHERE oe.order_id = ${orderId}
     ORDER BY oe.occurred_at DESC
     LIMIT 200
-  `;
+  `);
 }
 
 async function recordOrderEvent(input: {
@@ -139,76 +215,85 @@ async function recordOrderEvent(input: {
   await sql`
     INSERT INTO order_events
       (workspace_id, order_id, event_type, from_status, to_status, payload, actor_user_id)
-    VALUES
-      (${input.workspaceId}, ${input.orderId}, ${input.eventType},
-       ${input.fromStatus ?? null}, ${input.toStatus ?? null},
-       ${JSON.stringify(input.payload ?? {})}::jsonb,
-       ${input.actorUserId})
+    VALUES (
+      ${input.workspaceId},
+      ${input.orderId},
+      ${input.eventType},
+      ${input.fromStatus ?? null}::order_status,
+      ${input.toStatus ?? null}::order_status,
+      ${JSON.stringify(input.payload ?? {})}::jsonb,
+      ${input.actorUserId}
+    )
   `;
 }
 
 // ============================================================================
-// GET /api/orders  — list with filters
+// GET /api/orders — list with filters
 // ============================================================================
 orders.get('/', async (c) => {
-  const session = await requireSession(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
+  const session = c.get('session')!;
 
-  const url = new URL(c.req.url);
-  const status  = url.searchParams.get('status');            // e.g. 'draft'
-  const q       = url.searchParams.get('q');                 // customer or number
-  const from    = url.searchParams.get('from');              // ISO date
-  const to      = url.searchParams.get('to');                // ISO date
-  const limit   = Math.min(Number(url.searchParams.get('limit') || 50), 200);
-  const offset  = Math.max(Number(url.searchParams.get('offset') || 0), 0);
+  const status = c.req.query('status')?.trim() || null;
+  const q      = c.req.query('q')?.trim() || null;
+  const from   = c.req.query('from')?.trim() || null;
+  const to     = c.req.query('to')?.trim() || null;
+  const limit  = Math.min(Number(c.req.query('limit') || 50), 200);
+  const offset = Math.max(Number(c.req.query('offset') || 0), 0);
 
-  const rows = await sql`
+  const searchPattern = q ? `%${q}%` : null;
+
+  const rows = await query<OrderRow>(sql`
     SELECT
-      o.id, o.order_number, o.status,
-      o.rental_start, o.rental_end, o.dispatch_type, o.channel,
-      o.total_paise, o.paid_paise, o.balance_paise,
-      o.created_at, o.updated_at,
+      o.id, o.workspace_id, o.order_number, o.customer_person_id, o.status,
+      o.rental_start, o.rental_end, o.dispatch_type, o.delivery_address,
+      o.channel,
+      o.subtotal_paise, o.tax_paise, o.discount_paise, o.total_paise,
+      o.deposit_paise, o.paid_paise, o.balance_paise,
+      o.notes, o.internal_notes, o.created_by,
+      o.created_at, o.updated_at, o.deleted_at,
       p.display_name AS customer_name,
       p.phone        AS customer_phone
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
     WHERE o.workspace_id = ${session.workspace.id}
       AND o.deleted_at IS NULL
-      AND (${status}::text IS NULL OR o.status::text = ${status})
-      AND (${q}::text IS NULL
-           OR p.display_name ILIKE '%' || ${q} || '%'
-           OR CAST(o.order_number AS text) = ${q})
+      AND (${status}::text IS NULL OR o.status::text = ${status}::text)
+      AND (${searchPattern}::text IS NULL
+           OR p.display_name ILIKE ${searchPattern}::text
+           OR CAST(o.order_number AS text) = ${q}::text)
       AND (${from}::timestamptz IS NULL OR o.rental_start >= ${from}::timestamptz)
       AND (${to}::timestamptz   IS NULL OR o.rental_end   <= ${to}::timestamptz)
     ORDER BY o.created_at DESC
     LIMIT ${limit} OFFSET ${offset}
-  `;
+  `);
 
-  const totals = await sql`
+  const totals = await query<{
+    total: number; drafts: number; quoted: number; confirmed: number;
+    dispatched: number; returned: number; closed: number;
+  }>(sql`
     SELECT
-      COUNT(*)                                        AS total,
-      COUNT(*) FILTER (WHERE status = 'draft')        AS drafts,
-      COUNT(*) FILTER (WHERE status = 'quoted')       AS quoted,
-      COUNT(*) FILTER (WHERE status = 'confirmed')    AS confirmed,
-      COUNT(*) FILTER (WHERE status = 'dispatched')   AS dispatched,
-      COUNT(*) FILTER (WHERE status = 'returned')     AS returned,
-      COUNT(*) FILTER (WHERE status = 'closed')       AS closed
+      COUNT(*)::int                                        AS total,
+      COUNT(*) FILTER (WHERE status = 'draft')::int        AS drafts,
+      COUNT(*) FILTER (WHERE status = 'quoted')::int       AS quoted,
+      COUNT(*) FILTER (WHERE status = 'confirmed')::int    AS confirmed,
+      COUNT(*) FILTER (WHERE status = 'dispatched')::int   AS dispatched,
+      COUNT(*) FILTER (WHERE status = 'returned')::int     AS returned,
+      COUNT(*) FILTER (WHERE status = 'closed')::int       AS closed
     FROM orders
     WHERE workspace_id = ${session.workspace.id}
       AND deleted_at IS NULL
-  `;
+  `);
 
   return c.json({ orders: rows, counts: totals[0] });
 });
 
 // ============================================================================
-// GET /api/orders/:id  — detail with items + timeline
+// GET /api/orders/:id — detail with items + timeline
 // ============================================================================
 orders.get('/:id', async (c) => {
-  const session = await requireSession(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
-
+  const session = c.get('session')!;
   const id = c.req.param('id');
+
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
 
@@ -221,46 +306,50 @@ orders.get('/:id', async (c) => {
 });
 
 // ============================================================================
-// POST /api/orders  — create a draft
+// POST /api/orders — create a draft
 // ============================================================================
+const createSchema = z.object({
+  customer_person_id: z.string().uuid(),
+  rental_start:       z.string().datetime().optional(),
+  rental_end:         z.string().datetime().optional(),
+  dispatch_type:      z.enum(DISPATCH_TYPES).default('pickup'),
+  delivery_address:   z.string().max(500).optional(),
+  channel:            z.enum(CHANNELS).default('planned'),
+  notes:              z.string().max(2000).optional(),
+  internal_notes:     z.string().max(2000).optional(),
+});
+
 orders.post('/', async (c) => {
-  const session = await requireSession(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
 
-  const body = await c.req.json().catch(() => ({} as any));
-  const {
-    customer_person_id,
-    rental_start,
-    rental_end,
-    dispatch_type,
-    delivery_address,
-    channel,
-    notes,
-    internal_notes,
-  } = body;
-
-  if (!customer_person_id) {
-    return c.json({ error: 'validation', field: 'customer_person_id' }, 422);
+  const body = await c.req.json().catch(() => null);
+  const parsed = createSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   }
+  const input = parsed.data;
 
-  const customer = await sql`
+  // Verify customer belongs to workspace.
+  const customer = await query<{ id: string; display_name: string }>(sql`
     SELECT id, display_name FROM people
-    WHERE id = ${customer_person_id}
+    WHERE id = ${input.customer_person_id}
       AND workspace_id = ${session.workspace.id}
       AND deleted_at IS NULL
     LIMIT 1
-  `;
+  `);
   if (customer.length === 0) {
     return c.json({ error: 'customer_not_found' }, 404);
   }
 
-  if (rental_start && rental_end && new Date(rental_end) <= new Date(rental_start)) {
-    return c.json({ error: 'validation', field: 'rental_end', reason: 'end_before_start' }, 422);
+  if (input.rental_start && input.rental_end &&
+      new Date(input.rental_end) <= new Date(input.rental_start)) {
+    return c.json({ error: 'invalid_request', reason: 'end_before_start' }, 400);
   }
 
   const orderNumber = await nextOrderNumber(session.workspace.id);
 
-  const inserted = await sql`
+  const inserted = await query<OrderRow>(sql`
     INSERT INTO orders (
       workspace_id, order_number, customer_person_id, status,
       rental_start, rental_end, dispatch_type, delivery_address,
@@ -268,21 +357,21 @@ orders.post('/', async (c) => {
     ) VALUES (
       ${session.workspace.id},
       ${orderNumber},
-      ${customer_person_id},
-      'draft',
-      ${rental_start ?? null},
-      ${rental_end ?? null},
-      ${dispatch_type ?? 'pickup'},
-      ${delivery_address ?? null},
-      ${channel ?? 'planned'},
-      ${notes ?? null},
-      ${internal_notes ?? null},
+      ${input.customer_person_id},
+      'draft'::order_status,
+      ${input.rental_start ?? null}::timestamptz,
+      ${input.rental_end   ?? null}::timestamptz,
+      ${input.dispatch_type}::text,
+      ${input.delivery_address ?? null},
+      ${input.channel}::text,
+      ${input.notes ?? null},
+      ${input.internal_notes ?? null},
       ${session.user.id}
     )
     RETURNING *
-  `;
+  `);
 
-  const order = inserted[0];
+  const order = inserted[0]!;
 
   await recordOrderEvent({
     workspaceId: session.workspace.id,
@@ -291,7 +380,7 @@ orders.post('/', async (c) => {
     toStatus: 'draft',
     payload: {
       order_number: order.order_number,
-      customer_name: customer[0].display_name,
+      customer_name: customer[0]!.display_name,
       channel: order.channel,
     },
     actorUserId: session.user.id,
@@ -304,81 +393,84 @@ orders.post('/', async (c) => {
     targetType: 'order',
     targetId: order.id,
     payload: { order_number: order.order_number },
-    ipAddress: ipOf(c),
-    userAgent: uaOf(c),
+    ipAddress, userAgent,
   });
 
   return c.json({ order }, 201);
 });
 
 // ============================================================================
-// PATCH /api/orders/:id  — update a draft (or non-terminal order)
+// PATCH /api/orders/:id — update non-terminal order (COALESCE pattern)
 // ============================================================================
-orders.patch('/:id', async (c) => {
-  const session = await requireSession(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
+const updateSchema = z.object({
+  customer_person_id: z.string().uuid().optional(),
+  rental_start:       z.string().datetime().optional(),
+  rental_end:         z.string().datetime().optional(),
+  dispatch_type:      z.enum(DISPATCH_TYPES).optional(),
+  delivery_address:   z.string().max(500).optional(),
+  channel:            z.enum(CHANNELS).optional(),
+  notes:              z.string().max(2000).optional(),
+  internal_notes:     z.string().max(2000).optional(),
+});
 
+orders.patch('/:id', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = updateSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const p = parsed.data;
+
   const before = await loadOrder(id, session.workspace.id);
   if (!before) return c.json({ error: 'not_found' }, 404);
-
-  if (['closed', 'cancelled'].includes(before.status)) {
+  if (before.status === 'closed' || before.status === 'cancelled') {
     return c.json({ error: 'locked', reason: `status_${before.status}` }, 409);
   }
 
-  const body = await c.req.json().catch(() => ({} as any));
-  const patch: Record<string, unknown> = {};
-
-  const editable = [
-    'rental_start', 'rental_end', 'dispatch_type', 'delivery_address',
-    'channel', 'notes', 'internal_notes',
-  ];
-  for (const k of editable) {
-    if (k in body) patch[k] = body[k];
+  // Customer swap only on drafts.
+  if (p.customer_person_id && before.status !== 'draft') {
+    return c.json({ error: 'customer_locked_after_draft' }, 409);
   }
-
-  // Customer swap allowed on drafts only
-  if ('customer_person_id' in body && before.status === 'draft') {
-    const check = await sql`
+  if (p.customer_person_id) {
+    const check = await query<{ id: string }>(sql`
       SELECT id FROM people
-      WHERE id = ${body.customer_person_id}
+      WHERE id = ${p.customer_person_id}
         AND workspace_id = ${session.workspace.id}
         AND deleted_at IS NULL
       LIMIT 1
-    `;
+    `);
     if (check.length === 0) return c.json({ error: 'customer_not_found' }, 404);
-    patch.customer_person_id = body.customer_person_id;
   }
 
-  if (Object.keys(patch).length === 0) {
-    return c.json({ order: before });
+  // Cross-field validation with merged values.
+  const nextStart = p.rental_start ?? before.rental_start;
+  const nextEnd   = p.rental_end   ?? before.rental_end;
+  if (nextStart && nextEnd && new Date(nextEnd) <= new Date(nextStart)) {
+    return c.json({ error: 'invalid_request', reason: 'end_before_start' }, 400);
   }
 
-  if (
-    (patch.rental_end ?? before.rental_end) &&
-    (patch.rental_start ?? before.rental_start) &&
-    new Date(patch.rental_end ?? before.rental_end as string) <=
-    new Date(patch.rental_start ?? before.rental_start as string)
-  ) {
-    return c.json({ error: 'validation', field: 'rental_end', reason: 'end_before_start' }, 422);
-  }
+  const updated = await query<OrderRow>(sql`
+    UPDATE orders SET
+      customer_person_id = COALESCE(${p.customer_person_id ?? null}::uuid,        customer_person_id),
+      rental_start       = COALESCE(${p.rental_start       ?? null}::timestamptz, rental_start),
+      rental_end         = COALESCE(${p.rental_end         ?? null}::timestamptz, rental_end),
+      dispatch_type      = COALESCE(${p.dispatch_type      ?? null}::text,        dispatch_type),
+      delivery_address   = COALESCE(${p.delivery_address   ?? null}::text,        delivery_address),
+      channel            = COALESCE(${p.channel            ?? null}::text,        channel),
+      notes              = COALESCE(${p.notes              ?? null}::text,        notes),
+      internal_notes     = COALESCE(${p.internal_notes     ?? null}::text,        internal_notes),
+      updated_at         = now()
+    WHERE id = ${id}
+      AND workspace_id = ${session.workspace.id}
+    RETURNING *
+  `);
 
-  // Whitelisted fields above → safe to interpolate keys into SQL.
-  const fragments: string[] = [];
-  const values: unknown[] = [];
-  let i = 1;
-  for (const [k, v] of Object.entries(patch)) {
-    fragments.push(`${k} = $${i++}`);
-    values.push(v);
-  }
-  fragments.push(`updated_at = now()`);
-
-  const updated = await sql.unsafe(
-    `UPDATE orders SET ${fragments.join(', ')}
-     WHERE id = $${i} AND workspace_id = $${i + 1}
-     RETURNING *`,
-    [...values, id, session.workspace.id]
-  );
+  if (updated.length === 0) return c.json({ error: 'not_found' }, 404);
+  const changedFields = Object.keys(p);
 
   await recordOrderEvent({
     workspaceId: session.workspace.id,
@@ -386,7 +478,7 @@ orders.patch('/:id', async (c) => {
     eventType: 'order.updated',
     fromStatus: before.status,
     toStatus: before.status,
-    payload: { fields: Object.keys(patch) },
+    payload: { fields: changedFields },
     actorUserId: session.user.id,
   });
 
@@ -396,61 +488,64 @@ orders.patch('/:id', async (c) => {
     eventType: 'orders.order.updated',
     targetType: 'order',
     targetId: id,
-    payload: { fields: Object.keys(patch) },
-    ipAddress: ipOf(c),
-    userAgent: uaOf(c),
+    payload: { fields: changedFields },
+    ipAddress, userAgent,
   });
 
   return c.json({ order: updated[0] });
 });
 
 // ============================================================================
-// POST /api/orders/:id/items  — add a line item
+// POST /api/orders/:id/items — add a line item
 // ============================================================================
-orders.post('/:id/items', async (c) => {
-  const session = await requireSession(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
+const addItemSchema = z.object({
+  item_type:         z.enum(ITEM_TYPES),
+  product_id:        z.string().uuid().optional(),
+  parent_item_id:    z.string().uuid().optional(),
+  description:       z.string().min(1).max(500),
+  quantity:          z.number().int().positive().default(1),
+  unit_amount_paise: z.number().int().default(0),
+  daily_rate_paise:  z.number().int().optional(),
+  billable_days:     z.number().int().positive().optional(),
+  sort_order:        z.number().int().default(0),
+});
 
+orders.post('/:id/items', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = addItemSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const input = parsed.data;
+
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
-  if (['closed', 'cancelled'].includes(order.status)) {
+  if (order.status === 'closed' || order.status === 'cancelled') {
     return c.json({ error: 'locked' }, 409);
   }
 
-  const body = await c.req.json().catch(() => ({} as any));
-  const {
-    item_type,
-    product_id,
-    parent_item_id,
-    description,
-    quantity,
-    unit_amount_paise,
-    daily_rate_paise,
-    billable_days,
-    sort_order,
-  } = body;
-
-  if (!item_type) return c.json({ error: 'validation', field: 'item_type' }, 422);
-  if (!description) return c.json({ error: 'validation', field: 'description' }, 422);
-
-  if (item_type === 'rental') {
-    if (!product_id) return c.json({ error: 'validation', field: 'product_id' }, 422);
-    const p = await sql`
+  // Rental items must have a valid product from this workspace.
+  if (input.item_type === 'rental') {
+    if (!input.product_id) {
+      return c.json({ error: 'invalid_request', reason: 'product_id_required_for_rental' }, 400);
+    }
+    const p = await query<{ id: string }>(sql`
       SELECT id FROM products
-      WHERE id = ${product_id}
+      WHERE id = ${input.product_id}
         AND workspace_id = ${session.workspace.id}
         AND deleted_at IS NULL
       LIMIT 1
-    `;
+    `);
     if (p.length === 0) return c.json({ error: 'product_not_found' }, 404);
   }
 
-  const qty  = Number(quantity ?? 1);
-  const unit = Number(unit_amount_paise ?? 0);
-  const total = unit * qty;
+  const totalAmount = input.unit_amount_paise * input.quantity;
 
-  const inserted = await sql`
+  const inserted = await query<OrderItemRow>(sql`
     INSERT INTO order_items (
       workspace_id, order_id, parent_item_id, item_type, product_id,
       description, quantity, daily_rate_paise, billable_days,
@@ -458,19 +553,19 @@ orders.post('/:id/items', async (c) => {
     ) VALUES (
       ${session.workspace.id},
       ${id},
-      ${parent_item_id ?? null},
-      ${item_type},
-      ${product_id ?? null},
-      ${description},
-      ${qty},
-      ${daily_rate_paise ?? null},
-      ${billable_days ?? null},
-      ${unit},
-      ${total},
-      ${sort_order ?? 0}
+      ${input.parent_item_id ?? null}::uuid,
+      ${input.item_type}::order_item_type,
+      ${input.product_id ?? null}::uuid,
+      ${input.description},
+      ${input.quantity},
+      ${input.daily_rate_paise ?? null},
+      ${input.billable_days ?? null},
+      ${input.unit_amount_paise},
+      ${totalAmount},
+      ${input.sort_order}
     )
     RETURNING *
-  `;
+  `);
 
   await recordOrderEvent({
     workspaceId: session.workspace.id,
@@ -478,7 +573,11 @@ orders.post('/:id/items', async (c) => {
     eventType: 'order.item.added',
     fromStatus: order.status,
     toStatus: order.status,
-    payload: { item_id: inserted[0].id, item_type, description },
+    payload: {
+      item_id: inserted[0]!.id,
+      item_type: input.item_type,
+      description: input.description,
+    },
     actorUserId: session.user.id,
   });
 
@@ -487,69 +586,76 @@ orders.post('/:id/items', async (c) => {
     actorUserId: session.user.id,
     eventType: 'orders.item.added',
     targetType: 'order_item',
-    targetId: inserted[0].id,
-    payload: { order_id: id, item_type },
-    ipAddress: ipOf(c),
-    userAgent: uaOf(c),
+    targetId: inserted[0]!.id,
+    payload: { order_id: id, item_type: input.item_type },
+    ipAddress, userAgent,
   });
 
   return c.json({ item: inserted[0] }, 201);
 });
 
 // ============================================================================
-// PATCH /api/orders/:id/items/:itemId  — update a line item
+// PATCH /api/orders/:id/items/:itemId — update a line item
 // ============================================================================
-orders.patch('/:id/items/:itemId', async (c) => {
-  const session = await requireSession(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
+const updateItemSchema = z.object({
+  description:       z.string().min(1).max(500).optional(),
+  quantity:          z.number().int().positive().optional(),
+  unit_amount_paise: z.number().int().optional(),
+  daily_rate_paise:  z.number().int().optional(),
+  billable_days:     z.number().int().positive().optional(),
+  sort_order:        z.number().int().optional(),
+  parent_item_id:    z.string().uuid().optional(),
+});
 
+orders.patch('/:id/items/:itemId', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
   const itemId = c.req.param('itemId');
 
+  const body = await c.req.json().catch(() => null);
+  const parsed = updateItemSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const p = parsed.data;
+
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
-  if (['closed', 'cancelled'].includes(order.status)) {
+  if (order.status === 'closed' || order.status === 'cancelled') {
     return c.json({ error: 'locked' }, 409);
   }
 
-  const existing = await sql`
+  const existing = await query<OrderItemRow>(sql`
     SELECT * FROM order_items
-    WHERE id = ${itemId} AND order_id = ${id} AND workspace_id = ${session.workspace.id}
+    WHERE id = ${itemId}
+      AND order_id = ${id}
+      AND workspace_id = ${session.workspace.id}
     LIMIT 1
-  `;
+  `);
   if (existing.length === 0) return c.json({ error: 'not_found' }, 404);
 
-  const body = await c.req.json().catch(() => ({} as any));
-  const patch: Record<string, unknown> = {};
-  const editable = [
-    'description', 'quantity', 'unit_amount_paise', 'daily_rate_paise',
-    'billable_days', 'sort_order', 'parent_item_id',
-  ];
-  for (const k of editable) if (k in body) patch[k] = body[k];
+  const nextQty  = p.quantity          ?? existing[0]!.quantity;
+  const nextUnit = p.unit_amount_paise ?? existing[0]!.unit_amount_paise;
+  const nextTotal = nextQty * nextUnit;
 
-  if (Object.keys(patch).length === 0) {
-    return c.json({ item: existing[0] });
-  }
+  const updated = await query<OrderItemRow>(sql`
+    UPDATE order_items SET
+      description       = COALESCE(${p.description       ?? null}::text, description),
+      quantity          = COALESCE(${p.quantity          ?? null}::int,  quantity),
+      unit_amount_paise = COALESCE(${p.unit_amount_paise ?? null}::bigint, unit_amount_paise),
+      daily_rate_paise  = COALESCE(${p.daily_rate_paise  ?? null}::bigint, daily_rate_paise),
+      billable_days     = COALESCE(${p.billable_days     ?? null}::int,  billable_days),
+      sort_order        = COALESCE(${p.sort_order        ?? null}::int,  sort_order),
+      parent_item_id    = COALESCE(${p.parent_item_id    ?? null}::uuid, parent_item_id),
+      total_amount_paise = ${nextTotal},
+      updated_at         = now()
+    WHERE id = ${itemId}
+      AND workspace_id = ${session.workspace.id}
+    RETURNING *
+  `);
 
-  const nextQty  = Number(patch.quantity          ?? existing[0].quantity);
-  const nextUnit = Number(patch.unit_amount_paise ?? existing[0].unit_amount_paise);
-  patch.total_amount_paise = nextQty * nextUnit;
-
-  const fragments: string[] = [];
-  const values: unknown[] = [];
-  let i = 1;
-  for (const [k, v] of Object.entries(patch)) {
-    fragments.push(`${k} = $${i++}`);
-    values.push(v);
-  }
-  fragments.push(`updated_at = now()`);
-
-  const updated = await sql.unsafe(
-    `UPDATE order_items SET ${fragments.join(', ')}
-     WHERE id = $${i} AND workspace_id = $${i + 1}
-     RETURNING *`,
-    [...values, itemId, session.workspace.id]
-  );
+  if (updated.length === 0) return c.json({ error: 'not_found' }, 404);
 
   await recordOrderEvent({
     workspaceId: session.workspace.id,
@@ -557,7 +663,7 @@ orders.patch('/:id/items/:itemId', async (c) => {
     eventType: 'order.item.updated',
     fromStatus: order.status,
     toStatus: order.status,
-    payload: { item_id: itemId, fields: Object.keys(patch) },
+    payload: { item_id: itemId, fields: Object.keys(p) },
     actorUserId: session.user.id,
   });
 
@@ -567,41 +673,36 @@ orders.patch('/:id/items/:itemId', async (c) => {
     eventType: 'orders.item.updated',
     targetType: 'order_item',
     targetId: itemId,
-    payload: { order_id: id, fields: Object.keys(patch) },
-    ipAddress: ipOf(c),
-    userAgent: uaOf(c),
+    payload: { order_id: id, fields: Object.keys(p) },
+    ipAddress, userAgent,
   });
 
   return c.json({ item: updated[0] });
 });
 
 // ============================================================================
-// DELETE /api/orders/:id/items/:itemId  — remove a line item
+// DELETE /api/orders/:id/items/:itemId — remove a line item
 // ============================================================================
 orders.delete('/:id/items/:itemId', async (c) => {
-  const session = await requireSession(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
-
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
   const itemId = c.req.param('itemId');
 
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
-  if (['closed', 'cancelled'].includes(order.status)) {
+  if (order.status === 'closed' || order.status === 'cancelled') {
     return c.json({ error: 'locked' }, 409);
   }
 
-  const existing = await sql`
-    SELECT id, item_type, description FROM order_items
-    WHERE id = ${itemId} AND order_id = ${id} AND workspace_id = ${session.workspace.id}
-    LIMIT 1
-  `;
-  if (existing.length === 0) return c.json({ error: 'not_found' }, 404);
-
-  await sql`
+  const deleted = await query<{ id: string; description: string }>(sql`
     DELETE FROM order_items
-    WHERE id = ${itemId} AND workspace_id = ${session.workspace.id}
-  `;
+    WHERE id = ${itemId}
+      AND order_id = ${id}
+      AND workspace_id = ${session.workspace.id}
+    RETURNING id, description
+  `);
+  if (deleted.length === 0) return c.json({ error: 'not_found' }, 404);
 
   await recordOrderEvent({
     workspaceId: session.workspace.id,
@@ -609,7 +710,7 @@ orders.delete('/:id/items/:itemId', async (c) => {
     eventType: 'order.item.removed',
     fromStatus: order.status,
     toStatus: order.status,
-    payload: { item_id: itemId, description: existing[0].description },
+    payload: { item_id: itemId, description: deleted[0]!.description },
     actorUserId: session.user.id,
   });
 
@@ -620,46 +721,44 @@ orders.delete('/:id/items/:itemId', async (c) => {
     targetType: 'order_item',
     targetId: itemId,
     payload: { order_id: id },
-    ipAddress: ipOf(c),
-    userAgent: uaOf(c),
+    ipAddress, userAgent,
   });
 
   return c.json({ ok: true });
 });
 
 // ============================================================================
-// POST /api/orders/:id/transitions  — advisory state change
+// POST /api/orders/:id/transitions — advisory state change
+// Body: { to, reason?, force? }
 // ============================================================================
-// Body: { to: 'quoted' | 'confirmed' | ..., reason?: string, force?: boolean }
-orders.post('/:id/transitions', async (c) => {
-  const session = await requireSession(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
+const transitionSchema = z.object({
+  to:     z.enum(ORDER_STATUSES),
+  reason: z.string().max(500).optional(),
+  force:  z.boolean().default(false),
+});
 
+orders.post('/:id/transitions', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = transitionSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const { to, reason, force } = parsed.data;
+
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
-
-  const body = await c.req.json().catch(() => ({} as any));
-  const to = body.to as OrderStatus;
-  const reason = body.reason as string | undefined;
-  const force  = Boolean(body.force);
-
-  const validStates: OrderStatus[] = [
-    'draft', 'quoted', 'confirmed', 'dispatched',
-    'active', 'returned', 'closed', 'cancelled',
-  ];
-  if (!validStates.includes(to)) {
-    return c.json({ error: 'validation', field: 'to' }, 422);
-  }
 
   if (order.status === to) {
     return c.json({ order, unchanged: true });
   }
 
-  const canonical = isCanonical(order.status as OrderStatus, to);
+  const canonical = isCanonical(order.status, to);
 
-  // Advisory model: if not canonical, require { force: true } so the UI
-  // has a chance to warn the operator first.
+  // Advisory: non-canonical needs explicit { force: true }. UI shows a warning.
   if (!canonical && !force) {
     return c.json({
       error: 'non_canonical_transition',
@@ -669,13 +768,14 @@ orders.post('/:id/transitions', async (c) => {
     }, 409);
   }
 
-  const updated = await sql`
+  const updated = await query<OrderRow>(sql`
     UPDATE orders
        SET status = ${to}::order_status,
            updated_at = now()
-     WHERE id = ${id} AND workspace_id = ${session.workspace.id}
+     WHERE id = ${id}
+       AND workspace_id = ${session.workspace.id}
     RETURNING *
-  `;
+  `);
 
   await recordOrderEvent({
     workspaceId: session.workspace.id,
@@ -694,21 +794,20 @@ orders.post('/:id/transitions', async (c) => {
     targetType: 'order',
     targetId: id,
     payload: { from: order.status, to, canonical, reason: reason ?? null },
-    ipAddress: ipOf(c),
-    userAgent: uaOf(c),
+    ipAddress, userAgent,
   });
 
   return c.json({ order: updated[0], canonical });
 });
 
 // ============================================================================
-// DELETE /api/orders/:id  — soft delete (only drafts)
+// DELETE /api/orders/:id — soft delete (only drafts)
 // ============================================================================
 orders.delete('/:id', async (c) => {
-  const session = await requireSession(c);
-  if (!session) return c.json({ error: 'unauthorized' }, 401);
-
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
+
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
 
@@ -721,8 +820,10 @@ orders.delete('/:id', async (c) => {
 
   await sql`
     UPDATE orders
-       SET deleted_at = now(), updated_at = now()
-     WHERE id = ${id} AND workspace_id = ${session.workspace.id}
+       SET deleted_at = now(),
+           updated_at = now()
+     WHERE id = ${id}
+       AND workspace_id = ${session.workspace.id}
   `;
 
   await recordOrderEvent({
@@ -741,8 +842,7 @@ orders.delete('/:id', async (c) => {
     targetType: 'order',
     targetId: id,
     payload: { order_number: order.order_number },
-    ipAddress: ipOf(c),
-    userAgent: uaOf(c),
+    ipAddress, userAgent,
   });
 
   return c.json({ ok: true });
