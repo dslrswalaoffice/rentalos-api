@@ -6,6 +6,21 @@ You are working on **RentalOS**, a rental management SaaS being built for **DSLR
 
 ---
 
+## Product context documents
+
+Three project documents shape RentalOS direction. Every task should acknowledge them:
+
+- **rentalOS Project Instructions** — high-level product philosophy
+- **from Claude Design File** — DSLRSWALA prototype UX/IA specification (source of truth for product shape)
+- **Camera_RMS_Developer_Brief.docx + Addendum v2** — inspirational reference architecture from a Pune-based camera rental business
+
+When they conflict:
+- Design File wins for UX/IA
+- Camera RMS Brief informs business logic where Design File is silent
+- Everything from Camera RMS Brief is opt-in via `workspace.settings.features.*` flags, never hardcoded
+
+---
+
 ## Product context
 
 - **Founder:** Aamir Patel — systems thinker, non-technical, browser-first workflow (GitHub web UI, Vercel dashboard, Neon SQL editor, Chrome DevTools). No Terminal, no VS Code.
@@ -217,6 +232,13 @@ NOT `= ANY(${arr}::status_enum[])`.
 
 **All business rules that vary per rental house MUST live in `workspace.settings`, never hardcoded.** This is a founder-level architectural principle: RentalOS will onboard other rental businesses, and their rules will differ.
 
+- **`order_items` table** now includes item-level status columns:
+  - `status order_item_status` — enum with values `pending_dispatch`, `dispatched`, `returned`, `returned_with_damage`, `not_returned_chargeable`, `not_returned_non_chargeable`, `missing`. Default `pending_dispatch`.
+  - `dispatched_at timestamptz` — nullable, set when item transitions to `dispatched`
+  - `returned_at timestamptz` — nullable, set when item transitions to `returned` or `returned_with_damage`
+  - `condition_notes text` — nullable, populated during return
+- **Terminal item statuses:** `returned`, `returned_with_damage`, `not_returned_chargeable`, `not_returned_non_chargeable`, `missing`. When all items on an order are in terminal states, `GET /api/orders/:id` returns `can_finalize: true`.
+
 ---
 
 ## Order module specifics
@@ -347,6 +369,37 @@ Aamir works in "sub-turns" — one focused deliverable per turn.
 1. Over-optimising before the base is stable.
 2. Compressing multi-layer problems into single delegations.
 3. Under-documenting for his team.
+
+---
+
+## Feature flags
+
+RentalOS is designed to onboard multiple rental businesses with different needs. Not every feature is enabled for every workspace.
+
+Feature flags live in `workspace.settings.features` as a JSONB object. Each key is a boolean; missing keys default to `false`.
+
+Reading a flag in code:
+```ts
+const flagEnabled = workspace.settings?.features?.[flagKey] ?? false;
+```
+
+Documented feature keys (add new ones here as they're introduced):
+
+* `qr_scanning` — per-sub-component QR tracking at dispatch/return
+* `otp_handover` — OTP-based dispatch/return replacing paper agreements
+* `customer_tiers` — Normal/Premium/VIP tier system with per-tier payment rules
+* `vip_consolidated_billing` — monthly ledger with TDS deduction (requires `customer_tiers`)
+* `trust_score` — algorithmic customer risk scoring
+* `investor_module` — investor equipment tagging + revenue share
+* `cashfree_gateway` — Cashfree payment gateway integration
+* `wati_notifications` — WhatsApp Business API notifications via WATI
+* `gst_split_cgst_sgst_igst` — Indian GST breakdown (CGST+SGST intra-state, IGST inter-state)
+* `damage_module` — damage cost recovery, photo evidence, partial forfeiture
+* `auto_close_when_all_items_terminal` — automatically close orders when all items reach terminal status (default false — operator confirms via banner)
+
+DSLRSWALA workspace has `gst_split_cgst_sgst_igst: true` by default (GST-registered). All other flags default to `false` and get enabled as features ship.
+
+Never hardcode business rules that a flag would gate. If you're writing an endpoint that assumes tiers exist, check `settings.features.customer_tiers` first.
 
 ---
 
