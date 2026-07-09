@@ -238,6 +238,14 @@ NOT `= ANY(${arr}::status_enum[])`.
   - `returned_at timestamptz` — nullable, set when item transitions to `returned` or `returned_with_damage`
   - `condition_notes text` — nullable, populated during return
 - **Terminal item statuses:** `returned`, `returned_with_damage`, `not_returned_chargeable`, `not_returned_non_chargeable`, `missing`. When all items on an order are in terminal states, `GET /api/orders/:id` returns `can_finalize: true`.
+- **GST tax breakdown is stored per line and per invoice** as three columns: `cgst_paise`, `sgst_paise`, `igst_paise`. All bigint, default 0. Intra-state populates CGST+SGST (each half the total tax); inter-state populates IGST alone. Present on `order_items` and `invoices`. Populated by the pricing engine at recompute time (implementation lands in Sub-turn 2.4a-endpoints).
+- **Customer state for GST determination lives at two levels:**
+  - `people.default_gst_state text` — the customer's registered state (e.g. 'Gujarat', 'Maharashtra')
+  - `orders.gst_state text` — per-order override for one-off shoots in different states
+  - Order wins when set. If both null, fall back to `workspace.place_of_supply`.
+- **`orders.gst_state` is frozen on the invoice** at generation time as `invoices.gst_state`, so a future customer address change doesn't retroactively alter an issued invoice.
+- **`order_items.chargeable_paise`** is the amount that actually gets billed (as opposed to `total_amount_paise` which is the pre-status-adjustment gross). For rental items, `chargeable_paise = 0` when `status = 'not_returned_non_chargeable'`, else equals `total_amount_paise`. For non-rental items, always equals `total_amount_paise`.
+- **DSLRSWALA workspace `place_of_supply`** is `'Gujarat'` (the state, not the city). This is corrected in migration 007 from the legacy value 'Vadodara'.
 
 ---
 
