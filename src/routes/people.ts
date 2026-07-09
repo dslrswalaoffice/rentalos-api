@@ -80,10 +80,10 @@ people.get('/', async (c) => {
       p.company_name, p.gstin, p.notes,
       p.created_at, p.updated_at,
       COALESCE(
-        (SELECT array_agg(pr.role ORDER BY pr.role)
+        (SELECT json_agg(pr.role ORDER BY pr.role)
          FROM person_roles pr
          WHERE pr.person_id = p.id AND pr.is_active = true),
-        ARRAY[]::person_role[]
+        '[]'::json
       ) AS roles
     FROM people p
     WHERE p.workspace_id = ${session.workspace.id}
@@ -134,10 +134,10 @@ people.get('/:id', async (c) => {
       p.company_name, p.gstin, p.notes,
       p.created_at, p.updated_at,
       COALESCE(
-        (SELECT array_agg(pr.role ORDER BY pr.role)
+        (SELECT json_agg(pr.role ORDER BY pr.role)
          FROM person_roles pr
          WHERE pr.person_id = p.id AND pr.is_active = true),
-        ARRAY[]::person_role[]
+        '[]'::json
       ) AS roles
     FROM people p
     WHERE p.id = ${id}
@@ -234,7 +234,7 @@ people.post('/', requireRole('owner', 'manager'), async (c) => {
     )
     SELECT
       np.*,
-      (SELECT array_agg(role ORDER BY role) FROM new_roles) AS roles
+      (SELECT json_agg(role ORDER BY role) FROM new_roles) AS roles
     FROM new_person np
   `);
 
@@ -331,7 +331,7 @@ people.patch('/:id', requireRole('owner', 'manager'), async (c) => {
       id_proof_type, id_proof_number,
       address_line, city, state, postal_code, country_code,
       company_name, gstin, notes, created_at, updated_at,
-      (SELECT array_agg(role ORDER BY role) FROM person_roles
+      (SELECT json_agg(role ORDER BY role) FROM person_roles
        WHERE person_id = people.id AND is_active = true) AS roles
   `);
 
