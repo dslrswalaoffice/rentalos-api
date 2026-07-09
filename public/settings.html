@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>Settings · RentalOS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Space Grotesk,Inter,sans-serif' font-weight='800' font-size='19' fill='%23202058'%3ER%3C/text%3E%3C/svg%3E">
+  <style>
+    :root {
+      --ink:#202058; --text:#464a52; --head:#26235a; --muted:#8b9199; --muted-strong:#5b616b; --muted-soft:#9aa1ad;
+      --card:#ffffff; --bg:#f6f7f9; --side:#fcfcfd; --thead:#fafbfc; --border:#e6e8ec; --border-strong:#d8dbe0;
+      --accent-soft:#ecebf4; --border-accent:#d7dcf7; --orange:#e88020; --orange-soft:#fbe9d7; --focus:#b9c0ee;
+      --ok-solid:#1f9d57; --ok-soft:#e8f6ee; --ok-strong:#177a45;
+      --warn-solid:#b9791b; --warn-soft:#fbf2e2; --warn-strong:#8a5a12;
+      --bad-solid:#cc3340; --bad-soft:#fbeaeb; --bad-strong:#a3272f;
+      --font-display:'Arzachel','Space Grotesk','Inter',-apple-system,sans-serif;
+      --font-body:'Ponjoung','Inter',-apple-system,sans-serif;
+      --font-mono:'JetBrains Mono',ui-monospace,monospace;
+      --sb-w:232px;
+    }
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{margin:0;padding:0;height:100%}
+    body{font-family:var(--font-body);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
+    button,a{transition:background-color .14s,color .14s,border-color .14s,box-shadow .16s}
+    ::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-thumb{background:#d3d7dd;border-radius:7px;border:3px solid transparent;background-clip:padding-box}
+
+    .app{display:grid;grid-template-columns:var(--sb-w) minmax(0,1fr);min-height:100dvh}
+    /* sidebar (from orders.html) */
+    .sb{background:var(--side);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 14px 14px;position:sticky;top:0;height:100dvh;overflow-y:auto}
+    .sb-brand{display:flex;align-items:center;gap:10px;padding:6px 6px 20px}
+    .sb-brand .logo{width:30px;height:30px;border-radius:8px;background:var(--orange);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:800;font-size:17px}
+    .sb-brand .word{font-family:var(--font-display);font-weight:600;font-size:17px;letter-spacing:-.01em;color:var(--ink)}
+    .sb-brand .env{margin-left:auto;font-family:var(--font-mono);font-size:8.5px;font-weight:600;letter-spacing:.12em;color:var(--warn-strong);background:var(--warn-soft);padding:2px 7px;border-radius:999px}
+    .sb-nav{display:flex;flex-direction:column;gap:2px}
+    .sb-workspace{display:flex;align-items:baseline;gap:8px;width:100%;margin:14px 0 8px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-family:inherit;text-align:left}
+    .sb-workspace-name{font-family:var(--font-display);font-weight:600;font-size:12.5px;letter-spacing:.02em;color:var(--ink)}
+    .sb-workspace-loc{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+    .sb-workspace svg{margin-left:auto;color:var(--muted);align-self:center}
+    .sb-item{display:flex;align-items:center;gap:10px;padding:8px 8px;border-radius:9px;text-decoration:none;color:var(--muted-strong);font-size:13px;font-weight:500}
+    .sb-item:hover{background:var(--bg);color:var(--ink)}
+    .sb-item.active{background:var(--accent-soft);color:var(--head);font-weight:600}
+    .sb-item .tile{width:26px;height:26px;border-radius:7px;background:#eef0f3;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9.5px;font-weight:700}
+    .sb-item.active .tile{background:var(--head);color:#fff}
+    .sb-item.new .tile{background:var(--orange);color:#fff}
+    .sb-user{margin-top:auto;padding:12px 8px 4px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+    .sb-user-avatar{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#26235a,#4b47a3);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:13px}
+    .sb-user-name{font-size:12.5px;font-weight:600;color:var(--ink)}
+    .sb-user-role{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-top:1px}
+
+    .main{min-width:0;background:var(--bg);display:flex;flex-direction:column}
+    .topbar{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:40}
+    .kicker{font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:.14em;color:var(--muted-soft);text-transform:uppercase}
+    .page-title{font-family:var(--font-display);font-weight:600;font-size:17px;letter-spacing:-.005em;color:var(--ink);margin-top:1px}
+    .topbar-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+    .btn{padding:8px 14px;border-radius:9px;font-family:var(--font-body);font-weight:600;font-size:12.5px;cursor:pointer;border:1px solid transparent;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+    .btn.ghost{background:var(--card);color:var(--muted-strong);border-color:var(--border)}
+    .btn.ghost:hover{background:var(--bg);border-color:var(--border-strong);color:var(--ink)}
+    .btn.primary{background:var(--head);color:#fff;border-color:var(--head)}
+    .btn.primary:hover{background:#1a1749}
+    .btn.orange{background:var(--orange);color:#fff;border-color:var(--orange)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+
+    /* tabs */
+    .tabbar{display:flex;gap:2px;padding:0 24px;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:57px;z-index:30}
+    .tab{padding:12px 16px;background:transparent;border:none;border-bottom:2px solid transparent;font-family:var(--font-body);font-size:13px;font-weight:600;color:var(--muted);cursor:pointer}
+    .tab:hover{color:var(--ink)}
+    .tab.active{color:var(--head);border-bottom-color:var(--head)}
+
+    .content{padding:22px 24px 60px;max-width:900px;margin:0 auto;width:100%}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px 22px;margin-bottom:16px}
+    .card h3{font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:-.005em;color:var(--ink);margin:0 0 4px}
+    .card .card-sub{font-size:12px;color:var(--muted);margin:0 0 16px}
+    .section-h{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+
+    .field{margin-bottom:14px}
+    .field label{display:block;font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--muted-strong);text-transform:uppercase;margin-bottom:6px}
+    .field label .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted-soft);font-family:var(--font-body);font-size:11px;margin-left:6px}
+    .field input,.field select,.field textarea{width:100%;padding:9px 11px;font-family:var(--font-body);font-size:13.5px;color:var(--ink);background:var(--card);border:1px solid var(--border);border-radius:9px;outline:none;transition:border-color .14s,box-shadow .14s}
+    .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--focus);box-shadow:0 0 0 4px rgba(185,192,238,.24)}
+    .field input.mono{font-family:var(--font-mono);font-size:12.5px}
+    .field textarea{min-height:120px;resize:vertical;font-size:13px;line-height:1.5}
+    .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .toggle-field{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}
+    .toggle-field .tl{font-size:13px;color:var(--ink);font-weight:500}
+    .collapsible summary{cursor:pointer;list-style:none;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--head);padding:4px 0}
+    .collapsible summary::-webkit-details-marker{display:none}
+    .collapsible[open] summary{margin-bottom:12px}
+
+    /* toggle switch */
+    .switch{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0}
+    .switch input{opacity:0;width:0;height:0}
+    .switch .track{position:absolute;inset:0;background:#d3d7dd;border-radius:999px;transition:background .16s}
+    .switch .track::before{content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .16s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+    .switch input:checked+.track{background:var(--ok-solid)}
+    .switch input:checked+.track::before{transform:translateX(18px)}
+    .switch input:disabled+.track{opacity:.5;cursor:not-allowed}
+    .switch.disabled{cursor:not-allowed}
+
+    /* feature rows */
+    .flag-row{display:flex;align-items:flex-start;gap:16px;padding:16px 0;border-top:1px solid var(--border)}
+    .flag-row:first-child{border-top:none}
+    .flag-main{flex:1;min-width:0}
+    .flag-name{font-weight:600;color:var(--ink);font-size:13.5px;display:flex;align-items:center;gap:8px}
+    .flag-desc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
+    .soon-badge{display:inline-flex;align-items:center;padding:1px 7px;border-radius:5px;background:var(--warn-soft);color:var(--warn-strong);font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+    .live-badge{display:inline-flex;align-items:center;padding:1px 7px;border-radius:5px;background:var(--ok-soft);color:var(--ok-strong);font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+
+    /* users table */
+    table.users{width:100%;border-collapse:collapse}
+    table.users th{text-align:left;padding:10px 12px;font-family:var(--font-mono);font-size:9px;font-weight:600;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--thead)}
+    table.users td{padding:12px;border-top:1px solid var(--border);font-size:13px}
+    table.users tr:first-child td{border-top:none}
+    .role-pill{display:inline-flex;padding:2px 9px;border-radius:999px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+    .role-owner{background:var(--accent-soft);color:var(--head)}
+    .role-manager{background:var(--orange-soft);color:var(--warn-strong)}
+    .role-staff{background:#eef0f3;color:var(--muted-strong)}
+    .role-client,.role-investor{background:var(--ok-soft);color:var(--ok-strong)}
+    .status-dot{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted-strong)}
+    .status-dot::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ok-solid)}
+    .status-dot.inactive::before{background:var(--muted-soft)}
+    .notice{background:var(--accent-soft);border:1px solid var(--border-accent);border-radius:12px;padding:14px 16px;margin-bottom:16px;font-size:12.5px;color:var(--head)}
+    .notice strong{display:block;margin-bottom:2px;font-size:13px}
+
+    .loading{padding:60px;text-align:center;color:var(--muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;font-size:12px}
+    .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--card);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 14px 30px -12px rgba(16,24,40,.32);padding:11px 18px;font-size:13px;color:var(--ink);z-index:200}
+    .tab-panel{display:none}
+    .tab-panel.active{display:block}
+
+    @media (max-width:900px){
+      .app{grid-template-columns:1fr}
+      .sb{position:static;height:auto;border-right:none;border-bottom:1px solid var(--border);padding:12px 16px}
+      .sb-nav,.sb-user,.sb-workspace{display:none}
+      .sb-brand{padding:0}
+      .field-row{grid-template-columns:1fr}
+      .tabbar{top:0}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sb">
+      <div class="sb-brand">
+        <span class="logo">R</span>
+        <span class="word">RentalOS</span>
+        <span class="env">v0.1</span>
+      </div>
+      <a href="/new-order.html" class="sb-item new" style="margin-bottom:6px;">
+        <span class="tile">NB</span><span>New order</span>
+      </a>
+      <button class="sb-workspace" type="button" aria-label="Switch workspace">
+        <span class="sb-workspace-name" id="ws-name">DSLRSWALA</span>
+        <span class="sb-workspace-loc" id="ws-loc">Vadodara</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <nav class="sb-nav" aria-label="Main">
+        <a href="/dashboard.html" class="sb-item"><span class="tile">DB</span><span>Dashboard</span></a>
+        <a href="/calendar.html" class="sb-item"><span class="tile">CL</span><span>Calendar</span></a>
+        <a href="/orders.html" class="sb-item"><span class="tile">RN</span><span>Orders</span></a>
+        <a href="/billing.html" class="sb-item"><span class="tile">BL</span><span>Billing</span></a>
+        <a href="/inventory.html" class="sb-item"><span class="tile">IN</span><span>Inventory</span></a>
+        <a href="/people.html" class="sb-item"><span class="tile">PE</span><span>People</span></a>
+        <a href="/insights.html" class="sb-item"><span class="tile">IS</span><span>Insights</span></a>
+        <a href="/settings.html" class="sb-item active" aria-current="page"><span class="tile">SY</span><span>Settings</span></a>
+      </nav>
+      <div class="sb-user">
+        <span class="sb-user-avatar" id="user-avatar">A</span>
+        <div class="sb-user-info">
+          <div class="sb-user-name" id="user-name">Aamir</div>
+          <div class="sb-user-role" id="user-role">OWNER</div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="page-title-block">
+          <div class="kicker" id="tb-kicker">Settings</div>
+          <div class="page-title">Settings</div>
+        </div>
+        <div class="topbar-actions" id="tb-actions"></div>
+      </header>
+      <nav class="tabbar" id="tabbar">
+        <button class="tab active" data-tab="workspace">Workspace</button>
+        <button class="tab" data-tab="features">Features</button>
+        <button class="tab" data-tab="users">Users</button>
+      </nav>
+      <div class="content" id="content"><div class="loading">Loading settings…</div></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { api, ensureAuth } from '/_lib/api.js';
+
+    const state = { data: null, tab: 'workspace', form: null, baseline: null };
+
+    const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Andaman and Nicobar Islands','Chandigarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir','Ladakh','Lakshadweep','Puducherry'];
+
+    const FLAGS = [
+      { key:'gst_split_cgst_sgst_igst', name:'GST split (CGST+SGST / IGST)', desc:'Split tax into CGST + SGST for intra-state or IGST for inter-state customers. Required for Indian GST-registered businesses.', live:true },
+      { key:'auto_close_when_all_items_terminal', name:'Auto-close ready orders', desc:'Automatically transition orders to Closed when all items reach terminal states. If off, a banner prompts the operator to confirm.', live:true },
+      { key:'qr_scanning', name:'QR code scanning', desc:'Track individual sub-components (batteries, chargers, cables) via QR codes at dispatch and return.', live:false },
+      { key:'otp_handover', name:'OTP handover', desc:'Legally-binding OTP-based dispatch and return verification via WhatsApp, replacing paper agreements.', live:false },
+      { key:'customer_tiers', name:'Customer tiers', desc:'Normal / Premium / VIP customer classification with different payment and billing rules.', live:false },
+      { key:'vip_consolidated_billing', name:'VIP consolidated billing', desc:'Monthly consolidated invoice for VIP customers with TDS deduction handling. Requires customer tiers.', live:false },
+      { key:'trust_score', name:'Trust score', desc:'Algorithmic customer risk scoring based on rental history, damage rate, and payment behavior.', live:false },
+      { key:'investor_module', name:'Investor equipment tracking', desc:'Tag equipment ownership to investors with revenue-share and settlement ledger.', live:false },
+      { key:'cashfree_gateway', name:'Cashfree payment gateway', desc:'Accept UPI, card, and net-banking payments directly through Cashfree. Requires API credentials.', live:false },
+      { key:'wati_notifications', name:'WhatsApp notifications', desc:'Send order confirmations, dispatch alerts, return reminders, and invoices via WhatsApp Business API through WATI.', live:false },
+      { key:'damage_module', name:'Damage recovery', desc:'Photo evidence, damage cost estimation, and partial deposit forfeiture workflow.', live:false },
+    ];
+
+    // ---------- identity ----------
+    function hydrateIdentity() {
+      const cu = state.data.current_user;
+      const ws = state.data.workspace;
+      document.getElementById('ws-name').textContent = state.data.workspace.legal_name || 'Workspace';
+      document.getElementById('ws-loc').textContent = ws.city || ws.place_of_supply || '';
+      const first = (cu.display_name || '').split(' ')[0] || 'You';
+      document.getElementById('user-name').textContent = first;
+      document.getElementById('user-role').textContent = (cu.role || '').toUpperCase();
+      document.getElementById('user-avatar').textContent = first[0]?.toUpperCase() ?? 'U';
+      document.getElementById('tb-kicker').textContent = `${ws.legal_name || 'Workspace'}${ws.city ? ' · ' + ws.city : (ws.place_of_supply ? ' · ' + ws.place_of_supply : '')}`;
+    }
+
+    function isOwner() { return state.data?.current_user?.role === 'owner'; }
+    function canEditMetadata() { return ['owner', 'manager'].includes(state.data?.current_user?.role); }
+
+    // ---------- load ----------
+    async function load() {
+      try {
+        await ensureAuth();
+        state.data = await api.get('/api/workspace');
+        resetForm();
+        hydrateIdentity();
+        const hash = (location.hash || '#workspace').slice(1);
+        state.tab = ['workspace', 'features', 'users'].includes(hash) ? hash : 'workspace';
+        render();
+      } catch (err) {
+        document.getElementById('content').innerHTML =
+          `<div class="card"><h3>Couldn't load settings</h3><p class="card-sub">${escapeHtml(err.body?.error || err.message || 'error')}</p></div>`;
+      }
+    }
+
+    // Editable (non-feature) slice of state, cloned for dirty diffing.
+    function resetForm() {
+      const w = state.data.workspace, s = state.data.settings;
+      state.form = {
+        workspace: {
+          legal_name: w.legal_name ?? '', gstin: w.gstin ?? '', pan: w.pan ?? '',
+          place_of_supply: w.place_of_supply ?? '', phone: w.phone ?? '', email: w.email ?? '',
+          address_line1: w.address_line1 ?? '', address_line2: w.address_line2 ?? '',
+          city: w.city ?? '', state: w.state ?? '', postal_code: w.postal_code ?? '',
+        },
+        settings: {
+          billing: { ...s.billing },
+          tax: { ...s.tax },
+          invoice: { ...s.invoice },
+          bank_details: { ...s.bank_details },
+        },
+      };
+      state.baseline = JSON.parse(JSON.stringify(state.form));
+    }
+    function isDirty() { return JSON.stringify(state.form) !== JSON.stringify(state.baseline); }
+
+    // ---------- render ----------
+    function render() {
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === state.tab));
+      renderTopbar();
+      const el = document.getElementById('content');
+      if (state.tab === 'workspace') { el.innerHTML = workspaceTab(); wireWorkspaceTab(); }
+      else if (state.tab === 'features') { el.innerHTML = featuresTab(); wireFeaturesTab(); }
+      else { el.innerHTML = usersTab(); }
+    }
+
+    function renderTopbar() {
+      const wrap = document.getElementById('tb-actions');
+      if (state.tab === 'workspace' && isDirty()) {
+        wrap.innerHTML = `<button class="btn ghost" id="btn-discard">Discard</button><button class="btn primary" id="btn-save">Save changes</button>`;
+        document.getElementById('btn-discard').addEventListener('click', () => { resetForm(); render(); });
+        document.getElementById('btn-save').addEventListener('click', saveWorkspace);
+      } else {
+        wrap.innerHTML = '';
+      }
+    }
+
+    // ---------- workspace tab ----------
+    function txt(path, label, opts = {}) {
+      const val = getByPath(state.form, path) ?? '';
+      const dis = canEditMetadata() ? '' : 'disabled';
+      const attrs = [`data-field="${path}"`, opts.mono ? 'class="mono"' : '', opts.upper ? 'data-upper="1"' : '', dis].join(' ');
+      const list = opts.list ? ` list="${opts.list}"` : '';
+      return `<div class="field"><label>${escapeHtml(label)}${opts.hint ? `<span class="hint">${escapeHtml(opts.hint)}</span>` : ''}</label>
+        <input type="${opts.type || 'text'}" ${attrs}${list} value="${escapeAttr(val)}"${opts.min != null ? ` min="${opts.min}"` : ''}${opts.max != null ? ` max="${opts.max}"` : ''} autocomplete="off"></div>`;
+    }
+    function area(path, label, opts = {}) {
+      const val = getByPath(state.form, path) ?? '';
+      const dis = canEditMetadata() ? '' : 'disabled';
+      return `<div class="field"><label>${escapeHtml(label)}${opts.hint ? `<span class="hint">${escapeHtml(opts.hint)}</span>` : ''}</label>
+        <textarea data-field="${path}" ${dis}>${escapeHtml(val)}</textarea></div>`;
+    }
+
+    function workspaceTab() {
+      const s = state.form.settings;
+      const dis = canEditMetadata() ? '' : 'disabled';
+      const roleNote = canEditMetadata() ? '' : `<div class="notice">You have read-only access. Only owners and managers can edit workspace settings.</div>`;
+      return `
+        ${roleNote}
+        <datalist id="states-list">${INDIAN_STATES.map(st => `<option value="${escapeAttr(st)}"></option>`).join('')}</datalist>
+        <div class="card">
+          <div class="section-h">Business identity</div>
+          ${txt('workspace.legal_name', 'Legal name')}
+          <div class="field-row">
+            ${txt('workspace.gstin', 'GSTIN', { upper: true })}
+            ${txt('workspace.pan', 'PAN', { upper: true })}
+          </div>
+          ${txt('workspace.place_of_supply', 'Place of supply', { hint: 'Indian state', list: 'states-list' })}
+        </div>
+        <div class="card">
+          <div class="section-h">Contact</div>
+          <div class="field-row">
+            ${txt('workspace.phone', 'Phone')}
+            ${txt('workspace.email', 'Email', { type: 'email' })}
+          </div>
+          ${txt('workspace.address_line1', 'Address line 1')}
+          ${txt('workspace.address_line2', 'Address line 2')}
+          <div class="field-row">
+            ${txt('workspace.city', 'City')}
+            ${txt('workspace.state', 'State', { list: 'states-list' })}
+          </div>
+          ${txt('workspace.postal_code', 'Postal code')}
+        </div>
+        <div class="card">
+          <div class="section-h">Billing</div>
+          <div class="field">
+            <label>Rounding rule</label>
+            <select data-field="settings.billing.rounding_rule" ${dis}>
+              <option value="24_hour_windows" ${s.billing.rounding_rule === '24_hour_windows' ? 'selected' : ''}>24-hour windows</option>
+              <option value="calendar_day" ${s.billing.rounding_rule === 'calendar_day' ? 'selected' : ''}>Calendar day</option>
+            </select>
+          </div>
+          <div class="field-row">
+            ${txt('settings.billing.grace_period_hours', 'Grace period (hours)', { type: 'number', min: 0, max: 72 })}
+            ${txt('settings.billing.minimum_days', 'Minimum days', { type: 'number', min: 1, max: 30 })}
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-h">Tax</div>
+          <div class="field-row">
+            ${txt('settings.tax.default_gst_percent', 'Default GST %', { type: 'number', min: 0, max: 100 })}
+            <div class="field"><label>Charge GST by default</label>
+              <div class="toggle-field"><span class="tl">${s.tax.charge_gst_by_default ? 'Enabled' : 'Disabled'}</span>
+                <label class="switch"><input type="checkbox" data-field="settings.tax.charge_gst_by_default" ${s.tax.charge_gst_by_default ? 'checked' : ''} ${dis}><span class="track"></span></label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-h">Invoice</div>
+          ${txt('settings.invoice.number_format', 'Number format', { mono: true, hint: 'Supports {order}, {seq}, {rev}, YYYY, MM, DD placeholders' })}
+          ${area('settings.invoice.terms', 'Terms')}
+          ${txt('settings.invoice.default_due_days', 'Default due days', { type: 'number', min: 0, max: 365 })}
+        </div>
+        <div class="card">
+          <details class="collapsible">
+            <summary>Bank details</summary>
+            <div class="field-row">
+              ${txt('settings.bank_details.account_name', 'Account name')}
+              ${txt('settings.bank_details.bank_name', 'Bank name')}
+            </div>
+            <div class="field-row">
+              ${txt('settings.bank_details.account_number', 'Account number')}
+              ${txt('settings.bank_details.ifsc', 'IFSC', { upper: true })}
+            </div>
+            <div class="field-row">
+              ${txt('settings.bank_details.branch', 'Branch')}
+              ${txt('settings.bank_details.upi_id', 'UPI ID')}
+            </div>
+          </details>
+        </div>`;
+    }
+
+    function wireWorkspaceTab() {
+      document.querySelectorAll('[data-field]').forEach(el => {
+        const path = el.dataset.field;
+        const evt = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+        el.addEventListener(evt, () => {
+          let v;
+          if (el.type === 'checkbox') v = el.checked;
+          else if (el.type === 'number') v = el.value === '' ? '' : Number(el.value);
+          else {
+            v = el.value;
+            if (el.dataset.upper) { const p = el.selectionStart; el.value = v = v.toUpperCase(); try { el.setSelectionRange(p, p); } catch {} }
+          }
+          setByPath(state.form, path, v);
+          renderTopbar();
+        });
+      });
+    }
+
+    async function saveWorkspace() {
+      const btn = document.getElementById('btn-save');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      // Normalize number fields (empty → keep server default by omitting).
+      const payload = { workspace: { ...state.form.workspace }, settings: JSON.parse(JSON.stringify(state.form.settings)) };
+      // strip empty-string numbers so Zod doesn't choke
+      for (const k of ['grace_period_hours', 'minimum_days']) if (payload.settings.billing[k] === '') delete payload.settings.billing[k];
+      if (payload.settings.tax.default_gst_percent === '') delete payload.settings.tax.default_gst_percent;
+      if (payload.settings.invoice.default_due_days === '') delete payload.settings.invoice.default_due_days;
+      try {
+        const res = await api.patch('/api/workspace/settings', payload);
+        state.data = res;
+        resetForm();
+        hydrateIdentity();
+        render();
+        showToast('Settings saved');
+      } catch (err) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save changes'; }
+        showToast('Save failed: ' + (err.body?.error || err.message));
+      }
+    }
+
+    // ---------- features tab ----------
+    function featuresTab() {
+      const feats = state.data.settings.features || {};
+      const owner = isOwner();
+      const rows = FLAGS.map(f => {
+        const on = feats[f.key] === true;
+        const badge = f.live ? '<span class="live-badge">Live</span>' : '<span class="soon-badge">Coming soon</span>';
+        const enabled = f.live && owner;
+        const title = !f.live ? 'Not yet available' : (!owner ? 'Only workspace owner can change feature flags' : '');
+        return `<div class="flag-row">
+          <div class="flag-main">
+            <div class="flag-name">${escapeHtml(f.name)} ${badge}</div>
+            <div class="flag-desc">${escapeHtml(f.desc)}</div>
+          </div>
+          <label class="switch ${enabled ? '' : 'disabled'}" title="${escapeAttr(title)}">
+            <input type="checkbox" data-flag="${escapeAttr(f.key)}" ${on ? 'checked' : ''} ${enabled ? '' : 'disabled'}>
+            <span class="track"></span>
+          </label>
+        </div>`;
+      }).join('');
+      const note = owner ? '' : `<div class="notice"><strong>Feature flags are owner-only.</strong>You can view flags but only the workspace owner can toggle them.</div>`;
+      return `${note}<div class="card"><h3>Feature flags</h3><p class="card-sub">Enable capabilities per workspace. Some are still in development.</p>${rows}</div>`;
+    }
+
+    function wireFeaturesTab() {
+      document.querySelectorAll('[data-flag]').forEach(cb => {
+        cb.addEventListener('change', () => toggleFlag(cb.dataset.flag, cb.checked, cb));
+      });
+    }
+
+    async function toggleFlag(key, value, cb) {
+      const meta = FLAGS.find(f => f.key === key);
+      try {
+        const res = await api.patch('/api/workspace/settings', { settings: { features: { [key]: value } } });
+        state.data = res;
+        showToast(`${meta?.name || key} ${value ? 'enabled' : 'disabled'}`);
+      } catch (err) {
+        cb.checked = !value; // revert
+        showToast('Could not update flag: ' + (err.body?.error || err.message));
+      }
+    }
+
+    // ---------- users tab ----------
+    function usersTab() {
+      const users = state.data.users || [];
+      const rows = users.map(u => `
+        <tr>
+          <td><strong>${escapeHtml(u.display_name)}</strong></td>
+          <td>${escapeHtml(u.email)}</td>
+          <td><span class="role-pill role-${escapeAttr(u.role)}">${escapeHtml(u.role)}</span></td>
+          <td><span class="status-dot ${u.is_active ? '' : 'inactive'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
+          <td>${escapeHtml(fmtDate(u.created_at))}</td>
+        </tr>`).join('');
+      return `
+        <div class="notice"><strong>User management coming soon</strong>For now, users are added directly via the database. Contact support@dslrswala.com for access changes.</div>
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table class="users">
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">No users.</td></tr>'}</tbody>
+          </table>
+        </div>`;
+    }
+
+    // ---------- tab switching + unsaved guard ----------
+    function switchTab(tab) {
+      if (tab === state.tab) return;
+      if (state.tab === 'workspace' && isDirty()) {
+        if (!window.confirm('You have unsaved changes. Discard them?')) return;
+        resetForm();
+      }
+      state.tab = tab;
+      history.replaceState(null, '', `#${tab}`);
+      render();
+    }
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+    window.addEventListener('beforeunload', (e) => {
+      if (state.tab === 'workspace' && isDirty()) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    // ---------- helpers ----------
+    function getByPath(obj, path) { return path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj); }
+    function setByPath(obj, path, val) {
+      const keys = path.split('.'); const last = keys.pop();
+      const target = keys.reduce((o, k) => (o[k] ??= {}), obj);
+      target[last] = val;
+    }
+    function fmtDate(v) { if (!v) return '—'; const d = new Date(v); return isNaN(d) ? String(v) : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+    function showToast(msg) {
+      const t = document.createElement('div'); t.className = 'toast';
+      t.style.bottom = (24 + document.querySelectorAll('.toast').length * 46) + 'px';
+      t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
+    }
+    function escapeHtml(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+    function escapeAttr(s) { return escapeHtml(s).replace(/`/g,'&#96;'); }
+
+    load();
+  </script>
+</body>
+</html>

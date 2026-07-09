@@ -53,7 +53,8 @@ export type AuditEventType =
   | 'orders.invoice.status.changed'
   | 'orders.invoice.status.forced'
   | 'orders.dispatch.batch'
-  | 'orders.return.batch';
+  | 'orders.return.batch'
+  | 'workspace.settings.updated';
 
 export type AuditEventInput = {
   workspaceId?: string | null;
