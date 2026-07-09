@@ -48,7 +48,10 @@ export type AuditEventType =
   | 'orders.payment.refunded'
   | 'orders.payment.deleted'
   | 'orders.item.status.changed'
-  | 'orders.item.status.forced';
+  | 'orders.item.status.forced'
+  | 'orders.invoice.generated'
+  | 'orders.invoice.status.changed'
+  | 'orders.invoice.status.forced';
 
 export type AuditEventInput = {
   workspaceId?: string | null;

@@ -53,6 +53,7 @@ export type OrderRow = {
   deposit_paise: number;
   paid_paise: number;
   balance_paise: number;
+  gst_state: string | null;
   notes: string | null;
   internal_notes: string | null;
   created_by: string | null;
@@ -62,7 +63,12 @@ export type OrderRow = {
   customer_name?: string;
   customer_phone?: string;
   customer_email?: string | null;
+  person_default_gst_state?: string | null;
 };
+
+export type OrderItemType =
+  | 'rental' | 'delivery_fee' | 'late_fee' | 'damage'
+  | 'discount' | 'tax' | 'deposit' | 'other';
 
 export type OrderItemRow = {
   id: string;
@@ -78,6 +84,14 @@ export type OrderItemRow = {
   unit_amount_paise: number;
   total_amount_paise: number;
   manual_price: boolean;
+  status: string;
+  dispatched_at: string | null;
+  returned_at: string | null;
+  condition_notes: string | null;
+  chargeable_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  igst_paise: number;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -124,6 +138,46 @@ export function computeBillableDays(
 }
 
 // ----------------------------------------------------------------------------
+// GST helpers (Sub-turn 2.4a-endpoints)
+// ----------------------------------------------------------------------------
+// Only these line types are taxable. discount / tax / deposit get no breakdown.
+const TAXABLE_ITEM_TYPES = new Set(['rental', 'delivery_fee', 'late_fee', 'damage', 'other']);
+
+// Fallback chain: per-order override → customer's registered state → workspace
+// place-of-supply → null.
+export function resolveGstState(args: {
+  orderState: string | null;
+  personDefaultState: string | null;
+  workspacePlaceOfSupply: string | null;
+}): string | null {
+  return args.orderState ?? args.personDefaultState ?? args.workspacePlaceOfSupply ?? null;
+}
+
+// Per-line GST split. Intra-state → CGST+SGST (each ~half); inter-state → IGST.
+// Non-taxable types and a disabled feature flag yield all zeros.
+export function computeLineTax(args: {
+  chargeablePaise: number;
+  itemType: OrderItemType | string;
+  isIntraState: boolean;
+  taxPct: number;
+  featureFlagOn: boolean;
+}): { cgst_paise: number; sgst_paise: number; igst_paise: number } {
+  const zero = { cgst_paise: 0, sgst_paise: 0, igst_paise: 0 };
+  if (!args.featureFlagOn) return zero;
+  if (!TAXABLE_ITEM_TYPES.has(args.itemType)) return zero;
+  const base = args.chargeablePaise;
+  if (base <= 0 || args.taxPct <= 0) return zero;
+
+  const lineTaxTotal = Math.floor((base * args.taxPct) / 100);
+  if (args.isIntraState) {
+    const cgst = Math.floor((base * args.taxPct) / 200); // half the total tax
+    const sgst = lineTaxTotal - cgst;                    // remainder absorbs rounding drift
+    return { cgst_paise: cgst, sgst_paise: sgst, igst_paise: 0 };
+  }
+  return { cgst_paise: 0, sgst_paise: 0, igst_paise: lineTaxTotal };
+}
+
+// ----------------------------------------------------------------------------
 // Settings helpers
 // ----------------------------------------------------------------------------
 function readBilling(settings: unknown): BillingSettings {
@@ -156,9 +210,10 @@ async function loadOrderRaw(orderId: string, workspaceId: string): Promise<Order
   const rows = await query<OrderRow>(sql`
     SELECT
       o.*,
-      p.display_name AS customer_name,
-      p.phone        AS customer_phone,
-      p.email        AS customer_email
+      p.display_name       AS customer_name,
+      p.phone              AS customer_phone,
+      p.email              AS customer_email,
+      p.default_gst_state  AS person_default_gst_state
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
     WHERE o.id = ${orderId}::uuid
@@ -198,12 +253,25 @@ export async function recomputeOrderTotals(
     throw new Error('order_locked');
   }
 
-  // Load workspace billing + tax settings (with fallbacks).
-  const wsRows = await query<{ settings: unknown }>(sql`
-    SELECT settings FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
+  // Load workspace billing + tax settings (with fallbacks) + GST context.
+  const wsRows = await query<{ settings: unknown; place_of_supply: string | null }>(sql`
+    SELECT settings, place_of_supply FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
   `);
   const billing = readBilling(wsRows[0]?.settings);
   const tax = readTax(wsRows[0]?.settings);
+  const workspacePlaceOfSupply = wsRows[0]?.place_of_supply ?? null;
+  const features = (wsRows[0]?.settings as Record<string, unknown> | null)?.['features'] as
+    | Record<string, unknown>
+    | undefined;
+  const gstSplitOn = features?.['gst_split_cgst_sgst_igst'] === true;
+
+  // GST state resolution (order override → person default → workspace place).
+  const resolvedState = resolveGstState({
+    orderState: order.gst_state,
+    personDefaultState: order.person_default_gst_state ?? null,
+    workspacePlaceOfSupply,
+  });
+  const isIntraState = resolvedState !== null && resolvedState === workspacePlaceOfSupply;
 
   // Billable days — null when the rental window is incomplete (skip rental recompute).
   let billableDays: number | null = null;
@@ -219,6 +287,7 @@ export async function recomputeOrderTotals(
   let subtotalPaise = 0;
   let discountRaw = 0;
   let manualTaxSum = 0;
+  let lineTaxSum = 0; // sum of per-line cgst+sgst+igst (used when GST split is on)
 
   for (const item of items) {
     const qty = Number(item.quantity);
@@ -250,19 +319,46 @@ export async function recomputeOrderTotals(
       desiredTotal = unit * qty;
     }
 
+    // Chargeable amount (status-adjusted). Only rental waivers zero it out;
+    // every other line's chargeable equals its gross total.
+    const chargeable =
+      item.item_type === 'rental' && item.status === 'not_returned_non_chargeable'
+        ? 0
+        : desiredTotal;
+
+    // Per-line GST breakdown (all zeros unless the split feature is on).
+    const { cgst_paise, sgst_paise, igst_paise } = computeLineTax({
+      chargeablePaise: chargeable,
+      itemType: item.item_type,
+      isIntraState,
+      taxPct: tax.default_gst_percent,
+      featureFlagOn: gstSplitOn,
+    });
+
     // Persist the line only if something actually moved.
     const billableChanged = (desiredBillableDays ?? null) !== (item.billable_days ?? null);
-    if (desiredTotal !== storedTotal || billableChanged) {
+    const chargeableChanged = chargeable !== Number(item.chargeable_paise);
+    const taxChanged =
+      cgst_paise !== Number(item.cgst_paise) ||
+      sgst_paise !== Number(item.sgst_paise) ||
+      igst_paise !== Number(item.igst_paise);
+    if (desiredTotal !== storedTotal || billableChanged || chargeableChanged || taxChanged) {
       await sql`
         UPDATE order_items SET
           total_amount_paise = ${desiredTotal}::bigint,
           billable_days      = ${desiredBillableDays ?? null}::int,
+          chargeable_paise   = ${chargeable}::bigint,
+          cgst_paise         = ${cgst_paise}::bigint,
+          sgst_paise         = ${sgst_paise}::bigint,
+          igst_paise         = ${igst_paise}::bigint,
           updated_at         = now()
         WHERE id = ${item.id}::uuid
           AND workspace_id = ${workspaceId}::uuid
       `;
       changed = true;
     }
+
+    lineTaxSum += cgst_paise + sgst_paise + igst_paise;
 
     // Roll the fresh (desired) value into the aggregates.
     if (SUBTOTAL_TYPES.has(item.item_type)) {
@@ -279,69 +375,88 @@ export async function recomputeOrderTotals(
   const discountPaise = Math.abs(discountRaw);
   const taxableBase = subtotalPaise - discountPaise;
 
-  // --- Auto-managed GST line --------------------------------------------------
+  // --- Tax --------------------------------------------------------------------
+  // Two mutually-exclusive models:
+  //   * GST split ON  (feature flag) — tax lives in per-line cgst/sgst/igst; the
+  //     order tax is their sum. No standalone auto-tax line (remove a stale one).
+  //   * GST split OFF — legacy auto-managed single tax line driven by
+  //     charge_gst_by_default. Preserved exactly as before.
   const autoTaxRow = items.find((i) => i.item_type === 'tax' && !i.manual_price) ?? null;
   let autoTaxAmount = 0;
+  let taxPaise: number;
 
-  if (tax.charge_gst_by_default) {
-    autoTaxAmount = Math.round((taxableBase * tax.default_gst_percent) / 100);
-    const description = `GST @ ${tax.default_gst_percent}%`;
-
+  if (gstSplitOn) {
     if (autoTaxRow) {
-      const needsUpdate =
-        Number(autoTaxRow.unit_amount_paise) !== autoTaxAmount ||
-        Number(autoTaxRow.total_amount_paise) !== autoTaxAmount ||
-        Number(autoTaxRow.quantity) !== 1 ||
-        autoTaxRow.description !== description;
-      if (needsUpdate) {
-        await sql`
-          UPDATE order_items SET
-            description        = ${description}::text,
-            quantity           = 1,
-            unit_amount_paise  = ${autoTaxAmount}::bigint,
-            total_amount_paise = ${autoTaxAmount}::bigint,
-            updated_at         = now()
-          WHERE id = ${autoTaxRow.id}::uuid
-            AND workspace_id = ${workspaceId}::uuid
-        `;
-        changed = true;
-      }
-    } else {
+      // Split took over — drop a leftover auto-tax line from the legacy model.
       await sql`
-        INSERT INTO order_items (
-          workspace_id, order_id, item_type, description, quantity,
-          daily_rate_paise, billable_days, unit_amount_paise, total_amount_paise,
-          manual_price, sort_order
-        ) VALUES (
-          ${workspaceId}::uuid,
-          ${orderId}::uuid,
-          'tax'::order_item_type,
-          ${description}::text,
-          1,
-          NULL,
-          NULL,
-          ${autoTaxAmount}::bigint,
-          ${autoTaxAmount}::bigint,
-          false,
-          ${AUTO_TAX_SORT_ORDER}
-        )
+        DELETE FROM order_items
+        WHERE id = ${autoTaxRow.id}::uuid
+          AND workspace_id = ${workspaceId}::uuid
+          AND manual_price = false
       `;
       changed = true;
     }
-  } else if (autoTaxRow) {
-    // GST turned off for this workspace — remove the auto line (never manual ones).
-    await sql`
-      DELETE FROM order_items
-      WHERE id = ${autoTaxRow.id}::uuid
-        AND workspace_id = ${workspaceId}::uuid
-        AND manual_price = false
-    `;
-    autoTaxAmount = 0;
-    changed = true;
+    taxPaise = lineTaxSum + manualTaxSum;
+  } else {
+    if (tax.charge_gst_by_default) {
+      autoTaxAmount = Math.round((taxableBase * tax.default_gst_percent) / 100);
+      const description = `GST @ ${tax.default_gst_percent}%`;
+
+      if (autoTaxRow) {
+        const needsUpdate =
+          Number(autoTaxRow.unit_amount_paise) !== autoTaxAmount ||
+          Number(autoTaxRow.total_amount_paise) !== autoTaxAmount ||
+          Number(autoTaxRow.quantity) !== 1 ||
+          autoTaxRow.description !== description;
+        if (needsUpdate) {
+          await sql`
+            UPDATE order_items SET
+              description        = ${description}::text,
+              quantity           = 1,
+              unit_amount_paise  = ${autoTaxAmount}::bigint,
+              total_amount_paise = ${autoTaxAmount}::bigint,
+              updated_at         = now()
+            WHERE id = ${autoTaxRow.id}::uuid
+              AND workspace_id = ${workspaceId}::uuid
+          `;
+          changed = true;
+        }
+      } else {
+        await sql`
+          INSERT INTO order_items (
+            workspace_id, order_id, item_type, description, quantity,
+            daily_rate_paise, billable_days, unit_amount_paise, total_amount_paise,
+            manual_price, sort_order
+          ) VALUES (
+            ${workspaceId}::uuid,
+            ${orderId}::uuid,
+            'tax'::order_item_type,
+            ${description}::text,
+            1,
+            NULL,
+            NULL,
+            ${autoTaxAmount}::bigint,
+            ${autoTaxAmount}::bigint,
+            false,
+            ${AUTO_TAX_SORT_ORDER}
+          )
+        `;
+        changed = true;
+      }
+    } else if (autoTaxRow) {
+      // GST turned off for this workspace — remove the auto line (never manual ones).
+      await sql`
+        DELETE FROM order_items
+        WHERE id = ${autoTaxRow.id}::uuid
+          AND workspace_id = ${workspaceId}::uuid
+          AND manual_price = false
+      `;
+      changed = true;
+    }
+    taxPaise = manualTaxSum + autoTaxAmount;
   }
 
   // --- Cached order totals ----------------------------------------------------
-  const taxPaise = manualTaxSum + autoTaxAmount;
   const totalPaise = subtotalPaise - discountPaise + taxPaise;
   const balancePaise = totalPaise - Number(order.paid_paise);
 
