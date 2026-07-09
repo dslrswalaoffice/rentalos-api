@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>New order · RentalOS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Space Grotesk,Inter,sans-serif' font-weight='800' font-size='19' fill='%23202058'%3ER%3C/text%3E%3C/svg%3E">
+  <style>
+    :root {
+      --ink:#202058; --text:#464a52; --head:#26235a;
+      --muted:#8b9199; --muted-strong:#5b616b; --muted-soft:#9aa1ad;
+      --card:#ffffff; --bg:#f6f7f9; --side:#fcfcfd; --chrome:#f4f5f7;
+      --thead:#fafbfc; --border:#e6e8ec; --border-strong:#d8dbe0;
+      --accent-soft:#ecebf4; --border-accent:#d7dcf7;
+      --orange:#e88020; --orange-soft:#fbe9d7;
+      --focus:#b9c0ee;
+      --ok-solid:#1f9d57; --ok-soft:#e8f6ee; --ok-strong:#177a45;
+      --warn-solid:#b9791b; --warn-soft:#fbf2e2; --warn-strong:#8a5a12;
+      --bad-solid:#cc3340; --bad-soft:#fbeaeb; --bad-strong:#a3272f;
+      --font-display:'Arzachel','Space Grotesk','Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+      --font-body:'Ponjoung','Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+      --font-mono:'JetBrains Mono',ui-monospace,'SF Mono',Consolas,monospace;
+      --sb-w:232px;
+    }
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{margin:0;padding:0;height:100%}
+    body{font-family:var(--font-body);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+    button,a{transition:background-color .14s ease, color .14s ease, border-color .14s ease, box-shadow .16s ease, transform .08s ease}
+    button:not(:disabled):active{transform:translateY(0.5px)}
+    ::-webkit-scrollbar{width:11px;height:11px}
+    ::-webkit-scrollbar-thumb{background:#d3d7dd;border-radius:7px;border:3px solid transparent;background-clip:padding-box}
+    ::-webkit-scrollbar-thumb:hover{background:#bfc4cc;border:3px solid transparent;background-clip:padding-box}
+
+    .app{display:grid;grid-template-columns:var(--sb-w) minmax(0,1fr);min-height:100dvh}
+
+    /* sidebar */
+    .sb{background:var(--side);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 14px 14px;position:sticky;top:0;height:100dvh;overflow-y:auto}
+    .sb-brand{display:flex;align-items:center;gap:10px;padding:6px 6px 20px}
+    .sb-brand .logo{width:30px;height:30px;border-radius:8px;background:var(--orange);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:800;font-size:17px;flex-shrink:0}
+    .sb-brand .word{font-family:var(--font-display);font-weight:600;font-size:17px;letter-spacing:-.01em;color:var(--ink)}
+    .sb-brand .env{margin-left:auto;font-family:var(--font-mono);font-size:8.5px;font-weight:600;letter-spacing:.12em;color:var(--warn-strong);background:var(--warn-soft);padding:2px 7px;border-radius:999px}
+    .sb-nav{display:flex;flex-direction:column;gap:2px}
+    .sb-workspace{display:flex;align-items:baseline;gap:8px;width:100%;margin:14px 0 8px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-family:inherit;text-align:left;transition:border-color .14s ease, background .14s ease}
+    .sb-workspace:hover{border-color:var(--border-strong);background:var(--thead)}
+    .sb-workspace-name{font-family:var(--font-display);font-weight:600;font-size:12.5px;letter-spacing:.02em;color:var(--ink)}
+    .sb-workspace-loc{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+    .sb-workspace svg{margin-left:auto;color:var(--muted);align-self:center}
+    .sb-item{display:flex;align-items:center;gap:10px;padding:8px 8px;border-radius:9px;text-decoration:none;color:var(--muted-strong);font-size:13px;font-weight:500;position:relative}
+    .sb-item:hover{background:var(--bg);color:var(--ink)}
+    .sb-item.active{background:var(--accent-soft);color:var(--head);font-weight:600}
+    .sb-item .tile{width:26px;height:26px;border-radius:7px;background:#eef0f3;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9.5px;font-weight:700;flex-shrink:0}
+    .sb-item.active .tile{background:var(--head);color:#fff}
+    .sb-item.new .tile{background:var(--orange);color:#fff}
+    .sb-user{margin-top:auto;padding:12px 8px 4px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+    .sb-user-avatar{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#26235a,#4b47a3);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:13px;flex-shrink:0}
+    .sb-user-info{min-width:0;flex:1}
+    .sb-user-name{font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sb-user-role{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-top:1px}
+
+    /* main */
+    .main{min-width:0;background:var(--bg);display:flex;flex-direction:column}
+    .topbar{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:40}
+    .kicker{font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:.14em;color:var(--muted-soft);text-transform:uppercase}
+    .page-title{font-family:var(--font-display);font-weight:600;font-size:17px;letter-spacing:-.005em;color:var(--ink);margin-top:1px}
+    .topbar-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+    .btn{padding:8px 14px;border-radius:9px;font-family:var(--font-body);font-weight:600;font-size:12.5px;cursor:pointer;border:1px solid transparent;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+    .btn.ghost{background:var(--card);color:var(--muted-strong);border-color:var(--border)}
+    .btn.ghost:hover{background:var(--bg);border-color:var(--border-strong);color:var(--ink)}
+    .btn.primary{background:var(--head);color:#fff;border-color:var(--head)}
+    .btn.primary:hover{background:#1a1749}
+    .btn.primary:disabled{background:var(--muted-soft);cursor:not-allowed;border-color:var(--muted-soft)}
+    .btn.orange{background:var(--orange);color:#fff;border-color:var(--orange);box-shadow:0 4px 12px -4px rgba(232,128,32,.5)}
+    .btn.orange:hover{background:#d97517}
+
+    .content{padding:22px 24px 60px;max-width:820px;margin:0 auto;width:100%}
+
+    /* stepper */
+    .stepper{display:flex;gap:0;margin-bottom:24px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:6px;}
+    .step-btn{flex:1;background:transparent;border:none;padding:10px 12px;border-radius:8px;font-family:var(--font-body);font-size:12.5px;font-weight:500;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:8px;justify-content:center}
+    .step-btn.active{background:var(--accent-soft);color:var(--head);font-weight:600}
+    .step-btn.done{color:var(--ok-strong)}
+    .step-btn .step-num{width:20px;height:20px;border-radius:50%;background:#eef0f3;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;flex-shrink:0}
+    .step-btn.active .step-num{background:var(--head);color:#fff}
+    .step-btn.done .step-num{background:var(--ok-solid);color:#fff}
+    .step-btn:not(.active):not(.done):disabled{cursor:not-allowed}
+
+    /* card */
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:16px}
+    .card h3{font-family:var(--font-display);font-weight:600;font-size:16px;letter-spacing:-.005em;color:var(--ink);margin:0 0 4px}
+    .card .card-sub{font-size:12.5px;color:var(--muted);margin:0 0 20px}
+
+    /* fields */
+    .field{margin-bottom:16px}
+    .field label{display:block;font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--muted-strong);text-transform:uppercase;margin-bottom:6px}
+    .field label .req{color:var(--bad-strong);margin-left:3px}
+    .field label .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted-soft);font-family:var(--font-body);font-size:11px;margin-left:6px}
+    .field input[type="text"],.field input[type="datetime-local"],.field input[type="number"],.field select,.field textarea{width:100%;padding:10px 12px;font-family:var(--font-body);font-size:13.5px;color:var(--ink);background:var(--card);border:1px solid var(--border);border-radius:9px;outline:none;transition:border-color .14s ease, box-shadow .14s ease}
+    .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--focus);box-shadow:0 0 0 4px rgba(185,192,238,.24)}
+    .field textarea{min-height:68px;resize:vertical}
+    .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .field-error{font-size:11.5px;color:var(--bad-strong);margin-top:5px;font-weight:500}
+
+    /* customer picker */
+    .customer-search{position:relative}
+    .customer-results{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--card);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 10px 25px -8px rgba(16,24,40,.15);z-index:10;max-height:280px;overflow-y:auto;display:none}
+    .customer-results.open{display:block}
+    .customer-result{padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border)}
+    .customer-result:last-child{border-bottom:none}
+    .customer-result:hover{background:var(--thead)}
+    .customer-result .cr-name{font-weight:600;color:var(--ink);font-size:13px}
+    .customer-result .cr-phone{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);margin-top:2px;letter-spacing:.03em}
+    .customer-selected{background:var(--accent-soft);border:1px solid var(--border-accent);padding:12px 14px;border-radius:10px;display:flex;align-items:center;gap:12px}
+    .customer-selected .cs-avatar{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#26235a,#4b47a3);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:15px;flex-shrink:0}
+    .customer-selected .cs-info{flex:1;min-width:0}
+    .customer-selected .cs-name{font-weight:600;color:var(--ink);font-size:14px}
+    .customer-selected .cs-phone{font-family:var(--font-mono);font-size:11px;color:var(--muted-strong);margin-top:2px;letter-spacing:.03em}
+    .customer-selected .cs-change{background:transparent;border:1px solid var(--border);padding:5px 10px;border-radius:7px;font-size:11.5px;font-weight:500;color:var(--muted-strong);cursor:pointer}
+    .customer-selected .cs-change:hover{background:var(--card);color:var(--ink)}
+
+    /* gear picker */
+    .gear-list{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px}
+    .gear-item{display:grid;grid-template-columns:1fr auto auto;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);align-items:center}
+    .gear-item:last-child{border-bottom:none}
+    .gear-item.unavailable{background:var(--bad-soft)}
+    .gear-item.low{background:var(--warn-soft)}
+    .gi-name{font-weight:600;color:var(--ink);font-size:13px}
+    .gi-sub{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);margin-top:2px;letter-spacing:.03em}
+    .gi-avail{font-family:var(--font-mono);font-weight:600;font-size:12px;font-variant-numeric:tabular-nums;min-width:60px;text-align:right}
+    .gi-avail .avail{color:var(--ok-strong)}
+    .gi-avail .avail.zero{color:var(--bad-strong)}
+    .gi-avail .avail.low{color:var(--warn-strong)}
+    .gi-avail .total{color:var(--muted-soft);font-weight:400}
+    .qty-picker{display:inline-flex;align-items:center;border:1px solid var(--border-strong);border-radius:8px;overflow:hidden;background:var(--card)}
+    .qty-picker button{background:transparent;border:none;padding:6px 10px;cursor:pointer;color:var(--muted-strong);font-family:var(--font-mono);font-weight:700;font-size:13px}
+    .qty-picker button:hover:not(:disabled){background:var(--thead);color:var(--ink)}
+    .qty-picker button:disabled{color:var(--muted-soft);cursor:not-allowed}
+    .qty-picker .qty-val{padding:6px 10px;font-family:var(--font-mono);font-weight:700;font-size:13px;min-width:32px;text-align:center;color:var(--ink);background:var(--thead)}
+    .gear-empty{padding:32px 20px;text-align:center;color:var(--muted);font-size:12.5px}
+    .gear-search{display:flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid var(--border);border-radius:9px;background:var(--thead);margin-bottom:12px}
+    .gear-search input{border:none;outline:none;background:transparent;font-family:var(--font-body);font-size:13px;flex:1}
+    .gear-search svg{color:var(--muted-soft)}
+
+    /* review */
+    .review-row{display:flex;justify-content:space-between;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);gap:16px}
+    .review-row:last-child{border-bottom:none}
+    .review-label{font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--muted-strong);text-transform:uppercase;min-width:120px;padding-top:2px}
+    .review-value{font-size:13.5px;color:var(--ink);text-align:right;flex:1}
+    .review-value .sub{font-size:12px;color:var(--muted);margin-top:2px}
+
+    /* nav */
+    .wizard-nav{display:flex;justify-content:space-between;align-items:center;margin-top:20px;gap:12px}
+    .wizard-nav .nav-side{display:flex;gap:8px}
+
+    /* alerts */
+    .alert{padding:10px 14px;border-radius:9px;font-size:12.5px;font-weight:500;margin-bottom:16px}
+    .alert.error{background:var(--bad-soft);color:var(--bad-strong);border-left:3px solid var(--bad-solid)}
+    .alert.warn{background:var(--warn-soft);color:var(--warn-strong);border-left:3px solid var(--warn-solid)}
+    .alert.info{background:var(--accent-soft);color:var(--head);border-left:3px solid var(--head)}
+
+    .loading{padding:40px;text-align:center;color:var(--muted);font-size:12.5px;font-family:var(--font-mono);letter-spacing:.04em;text-transform:uppercase}
+
+    /* step visibility */
+    .step-panel{display:none}
+    .step-panel.active{display:block}
+
+    @media (max-width:900px){
+      .app{grid-template-columns:1fr}
+      .sb{position:static;height:auto;border-right:none;border-bottom:1px solid var(--border);padding:12px 16px}
+      .sb-nav,.sb-user,.sb-workspace{display:none}
+      .sb-brand{padding:0}
+      .step-btn span:not(.step-num){display:none}
+    }
+    @media (max-width:640px){
+      .content{padding:16px}
+      .field-row{grid-template-columns:1fr}
+      .card{padding:18px}
+    }
+    @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- SIDEBAR -->
+    <aside class="sb">
+      <div class="sb-brand">
+        <span class="logo">R</span>
+        <span class="word">RentalOS</span>
+        <span class="env">v0.1</span>
+      </div>
+
+      <a href="/new-order.html" class="sb-item new active" style="margin-bottom:6px;">
+        <span class="tile">NB</span>
+        <span>New order</span>
+      </a>
+
+      <button class="sb-workspace" type="button" aria-label="Switch workspace">
+        <span class="sb-workspace-name" id="ws-name">DSLRSWALA</span>
+        <span class="sb-workspace-loc" id="ws-loc">Vadodara</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+
+      <nav class="sb-nav" aria-label="Main">
+        <a href="/dashboard.html" class="sb-item"><span class="tile">DB</span><span>Dashboard</span></a>
+        <a href="/calendar.html" class="sb-item"><span class="tile">CL</span><span>Calendar</span></a>
+        <a href="/orders.html" class="sb-item"><span class="tile">RN</span><span>Orders</span></a>
+        <a href="/billing.html" class="sb-item"><span class="tile">BL</span><span>Billing</span></a>
+        <a href="/inventory.html" class="sb-item"><span class="tile">IN</span><span>Inventory</span></a>
+        <a href="/people.html" class="sb-item"><span class="tile">PE</span><span>People</span></a>
+        <a href="/insights.html" class="sb-item"><span class="tile">IS</span><span>Insights</span></a>
+        <a href="/settings.html" class="sb-item"><span class="tile">SY</span><span>Settings</span></a>
+      </nav>
+
+      <div class="sb-user">
+        <span class="sb-user-avatar" id="user-avatar">A</span>
+        <div class="sb-user-info">
+          <div class="sb-user-name" id="user-name">Aamir</div>
+          <div class="sb-user-role" id="user-role">OWNER</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main">
+      <header class="topbar">
+        <div class="page-title-block">
+          <div class="kicker">New order</div>
+          <div class="page-title">Draft a rental</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn ghost" href="/orders.html">Cancel</a>
+        </div>
+      </header>
+
+      <div class="content">
+        <!-- STEPPER -->
+        <div class="stepper" id="stepper">
+          <button class="step-btn active" data-step="1" type="button">
+            <span class="step-num">1</span><span>Customer</span>
+          </button>
+          <button class="step-btn" data-step="2" type="button" disabled>
+            <span class="step-num">2</span><span>Dates</span>
+          </button>
+          <button class="step-btn" data-step="3" type="button" disabled>
+            <span class="step-num">3</span><span>Gear</span>
+          </button>
+          <button class="step-btn" data-step="4" type="button" disabled>
+            <span class="step-num">4</span><span>Review</span>
+          </button>
+        </div>
+
+        <div id="global-error"></div>
+
+        <!-- STEP 1: CUSTOMER -->
+        <div class="step-panel active" data-panel="1">
+          <div class="card">
+            <h3>Who's the customer?</h3>
+            <p class="card-sub">Pick from your existing customers. New customer? Add them in People first.</p>
+
+            <div id="customer-empty-slot">
+              <div class="field customer-search">
+                <label for="customer-input">Search by name or phone <span class="req">*</span></label>
+                <input id="customer-input" type="text" placeholder="Start typing…" autocomplete="off">
+                <div class="customer-results" id="customer-results"></div>
+              </div>
+            </div>
+
+            <div id="customer-picked-slot" style="display:none;">
+              <label style="display:block;font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--muted-strong);text-transform:uppercase;margin-bottom:6px;">Selected customer</label>
+              <div class="customer-selected">
+                <span class="cs-avatar" id="cs-avatar">?</span>
+                <div class="cs-info">
+                  <div class="cs-name" id="cs-name"></div>
+                  <div class="cs-phone" id="cs-phone"></div>
+                </div>
+                <button type="button" class="cs-change" id="cs-change">Change</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard-nav">
+            <div class="nav-side"></div>
+            <button class="btn primary" id="btn-next-1" disabled>Continue to dates →</button>
+          </div>
+        </div>
+
+        <!-- STEP 2: DATES -->
+        <div class="step-panel" data-panel="2">
+          <div class="card">
+            <h3>When's the rental?</h3>
+            <p class="card-sub">Enter pickup and return times. All times in your workspace timezone (Asia/Kolkata).</p>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="rental-start">Rental starts <span class="req">*</span></label>
+                <input id="rental-start" type="datetime-local" required>
+              </div>
+              <div class="field">
+                <label for="rental-end">Rental ends <span class="req">*</span></label>
+                <input id="rental-end" type="datetime-local" required>
+              </div>
+            </div>
+
+            <div id="dates-summary" style="display:none;font-family:var(--font-mono);font-size:11.5px;color:var(--muted-strong);letter-spacing:.03em;background:var(--thead);padding:10px 12px;border-radius:8px;margin-bottom:16px;"></div>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="dispatch-type">Handover <span class="req">*</span></label>
+                <select id="dispatch-type" required>
+                  <option value="pickup">Customer pickup</option>
+                  <option value="delivery">We deliver</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="channel">Channel</label>
+                <select id="channel">
+                  <option value="planned">Planned (booked ahead)</option>
+                  <option value="walk_in">Walk-in</option>
+                  <option value="whatsapp">WhatsApp enquiry</option>
+                  <option value="phone">Phone call</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field" id="delivery-addr-field" style="display:none;">
+              <label for="delivery-address">Delivery address <span class="hint">where to deliver</span></label>
+              <textarea id="delivery-address" placeholder="Building, street, area, city, pincode…"></textarea>
+            </div>
+          </div>
+
+          <div class="wizard-nav">
+            <div class="nav-side"><button class="btn ghost" id="btn-back-2">← Back</button></div>
+            <button class="btn primary" id="btn-next-2" disabled>Continue to gear →</button>
+          </div>
+        </div>
+
+        <!-- STEP 3: GEAR -->
+        <div class="step-panel" data-panel="3">
+          <div class="card">
+            <h3>Pick the gear</h3>
+            <p class="card-sub">Availability is live for your selected window. Grey means fully booked.</p>
+
+            <div class="gear-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
+              <input id="gear-search-input" type="search" placeholder="Search gear…" autocomplete="off">
+            </div>
+
+            <div id="gear-list-wrap">
+              <div class="loading">Checking availability…</div>
+            </div>
+          </div>
+
+          <div class="wizard-nav">
+            <div class="nav-side"><button class="btn ghost" id="btn-back-3">← Back</button></div>
+            <button class="btn primary" id="btn-next-3" disabled>Review order →</button>
+          </div>
+        </div>
+
+        <!-- STEP 4: REVIEW -->
+        <div class="step-panel" data-panel="4">
+          <div class="card">
+            <h3>Review and save</h3>
+            <p class="card-sub">This creates a draft order. You can edit anything later — pricing, payments, and dispatch come next.</p>
+
+            <div id="review-body"></div>
+
+            <div class="field" style="margin-top:16px;">
+              <label for="notes">Notes <span class="hint">visible on the invoice</span></label>
+              <textarea id="notes" placeholder="Anything the customer or team should know…"></textarea>
+            </div>
+
+            <div class="field">
+              <label for="internal-notes">Internal notes <span class="hint">team only, never on invoice</span></label>
+              <textarea id="internal-notes" placeholder="Internal reminders — special handling, deposit collected in cash, etc."></textarea>
+            </div>
+          </div>
+
+          <div class="wizard-nav">
+            <div class="nav-side"><button class="btn ghost" id="btn-back-4">← Back</button></div>
+            <button class="btn orange" id="btn-save">Save as draft</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { api, ensureAuth } from '/_lib/api.js';
+
+    // ---------- state ----------
+    const state = {
+      step: 1,
+      customer: null,          // { id, display_name, phone }
+      rental_start: '',        // datetime-local string
+      rental_end: '',          // datetime-local string
+      dispatch_type: 'pickup',
+      channel: 'planned',
+      delivery_address: '',
+      items: [],               // [{ product_id, name, sku, quantity, daily_rate, available }]
+      notes: '',
+      internal_notes: '',
+    };
+    let availabilityCache = [];  // products from GET /api/availability
+    let gearSearchTerm = '';
+
+    // ---------- identity ----------
+    async function hydrateIdentity() {
+      const { user, workspace } = await ensureAuth();
+      document.getElementById('ws-name').textContent = workspace.name;
+      document.getElementById('ws-loc').textContent = workspace.location || '';
+      const first = (user.displayName || '').split(' ')[0] || 'You';
+      document.getElementById('user-name').textContent = first;
+      document.getElementById('user-role').textContent = user.role.toUpperCase();
+      document.getElementById('user-avatar').textContent = first[0]?.toUpperCase() ?? 'U';
+    }
+
+    // ---------- stepper ----------
+    function goToStep(n) {
+      state.step = n;
+      document.querySelectorAll('.step-panel').forEach(p => {
+        p.classList.toggle('active', Number(p.dataset.panel) === n);
+      });
+      document.querySelectorAll('.step-btn').forEach(b => {
+        const bn = Number(b.dataset.step);
+        b.classList.toggle('active', bn === n);
+        b.classList.toggle('done', bn < n);
+        b.disabled = bn > n;
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    document.querySelectorAll('.step-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        const target = Number(b.dataset.step);
+        if (target <= state.step) goToStep(target);
+      });
+    });
+
+    // ---------- Step 1: customer ----------
+    const customerInput  = document.getElementById('customer-input');
+    const customerResults = document.getElementById('customer-results');
+    const customerEmptySlot = document.getElementById('customer-empty-slot');
+    const customerPickedSlot = document.getElementById('customer-picked-slot');
+    let customerSearchTimer;
+    let customerCache = [];
+
+    async function searchCustomers(term) {
+      const url = '/api/people?role=customer' + (term ? '&search=' + encodeURIComponent(term) : '');
+      const { people } = await api.get(url);
+      return people;
+    }
+
+    async function loadInitialCustomers() {
+      try { customerCache = await searchCustomers(''); } catch { customerCache = []; }
+    }
+
+    function renderCustomerResults(list) {
+      if (list.length === 0) {
+        customerResults.innerHTML = '<div style="padding:14px;color:var(--muted);font-size:12.5px;text-align:center;">No customers match. Add them in the People section first.</div>';
+        customerResults.classList.add('open');
+        return;
+      }
+      customerResults.innerHTML = list.slice(0, 12).map(p => `
+        <div class="customer-result" data-id="${p.id}" data-name="${escapeAttr(p.display_name)}" data-phone="${escapeAttr(p.phone)}">
+          <div class="cr-name">${escapeHtml(p.display_name)}</div>
+          <div class="cr-phone">${escapeHtml(p.phone)}</div>
+        </div>`).join('');
+      customerResults.classList.add('open');
+      customerResults.querySelectorAll('.customer-result').forEach(el => {
+        el.addEventListener('click', () => selectCustomer({
+          id: el.dataset.id, display_name: el.dataset.name, phone: el.dataset.phone,
+        }));
+      });
+    }
+
+    function selectCustomer(c) {
+      state.customer = c;
+      customerResults.classList.remove('open');
+      customerEmptySlot.style.display = 'none';
+      customerPickedSlot.style.display = 'block';
+      document.getElementById('cs-name').textContent = c.display_name;
+      document.getElementById('cs-phone').textContent = c.phone;
+      document.getElementById('cs-avatar').textContent = (c.display_name[0] || '?').toUpperCase();
+      document.getElementById('btn-next-1').disabled = false;
+    }
+
+    document.getElementById('cs-change').addEventListener('click', () => {
+      state.customer = null;
+      customerEmptySlot.style.display = 'block';
+      customerPickedSlot.style.display = 'none';
+      customerInput.value = '';
+      customerInput.focus();
+      document.getElementById('btn-next-1').disabled = true;
+    });
+
+    customerInput.addEventListener('focus', () => {
+      renderCustomerResults(customerCache);
+    });
+    customerInput.addEventListener('input', () => {
+      clearTimeout(customerSearchTimer);
+      customerSearchTimer = setTimeout(async () => {
+        const term = customerInput.value.trim();
+        try {
+          const list = term ? await searchCustomers(term) : customerCache;
+          renderCustomerResults(list);
+        } catch (err) {
+          console.error('customer search failed', err);
+        }
+      }, 180);
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.customer-search')) customerResults.classList.remove('open');
+    });
+
+    document.getElementById('btn-next-1').addEventListener('click', () => {
+      if (!state.customer) return;
+      seedDefaultDates();
+      goToStep(2);
+    });
+
+    // ---------- Step 2: dates ----------
+    const rentalStart = document.getElementById('rental-start');
+    const rentalEnd = document.getElementById('rental-end');
+    const dispatchType = document.getElementById('dispatch-type');
+    const channel = document.getElementById('channel');
+    const deliveryAddrField = document.getElementById('delivery-addr-field');
+    const deliveryAddr = document.getElementById('delivery-address');
+    const datesSummary = document.getElementById('dates-summary');
+
+    function seedDefaultDates() {
+      if (rentalStart.value && rentalEnd.value) return;
+      const now = new Date();
+      now.setMinutes(0, 0, 0);
+      now.setHours(now.getHours() + 1);
+      const later = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      rentalStart.value = toLocalDatetimeInput(now);
+      rentalEnd.value = toLocalDatetimeInput(later);
+      validateDates();
+    }
+
+    function toLocalDatetimeInput(d) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function validateDates() {
+      const s = rentalStart.value;
+      const e = rentalEnd.value;
+      const btn = document.getElementById('btn-next-2');
+      if (!s || !e) { btn.disabled = true; datesSummary.style.display = 'none'; return; }
+      const sd = new Date(s);
+      const ed = new Date(e);
+      if (ed <= sd) {
+        btn.disabled = true;
+        datesSummary.style.display = 'block';
+        datesSummary.style.color = 'var(--bad-strong)';
+        datesSummary.textContent = 'Return time must be after pickup.';
+        return;
+      }
+      const ms = ed - sd;
+      const hours = Math.round(ms / (1000 * 60 * 60) * 10) / 10;
+      const days = Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+      datesSummary.style.color = 'var(--muted-strong)';
+      datesSummary.style.display = 'block';
+      datesSummary.innerHTML = `Duration: <strong style="color:var(--ink);">${hours} hours</strong> · billable estimate <strong style="color:var(--ink);">${days} day${days === 1 ? '' : 's'}</strong> <span style="color:var(--muted-soft);">(pricing calculated in next module)</span>`;
+      btn.disabled = false;
+      state.rental_start = s;
+      state.rental_end = e;
+    }
+
+    rentalStart.addEventListener('change', validateDates);
+    rentalEnd.addEventListener('change', validateDates);
+
+    dispatchType.addEventListener('change', () => {
+      state.dispatch_type = dispatchType.value;
+      deliveryAddrField.style.display = dispatchType.value === 'delivery' ? 'block' : 'none';
+    });
+    channel.addEventListener('change', () => { state.channel = channel.value; });
+    deliveryAddr.addEventListener('input', () => { state.delivery_address = deliveryAddr.value.trim(); });
+
+    document.getElementById('btn-back-2').addEventListener('click', () => goToStep(1));
+    document.getElementById('btn-next-2').addEventListener('click', () => {
+      state.rental_start = rentalStart.value;
+      state.rental_end = rentalEnd.value;
+      state.dispatch_type = dispatchType.value;
+      state.channel = channel.value;
+      state.delivery_address = deliveryAddr.value.trim();
+      loadAvailability();
+      goToStep(3);
+    });
+
+    // ---------- Step 3: gear ----------
+    async function loadAvailability() {
+      document.getElementById('gear-list-wrap').innerHTML = '<div class="loading">Checking availability…</div>';
+      try {
+        const fromIso = new Date(state.rental_start).toISOString();
+        const toIso = new Date(state.rental_end).toISOString();
+        const { products } = await api.get(`/api/availability?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`);
+        availabilityCache = products;
+        // reconcile any existing selected items with fresh availability
+        state.items = state.items.filter(it => {
+          const p = availabilityCache.find(x => x.id === it.product_id);
+          if (!p) return false;
+          it.available = p.available_units;
+          it.quantity = Math.min(it.quantity, p.available_units);
+          return it.quantity > 0;
+        });
+        renderGearList();
+      } catch (err) {
+        document.getElementById('gear-list-wrap').innerHTML = `<div class="alert error">Couldn't load availability. ${escapeHtml(err.body?.error || err.message || '')}</div>`;
+      }
+    }
+
+    function renderGearList() {
+      const wrap = document.getElementById('gear-list-wrap');
+      const term = gearSearchTerm.toLowerCase();
+      const filtered = term
+        ? availabilityCache.filter(p =>
+            p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term) || (p.category || '').toLowerCase().includes(term))
+        : availabilityCache;
+
+      if (filtered.length === 0) {
+        wrap.innerHTML = '<div class="gear-empty">No gear matches your search.</div>';
+        updateGearNextBtn();
+        return;
+      }
+
+      wrap.innerHTML = '<div class="gear-list">' + filtered.map(p => {
+        const selected = state.items.find(it => it.product_id === p.id);
+        const qty = selected?.quantity || 0;
+        const zero = p.available_units === 0;
+        const low  = p.available_units > 0 && p.available_units <= Math.ceil(p.total_units * 0.3);
+        const rowClass = zero ? 'unavailable' : (low ? 'low' : '');
+        return `
+          <div class="gear-item ${rowClass}" data-product-id="${p.id}">
+            <div>
+              <div class="gi-name">${escapeHtml(p.name)}</div>
+              <div class="gi-sub">${escapeHtml(p.sku)} · ${escapeHtml(p.category || 'Uncategorised')}</div>
+            </div>
+            <div class="gi-avail">
+              <span class="avail ${zero ? 'zero' : (low ? 'low' : '')}">${p.available_units}</span>
+              <span class="total"> / ${p.total_units}</span>
+            </div>
+            <div class="qty-picker" data-product-id="${p.id}">
+              <button type="button" data-action="dec" ${qty === 0 ? 'disabled' : ''}>−</button>
+              <span class="qty-val">${qty}</span>
+              <button type="button" data-action="inc" ${qty >= p.available_units ? 'disabled' : ''}>+</button>
+            </div>
+          </div>`;
+      }).join('') + '</div>';
+
+      wrap.querySelectorAll('.qty-picker').forEach(picker => {
+        const productId = picker.dataset.productId;
+        picker.querySelectorAll('button').forEach(btn => {
+          btn.addEventListener('click', () => adjustQty(productId, btn.dataset.action));
+        });
+      });
+      updateGearNextBtn();
+    }
+
+    function adjustQty(productId, action) {
+      const p = availabilityCache.find(x => x.id === productId);
+      if (!p) return;
+      let item = state.items.find(it => it.product_id === productId);
+      if (!item) {
+        item = {
+          product_id: productId,
+          name: p.name,
+          sku: p.sku,
+          quantity: 0,
+          daily_rate: p.daily_rate,
+          available: p.available_units,
+        };
+        state.items.push(item);
+      }
+      if (action === 'inc' && item.quantity < p.available_units) item.quantity++;
+      if (action === 'dec' && item.quantity > 0) item.quantity--;
+      if (item.quantity === 0) {
+        state.items = state.items.filter(it => it.product_id !== productId);
+      }
+      renderGearList();
+    }
+
+    function updateGearNextBtn() {
+      const hasAny = state.items.some(it => it.quantity > 0);
+      document.getElementById('btn-next-3').disabled = !hasAny;
+    }
+
+    document.getElementById('gear-search-input').addEventListener('input', (e) => {
+      gearSearchTerm = e.target.value.trim();
+      renderGearList();
+    });
+
+    document.getElementById('btn-back-3').addEventListener('click', () => goToStep(2));
+    document.getElementById('btn-next-3').addEventListener('click', () => {
+      renderReview();
+      goToStep(4);
+    });
+
+    // ---------- Step 4: review + save ----------
+    function renderReview() {
+      const body = document.getElementById('review-body');
+      const start = new Date(state.rental_start);
+      const end = new Date(state.rental_end);
+      const opts = { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+      const startFmt = start.toLocaleString('en-IN', opts);
+      const endFmt = end.toLocaleString('en-IN', opts);
+      const hours = Math.round((end - start) / (1000 * 60 * 60) * 10) / 10;
+      const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+
+      const itemsHtml = state.items.filter(it => it.quantity > 0).map(it =>
+        `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;">
+          <span><strong>${escapeHtml(it.name)}</strong> <span style="color:var(--muted);font-family:var(--font-mono);font-size:11px;">${escapeHtml(it.sku)}</span></span>
+          <span style="font-family:var(--font-mono);font-weight:700;">× ${it.quantity}</span>
+        </div>`
+      ).join('');
+
+      body.innerHTML = `
+        <div class="review-row">
+          <div class="review-label">Customer</div>
+          <div class="review-value"><strong>${escapeHtml(state.customer.display_name)}</strong><div class="sub">${escapeHtml(state.customer.phone)}</div></div>
+        </div>
+        <div class="review-row">
+          <div class="review-label">Pickup</div>
+          <div class="review-value">${escapeHtml(startFmt)}</div>
+        </div>
+        <div class="review-row">
+          <div class="review-label">Return</div>
+          <div class="review-value">${escapeHtml(endFmt)}</div>
+        </div>
+        <div class="review-row">
+          <div class="review-label">Duration</div>
+          <div class="review-value">${hours} hours <span class="sub">${days} billable day${days === 1 ? '' : 's'} (est.)</span></div>
+        </div>
+        <div class="review-row">
+          <div class="review-label">Handover</div>
+          <div class="review-value">${state.dispatch_type === 'pickup' ? 'Customer pickup' : 'We deliver'} · ${escapeHtml(state.channel.replace('_', ' '))}${state.delivery_address ? `<div class="sub">${escapeHtml(state.delivery_address)}</div>` : ''}</div>
+        </div>
+        <div class="review-row">
+          <div class="review-label">Gear</div>
+          <div class="review-value" style="text-align:left;">${itemsHtml || '<em style="color:var(--muted);">No items</em>'}</div>
+        </div>
+      `;
+    }
+
+    document.getElementById('btn-back-4').addEventListener('click', () => goToStep(3));
+    document.getElementById('notes').addEventListener('input', (e) => { state.notes = e.target.value; });
+    document.getElementById('internal-notes').addEventListener('input', (e) => { state.internal_notes = e.target.value; });
+
+    document.getElementById('btn-save').addEventListener('click', saveOrder);
+
+    async function saveOrder() {
+      const btn = document.getElementById('btn-save');
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      document.getElementById('global-error').innerHTML = '';
+
+      try {
+        // 1. Create the order
+        const created = await api.post('/api/orders', {
+          customer_person_id: state.customer.id,
+          rental_start: new Date(state.rental_start).toISOString(),
+          rental_end:   new Date(state.rental_end).toISOString(),
+          dispatch_type: state.dispatch_type,
+          channel: state.channel,
+          delivery_address: state.delivery_address || undefined,
+          notes: state.notes || undefined,
+          internal_notes: state.internal_notes || undefined,
+        });
+        const orderId = created.order.id;
+
+        // 2. Add each gear line item
+        // Sub-turn 1 doesn't compute prices — Sub-turn 2 fills daily rate + billable days.
+        let sortOrder = 0;
+        for (const it of state.items.filter(x => x.quantity > 0)) {
+          await api.post(`/api/orders/${orderId}/items`, {
+            item_type: 'rental',
+            product_id: it.product_id,
+            description: `${it.name} · ${it.sku}`,
+            quantity: it.quantity,
+            unit_amount_paise: 0,       // pricing shipped in Sub-turn 2
+            daily_rate_paise: it.daily_rate,  // captured now for Sub-turn 2 to use
+            sort_order: sortOrder++,
+          });
+        }
+
+        // Success — go to orders list.
+        window.location.href = '/orders.html';
+      } catch (err) {
+        const errBox = document.getElementById('global-error');
+        let msg = 'Something went wrong saving the order.';
+        if (err.status === 400 && err.body?.issues) {
+          msg = 'Validation failed: ' + err.body.issues.map(i => (i.path?.join('.') || '') + ' ' + i.message).join('; ');
+        } else if (err.body?.error) {
+          msg = err.body.error.replace(/_/g, ' ');
+        }
+        errBox.innerHTML = `<div class="alert error">${escapeHtml(msg)}</div>`;
+        btn.disabled = false;
+        btn.textContent = 'Save as draft';
+      }
+    }
+
+    // ---------- utils ----------
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    function escapeAttr(s) { return escapeHtml(s).replace(/`/g,'&#96;'); }
+
+    // ---------- go ----------
+    (async () => {
+      try {
+        await hydrateIdentity();
+        await loadInitialCustomers();
+      } catch (err) {
+        console.error('boot failed', err);
+      }
+    })();
+  </script>
+</body>
+</html>
