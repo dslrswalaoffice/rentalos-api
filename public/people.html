@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>People · RentalOS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Space Grotesk,Inter,sans-serif' font-weight='800' font-size='19' fill='%23202058'%3ER%3C/text%3E%3C/svg%3E">
+  <style>
+    :root {
+      --ink:            #202058;
+      --text:           #464a52;
+      --head:           #26235a;
+      --muted:          #8b9199;
+      --muted-strong:   #5b616b;
+      --muted-soft:     #9aa1ad;
+      --card:           #ffffff;
+      --bg:             #f6f7f9;
+      --side:           #fcfcfd;
+      --chrome:         #f4f5f7;
+      --thead:          #fafbfc;
+      --border:         #e6e8ec;
+      --border-strong:  #d8dbe0;
+      --accent-soft:    #ecebf4;
+      --border-accent:  #d7dcf7;
+      --orange:         #e88020;
+      --orange-soft:    #fbe9d7;
+      --focus:          #b9c0ee;
+      --ok-solid:       #1f9d57;
+      --ok-soft:        #e8f6ee;
+      --ok-strong:      #177a45;
+      --warn-solid:     #b9791b;
+      --warn-soft:      #fbf2e2;
+      --warn-strong:    #8a5a12;
+      --bad-solid:      #cc3340;
+      --bad-soft:       #fbeaeb;
+      --bad-strong:     #a3272f;
+      --font-display: "Arzachel", "Space Grotesk", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-body:    "Ponjoung", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+      --sb-w: 232px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: var(--font-body);
+      color: var(--ink);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    ::selection { background: #d9d8ea; }
+    button, a { transition: background-color .14s ease, color .14s ease, border-color .14s ease, box-shadow .16s ease, transform .08s ease; }
+    button:not(:disabled):active { transform: translateY(0.5px); }
+    ::-webkit-scrollbar { width: 11px; height: 11px; }
+    ::-webkit-scrollbar-thumb { background: #d3d7dd; border-radius: 7px; border: 3px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background: #bfc4cc; border: 3px solid transparent; background-clip: padding-box; }
+
+    .app { display: grid; grid-template-columns: var(--sb-w) minmax(0, 1fr); min-height: 100dvh; }
+
+    /* sidebar (matches inventory.html) */
+    .sb { background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 18px 14px 14px; position: sticky; top: 0; height: 100dvh; overflow-y: auto; }
+    .sb-brand { display: flex; align-items: center; gap: 10px; padding: 6px 6px 20px; }
+    .sb-brand .logo { width: 30px; height: 30px; border-radius: 8px; background: var(--orange); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 800; font-size: 17px; flex-shrink: 0; }
+    .sb-brand .word { font-family: var(--font-display); font-weight: 600; font-size: 17px; letter-spacing: -0.01em; color: var(--ink); }
+    .sb-brand .env { margin-left: auto; font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--warn-strong); background: var(--warn-soft); padding: 2px 7px; border-radius: 999px; }
+    .sb-nav { display: flex; flex-direction: column; gap: 2px; }
+    .sb-workspace { display: flex; align-items: baseline; gap: 8px; width: 100%; margin: 14px 0 8px; padding: 8px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; }
+    .sb-workspace:hover { border-color: var(--border-strong); background: var(--thead); }
+    .sb-workspace-name { font-family: var(--font-display); font-weight: 600; font-size: 12.5px; letter-spacing: 0.02em; color: var(--ink); }
+    .sb-workspace-loc { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; }
+    .sb-workspace svg { margin-left: auto; color: var(--muted); align-self: center; }
+    .sb-item { display: flex; align-items: center; gap: 10px; padding: 8px 8px; border-radius: 9px; text-decoration: none; color: var(--muted-strong); font-size: 13px; font-weight: 500; }
+    .sb-item:hover { background: var(--bg); color: var(--ink); }
+    .sb-item.active { background: var(--accent-soft); color: var(--head); font-weight: 600; }
+    .sb-item .tile { width: 26px; height: 26px; border-radius: 7px; background: #eef0f3; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; flex-shrink: 0; }
+    .sb-item.active .tile { background: var(--head); color: #fff; }
+    .sb-item.new .tile { background: var(--orange); color: #fff; }
+    .sb-user { margin-top: auto; padding: 12px 8px 4px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+    .sb-user-avatar { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #26235a, #4b47a3); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; font-size: 13px; flex-shrink: 0; }
+    .sb-user-info { min-width: 0; flex: 1; }
+    .sb-user-name { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sb-user-role { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; margin-top: 1px; }
+
+    /* main */
+    .main { min-width: 0; background: var(--bg); display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--card); position: sticky; top: 0; z-index: 40; }
+    .kicker { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.14em; color: var(--muted-soft); text-transform: uppercase; }
+    .page-title { font-family: var(--font-display); font-weight: 600; font-size: 17px; letter-spacing: -0.005em; color: var(--ink); margin-top: 1px; }
+    .search { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--thead); cursor: text; min-width: 320px; color: var(--muted-soft); }
+    .search:hover { border-color: var(--border-strong); background: var(--card); }
+    .search:focus-within { border-color: var(--focus); background: var(--card); box-shadow: 0 0 0 4px rgba(185, 192, 238, 0.24); }
+    .search input { border: none; outline: none; background: transparent; font-family: var(--font-body); font-size: 12.5px; color: var(--ink); flex: 1; min-width: 0; }
+    .search input::placeholder { color: var(--muted-soft); }
+    .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .primary-cta { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; background: var(--orange); color: #fff; border: none; border-radius: 9px; font-family: var(--font-body); font-weight: 600; font-size: 12.5px; cursor: pointer; text-decoration: none; box-shadow: 0 4px 12px -4px rgba(232, 128, 32, 0.5); }
+    .primary-cta:hover { background: #d97517; box-shadow: 0 6px 14px -4px rgba(232, 128, 32, 0.55); }
+
+    .content { padding: 22px 24px 40px; }
+    .content-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
+    .content-head h3 { font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: -0.005em; color: var(--ink); margin: 0; display: inline; }
+    .content-head .sub { font-size: 12px; color: var(--muted); margin-left: 10px; }
+    .role-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .role-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--muted-strong); cursor: pointer; text-transform: uppercase; }
+    .role-chip:hover { border-color: var(--border-strong); background: var(--thead); }
+    .role-chip.active { background: var(--head); color: #fff; border-color: var(--head); }
+    .role-chip .n { font-weight: 700; opacity: 0.65; }
+
+    /* people table */
+    .table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+    table.people { width: 100%; border-collapse: collapse; }
+    table.people th { text-align: left; padding: 12px 16px; font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); background: var(--thead); }
+    table.people td { padding: 14px 16px; border-top: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+    table.people tr:first-child td { border-top: none; }
+    table.people tr:hover td { background: var(--thead); }
+    .person-name { font-weight: 600; color: var(--ink); }
+    .person-phone { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); letter-spacing: 0.03em; margin-top: 2px; display: inline-flex; align-items: center; gap: 5px; }
+    .verified-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok-solid); display: inline-block; }
+    .role-tag { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 6px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.02em; margin-right: 4px; }
+    .role-tag.customer  { background: var(--accent-soft); color: var(--head); }
+    .role-tag.staff     { background: var(--ok-soft); color: var(--ok-strong); }
+    .role-tag.investor  { background: var(--orange-soft); color: var(--warn-strong); }
+    .role-tag.vendor    { background: #eef0f3; color: var(--muted-strong); }
+    .kebab { background: transparent; border: none; padding: 6px; border-radius: 6px; cursor: pointer; color: var(--muted); }
+    .kebab:hover { background: var(--bg); color: var(--ink); }
+    .company-cell { font-size: 12.5px; color: var(--text); }
+    .gstin-cell { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* empty state */
+    .empty { background: var(--card); border: 1px dashed var(--border-strong); border-radius: 14px; padding: 56px 24px; text-align: center; }
+    .empty-icon { width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 14px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; color: var(--head); }
+    .empty h4 { font-family: var(--font-display); font-weight: 600; font-size: 17px; color: var(--ink); margin: 0 0 6px; letter-spacing: -0.005em; }
+    .empty p { font-size: 13px; color: var(--muted); margin: 0 0 22px; max-width: 460px; margin-left: auto; margin-right: auto; }
+
+    .loading { padding: 40px; text-align: center; color: var(--muted); font-size: 13px; font-family: var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
+
+    /* modal */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(24, 26, 40, 0.44); backdrop-filter: blur(3px); z-index: 100; display: none; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--card); border: 1px solid var(--border-strong); border-radius: 16px; box-shadow: 0 30px 60px -20px rgba(16, 24, 40, 0.45); width: 100%; max-width: 560px; overflow: hidden; margin: auto; }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+    .modal-title { font-family: var(--font-display); font-weight: 600; font-size: 17px; color: var(--ink); letter-spacing: -0.005em; }
+    .modal-close { background: transparent; border: none; padding: 6px; border-radius: 6px; cursor: pointer; color: var(--muted); }
+    .modal-close:hover { background: var(--bg); color: var(--ink); }
+    .modal-body { padding: 20px 22px 8px; }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; color: var(--muted-strong); text-transform: uppercase; margin-bottom: 6px; }
+    .field label .req { color: var(--bad-strong); margin-left: 3px; }
+    .field label .hint { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted-soft); font-family: var(--font-body); font-size: 11px; margin-left: 6px; }
+    .field input[type="text"], .field input[type="tel"], .field input[type="email"], .field select, .field textarea { width: 100%; padding: 10px 12px; font-family: var(--font-body); font-size: 13.5px; color: var(--ink); background: var(--card); border: 1px solid var(--border); border-radius: 9px; outline: none; }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--focus); box-shadow: 0 0 0 4px rgba(185, 192, 238, 0.24); }
+    .field textarea { min-height: 68px; resize: vertical; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .field-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+    .roles-checks { display: flex; gap: 8px; flex-wrap: wrap; }
+    .role-check { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; background: var(--card); font-family: var(--font-body); font-size: 12.5px; font-weight: 500; color: var(--text); }
+    .role-check:hover { border-color: var(--border-strong); background: var(--thead); }
+    .role-check input { margin: 0; cursor: pointer; }
+    .role-check.checked { border-color: var(--head); background: var(--accent-soft); color: var(--head); font-weight: 600; }
+    .advanced-toggle { background: transparent; border: none; padding: 6px 0; margin: 4px 0 14px; color: var(--head); font-family: var(--font-body); font-weight: 600; font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+    .advanced-toggle:hover { color: var(--ink); }
+    .advanced { display: none; }
+    .advanced.open { display: block; padding-top: 6px; border-top: 1px dashed var(--border); margin-top: 10px; }
+    .modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--thead); }
+    .btn { padding: 9px 16px; border-radius: 9px; font-family: var(--font-body); font-weight: 600; font-size: 12.5px; cursor: pointer; border: 1px solid transparent; }
+    .btn.ghost { background: var(--card); color: var(--muted-strong); border-color: var(--border); }
+    .btn.ghost:hover { background: var(--bg); border-color: var(--border-strong); color: var(--ink); }
+    .btn.primary { background: var(--head); color: #fff; border-color: var(--head); }
+    .btn.primary:hover { background: #1a1749; }
+    .btn.primary:disabled { background: var(--muted-soft); cursor: not-allowed; border-color: var(--muted-soft); }
+    .form-error { padding: 10px 12px; margin: 0 0 14px; background: var(--bad-soft); color: var(--bad-strong); border-radius: 8px; font-size: 12.5px; font-weight: 500; border-left: 3px solid var(--bad-solid); }
+
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+      .sb { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); padding: 12px 16px; }
+      .sb-nav, .sb-user, .sb-workspace { display: none; }
+      .sb-brand { padding: 0; }
+      .search { min-width: 0; flex: 1; }
+      table.people th:nth-child(4), table.people td:nth-child(4) { display: none; }
+    }
+    @media (max-width: 640px) {
+      .content { padding: 16px; }
+      .topbar { padding: 12px 16px; gap: 10px; }
+      .page-title-block { display: none; }
+      .field-row, .field-row-3 { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sb">
+      <div class="sb-brand">
+        <span class="logo">R</span>
+        <span class="word">RentalOS</span>
+        <span class="env">v0.1</span>
+      </div>
+
+      <a href="/new-order.html" class="sb-item new" style="margin-bottom:6px;">
+        <span class="tile">NB</span>
+        <span>New order</span>
+      </a>
+
+      <button class="sb-workspace" type="button" aria-label="Switch workspace">
+        <span class="sb-workspace-name" id="ws-name">DSLRSWALA</span>
+        <span class="sb-workspace-loc" id="ws-loc">Vadodara</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+
+      <nav class="sb-nav" aria-label="Main">
+        <a href="/dashboard.html" class="sb-item"><span class="tile">DB</span><span>Dashboard</span></a>
+        <a href="/calendar.html" class="sb-item"><span class="tile">CL</span><span>Calendar</span></a>
+        <a href="/orders.html" class="sb-item"><span class="tile">RN</span><span>Orders</span></a>
+        <a href="/billing.html" class="sb-item"><span class="tile">BL</span><span>Billing</span></a>
+        <a href="/inventory.html" class="sb-item"><span class="tile">IN</span><span>Inventory</span></a>
+        <a href="/people.html" class="sb-item active" aria-current="page"><span class="tile">PE</span><span>People</span></a>
+        <a href="/insights.html" class="sb-item"><span class="tile">IS</span><span>Insights</span></a>
+        <a href="/settings.html" class="sb-item"><span class="tile">SY</span><span>Settings</span></a>
+      </nav>
+
+      <div class="sb-user">
+        <span class="sb-user-avatar" id="user-avatar">A</span>
+        <div class="sb-user-info">
+          <div class="sb-user-name" id="user-name">Aamir</div>
+          <div class="sb-user-role" id="user-role">OWNER</div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="page-title-block">
+          <div class="kicker">People</div>
+          <div class="page-title">Customers, staff, investors</div>
+        </div>
+
+        <label class="search" for="search-input">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
+          <input id="search-input" type="search" placeholder="Search by name, phone, email, or company…" autocomplete="off">
+        </label>
+
+        <div class="topbar-actions">
+          <button class="primary-cta" id="btn-add">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            Add person
+          </button>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="content-head">
+          <div>
+            <h3>People</h3>
+            <span class="sub" id="people-summary">loading…</span>
+          </div>
+          <div class="role-chips" id="role-chips"></div>
+        </div>
+
+        <div id="list-wrap">
+          <div class="loading">Loading people…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Person Modal -->
+  <div class="modal-backdrop" id="modal">
+    <div class="modal" role="dialog" aria-labelledby="modal-title">
+      <header class="modal-head">
+        <div class="modal-title" id="modal-title">Add person</div>
+        <button class="modal-close" id="modal-close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+
+      <form id="add-form" novalidate>
+        <div class="modal-body">
+          <div id="form-error" class="form-error" style="display:none;"></div>
+
+          <div class="field">
+            <label for="f-name">Full name <span class="req">*</span></label>
+            <input id="f-name" name="display_name" type="text" required maxlength="200" placeholder="e.g. Rahul Sharma" autocomplete="name">
+          </div>
+
+          <div class="field">
+            <label for="f-phone">Phone <span class="req">*</span> <span class="hint">WhatsApp preferred</span></label>
+            <input id="f-phone" name="phone" type="tel" required maxlength="30" placeholder="+91 98765 43210" autocomplete="tel">
+          </div>
+
+          <div class="field">
+            <label>Roles <span class="req">*</span> <span class="hint">a person can have several</span></label>
+            <div class="roles-checks" id="roles-checks">
+              <label class="role-check checked" data-role="customer">
+                <input type="checkbox" name="role_customer" checked> Customer
+              </label>
+              <label class="role-check" data-role="staff">
+                <input type="checkbox" name="role_staff"> Staff
+              </label>
+              <label class="role-check" data-role="investor">
+                <input type="checkbox" name="role_investor"> Investor
+              </label>
+              <label class="role-check" data-role="vendor">
+                <input type="checkbox" name="role_vendor"> Vendor
+              </label>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="f-email">Email <span class="hint">optional, for invoices</span></label>
+            <input id="f-email" name="email" type="email" maxlength="320" placeholder="rahul@example.com" autocomplete="email">
+          </div>
+
+          <button type="button" class="advanced-toggle" id="advanced-toggle">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" id="advanced-chev"><path d="M6 9l6 6 6-6"/></svg>
+            Show more details
+          </button>
+
+          <div class="advanced" id="advanced">
+            <div class="field-row">
+              <div class="field">
+                <label for="f-idtype">ID proof type</label>
+                <select id="f-idtype" name="id_proof_type">
+                  <option value="">— Choose —</option>
+                  <option value="aadhaar">Aadhaar</option>
+                  <option value="pan">PAN</option>
+                  <option value="driving_license">Driving License</option>
+                  <option value="passport">Passport</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="f-idnumber">ID proof number</label>
+                <input id="f-idnumber" name="id_proof_number" type="text" maxlength="50" placeholder="e.g. XXXX-XXXX-1234">
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="f-address">Address line</label>
+              <input id="f-address" name="address_line" type="text" maxlength="500" placeholder="Flat, building, street" autocomplete="address-line1">
+            </div>
+
+            <div class="field-row-3">
+              <div class="field">
+                <label for="f-city">City</label>
+                <input id="f-city" name="city" type="text" maxlength="100" placeholder="Vadodara" autocomplete="address-level2">
+              </div>
+              <div class="field">
+                <label for="f-state">State</label>
+                <input id="f-state" name="state" type="text" maxlength="100" placeholder="Gujarat" autocomplete="address-level1">
+              </div>
+              <div class="field">
+                <label for="f-postal">Postal code</label>
+                <input id="f-postal" name="postal_code" type="text" maxlength="20" placeholder="390001" autocomplete="postal-code">
+              </div>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="f-company">Company name <span class="hint">B2B only</span></label>
+                <input id="f-company" name="company_name" type="text" maxlength="200" placeholder="Sharma Films Pvt Ltd" autocomplete="organization">
+              </div>
+              <div class="field">
+                <label for="f-gstin">GSTIN <span class="hint">for tax invoice</span></label>
+                <input id="f-gstin" name="gstin" type="text" maxlength="15" placeholder="24AABCS1234C1Z1" style="font-family:var(--font-mono); text-transform:uppercase;">
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="f-notes">Internal notes <span class="hint">team only, never shown to customer</span></label>
+              <textarea id="f-notes" name="notes" maxlength="2000" placeholder="Preferred lens kit, payment habits, referral source…"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" class="btn ghost" id="btn-cancel">Cancel</button>
+          <button type="submit" class="btn primary" id="btn-submit">Add to people</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { api, ensureAuth } from "/_lib/api.js";
+
+    // ---------- state ----------
+    let allPeople = [];
+    let roleCounts = {};
+    let activeRole = null;
+    let currentSearch = "";
+
+    // ---------- identity ----------
+    async function hydrateIdentity() {
+      const { user, workspace } = await ensureAuth();
+      document.getElementById("ws-name").textContent = workspace.name;
+      document.getElementById("ws-loc").textContent = workspace.location || "";
+      const first = (user.displayName || "").split(" ")[0] || "You";
+      document.getElementById("user-name").textContent = first;
+      document.getElementById("user-role").textContent = user.role.toUpperCase();
+      document.getElementById("user-avatar").textContent = (first[0] || "U").toUpperCase();
+    }
+
+    // ---------- fetch + render ----------
+    async function loadPeople() {
+      const params = new URLSearchParams();
+      if (currentSearch) params.set("search", currentSearch);
+      if (activeRole) params.set("role", activeRole);
+      const url = "/api/people" + (params.toString() ? "?" + params : "");
+      const { people, by_role } = await api.get(url);
+      allPeople = people;
+      if (!activeRole && !currentSearch) roleCounts = by_role || {};
+      renderList();
+      renderChips();
+      renderSummary();
+    }
+
+    function renderList() {
+      const wrap = document.getElementById("list-wrap");
+      if (allPeople.length === 0) {
+        wrap.innerHTML = (currentSearch || activeRole) ? renderEmptyFiltered() : renderEmptyPeople();
+        wireEmptyStateButton();
+        return;
+      }
+      wrap.innerHTML = `
+        <div class="table-wrap">
+          <table class="people">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Roles</th>
+                <th>City</th>
+                <th>Company</th>
+                <th style="width:44px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${allPeople.map(rowHtml).join("")}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function rowHtml(p) {
+      const roles = (p.roles || []).map(r =>
+        `<span class="role-tag ${r}">${r}</span>`
+      ).join("");
+      const verified = p.phone_verified_at
+        ? `<span class="verified-dot" title="Phone verified via OTP"></span>`
+        : "";
+      const company = p.company_name
+        ? `<div class="company-cell">${escapeHtml(p.company_name)}</div>` +
+          (p.gstin ? `<div class="gstin-cell">${escapeHtml(p.gstin)}</div>` : "")
+        : `<span style="color:var(--muted-soft); font-size:12px;">—</span>`;
+      return `
+        <tr data-id="${p.id}">
+          <td>
+            <div class="person-name">${escapeHtml(p.display_name)}</div>
+            <div class="person-phone">${verified}${escapeHtml(p.phone)}</div>
+          </td>
+          <td>${roles || `<span style="color:var(--muted-soft); font-size:11px;">no roles</span>`}</td>
+          <td style="font-size:12.5px; color:var(--text);">${escapeHtml(p.city || "—")}</td>
+          <td>${company}</td>
+          <td>
+            <button class="kebab" aria-label="More actions">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            </button>
+          </td>
+        </tr>`;
+    }
+
+    function renderChips() {
+      const wrap = document.getElementById("role-chips");
+      const totalActive = Object.values(roleCounts).reduce((a, b) => a + b, 0);
+      const chips = [
+        `<button class="role-chip ${activeRole === null ? "active" : ""}" data-role="">All <span class="n">${allPeople.length}</span></button>`,
+        `<button class="role-chip ${activeRole === "customer" ? "active" : ""}" data-role="customer">Customers <span class="n">${roleCounts.customer || 0}</span></button>`,
+        `<button class="role-chip ${activeRole === "staff" ? "active" : ""}" data-role="staff">Staff <span class="n">${roleCounts.staff || 0}</span></button>`,
+        `<button class="role-chip ${activeRole === "investor" ? "active" : ""}" data-role="investor">Investors <span class="n">${roleCounts.investor || 0}</span></button>`,
+        `<button class="role-chip ${activeRole === "vendor" ? "active" : ""}" data-role="vendor">Vendors <span class="n">${roleCounts.vendor || 0}</span></button>`,
+      ];
+      wrap.innerHTML = chips.join("");
+      wrap.querySelectorAll(".role-chip").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const r = btn.getAttribute("data-role");
+          activeRole = r || null;
+          loadPeople();
+        });
+      });
+    }
+
+    function renderSummary() {
+      const el = document.getElementById("people-summary");
+      if (allPeople.length === 0) { el.textContent = ""; return; }
+      const label = allPeople.length === 1 ? "person" : "people";
+      el.textContent = `${allPeople.length} ${label}${activeRole ? " · filtered by " + activeRole : ""}`;
+    }
+
+    function renderEmptyPeople() {
+      return `
+        <div class="empty">
+          <div class="empty-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <h4>No people yet</h4>
+          <p>Start with your top 5–10 repeat customers so you can create orders for them tomorrow.</p>
+          <button class="primary-cta" id="empty-add">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            Add your first person
+          </button>
+        </div>`;
+    }
+
+    function renderEmptyFiltered() {
+      return `
+        <div class="empty">
+          <h4 style="margin-top:0;">Nothing matches</h4>
+          <p>No people found${currentSearch ? " for \"" + escapeHtml(currentSearch) + "\"" : ""}${activeRole ? " with role " + escapeHtml(activeRole) : ""}. Try clearing the filter.</p>
+        </div>`;
+    }
+
+    function wireEmptyStateButton() {
+      const btn = document.getElementById("empty-add");
+      if (btn) btn.addEventListener("click", openModal);
+    }
+
+    // ---------- modal ----------
+    const modal = document.getElementById("modal");
+    const form  = document.getElementById("add-form");
+    const formError = document.getElementById("form-error");
+
+    function openModal() {
+      form.reset();
+      formError.style.display = "none";
+      // Reset the roles checkboxes: customer default checked
+      document.querySelectorAll(".role-check").forEach(el => el.classList.remove("checked"));
+      const customerCheck = document.querySelector('.role-check[data-role="customer"]');
+      const customerInput = customerCheck.querySelector("input");
+      customerInput.checked = true;
+      customerCheck.classList.add("checked");
+      document.getElementById("advanced").classList.remove("open");
+      document.getElementById("advanced-chev").style.transform = "";
+      modal.classList.add("open");
+      setTimeout(() => document.getElementById("f-name").focus(), 40);
+    }
+    function closeModal() { modal.classList.remove("open"); }
+
+    document.getElementById("btn-add").addEventListener("click", openModal);
+    document.getElementById("modal-close").addEventListener("click", closeModal);
+    document.getElementById("btn-cancel").addEventListener("click", closeModal);
+    modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modal.classList.contains("open")) closeModal(); });
+
+    document.getElementById("advanced-toggle").addEventListener("click", () => {
+      const adv = document.getElementById("advanced");
+      const chev = document.getElementById("advanced-chev");
+      adv.classList.toggle("open");
+      chev.style.transform = adv.classList.contains("open") ? "rotate(180deg)" : "";
+    });
+
+    // Role checkbox visual feedback + track state
+    document.querySelectorAll(".role-check").forEach(label => {
+      const input = label.querySelector("input");
+      input.addEventListener("change", () => {
+        label.classList.toggle("checked", input.checked);
+      });
+    });
+
+    // GSTIN uppercase enforcement
+    document.getElementById("f-gstin").addEventListener("input", (e) => {
+      e.target.value = e.target.value.toUpperCase();
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const submitBtn = document.getElementById("btn-submit");
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Adding…";
+      formError.style.display = "none";
+
+      const fd = new FormData(form);
+      const roles = [];
+      if (document.querySelector('.role-check[data-role="customer"] input').checked) roles.push("customer");
+      if (document.querySelector('.role-check[data-role="staff"] input').checked)    roles.push("staff");
+      if (document.querySelector('.role-check[data-role="investor"] input').checked) roles.push("investor");
+      if (document.querySelector('.role-check[data-role="vendor"] input').checked)   roles.push("vendor");
+
+      if (roles.length === 0) {
+        formError.style.display = "block";
+        formError.textContent = "Pick at least one role for this person.";
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Add to people";
+        return;
+      }
+
+      const body = {
+        display_name: (fd.get("display_name") || "").toString().trim(),
+        phone: (fd.get("phone") || "").toString().trim(),
+        roles,
+      };
+      const email = (fd.get("email") || "").toString().trim();
+      if (email) body.email = email;
+      const idType = (fd.get("id_proof_type") || "").toString();
+      if (idType) body.id_proof_type = idType;
+      const idNumber = (fd.get("id_proof_number") || "").toString().trim();
+      if (idNumber) body.id_proof_number = idNumber;
+      const address = (fd.get("address_line") || "").toString().trim();
+      if (address) body.address_line = address;
+      const city = (fd.get("city") || "").toString().trim();
+      if (city) body.city = city;
+      const state = (fd.get("state") || "").toString().trim();
+      if (state) body.state = state;
+      const postal = (fd.get("postal_code") || "").toString().trim();
+      if (postal) body.postal_code = postal;
+      const company = (fd.get("company_name") || "").toString().trim();
+      if (company) body.company_name = company;
+      const gstin = (fd.get("gstin") || "").toString().trim();
+      if (gstin) body.gstin = gstin;
+      const notes = (fd.get("notes") || "").toString().trim();
+      if (notes) body.notes = notes;
+
+      try {
+        await api.post("/api/people", body);
+        closeModal();
+        // Reset filters so the new person is visible
+        activeRole = null;
+        currentSearch = "";
+        document.getElementById("search-input").value = "";
+        await loadPeople();
+      } catch (err) {
+        formError.style.display = "block";
+        if (err.status === 409 && err.body && err.body.error === "phone_taken") {
+          formError.textContent = "That phone number is already in People. Search for it above.";
+        } else if (err.status === 400 && err.body && err.body.issues) {
+          formError.textContent = "Some fields are invalid: " + err.body.issues.map(i => (i.path || []).join(".") + " " + i.message).join(", ");
+        } else if (err.status === 403) {
+          formError.textContent = "Only owners and managers can add people. Your role does not have that access.";
+        } else {
+          formError.textContent = "Could not add person. Please try again.";
+        }
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Add to people";
+      }
+    });
+
+    // ---------- search ----------
+    let searchTimer;
+    document.getElementById("search-input").addEventListener("input", (e) => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        currentSearch = e.target.value.trim();
+        loadPeople();
+      }, 200);
+    });
+
+    // ---------- utils ----------
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    // ---------- go ----------
+    (async () => {
+      try {
+        await hydrateIdentity();
+        await loadPeople();
+      } catch (err) {
+        console.error("boot failed", err);
+      }
+    })();
+  </script>
+</body>
+</html>
