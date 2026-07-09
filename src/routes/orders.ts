@@ -1005,7 +1005,20 @@ orders.post('/:id/transitions', async (c) => {
     return c.json({ order, unchanged: true });
   }
 
-  const canonical = isCanonical(order.status, to);
+  let canonical = isCanonical(order.status, to);
+  let finalizeViaCanFinalize = false;
+
+  // Closing is canonical from ANY status once every item is in a terminal state.
+  // Computed server-side from ground truth (item statuses) — never trusted from
+  // the client. This lets the "Ready to close" banner close cleanly without a
+  // forced transition.
+  if (to === 'closed' && !canonical) {
+    const items = await loadItems(id);
+    if (deriveCanFinalize(items)) {
+      canonical = true;
+      finalizeViaCanFinalize = true;
+    }
+  }
 
   // Advisory: non-canonical needs explicit { force: true }. UI shows a warning.
   if (!canonical && !force) {
@@ -1032,7 +1045,7 @@ orders.post('/:id/transitions', async (c) => {
     eventType: canonical ? 'order.status.changed' : 'order.status.forced',
     fromStatus: order.status,
     toStatus: to,
-    payload: { canonical, forced: !canonical, reason: reason ?? null },
+    payload: { canonical, forced: !canonical, reason: reason ?? null, finalize_via_can_finalize: finalizeViaCanFinalize },
     actorUserId: session.user.id,
   });
 
@@ -1042,7 +1055,7 @@ orders.post('/:id/transitions', async (c) => {
     eventType: canonical ? 'orders.status.changed' : 'orders.status.forced',
     targetType: 'order',
     targetId: id,
-    payload: { from: order.status, to, canonical, reason: reason ?? null },
+    payload: { from: order.status, to, canonical, reason: reason ?? null, finalize_via_can_finalize: finalizeViaCanFinalize },
     ipAddress, userAgent,
   });
 
