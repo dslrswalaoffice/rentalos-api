@@ -187,6 +187,10 @@ type OrderItemRow = {
   dispatched_at: string | null;
   returned_at: string | null;
   condition_notes: string | null;
+  handed_to: string | null;
+  received_by_user_id: string | null;
+  dispatch_notes: string | null;
+  received_by_name?: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -227,9 +231,11 @@ async function loadItems(orderId: string) {
     SELECT
       oi.*,
       pr.name AS product_name,
-      pr.sku  AS product_sku
+      pr.sku  AS product_sku,
+      ru.display_name AS received_by_name
     FROM order_items oi
     LEFT JOIN products pr ON pr.id = oi.product_id
+    LEFT JOIN users ru ON ru.id = oi.received_by_user_id
     WHERE oi.order_id = ${orderId}
     ORDER BY oi.sort_order ASC, oi.created_at ASC
   `);
@@ -1060,6 +1066,148 @@ orders.post('/:id/transitions', async (c) => {
   });
 
   return c.json({ order: updated[0], canonical });
+});
+
+// ============================================================================
+// POST /api/orders/:id/dispatch — batch hand-over of pending items
+// ============================================================================
+// Transitions a chosen subset of pending_dispatch items to dispatched in one
+// request, stamps hand-over metadata, and (if the order is still pre-dispatch)
+// advances order.status to 'dispatched'. Records ONE batch order_event + audit
+// row — not per-item events (those would be noise).
+const dispatchSchema = z.object({
+  item_ids:            z.array(z.string().uuid()).min(1),
+  handed_to:           z.string().max(200).optional(),
+  received_by_user_id: z.string().uuid().optional(),
+  dispatch_notes:      z.string().max(1000).optional(),
+});
+
+orders.post('/:id/dispatch', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = dispatchSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const { handed_to, dispatch_notes } = parsed.data;
+  const requested = [...new Set(parsed.data.item_ids)];
+
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+  if (order.status === 'closed' || order.status === 'cancelled') {
+    return c.json({ error: 'order_locked' }, 409);
+  }
+
+  const allItems = await loadItems(id);
+  const byId = new Map(allItems.map((it) => [it.id, it]));
+
+  const missing = requested.filter((x) => !byId.has(x));
+  if (missing.length) {
+    return c.json({ error: 'invalid_item_ids', item_ids: missing }, 400);
+  }
+
+  const notPending = requested
+    .map((x) => byId.get(x)!)
+    .filter((it) => it.status !== 'pending_dispatch');
+  if (notPending.length) {
+    return c.json({
+      error: 'items_not_pending',
+      items: notPending.map((it) => ({ id: it.id, status: it.status })),
+    }, 409);
+  }
+
+  // Resolve the staff member — default to the session user; if supplied, verify
+  // they're a member of this workspace.
+  let receivedBy = session.user.id;
+  if (parsed.data.received_by_user_id) {
+    const u = await query<{ id: string }>(sql`
+      SELECT u.id FROM users u
+      JOIN workspace_memberships wm ON wm.user_id = u.id
+      WHERE u.id = ${parsed.data.received_by_user_id}::uuid
+        AND wm.workspace_id = ${session.workspace.id}::uuid
+      LIMIT 1
+    `);
+    if (u.length === 0) return c.json({ error: 'invalid_user' }, 400);
+    receivedBy = parsed.data.received_by_user_id;
+  }
+
+  // Per-item UPDATE (avoids the JS-array-param serialization gotcha called out
+  // in CLAUDE.md). The status guard makes each write idempotent against a race.
+  for (const itemId of requested) {
+    await sql`
+      UPDATE order_items SET
+        status              = 'dispatched'::order_item_status,
+        dispatched_at       = now(),
+        handed_to           = ${handed_to ?? null}::text,
+        received_by_user_id = ${receivedBy}::uuid,
+        dispatch_notes      = ${dispatch_notes ?? null}::text,
+        updated_at          = now()
+      WHERE id = ${itemId}::uuid
+        AND workspace_id = ${session.workspace.id}::uuid
+        AND status = 'pending_dispatch'::order_item_status
+    `;
+  }
+
+  // Auto-advance order status if it's still pre-dispatch.
+  const orderStatusChanged = ['draft', 'quoted', 'confirmed'].includes(order.status);
+  if (orderStatusChanged) {
+    await sql`
+      UPDATE orders SET status = 'dispatched'::order_status, updated_at = now()
+      WHERE id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+    `;
+  }
+
+  const payload: Record<string, unknown> = {
+    item_ids: requested,
+    count: requested.length,
+    handed_to: handed_to ?? null,
+    received_by_user_id: receivedBy,
+    dispatch_notes: dispatch_notes ?? null,
+    auto_order_status_transition: orderStatusChanged,
+  };
+
+  await recordOrderEvent({
+    workspaceId: session.workspace.id,
+    orderId: id,
+    eventType: 'order.dispatch.batch',
+    fromStatus: order.status,
+    toStatus: orderStatusChanged ? 'dispatched' : order.status,
+    payload,
+    actorUserId: session.user.id,
+  });
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'orders.dispatch.batch',
+    targetType: 'order',
+    targetId: id,
+    payload,
+    ipAddress, userAgent,
+  });
+
+  const freshOrder = await loadOrder(id, session.workspace.id);
+  const freshItems = await loadItems(id);
+  const dispatched = freshItems
+    .filter((it) => requested.includes(it.id))
+    .map((it) => ({
+      id: it.id,
+      description: it.description,
+      status: it.status,
+      handed_to: it.handed_to,
+      received_by_user_id: it.received_by_user_id,
+      dispatched_at: it.dispatched_at,
+      dispatch_notes: it.dispatch_notes,
+    }));
+
+  return c.json({
+    order: freshOrder,
+    items_dispatched: dispatched,
+    order_status_changed: orderStatusChanged,
+  });
 });
 
 // ============================================================================

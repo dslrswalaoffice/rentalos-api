@@ -286,6 +286,38 @@
     .btn.ok { background: var(--ok-solid); color: #fff; border-color: var(--ok-solid); flex-shrink: 0; }
     .btn.ok:hover { background: var(--ok-strong); border-color: var(--ok-strong); }
 
+    /* ========== dispatch drawer ========== */
+    .dispatch-meta { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+    .drawer-backdrop { position: fixed; inset: 0; background: rgba(16, 24, 40, 0.35); opacity: 0; pointer-events: none; transition: opacity 200ms ease; z-index: 90; }
+    .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+    .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 440px; max-width: 92vw; background: var(--card); box-shadow: -8px 0 24px rgba(16, 24, 40, 0.14); transform: translateX(100%); transition: transform 250ms ease; z-index: 100; display: flex; flex-direction: column; }
+    .drawer.open { transform: translateX(0); }
+    .drawer-head { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .drawer-kicker { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.14em; color: var(--muted-soft); text-transform: uppercase; }
+    .drawer-title { font-family: var(--font-display); font-weight: 600; font-size: 17px; color: var(--ink); margin: 2px 0 0; }
+    .drawer-close { background: transparent; border: none; padding: 4px; border-radius: 7px; cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1; }
+    .drawer-close:hover { background: var(--bg); color: var(--ink); }
+    .drawer-steps { display: flex; padding: 12px 22px; gap: 20px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); font-family: var(--font-mono); letter-spacing: 0.02em; }
+    .drawer-steps .step.active { color: var(--head); font-weight: 700; }
+    .drawer-steps .step.done { color: var(--ok-strong); }
+    .drawer-body { flex: 1; overflow-y: auto; padding: 22px; }
+    .drawer-foot { padding: 16px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 12px; background: var(--thead); }
+    .dz-selectall { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    .dz-selectall .lbl { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .dz-toggle { background: transparent; border: none; color: var(--head); font-family: var(--font-body); font-weight: 600; font-size: 12px; cursor: pointer; padding: 2px 4px; }
+    .dz-toggle:hover { text-decoration: underline; }
+    .dz-item { display: flex; align-items: flex-start; gap: 11px; padding: 11px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    .dz-item:last-child { border-bottom: none; }
+    .dz-item input[type="checkbox"] { margin-top: 2px; width: 16px; height: 16px; accent-color: var(--head); flex-shrink: 0; cursor: pointer; }
+    .dz-item .dz-name { font-weight: 600; color: var(--ink); font-size: 13px; }
+    .dz-item .dz-sub { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 2px; letter-spacing: 0.02em; }
+    .dz-confirm-list { list-style: none; margin: 8px 0 16px; padding: 0; }
+    .dz-confirm-list li { padding: 5px 0; font-size: 13px; color: var(--ink); border-bottom: 1px solid var(--border); }
+    .dz-confirm-list li:last-child { border-bottom: none; }
+    .dz-summary-row { display: flex; gap: 10px; padding: 7px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+    .dz-summary-row .k { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); min-width: 110px; }
+    .dz-summary-row .v { color: var(--ink); flex: 1; }
+
     /* ========== invoices ========== */
     .inv-summary { font-size: 12px; color: var(--muted); margin-top: 4px; }
     .inv-list { display: flex; flex-direction: column; }
@@ -685,6 +717,21 @@
     </div>
   </div>
 
+  <!-- ============ DISPATCH DRAWER ============ -->
+  <div class="drawer-backdrop" id="dispatch-backdrop"></div>
+  <aside class="drawer" id="dispatch-drawer" role="dialog" aria-label="Dispatch items" aria-hidden="true" tabindex="-1">
+    <header class="drawer-head">
+      <div>
+        <div class="drawer-kicker" id="dz-kicker">Order</div>
+        <h2 class="drawer-title">Dispatch items</h2>
+      </div>
+      <button class="drawer-close" id="dz-close" aria-label="Close">×</button>
+    </header>
+    <nav class="drawer-steps" id="dz-steps"></nav>
+    <div class="drawer-body" id="dz-body"></div>
+    <footer class="drawer-foot" id="dz-foot"></footer>
+  </aside>
+
   <!-- ============ REGENERATE INVOICE MODAL ============ -->
   <div class="modal-backdrop" id="regen-modal">
     <div class="modal" role="dialog" aria-labelledby="regen-modal-title" style="max-width:460px;">
@@ -725,6 +772,8 @@
       paymentsSummary: { in_total: 0, out_total: 0, net: 0 },
       invoices: [],       // array from /api/order-invoices/:orderId
       regenInvoice: null, // invoice being regenerated (regen modal context)
+      me: null,           // { id, displayName } — current session user
+      dispatchDrawer: { open: false, step: 1, selectedItemIds: new Set(), form: {}, submitting: false },
       forceTo: null,      // target state for the force modal
       picked: null,       // product picked in the add-item modal
       refundOf: null,     // payment being refunded (refund modal context)
@@ -800,6 +849,7 @@
     // ---------- identity ----------
     async function hydrateIdentity() {
       const { user, workspace } = await ensureAuth();
+      state.me = { id: user.id, displayName: user.displayName };
       document.getElementById('ws-name').textContent = workspace.name;
       document.getElementById('ws-loc').textContent = workspace.location || '';
       const first = (user.displayName || '').split(' ')[0] || 'You';
@@ -981,9 +1031,13 @@
       const rows = state.items.length
         ? state.items.map(itemRowHtml).join('')
         : `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:22px;">No line items yet.</td></tr>`;
+      const canDispatch = !locked && state.items.some(i => i.status === 'pending_dispatch');
+      const dispatchBtn = canDispatch
+        ? `<button class="btn primary" id="btn-dispatch"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M21 3l-9 9"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg> Dispatch</button>`
+        : '';
       return `
         <div class="card" style="padding-bottom:0;">
-          <div class="card-head"><h3>Line items</h3></div>
+          <div class="card-head"><h3>Line items</h3>${dispatchBtn}</div>
           <div style="overflow-x:auto;">
           <table class="items-table">
             <thead>
@@ -1030,6 +1084,9 @@
         <button class="kebab" data-kebab="${escapeAttr(it.id)}" aria-label="Line item actions">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
         </button>`;
+      const dispatchMeta = it.received_by_user_id
+        ? `<div class="dispatch-meta">Dispatched${it.handed_to ? ' to ' + escapeHtml(it.handed_to) : ''} · by ${escapeHtml(it.received_by_name || 'staff')}${it.dispatched_at ? ' · ' + escapeHtml(fmtDateTime(it.dispatched_at)) : ''}</div>`
+        : '';
       const statusVal = it.status || 'pending_dispatch';
       const statusPill = `
         <div style="margin-top:6px;">
@@ -1039,7 +1096,7 @@
         </div>`;
       return `
         <tr data-row="${escapeAttr(it.id)}">
-          <td><div class="li-desc">${escapeHtml(it.description)}${typeTag}</div>${sub}${statusPill}</td>
+          <td><div class="li-desc">${escapeHtml(it.description)}${typeTag}</div>${sub}${dispatchMeta}${statusPill}</td>
           <td class="num">${qtyCell}</td>
           <td class="num">${rate}</td>
           <td class="num">${days}</td>
@@ -1097,6 +1154,11 @@
         case 'order.status.forced': {
           const reason = p.reason ? ` · ${escapeHtml(p.reason)}` : '';
           return { label: `<strong>Force-moved</strong> from ${escapeHtml(S(e.from_status))} to ${escapeHtml(S(e.to_status))}${reason}` };
+        }
+        case 'order.dispatch.batch': {
+          const n = p.count ?? (Array.isArray(p.item_ids) ? p.item_ids.length : '');
+          const to = p.handed_to ? ` to ${escapeHtml(p.handed_to)}` : '';
+          return { label: `<strong>Dispatched ${escapeHtml(String(n))} item${Number(n) === 1 ? '' : 's'}</strong>${to}` };
         }
         case 'order.deleted': return { label: '<strong>Order deleted</strong>' };
         default: return { label: `<strong>${escapeHtml(e.event_type)}</strong>` };
@@ -1160,6 +1222,8 @@
     function wireItemsCard() {
       const addBtn = document.getElementById('btn-add-item');
       if (addBtn) addBtn.addEventListener('click', openItemModal);
+      const dispBtn = document.getElementById('btn-dispatch');
+      if (dispBtn) dispBtn.addEventListener('click', openDispatchDrawer);
 
       document.querySelectorAll('[data-edit]').forEach(el => {
         el.addEventListener('click', () => startInlineEdit(el));
@@ -1822,6 +1886,203 @@
       }
     });
     // ================= end invoices =================
+
+    // ================= dispatch drawer =================
+    const dispatchBackdrop = document.getElementById('dispatch-backdrop');
+    const dispatchDrawer = document.getElementById('dispatch-drawer');
+
+    function pendingItems() {
+      return state.items.filter(i => i.status === 'pending_dispatch');
+    }
+
+    function openDispatchDrawer() {
+      const d = state.dispatchDrawer;
+      d.open = true; d.step = 1; d.submitting = false;
+      d.selectedItemIds = new Set(pendingItems().map(i => i.id)); // default: all checked
+      d.form = { handed_to: '', received_by_user_id: state.me?.id || '', dispatch_notes: '' };
+      document.getElementById('dz-kicker').textContent = `Order #${state.order.order_number}`;
+      renderDispatchDrawer();
+      dispatchDrawer.classList.add('open');
+      dispatchBackdrop.classList.add('open');
+      dispatchDrawer.setAttribute('aria-hidden', 'false');
+      setTimeout(() => dispatchDrawer.focus(), 60);
+    }
+    function closeDispatchDrawer() {
+      if (state.dispatchDrawer.submitting) return;
+      state.dispatchDrawer.open = false;
+      dispatchDrawer.classList.remove('open');
+      dispatchBackdrop.classList.remove('open');
+      dispatchDrawer.setAttribute('aria-hidden', 'true');
+    }
+    dispatchBackdrop.addEventListener('click', closeDispatchDrawer);
+    document.getElementById('dz-close').addEventListener('click', closeDispatchDrawer);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && state.dispatchDrawer.open) closeDispatchDrawer();
+    });
+
+    function renderDispatchDrawer() {
+      const d = state.dispatchDrawer;
+      document.getElementById('dz-steps').innerHTML = ['1. Items', '2. Details', '3. Confirm']
+        .map((label, i) => {
+          const n = i + 1;
+          const cls = n === d.step ? 'active' : (n < d.step ? 'done' : '');
+          return `<span class="step ${cls}">${escapeHtml(label)}</span>`;
+        }).join('');
+      const body = document.getElementById('dz-body');
+      const foot = document.getElementById('dz-foot');
+      if (d.step === 1) { body.innerHTML = dzStep1(); foot.innerHTML = dzFoot1(); wireDzStep1(); }
+      else if (d.step === 2) { body.innerHTML = dzStep2(); foot.innerHTML = dzFoot2(); wireDzStep2(); }
+      else { body.innerHTML = dzStep3(); foot.innerHTML = dzFoot3(); wireDzStep3(); }
+    }
+
+    // --- step 1: items ---
+    function dzStep1() {
+      const items = pendingItems();
+      const rows = items.map(it => {
+        const checked = state.dispatchDrawer.selectedItemIds.has(it.id) ? 'checked' : '';
+        const sub = [`${it.quantity} unit${Number(it.quantity) === 1 ? '' : 's'}`];
+        if (it.daily_rate_paise != null) sub.push(`daily rate ${formatINR(it.daily_rate_paise)}`);
+        return `<label class="dz-item">
+          <input type="checkbox" data-dz-item="${escapeAttr(it.id)}" ${checked}>
+          <span>
+            <span class="dz-name">${escapeHtml(it.description)}</span>
+            <span class="dz-sub">${escapeHtml(sub.join(' · '))}</span>
+          </span>
+        </label>`;
+      }).join('');
+      return `
+        <div class="dz-selectall">
+          <span class="lbl">${items.length} item${items.length === 1 ? '' : 's'} pending dispatch</span>
+          <button type="button" class="dz-toggle" id="dz-selectall-btn"></button>
+        </div>
+        ${rows || '<div style="color:var(--muted);font-size:13px;">Nothing pending dispatch.</div>'}`;
+    }
+    function dzFoot1() {
+      return `<button class="btn ghost" id="dz-cancel">Cancel</button>
+              <button class="btn primary" id="dz-next1">Next</button>`;
+    }
+    function wireDzStep1() {
+      const d = state.dispatchDrawer;
+      const total = () => pendingItems();
+      const updateToggle = () => {
+        const btn = document.getElementById('dz-selectall-btn');
+        if (btn) btn.textContent = d.selectedItemIds.size >= total().length ? 'Select none' : 'Select all';
+      };
+      updateToggle();
+      document.getElementById('dz-selectall-btn')?.addEventListener('click', () => {
+        if (d.selectedItemIds.size >= total().length) d.selectedItemIds.clear();
+        else d.selectedItemIds = new Set(total().map(i => i.id));
+        renderDispatchDrawer();
+      });
+      document.querySelectorAll('[data-dz-item]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          if (cb.checked) d.selectedItemIds.add(cb.dataset.dzItem);
+          else d.selectedItemIds.delete(cb.dataset.dzItem);
+          updateToggle();
+          document.getElementById('dz-next1').disabled = d.selectedItemIds.size === 0;
+        });
+      });
+      document.getElementById('dz-next1').disabled = d.selectedItemIds.size === 0;
+      document.getElementById('dz-cancel').addEventListener('click', closeDispatchDrawer);
+      document.getElementById('dz-next1').addEventListener('click', () => {
+        if (d.selectedItemIds.size === 0) return;
+        d.step = 2; renderDispatchDrawer();
+      });
+    }
+
+    // --- step 2: details ---
+    function dzStep2() {
+      const d = state.dispatchDrawer;
+      const meName = state.me?.displayName || 'You';
+      const meId = state.me?.id || '';
+      const handedEmpty = !d.form.handed_to;
+      return `
+        <div class="field">
+          <label for="dz-handed">Handed to <span class="hint">optional</span></label>
+          <input id="dz-handed" type="text" maxlength="200" value="${escapeAttr(d.form.handed_to || '')}" placeholder="Customer name — leave blank if picked up by primary contact" autocomplete="off">
+          <div class="modal-warn" id="dz-handed-warn" style="${handedEmpty ? '' : 'display:none;'}margin-top:8px;">Recommended for audit trail. Fill in if a runner or team member is picking up on behalf.</div>
+        </div>
+        <div class="field">
+          <label for="dz-receivedby">Handed over by <span class="req">*</span></label>
+          <select id="dz-receivedby"><option value="${escapeAttr(meId)}" selected>${escapeHtml(meName)}</option></select>
+          <div class="field-hint">Staff member handing the gear over.</div>
+        </div>
+        <div class="field">
+          <label for="dz-notes">Dispatch notes <span class="hint">optional</span></label>
+          <textarea id="dz-notes" rows="3" maxlength="1000" placeholder="e.g., 'Provided charger + spare battery, lens hood loose but functional'">${escapeHtml(d.form.dispatch_notes || '')}</textarea>
+        </div>`;
+    }
+    function dzFoot2() {
+      return `<button class="btn ghost" id="dz-back2">Back</button>
+              <button class="btn primary" id="dz-next2">Next</button>`;
+    }
+    function wireDzStep2() {
+      const d = state.dispatchDrawer;
+      const handed = document.getElementById('dz-handed');
+      handed.addEventListener('input', () => {
+        d.form.handed_to = handed.value.trim();
+        document.getElementById('dz-handed-warn').style.display = d.form.handed_to ? 'none' : 'block';
+      });
+      document.getElementById('dz-notes').addEventListener('input', (e) => { d.form.dispatch_notes = e.target.value; });
+      const sel = document.getElementById('dz-receivedby');
+      d.form.received_by_user_id = sel.value;
+      sel.addEventListener('change', () => { d.form.received_by_user_id = sel.value; });
+      document.getElementById('dz-back2').addEventListener('click', () => { d.step = 1; renderDispatchDrawer(); });
+      document.getElementById('dz-next2').addEventListener('click', () => { d.step = 3; renderDispatchDrawer(); });
+    }
+
+    // --- step 3: confirm ---
+    function dzStep3() {
+      const d = state.dispatchDrawer;
+      const chosen = pendingItems().filter(i => d.selectedItemIds.has(i.id));
+      const li = chosen.map(i => `<li>${escapeHtml(i.description)}</li>`).join('');
+      const staffName = state.me?.displayName || 'You';
+      const handedEmpty = !d.form.handed_to;
+      return `
+        <p style="font-size:13px;color:var(--muted-strong);margin:0 0 8px;">About to dispatch <strong style="color:var(--ink);">${chosen.length} item${chosen.length === 1 ? '' : 's'}</strong>:</p>
+        <ul class="dz-confirm-list">${li}</ul>
+        <div class="dz-summary-row"><span class="k">Handed to</span><span class="v">${d.form.handed_to ? escapeHtml(d.form.handed_to) : '<span style="color:var(--muted-soft);">Not specified</span>'}</span></div>
+        <div class="dz-summary-row"><span class="k">Handed over by</span><span class="v">${escapeHtml(staffName)}</span></div>
+        <div class="dz-summary-row"><span class="k">Notes</span><span class="v">${d.form.dispatch_notes ? escapeHtml(d.form.dispatch_notes) : '<span style="color:var(--muted-soft);">None</span>'}</span></div>
+        ${handedEmpty ? `<div class="modal-warn" style="margin-top:14px;">⚠️ Handed-to field is blank. Audit trail will show "Not specified".</div>` : ''}
+        <div id="dz-submit-error" class="form-error" style="display:none;margin-top:14px;"></div>`;
+    }
+    function dzFoot3() {
+      const n = state.dispatchDrawer.selectedItemIds.size;
+      return `<button class="btn ghost" id="dz-back3">Back</button>
+              <button class="btn primary" id="dz-submit">Dispatch ${n} item${n === 1 ? '' : 's'}</button>`;
+    }
+    function wireDzStep3() {
+      document.getElementById('dz-back3').addEventListener('click', () => { state.dispatchDrawer.step = 2; renderDispatchDrawer(); });
+      document.getElementById('dz-submit').addEventListener('click', submitDispatch);
+    }
+
+    async function submitDispatch() {
+      const d = state.dispatchDrawer;
+      const item_ids = [...d.selectedItemIds];
+      if (!item_ids.length) return;
+      const errBox = document.getElementById('dz-submit-error');
+      errBox.style.display = 'none';
+      const btn = document.getElementById('dz-submit');
+      d.submitting = true; btn.disabled = true; btn.textContent = 'Dispatching…';
+      const payload = { item_ids, received_by_user_id: d.form.received_by_user_id || state.me?.id };
+      if (d.form.handed_to) payload.handed_to = d.form.handed_to;
+      if (d.form.dispatch_notes) payload.dispatch_notes = d.form.dispatch_notes;
+      try {
+        const res = await api.post(`/api/orders/${state.orderId}/dispatch`, payload);
+        d.submitting = false;
+        closeDispatchDrawer();
+        const n = res.items_dispatched?.length ?? item_ids.length;
+        showToast(`${n} item${n === 1 ? '' : 's'} dispatched${res.order_status_changed ? ' — order marked as dispatched' : ''}`);
+        await loadOrder();
+      } catch (err) {
+        d.submitting = false;
+        btn.disabled = false; btn.textContent = `Dispatch ${item_ids.length} item${item_ids.length === 1 ? '' : 's'}`;
+        errBox.style.display = 'block';
+        errBox.textContent = 'Dispatch failed: ' + (err.body?.error || err.message);
+      }
+    }
+    // ================= end dispatch drawer =================
 
     function refundedAgainst(paymentId) {
       return (state.payments || [])
