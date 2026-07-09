@@ -18,11 +18,11 @@
 // ============================================================================
 
 import { Hono } from 'hono';
-import { sql } from '../lib/db';
-import { requireSession } from '../lib/auth';
-import { audit } from '../lib/audit';
+import { sql } from '../lib/db.js';
+import { requireSession } from '../lib/auth.js';
+import { audit } from '../lib/audit.js';
 
-const app = new Hono();
+export const orders = new Hono();
 
 // ----------------------------------------------------------------------------
 // State machine (advisory — recorded, not enforced)
@@ -150,7 +150,7 @@ async function recordOrderEvent(input: {
 // ============================================================================
 // GET /api/orders  — list with filters
 // ============================================================================
-app.get('/', async (c) => {
+orders.get('/', async (c) => {
   const session = await requireSession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
@@ -162,7 +162,6 @@ app.get('/', async (c) => {
   const limit   = Math.min(Number(url.searchParams.get('limit') || 50), 200);
   const offset  = Math.max(Number(url.searchParams.get('offset') || 0), 0);
 
-  // Note: sql template tags handle parameterisation; no injection risk.
   const rows = await sql`
     SELECT
       o.id, o.order_number, o.status,
@@ -205,7 +204,7 @@ app.get('/', async (c) => {
 // ============================================================================
 // GET /api/orders/:id  — detail with items + timeline
 // ============================================================================
-app.get('/:id', async (c) => {
+orders.get('/:id', async (c) => {
   const session = await requireSession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
@@ -224,7 +223,7 @@ app.get('/:id', async (c) => {
 // ============================================================================
 // POST /api/orders  — create a draft
 // ============================================================================
-app.post('/', async (c) => {
+orders.post('/', async (c) => {
   const session = await requireSession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
@@ -244,7 +243,6 @@ app.post('/', async (c) => {
     return c.json({ error: 'validation', field: 'customer_person_id' }, 422);
   }
 
-  // Verify customer belongs to workspace
   const customer = await sql`
     SELECT id, display_name FROM people
     WHERE id = ${customer_person_id}
@@ -316,7 +314,7 @@ app.post('/', async (c) => {
 // ============================================================================
 // PATCH /api/orders/:id  — update a draft (or non-terminal order)
 // ============================================================================
-app.patch('/:id', async (c) => {
+orders.patch('/:id', async (c) => {
   const session = await requireSession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
@@ -365,8 +363,7 @@ app.patch('/:id', async (c) => {
     return c.json({ error: 'validation', field: 'rental_end', reason: 'end_before_start' }, 422);
   }
 
-  // Assemble the SET clause manually — sql template doesn't support dynamic keys.
-  // Whitelisted above, so no injection risk.
+  // Whitelisted fields above → safe to interpolate keys into SQL.
   const fragments: string[] = [];
   const values: unknown[] = [];
   let i = 1;
@@ -410,7 +407,7 @@ app.patch('/:id', async (c) => {
 // ============================================================================
 // POST /api/orders/:id/items  — add a line item
 // ============================================================================
-app.post('/:id/items', async (c) => {
+orders.post('/:id/items', async (c) => {
   const session = await requireSession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
@@ -437,7 +434,6 @@ app.post('/:id/items', async (c) => {
   if (!item_type) return c.json({ error: 'validation', field: 'item_type' }, 422);
   if (!description) return c.json({ error: 'validation', field: 'description' }, 422);
 
-  // For 'rental' items, product_id is required and must belong to workspace
   if (item_type === 'rental') {
     if (!product_id) return c.json({ error: 'validation', field: 'product_id' }, 422);
     const p = await sql`
@@ -503,7 +499,7 @@ app.post('/:id/items', async (c) => {
 // ============================================================================
 // PATCH /api/orders/:id/items/:itemId  — update a line item
 // ============================================================================
-app.patch('/:id/items/:itemId', async (c) => {
+orders.patch('/:id/items/:itemId', async (c) => {
   const session = await requireSession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
@@ -535,7 +531,6 @@ app.patch('/:id/items/:itemId', async (c) => {
     return c.json({ item: existing[0] });
   }
 
-  // Recompute total if qty or unit changed
   const nextQty  = Number(patch.quantity          ?? existing[0].quantity);
   const nextUnit = Number(patch.unit_amount_paise ?? existing[0].unit_amount_paise);
   patch.total_amount_paise = nextQty * nextUnit;
@@ -583,7 +578,7 @@ app.patch('/:id/items/:itemId', async (c) => {
 // ============================================================================
 // DELETE /api/orders/:id/items/:itemId  — remove a line item
 // ============================================================================
-app.delete('/:id/items/:itemId', async (c) => {
+orders.delete('/:id/items/:itemId', async (c) => {
   const session = await requireSession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
@@ -636,7 +631,7 @@ app.delete('/:id/items/:itemId', async (c) => {
 // POST /api/orders/:id/transitions  — advisory state change
 // ============================================================================
 // Body: { to: 'quoted' | 'confirmed' | ..., reason?: string, force?: boolean }
-app.post('/:id/transitions', async (c) => {
+orders.post('/:id/transitions', async (c) => {
   const session = await requireSession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
@@ -664,8 +659,7 @@ app.post('/:id/transitions', async (c) => {
   const canonical = isCanonical(order.status as OrderStatus, to);
 
   // Advisory model: if not canonical, require { force: true } so the UI
-  // has a chance to warn the operator first. This lets the DB stay flexible
-  // while still nudging toward the happy path.
+  // has a chance to warn the operator first.
   if (!canonical && !force) {
     return c.json({
       error: 'non_canonical_transition',
@@ -710,7 +704,7 @@ app.post('/:id/transitions', async (c) => {
 // ============================================================================
 // DELETE /api/orders/:id  — soft delete (only drafts)
 // ============================================================================
-app.delete('/:id', async (c) => {
+orders.delete('/:id', async (c) => {
   const session = await requireSession(c);
   if (!session) return c.json({ error: 'unauthorized' }, 401);
 
@@ -753,5 +747,3 @@ app.delete('/:id', async (c) => {
 
   return c.json({ ok: true });
 });
-
-export default app;
