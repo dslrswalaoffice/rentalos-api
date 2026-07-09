@@ -1350,23 +1350,13 @@
     });
 
     // ---------- close order from the ready-to-close banner ----------
+    // Single clean call. The server treats <any> → closed as canonical once every
+    // item is terminal (can_finalize), so no force/retry fallback is needed.
     async function closeOrderFromBanner() {
       const btn = document.getElementById('btn-close-order');
       if (btn) { btn.disabled = true; btn.textContent = 'Closing…'; }
       try {
-        try {
-          await api.post(`/api/orders/${state.orderId}/transitions`, { to: 'closed' });
-        } catch (err) {
-          // All items are terminal but the order may have skipped intermediate
-          // states (advisory model) — force the close in that one case.
-          if (err.status === 409 && err.body?.error === 'non_canonical_transition') {
-            await api.post(`/api/orders/${state.orderId}/transitions`, {
-              to: 'closed', force: true, reason: 'All items terminal — closed from ready-to-close banner',
-            });
-          } else {
-            throw err;
-          }
-        }
+        await api.post(`/api/orders/${state.orderId}/transitions`, { to: 'closed' });
         showToast('Order closed');
         await loadOrder();
       } catch (err) {
