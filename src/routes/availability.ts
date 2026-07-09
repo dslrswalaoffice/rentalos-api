@@ -12,25 +12,27 @@ import {
 // src/routes/availability.ts
 // ----------------------------------------------------------------------------
 // GET /api/availability?from=ISO&to=ISO
-//   → returns every rental product in the workspace with total / reserved /
-//     available unit counts for that specific window. Used by the gear picker
-//     in the new-order wizard.
+//   → every active rental product with total / reserved / available counts
+//     for that specific window. Used by the gear picker in new-order.html.
 //
 // GET /api/availability/:product_id?from=ISO&to=ISO
-//   → one product, plus the list of orders that are eating into the availability
-//     (order_number, customer, status, quantity). Used when the operator wants
-//     to see "why is this camera unavailable next weekend?"
+//   → one product plus the list of orders blocking availability
+//     (order_number, customer, status, quantity).
 //
 // Reservation model (Sub-turn 1):
-//   Order items point to products with a quantity — assets aren't allocated to
-//   specific units until dispatch (Sub-turn 3 will materialise order_assets).
-//   So availability = total active assets minus quantities on rental-type items
-//   of orders whose window overlaps [from, to] and whose status counts as
-//   "reserving" (confirmed, dispatched, active).
+//   Assets aren't allocated to specific units until dispatch (order_assets
+//   materialises in Sub-turn 3). Until then, availability is measured at the
+//   product level:
 //
-//   Draft and quoted orders do NOT reserve inventory — matches the locked-in
-//   decision "nothing is reserved until confirmed booking + advance paid."
-//   A future soft-hold feature can add 'quoted' to the reserving set per-order.
+//     total_units    = COUNT(assets) not soft-deleted
+//     reserved_units = SUM(order_items.quantity) on rental-type items of
+//                      orders whose window overlaps [from, to] and whose
+//                      status is in RESERVING_STATUSES
+//     available      = MAX(0, total - reserved)
+//
+//   draft + quoted do NOT reserve — matches the "nothing reserved until
+//   confirmed booking + advance paid" decision. This lives in RESERVING_STATUSES
+//   so it can move to workspace.settings when we monetise.
 // ============================================================================
 
 type SessionVar = {
@@ -49,9 +51,10 @@ export const availability = new Hono<Env>();
 availability.use('*', sessionMiddleware, requireAuth);
 
 // Statuses that count as "this gear is committed" for availability purposes.
-// Kept as a single source of truth so we can move it into workspace.settings
-// later without hunting through the codebase.
-const RESERVING_STATUSES = ['confirmed', 'dispatched', 'active'] as const;
+// Kept inline in the SQL below (Neon HTTP driver doesn't cleanly serialise a
+// JS array to a Postgres enum array). If this list grows, hardcode both here
+// and in the SQL — the two need to match.
+const RESERVING_STATUS_LABEL = 'confirmed / dispatched / active';
 
 const windowSchema = z.object({
   from: z.string().datetime(),
@@ -91,45 +94,42 @@ availability.get('/', async (c) => {
     reserved_units: number;
     available_units: number;
   }>(sql`
-    WITH product_totals AS (
-      SELECT
-        p.id, p.name, p.sku, p.category, p.daily_rate,
-        COALESCE(COUNT(a.id) FILTER (WHERE a.is_active = true AND a.deleted_at IS NULL), 0)::int AS total_units
-      FROM products p
-      LEFT JOIN assets a ON a.product_id = p.id AND a.workspace_id = p.workspace_id
-      WHERE p.workspace_id = ${session.workspace.id}
-        AND p.is_active = true
-        AND p.deleted_at IS NULL
-      GROUP BY p.id
-    ),
-    reserved AS (
-      SELECT
-        oi.product_id,
-        COALESCE(SUM(oi.quantity), 0)::int AS reserved_units
+    SELECT
+      p.id, p.name, p.sku, p.category, p.daily_rate,
+      COALESCE(a.total, 0)::int          AS total_units,
+      COALESCE(r.reserved, 0)::int       AS reserved_units,
+      GREATEST(COALESCE(a.total, 0) - COALESCE(r.reserved, 0), 0)::int AS available_units
+    FROM products p
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS total
+      FROM assets
+      WHERE product_id = p.id
+        AND workspace_id = p.workspace_id
+        AND deleted_at IS NULL
+    ) a ON true
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(SUM(oi.quantity), 0) AS reserved
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
-      WHERE oi.workspace_id = ${session.workspace.id}
+      WHERE oi.product_id = p.id
+        AND oi.workspace_id = p.workspace_id
         AND oi.item_type = 'rental'
-        AND o.workspace_id = ${session.workspace.id}
+        AND o.workspace_id = p.workspace_id
         AND o.deleted_at IS NULL
-        AND o.status = ANY(${RESERVING_STATUSES as unknown as string[]}::order_status[])
+        AND o.status::text IN ('confirmed', 'dispatched', 'active')
         AND o.rental_start < ${to}::timestamptz
         AND o.rental_end   > ${from}::timestamptz
-      GROUP BY oi.product_id
-    )
-    SELECT
-      pt.id, pt.name, pt.sku, pt.category, pt.daily_rate,
-      pt.total_units,
-      COALESCE(r.reserved_units, 0)::int AS reserved_units,
-      GREATEST(pt.total_units - COALESCE(r.reserved_units, 0), 0)::int AS available_units
-    FROM product_totals pt
-    LEFT JOIN reserved r ON r.product_id = pt.id
-    ORDER BY pt.name ASC
+    ) r ON true
+    WHERE p.workspace_id = ${session.workspace.id}
+      AND p.is_active = true
+      AND p.deleted_at IS NULL
+    ORDER BY p.category ASC, p.name ASC
   `);
 
   return c.json({
     from,
     to,
+    reserving_statuses: RESERVING_STATUS_LABEL,
     products: rows,
   });
 });
@@ -164,13 +164,18 @@ availability.get('/:product_id', async (c) => {
   }>(sql`
     SELECT
       p.id, p.name, p.sku, p.category, p.daily_rate,
-      COALESCE(COUNT(a.id) FILTER (WHERE a.is_active = true AND a.deleted_at IS NULL), 0)::int AS total_units
+      COALESCE(a.total, 0)::int AS total_units
     FROM products p
-    LEFT JOIN assets a ON a.product_id = p.id AND a.workspace_id = p.workspace_id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS total
+      FROM assets
+      WHERE product_id = p.id
+        AND workspace_id = p.workspace_id
+        AND deleted_at IS NULL
+    ) a ON true
     WHERE p.id = ${productId}
       AND p.workspace_id = ${session.workspace.id}
       AND p.deleted_at IS NULL
-    GROUP BY p.id
     LIMIT 1
   `);
   if (productRows.length === 0) {
@@ -199,7 +204,7 @@ availability.get('/:product_id', async (c) => {
       AND oi.item_type = 'rental'
       AND o.workspace_id = ${session.workspace.id}
       AND o.deleted_at IS NULL
-      AND o.status = ANY(${RESERVING_STATUSES as unknown as string[]}::order_status[])
+      AND o.status::text IN ('confirmed', 'dispatched', 'active')
       AND o.rental_start < ${to}::timestamptz
       AND o.rental_end   > ${from}::timestamptz
     GROUP BY o.id, o.order_number, o.status, p.display_name
@@ -212,6 +217,7 @@ availability.get('/:product_id', async (c) => {
   return c.json({
     from,
     to,
+    reserving_statuses: RESERVING_STATUS_LABEL,
     product: {
       id: product.id,
       name: product.name,
