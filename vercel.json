@@ -1,12 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.ts" }
-  ],
   "functions": {
-    "api/index.ts": {
-      "runtime": "@vercel/node@3.2.29",
-      "maxDuration": 10,
+    "src/app.ts": {
       "includeFiles": "migrations/**"
     }
   }
