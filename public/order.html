@@ -288,6 +288,31 @@
 
     /* ========== dispatch drawer ========== */
     .dispatch-meta { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+    .return-meta { font-size: 11.5px; margin-top: 4px; }
+    .return-meta.ok { color: var(--ok-strong); }
+    .return-meta.dmg { color: var(--warn-strong); }
+    .return-meta.bad { color: var(--bad-strong); }
+    .return-meta.muted { color: var(--muted); }
+    .ri-info { cursor: help; opacity: 0.75; font-size: 11px; }
+    /* return outcome dropdown + notes inside the drawer */
+    .ro-item { padding: 12px 4px; border-bottom: 1px solid var(--border); }
+    .ro-item:last-child { border-bottom: none; }
+    .ro-head { display: flex; align-items: flex-start; gap: 11px; }
+    .ro-head input[type="checkbox"] { margin-top: 2px; width: 16px; height: 16px; accent-color: var(--head); flex-shrink: 0; cursor: pointer; }
+    .ro-name { font-weight: 600; color: var(--ink); font-size: 13px; }
+    .ro-sub { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: 0.02em; }
+    .ro-outcome { margin: 8px 0 0 27px; }
+    .ro-outcome select { width: 100%; padding: 8px 10px; font-family: var(--font-body); font-size: 13px; color: var(--ink); background: var(--card); border: 1px solid var(--border); border-radius: 8px; outline: none; }
+    .ro-outcome select:focus { border-color: var(--focus); box-shadow: 0 0 0 3px rgba(185,192,238,.24); }
+    .ro-notes { margin: 8px 0 0 27px; }
+    .ro-notes label { display: block; font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--warn-strong); margin-bottom: 4px; }
+    .ro-notes textarea { width: 100%; padding: 8px 10px; font-family: var(--font-body); font-size: 13px; border: 1px solid var(--border); border-radius: 8px; outline: none; min-height: 52px; resize: vertical; }
+    .ro-notes textarea:focus { border-color: var(--focus); box-shadow: 0 0 0 3px rgba(185,192,238,.24); }
+    .ro-group-h { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 4px; }
+    .ro-group-h:first-child { margin-top: 0; }
+    .ro-group-list { list-style: none; margin: 0 0 4px; padding: 0; }
+    .ro-group-list li { font-size: 13px; color: var(--ink); padding: 3px 0; }
+    .ro-group-list li .n { display: block; font-size: 11.5px; color: var(--muted); margin-top: 1px; }
     .drawer-backdrop { position: fixed; inset: 0; background: rgba(16, 24, 40, 0.35); opacity: 0; pointer-events: none; transition: opacity 200ms ease; z-index: 90; }
     .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
     .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 440px; max-width: 92vw; background: var(--card); box-shadow: -8px 0 24px rgba(16, 24, 40, 0.14); transform: translateX(100%); transition: transform 250ms ease; z-index: 100; display: flex; flex-direction: column; }
@@ -732,6 +757,21 @@
     <footer class="drawer-foot" id="dz-foot"></footer>
   </aside>
 
+  <!-- ============ RETURN DRAWER ============ -->
+  <div class="drawer-backdrop" id="return-backdrop"></div>
+  <aside class="drawer" id="return-drawer" role="dialog" aria-label="Return items" aria-hidden="true" tabindex="-1">
+    <header class="drawer-head">
+      <div>
+        <div class="drawer-kicker" id="rz-kicker">Order</div>
+        <h2 class="drawer-title">Return items</h2>
+      </div>
+      <button class="drawer-close" id="rz-close" aria-label="Close">×</button>
+    </header>
+    <nav class="drawer-steps" id="rz-steps"></nav>
+    <div class="drawer-body" id="rz-body"></div>
+    <footer class="drawer-foot" id="rz-foot"></footer>
+  </aside>
+
   <!-- ============ REGENERATE INVOICE MODAL ============ -->
   <div class="modal-backdrop" id="regen-modal">
     <div class="modal" role="dialog" aria-labelledby="regen-modal-title" style="max-width:460px;">
@@ -774,6 +814,7 @@
       regenInvoice: null, // invoice being regenerated (regen modal context)
       me: null,           // { id, displayName } — current session user
       dispatchDrawer: { open: false, step: 1, selectedItemIds: new Set(), form: {}, submitting: false },
+      returnDrawer: { open: false, step: 1, itemOutcomes: new Map(), form: {}, submitting: false },
       forceTo: null,      // target state for the force modal
       picked: null,       // product picked in the add-item modal
       refundOf: null,     // payment being refunded (refund modal context)
@@ -1032,12 +1073,17 @@
         ? state.items.map(itemRowHtml).join('')
         : `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:22px;">No line items yet.</td></tr>`;
       const canDispatch = !locked && state.items.some(i => i.status === 'pending_dispatch');
+      const canReturn = !locked && state.items.some(i => i.status === 'dispatched');
       const dispatchBtn = canDispatch
         ? `<button class="btn primary" id="btn-dispatch"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M21 3l-9 9"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg> Dispatch</button>`
         : '';
+      const returnBtn = canReturn
+        ? `<button class="btn ${canDispatch ? 'ghost' : 'primary'}" id="btn-return"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5H9"/></svg> Return</button>`
+        : '';
+      const headBtns = (dispatchBtn || returnBtn) ? `<div style="display:flex;gap:8px;">${dispatchBtn}${returnBtn}</div>` : '';
       return `
         <div class="card" style="padding-bottom:0;">
-          <div class="card-head"><h3>Line items</h3>${dispatchBtn}</div>
+          <div class="card-head"><h3>Line items</h3>${headBtns}</div>
           <div style="overflow-x:auto;">
           <table class="items-table">
             <thead>
@@ -1062,6 +1108,30 @@
         </div>`;
     }
 
+    // Color-coded return metadata under a returned item's description.
+    function returnMetaHtml(it) {
+      if (!it.returned_at) return '';
+      const notes = it.condition_notes || '';
+      const trunc = notes.length > 60 ? escapeHtml(notes.slice(0, 60)) + '…' : escapeHtml(notes);
+      const info = notes ? ` <span class="ri-info" title="${escapeAttr(notes)}">ⓘ</span>` : '';
+      const date = it.returned_at ? ' · ' + escapeHtml(fmtDateTime(it.returned_at)) : '';
+      const by = escapeHtml(it.returned_by_name || 'staff');
+      switch (it.status) {
+        case 'returned':
+          return `<div class="return-meta ok">Returned by ${escapeHtml(it.returned_from || 'customer')} · received by ${by}${date}</div>`;
+        case 'returned_with_damage':
+          return `<div class="return-meta dmg">Damaged${notes ? ': ' + trunc : ''}${info}${date}</div>`;
+        case 'not_returned_chargeable':
+          return `<div class="return-meta bad">Not returned (charged)${notes ? ' — ' + trunc : ''}${info}${date}</div>`;
+        case 'not_returned_non_chargeable':
+          return `<div class="return-meta muted">Not returned (waived)${notes ? ' — ' + trunc : ''}${info}${date}</div>`;
+        case 'missing':
+          return `<div class="return-meta bad">Missing${notes ? ' — ' + trunc : ''}${info}${date}</div>`;
+        default:
+          return '';
+      }
+    }
+
     function itemRowHtml(it) {
       const locked = TERMINAL.has(state.order.status);
       const isRental = it.item_type === 'rental';
@@ -1084,9 +1154,10 @@
         <button class="kebab" data-kebab="${escapeAttr(it.id)}" aria-label="Line item actions">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
         </button>`;
-      const dispatchMeta = it.received_by_user_id
+      const dispatchMeta = (it.received_by_user_id && !it.returned_at)
         ? `<div class="dispatch-meta">Dispatched${it.handed_to ? ' to ' + escapeHtml(it.handed_to) : ''} · by ${escapeHtml(it.received_by_name || 'staff')}${it.dispatched_at ? ' · ' + escapeHtml(fmtDateTime(it.dispatched_at)) : ''}</div>`
         : '';
+      const returnMeta = returnMetaHtml(it);
       const statusVal = it.status || 'pending_dispatch';
       const statusPill = `
         <div style="margin-top:6px;">
@@ -1096,7 +1167,7 @@
         </div>`;
       return `
         <tr data-row="${escapeAttr(it.id)}">
-          <td><div class="li-desc">${escapeHtml(it.description)}${typeTag}</div>${sub}${dispatchMeta}${statusPill}</td>
+          <td><div class="li-desc">${escapeHtml(it.description)}${typeTag}</div>${sub}${dispatchMeta}${returnMeta}${statusPill}</td>
           <td class="num">${qtyCell}</td>
           <td class="num">${rate}</td>
           <td class="num">${days}</td>
@@ -1159,6 +1230,11 @@
           const n = p.count ?? (Array.isArray(p.item_ids) ? p.item_ids.length : '');
           const to = p.handed_to ? ` to ${escapeHtml(p.handed_to)}` : '';
           return { label: `<strong>Dispatched ${escapeHtml(String(n))} item${Number(n) === 1 ? '' : 's'}</strong>${to}` };
+        }
+        case 'order.return.batch': {
+          const n = Array.isArray(p.items) ? p.items.length : (p.terminal_items_count ?? '');
+          const from = p.received_from ? ` from ${escapeHtml(p.received_from)}` : '';
+          return { label: `<strong>Returned ${escapeHtml(String(n))} item${Number(n) === 1 ? '' : 's'}</strong>${from}` };
         }
         case 'order.deleted': return { label: '<strong>Order deleted</strong>' };
         default: return { label: `<strong>${escapeHtml(e.event_type)}</strong>` };
@@ -1224,6 +1300,8 @@
       if (addBtn) addBtn.addEventListener('click', openItemModal);
       const dispBtn = document.getElementById('btn-dispatch');
       if (dispBtn) dispBtn.addEventListener('click', openDispatchDrawer);
+      const retBtn = document.getElementById('btn-return');
+      if (retBtn) retBtn.addEventListener('click', openReturnDrawer);
 
       document.querySelectorAll('[data-edit]').forEach(el => {
         el.addEventListener('click', () => startInlineEdit(el));
@@ -2084,6 +2162,266 @@
     }
     // ================= end dispatch drawer =================
 
+    // ================= return drawer =================
+    const returnBackdrop = document.getElementById('return-backdrop');
+    const returnDrawer = document.getElementById('return-drawer');
+    const RETURN_OUTCOME_OPTS = [
+      { v: 'returned', label: 'Returned clean' },
+      { v: 'returned_with_damage', label: 'Returned with damage' },
+      { v: 'not_returned_chargeable', label: 'Not returned (charge customer)' },
+      { v: 'not_returned_non_chargeable', label: 'Not returned (waived)' },
+      { v: 'missing', label: 'Missing' },
+    ];
+    const RETURN_OUTCOME_LABEL = Object.fromEntries(RETURN_OUTCOME_OPTS.map(o => [o.v, o.label]));
+    const RETURN_NOTES_REQUIRED = new Set(['returned_with_damage', 'not_returned_chargeable', 'missing']);
+    const RETURN_FLAG_OUTCOMES = new Set(['returned_with_damage', 'not_returned_chargeable', 'missing']);
+
+    function dispatchedItems() { return state.items.filter(i => i.status === 'dispatched'); }
+
+    function openReturnDrawer() {
+      const d = state.returnDrawer;
+      d.open = true; d.step = 1; d.submitting = false;
+      d.itemOutcomes = new Map();
+      for (const it of dispatchedItems()) d.itemOutcomes.set(it.id, { checked: true, outcome: 'returned', condition_notes: '' });
+      d.form = { received_from: '', returned_by_user_id: state.me?.id || '' };
+      document.getElementById('rz-kicker').textContent = `Order #${state.order.order_number}`;
+      renderReturnDrawer();
+      returnDrawer.classList.add('open');
+      returnBackdrop.classList.add('open');
+      returnDrawer.setAttribute('aria-hidden', 'false');
+      setTimeout(() => returnDrawer.focus(), 60);
+    }
+    function closeReturnDrawer() {
+      if (state.returnDrawer.submitting) return;
+      state.returnDrawer.open = false;
+      returnDrawer.classList.remove('open');
+      returnBackdrop.classList.remove('open');
+      returnDrawer.setAttribute('aria-hidden', 'true');
+    }
+    returnBackdrop.addEventListener('click', closeReturnDrawer);
+    document.getElementById('rz-close').addEventListener('click', closeReturnDrawer);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && state.returnDrawer.open) closeReturnDrawer();
+    });
+
+    function renderReturnDrawer() {
+      const d = state.returnDrawer;
+      document.getElementById('rz-steps').innerHTML = ['1. Items & outcome', '2. Details', '3. Confirm']
+        .map((label, i) => {
+          const n = i + 1;
+          const cls = n === d.step ? 'active' : (n < d.step ? 'done' : '');
+          return `<span class="step ${cls}">${escapeHtml(label)}</span>`;
+        }).join('');
+      const body = document.getElementById('rz-body');
+      const foot = document.getElementById('rz-foot');
+      if (d.step === 1) { body.innerHTML = rzStep1(); foot.innerHTML = rzFoot1(); wireRzStep1(); }
+      else if (d.step === 2) { body.innerHTML = rzStep2(); foot.innerHTML = rzFoot2(); wireRzStep2(); }
+      else { body.innerHTML = rzStep3(); foot.innerHTML = rzFoot3(); wireRzStep3(); }
+    }
+
+    function returnStep1Valid() {
+      const d = state.returnDrawer;
+      const checked = [...d.itemOutcomes.values()].filter(o => o.checked);
+      if (!checked.length) return false;
+      return checked.every(o => !RETURN_NOTES_REQUIRED.has(o.outcome) || (o.condition_notes || '').trim().length >= 5);
+    }
+
+    // --- step 1: items & outcome ---
+    function rzStep1() {
+      const d = state.returnDrawer;
+      const items = dispatchedItems();
+      const rows = items.map(it => {
+        const o = d.itemOutcomes.get(it.id) || { checked: true, outcome: 'returned', condition_notes: '' };
+        const sub = `Dispatched${it.handed_to ? ' to ' + escapeHtml(it.handed_to) : ''}${it.dispatched_at ? ' · ' + escapeHtml(fmtDateTime(it.dispatched_at)) : ''}`;
+        const needNotes = o.checked && RETURN_NOTES_REQUIRED.has(o.outcome);
+        return `<div class="ro-item">
+          <label class="ro-head">
+            <input type="checkbox" data-ro-check="${escapeAttr(it.id)}" ${o.checked ? 'checked' : ''}>
+            <span>
+              <span class="ro-name">${escapeHtml(it.description)}</span>
+              <span class="ro-sub">${sub}</span>
+            </span>
+          </label>
+          <div class="ro-outcome">
+            <select data-ro-outcome="${escapeAttr(it.id)}" ${o.checked ? '' : 'disabled'}>
+              ${RETURN_OUTCOME_OPTS.map(opt => `<option value="${opt.v}" ${o.outcome === opt.v ? 'selected' : ''}>${escapeHtml(opt.label)}</option>`).join('')}
+            </select>
+          </div>
+          ${needNotes ? `<div class="ro-notes">
+            <label>Condition notes (required)</label>
+            <textarea data-ro-notes="${escapeAttr(it.id)}" maxlength="2000" placeholder="Describe damage, missing accessories, or reason">${escapeHtml(o.condition_notes || '')}</textarea>
+          </div>` : ''}
+        </div>`;
+      }).join('');
+      return `
+        <div class="dz-selectall">
+          <span class="lbl">${items.length} dispatched item${items.length === 1 ? '' : 's'}</span>
+          <button type="button" class="dz-toggle" id="rz-selectall-btn"></button>
+        </div>
+        ${rows || '<div style="color:var(--muted);font-size:13px;">Nothing out on rental.</div>'}`;
+    }
+    function rzFoot1() {
+      return `<button class="btn ghost" id="rz-cancel">Cancel</button>
+              <button class="btn primary" id="rz-next1">Next</button>`;
+    }
+    function wireRzStep1() {
+      const d = state.returnDrawer;
+      const total = () => dispatchedItems();
+      const checkedCount = () => [...d.itemOutcomes.values()].filter(o => o.checked).length;
+      const updateToggle = () => {
+        const btn = document.getElementById('rz-selectall-btn');
+        if (btn) btn.textContent = checkedCount() >= total().length ? 'Select none' : 'Select all';
+      };
+      const updateNext = () => { document.getElementById('rz-next1').disabled = !returnStep1Valid(); };
+      updateToggle(); updateNext();
+      document.getElementById('rz-selectall-btn')?.addEventListener('click', () => {
+        const all = checkedCount() >= total().length;
+        for (const o of d.itemOutcomes.values()) o.checked = !all;
+        renderReturnDrawer();
+      });
+      document.querySelectorAll('[data-ro-check]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const o = d.itemOutcomes.get(cb.dataset.roCheck);
+          if (o) o.checked = cb.checked;
+          renderReturnDrawer();
+        });
+      });
+      document.querySelectorAll('[data-ro-outcome]').forEach(sel => {
+        sel.addEventListener('change', () => {
+          const o = d.itemOutcomes.get(sel.dataset.roOutcome);
+          if (o) o.outcome = sel.value;
+          renderReturnDrawer(); // re-render to show/hide the notes field
+        });
+      });
+      document.querySelectorAll('[data-ro-notes]').forEach(ta => {
+        ta.addEventListener('input', () => {
+          const o = d.itemOutcomes.get(ta.dataset.roNotes);
+          if (o) o.condition_notes = ta.value;
+          updateNext(); // no re-render — keep textarea focus
+        });
+      });
+      document.getElementById('rz-cancel').addEventListener('click', closeReturnDrawer);
+      document.getElementById('rz-next1').addEventListener('click', () => {
+        if (!returnStep1Valid()) return;
+        d.step = 2; renderReturnDrawer();
+      });
+    }
+
+    // --- step 2: details ---
+    function rzStep2() {
+      const d = state.returnDrawer;
+      const meName = state.me?.displayName || 'You';
+      const meId = state.me?.id || '';
+      const emptyFrom = !d.form.received_from;
+      return `
+        <div class="field">
+          <label for="rz-from">Received from <span class="hint">optional</span></label>
+          <input id="rz-from" type="text" maxlength="200" value="${escapeAttr(d.form.received_from || '')}" placeholder="Customer name — leave blank if returned by primary contact" autocomplete="off">
+          <div class="modal-warn" id="rz-from-warn" style="${emptyFrom ? '' : 'display:none;'}margin-top:8px;">Recommended for audit trail.</div>
+        </div>
+        <div class="field">
+          <label for="rz-receivedby">Received by <span class="req">*</span></label>
+          <select id="rz-receivedby"><option value="${escapeAttr(meId)}" selected>${escapeHtml(meName)}</option></select>
+          <div class="field-hint">Staff member checking the gear back in.</div>
+        </div>`;
+    }
+    function rzFoot2() {
+      return `<button class="btn ghost" id="rz-back2">Back</button>
+              <button class="btn primary" id="rz-next2">Next</button>`;
+    }
+    function wireRzStep2() {
+      const d = state.returnDrawer;
+      const from = document.getElementById('rz-from');
+      from.addEventListener('input', () => {
+        d.form.received_from = from.value.trim();
+        document.getElementById('rz-from-warn').style.display = d.form.received_from ? 'none' : 'block';
+      });
+      const sel = document.getElementById('rz-receivedby');
+      d.form.returned_by_user_id = sel.value;
+      sel.addEventListener('change', () => { d.form.returned_by_user_id = sel.value; });
+      document.getElementById('rz-back2').addEventListener('click', () => { d.step = 1; renderReturnDrawer(); });
+      document.getElementById('rz-next2').addEventListener('click', () => { d.step = 3; renderReturnDrawer(); });
+    }
+
+    // --- step 3: confirm ---
+    function rzStep3() {
+      const d = state.returnDrawer;
+      const checked = dispatchedItems().filter(it => d.itemOutcomes.get(it.id)?.checked);
+      const groups = {};
+      for (const it of checked) {
+        const o = d.itemOutcomes.get(it.id);
+        (groups[o.outcome] ||= []).push({ it, notes: o.condition_notes });
+      }
+      const groupsHtml = RETURN_OUTCOME_OPTS.filter(opt => groups[opt.v]).map(opt => {
+        const list = groups[opt.v].map(({ it, notes }) =>
+          `<li>${escapeHtml(it.description)}${notes ? `<span class="n">Notes: “${escapeHtml(notes)}”</span>` : ''}</li>`).join('');
+        return `<div class="ro-group-h">${escapeHtml(opt.label)} (${groups[opt.v].length})</div><ul class="ro-group-list">${list}</ul>`;
+      }).join('');
+
+      const flagged = checked.filter(it => RETURN_FLAG_OUTCOMES.has(d.itemOutcomes.get(it.id).outcome)).length;
+      const staffName = state.me?.displayName || 'You';
+      const emptyFrom = !d.form.received_from;
+
+      return `
+        <p style="font-size:13px;color:var(--muted-strong);margin:0 0 10px;">About to process return for <strong style="color:var(--ink);">${checked.length} item${checked.length === 1 ? '' : 's'}</strong>:</p>
+        ${groupsHtml}
+        <div class="dz-summary-row" style="margin-top:12px;"><span class="k">Received from</span><span class="v">${d.form.received_from ? escapeHtml(d.form.received_from) : '<span style="color:var(--muted-soft);">Not specified</span>'}</span></div>
+        <div class="dz-summary-row"><span class="k">Received by</span><span class="v">${escapeHtml(staffName)}</span></div>
+        ${flagged ? `<div class="modal-warn" style="margin-top:14px;">⚠️ ${flagged} item${flagged === 1 ? '' : 's'} flagged as damaged / not-returned. Damage cost handling is manual for now — consider a separate line item or the invoice regeneration flow.</div>` : ''}
+        ${emptyFrom ? `<div class="modal-warn" style="margin-top:10px;background:var(--accent-soft);color:var(--head);border-left-color:var(--head);">ℹ️ Received-from is blank. Audit trail will show "Not specified".</div>` : ''}
+        <div id="rz-submit-error" class="form-error" style="display:none;margin-top:14px;"></div>`;
+    }
+    function rzFoot3() {
+      const n = [...state.returnDrawer.itemOutcomes.values()].filter(o => o.checked).length;
+      return `<button class="btn ghost" id="rz-back3">Back</button>
+              <button class="btn primary" id="rz-submit">Process return (${n})</button>`;
+    }
+    function wireRzStep3() {
+      document.getElementById('rz-back3').addEventListener('click', () => { state.returnDrawer.step = 2; renderReturnDrawer(); });
+      document.getElementById('rz-submit').addEventListener('click', submitReturn);
+    }
+
+    async function submitReturn() {
+      const d = state.returnDrawer;
+      const items = dispatchedItems()
+        .filter(it => d.itemOutcomes.get(it.id)?.checked)
+        .map(it => {
+          const o = d.itemOutcomes.get(it.id);
+          const notes = (o.condition_notes || '').trim();
+          return { item_id: it.id, outcome: o.outcome, condition_notes: notes || null };
+        });
+      if (!items.length) return;
+      const errBox = document.getElementById('rz-submit-error');
+      errBox.style.display = 'none';
+      const btn = document.getElementById('rz-submit');
+      d.submitting = true; btn.disabled = true; btn.textContent = 'Processing…';
+      const payload = { items, returned_by_user_id: d.form.returned_by_user_id || state.me?.id };
+      if (d.form.received_from) payload.received_from = d.form.received_from;
+      try {
+        const res = await api.post(`/api/orders/${state.orderId}/return`, payload);
+        d.submitting = false;
+        closeReturnDrawer();
+        const n = res.items_returned?.length ?? items.length;
+        showToast(`${n} item${n === 1 ? '' : 's'} returned`);
+        if (res.order_status_changed) showToast('Order marked as returned');
+        if (res.can_finalize) showToast('Ready to close — invoice can be generated');
+        await loadOrder();
+      } catch (err) {
+        d.submitting = false;
+        btn.disabled = false; btn.textContent = `Process return (${items.length})`;
+        errBox.style.display = 'block';
+        errBox.textContent = 'Return failed: ' + returnErrorMessage(err);
+      }
+    }
+    function returnErrorMessage(err) {
+      const code = err.body?.error;
+      if (code === 'condition_notes_required') return 'Condition notes (min 5 chars) are required for damaged / not-returned / missing items.';
+      if (code === 'items_not_dispatched') return 'Some items are no longer dispatched — reopen and try again.';
+      if (code === 'order_locked') return 'This order is locked.';
+      return code || err.message || 'unknown error';
+    }
+    // ================= end return drawer =================
+
     function refundedAgainst(paymentId) {
       return (state.payments || [])
         .filter(p => p.direction === 'out' && p.is_refund_of_payment_id === paymentId)
@@ -2393,6 +2731,8 @@
     function showToast(message) {
       const t = document.createElement('div');
       t.className = 'toast';
+      // Stack multiple simultaneous toasts instead of overlapping them.
+      t.style.bottom = (24 + document.querySelectorAll('.toast').length * 46) + 'px';
       t.textContent = message;
       document.body.appendChild(t);
       setTimeout(() => t.remove(), 3000);

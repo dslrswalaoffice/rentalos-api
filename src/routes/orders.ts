@@ -191,6 +191,9 @@ type OrderItemRow = {
   received_by_user_id: string | null;
   dispatch_notes: string | null;
   received_by_name?: string | null;
+  returned_by_user_id: string | null;
+  returned_from: string | null;
+  returned_by_name?: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -232,10 +235,12 @@ async function loadItems(orderId: string) {
       oi.*,
       pr.name AS product_name,
       pr.sku  AS product_sku,
-      ru.display_name AS received_by_name
+      ru.display_name AS received_by_name,
+      rt.display_name AS returned_by_name
     FROM order_items oi
     LEFT JOIN products pr ON pr.id = oi.product_id
     LEFT JOIN users ru ON ru.id = oi.received_by_user_id
+    LEFT JOIN users rt ON rt.id = oi.returned_by_user_id
     WHERE oi.order_id = ${orderId}
     ORDER BY oi.sort_order ASC, oi.created_at ASC
   `);
@@ -1207,6 +1212,183 @@ orders.post('/:id/dispatch', async (c) => {
     order: freshOrder,
     items_dispatched: dispatched,
     order_status_changed: orderStatusChanged,
+  });
+});
+
+// ============================================================================
+// POST /api/orders/:id/return — batch check-in of dispatched items
+// ============================================================================
+// The mirror of dispatch: each dispatched item is classified into one of five
+// terminal outcomes. condition_notes is required for damage / not-returned-
+// chargeable / missing. When every item on the order becomes terminal, the
+// order auto-advances to 'returned'. Pricing is recomputed so chargeable_paise
+// (0 for waived items) and the tax breakdown refresh. ONE batch event + audit.
+const RETURN_OUTCOMES = [
+  'returned', 'returned_with_damage', 'not_returned_chargeable',
+  'not_returned_non_chargeable', 'missing',
+] as const;
+const NOTES_REQUIRED_OUTCOMES = new Set([
+  'returned_with_damage', 'not_returned_chargeable', 'missing',
+]);
+
+const returnSchema = z.object({
+  items: z.array(z.object({
+    item_id:         z.string().uuid(),
+    outcome:         z.enum(RETURN_OUTCOMES),
+    condition_notes: z.string().max(2000).optional(),
+  })).min(1),
+  received_from:       z.string().max(200).optional(),
+  returned_by_user_id: z.string().uuid().optional(),
+});
+
+orders.post('/:id/return', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = returnSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const { items: reqItems, received_from } = parsed.data;
+
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+  if (order.status === 'closed' || order.status === 'cancelled') {
+    return c.json({ error: 'order_locked' }, 409);
+  }
+
+  const allItems = await loadItems(id);
+  const byId = new Map(allItems.map((it) => [it.id, it]));
+
+  const missing = reqItems.map((r) => r.item_id).filter((x) => !byId.has(x));
+  if (missing.length) {
+    return c.json({ error: 'invalid_item_ids', item_ids: [...new Set(missing)] }, 400);
+  }
+
+  const notDispatched = reqItems.filter((r) => byId.get(r.item_id)!.status !== 'dispatched');
+  if (notDispatched.length) {
+    return c.json({
+      error: 'items_not_dispatched',
+      items: notDispatched.map((r) => ({ id: r.item_id, status: byId.get(r.item_id)!.status })),
+    }, 409);
+  }
+
+  const notesMissing = reqItems.filter(
+    (r) => NOTES_REQUIRED_OUTCOMES.has(r.outcome) && (r.condition_notes ?? '').trim().length < 5,
+  );
+  if (notesMissing.length) {
+    return c.json({
+      error: 'condition_notes_required',
+      item_ids: notesMissing.map((r) => r.item_id),
+    }, 400);
+  }
+
+  // Resolve the staff member — default to session user; if supplied, verify.
+  let returnedBy = session.user.id;
+  if (parsed.data.returned_by_user_id) {
+    const u = await query<{ id: string }>(sql`
+      SELECT u.id FROM users u
+      JOIN workspace_memberships wm ON wm.user_id = u.id
+      WHERE u.id = ${parsed.data.returned_by_user_id}::uuid
+        AND wm.workspace_id = ${session.workspace.id}::uuid
+      LIMIT 1
+    `);
+    if (u.length === 0) return c.json({ error: 'invalid_user' }, 400);
+    returnedBy = parsed.data.returned_by_user_id;
+  }
+
+  // Per-item UPDATE (each item gets its own outcome). Loop avoids the JS-array
+  // param gotcha; the status guard keeps each write race-safe. Pre-existing
+  // condition_notes is preserved when this batch doesn't supply one.
+  for (const r of reqItems) {
+    await sql`
+      UPDATE order_items SET
+        status              = ${r.outcome}::order_item_status,
+        returned_at         = now(),
+        returned_by_user_id = ${returnedBy}::uuid,
+        returned_from       = ${received_from ?? null}::text,
+        condition_notes     = COALESCE(${r.condition_notes ?? null}::text, condition_notes),
+        updated_at          = now()
+      WHERE id = ${r.item_id}::uuid
+        AND workspace_id = ${session.workspace.id}::uuid
+        AND status = 'dispatched'::order_item_status
+    `;
+  }
+
+  // Auto-advance to 'returned' once every item is terminal (and the order is
+  // still mid-rental).
+  const afterItems = await loadItems(id);
+  const allTerminal = deriveCanFinalize(afterItems);
+  const orderStatusChanged = allTerminal && ['dispatched', 'active'].includes(order.status);
+  if (orderStatusChanged) {
+    await sql`
+      UPDATE orders SET status = 'returned'::order_status, updated_at = now()
+      WHERE id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+    `;
+  }
+
+  // Refresh chargeable_paise + tax breakdown + cached totals (order isn't locked).
+  await recomputeOrderTotals(id, session.workspace.id, session.user.id);
+
+  const terminalCount = afterItems.filter(
+    (it) => (TERMINAL_ITEM_STATUSES as readonly string[]).includes(it.status),
+  ).length;
+
+  const payload: Record<string, unknown> = {
+    items: reqItems.map((r) => ({
+      item_id: r.item_id,
+      outcome: r.outcome,
+      condition_notes: r.condition_notes ?? null,
+    })),
+    received_from: received_from ?? null,
+    returned_by_user_id: returnedBy,
+    auto_order_status_transition: orderStatusChanged,
+    terminal_items_count: terminalCount,
+    total_items_count: afterItems.length,
+  };
+
+  await recordOrderEvent({
+    workspaceId: session.workspace.id,
+    orderId: id,
+    eventType: 'order.return.batch',
+    fromStatus: order.status,
+    toStatus: orderStatusChanged ? 'returned' : order.status,
+    payload,
+    actorUserId: session.user.id,
+  });
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'orders.return.batch',
+    targetType: 'order',
+    targetId: id,
+    payload,
+    ipAddress, userAgent,
+  });
+
+  const freshOrder = await loadOrder(id, session.workspace.id);
+  const freshItems = await loadItems(id);
+  const requestedIds = new Set(reqItems.map((r) => r.item_id));
+  const returned = freshItems
+    .filter((it) => requestedIds.has(it.id))
+    .map((it) => ({
+      id: it.id,
+      description: it.description,
+      status: it.status,
+      returned_at: it.returned_at,
+      returned_by_user_id: it.returned_by_user_id,
+      returned_from: it.returned_from,
+      condition_notes: it.condition_notes,
+    }));
+
+  return c.json({
+    order: freshOrder,
+    items_returned: returned,
+    order_status_changed: orderStatusChanged,
+    can_finalize: deriveCanFinalize(freshItems),
   });
 });
 
