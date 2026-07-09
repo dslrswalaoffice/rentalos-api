@@ -26,7 +26,13 @@ export type AuditEventType =
   | 'admin.seed.failure'
   | 'admin.access.invalid_token'
   | 'admin.user.created'
-  | 'admin.user.create_failed';
+  | 'admin.user.create_failed'
+  | 'people.person.created'
+  | 'people.person.updated'
+  | 'people.person.archived'
+  | 'people.person.restored'
+  | 'people.role.added'
+  | 'people.role.removed';
 
 export type AuditEventInput = {
   workspaceId?: string | null;
