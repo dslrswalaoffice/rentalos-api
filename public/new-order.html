@@ -389,7 +389,17 @@
   </div>
 
   <script type="module">
-    import { api, ensureAuth } from '/_lib/api.js';
+    import { api, ensureAuth, formatINR } from '/_lib/api.js';
+
+    // DSLRSWALA billing settings — hardcoded for 2.1b preview (backend is source of truth).
+    const BILLING = { grace_period_hours: 2, minimum_days: 1 };
+    // Mirrors computeBillableDays() in src/lib/pricing.ts (24_hour_windows rule).
+    function computeBillableDays(start, end) {
+      const hoursBetween = (new Date(end).getTime() - new Date(start).getTime()) / 3_600_000;
+      const effectiveHours = Math.max(0, hoursBetween - BILLING.grace_period_hours);
+      const rawDays = Math.ceil(effectiveHours / 24);
+      return Math.max(BILLING.minimum_days, rawDays);
+    }
 
     // ---------- state ----------
     const state = {
@@ -566,7 +576,8 @@
       const days = Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
       datesSummary.style.color = 'var(--muted-strong)';
       datesSummary.style.display = 'block';
-      datesSummary.innerHTML = `Duration: <strong style="color:var(--ink);">${hours} hours</strong> · billable estimate <strong style="color:var(--ink);">${days} day${days === 1 ? '' : 's'}</strong> <span style="color:var(--muted-soft);">(pricing calculated in next module)</span>`;
+      const billable = computeBillableDays(s, e);
+      datesSummary.innerHTML = `Duration: <strong style="color:var(--ink);">${hours} hours</strong> · billable estimate <strong style="color:var(--ink);">${billable} day${billable === 1 ? '' : 's'}</strong> <span style="color:var(--muted-soft);">(final pricing shown on the order)</span>`;
       btn.disabled = false;
       state.rental_start = s;
       state.rental_end = e;
@@ -710,12 +721,18 @@
       const startFmt = start.toLocaleString('en-IN', opts);
       const endFmt = end.toLocaleString('en-IN', opts);
       const hours = Math.round((end - start) / (1000 * 60 * 60) * 10) / 10;
-      const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+      const days = computeBillableDays(state.rental_start, state.rental_end);
 
-      const itemsHtml = state.items.filter(it => it.quantity > 0).map(it =>
+      // Preview pricing — best-effort. Backend recomputes on save and is the source of truth.
+      // DSLRSWALA has charge_gst_by_default:false, so no tax line at this stage.
+      const chosen = state.items.filter(it => it.quantity > 0);
+      const subtotalPaise = chosen.reduce((sum, it) => sum + (it.quantity * Number(it.daily_rate || 0) * days), 0);
+      const totalPaise = subtotalPaise; // no tax for DSLRSWALA
+
+      const itemsHtml = chosen.map(it =>
         `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;">
           <span><strong>${escapeHtml(it.name)}</strong> <span style="color:var(--muted);font-family:var(--font-mono);font-size:11px;">${escapeHtml(it.sku)}</span></span>
-          <span style="font-family:var(--font-mono);font-weight:700;">× ${it.quantity}</span>
+          <span style="font-family:var(--font-mono);font-weight:700;">× ${it.quantity} · ${formatINR(it.quantity * Number(it.daily_rate || 0) * days)}</span>
         </div>`
       ).join('');
 
@@ -743,6 +760,14 @@
         <div class="review-row">
           <div class="review-label">Gear</div>
           <div class="review-value" style="text-align:left;">${itemsHtml || '<em style="color:var(--muted);">No items</em>'}</div>
+        </div>
+        <div class="review-row">
+          <div class="review-label">Subtotal</div>
+          <div class="review-value"><strong>${formatINR(subtotalPaise)}</strong><div class="sub">${days} billable day${days === 1 ? '' : 's'} · estimate</div></div>
+        </div>
+        <div class="review-row">
+          <div class="review-label">Total</div>
+          <div class="review-value"><strong style="font-size:15px;">${formatINR(totalPaise)}</strong><div class="sub">Final pricing confirmed after save</div></div>
         </div>
       `;
     }
@@ -788,8 +813,8 @@
           });
         }
 
-        // Success — go to orders list.
-        window.location.href = '/orders.html';
+        // Success — land on the detail page so the operator sees real prices immediately.
+        window.location.href = '/order.html?id=' + encodeURIComponent(orderId);
       } catch (err) {
         const errBox = document.getElementById('global-error');
         let msg = 'Something went wrong saving the order.';
