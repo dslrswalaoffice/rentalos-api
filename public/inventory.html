@@ -639,7 +639,7 @@
         } else if (err.status === 400 && err.body?.issues) {
           formError.textContent = 'Some fields are invalid: ' + err.body.issues.map(i => i.path?.join('.') + ' ' + i.message).join(', ');
         } else if (err.status === 403) {
-          formError.textContent = 'Only owners and managers can add products. Your role doesn\\'t have that access.';
+          formError.textContent = "Only owners and managers can add products. Your role doesn't have that access.";
         } else {
           formError.textContent = 'Couldn\\'t add product. Please try again.';
         }
