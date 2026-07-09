@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
+import { recomputeOrderTotals } from '../lib/pricing.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -135,6 +136,7 @@ type OrderItemRow = {
   billable_days: number | null;
   unit_amount_paise: number;
   total_amount_paise: number;
+  manual_price: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -492,6 +494,15 @@ orders.patch('/:id', async (c) => {
     ipAddress, userAgent,
   });
 
+  // Moving the rental window changes billable days -> recompute rental pricing.
+  const windowMoved =
+    updated[0]!.rental_start !== before.rental_start ||
+    updated[0]!.rental_end !== before.rental_end;
+  if (windowMoved) {
+    const { order } = await recomputeOrderTotals(id, session.workspace.id, session.user.id);
+    return c.json({ order });
+  }
+
   return c.json({ order: updated[0] });
 });
 
@@ -591,7 +602,11 @@ orders.post('/:id/items', async (c) => {
     ipAddress, userAgent,
   });
 
-  return c.json({ item: inserted[0] }, 201);
+  // Auto-recompute pricing so totals reflect the new line before we respond.
+  const { items } = await recomputeOrderTotals(id, session.workspace.id, session.user.id);
+  const fresh = items.find((it) => it.id === inserted[0]!.id) ?? inserted[0];
+
+  return c.json({ item: fresh }, 201);
 });
 
 // ============================================================================
@@ -605,6 +620,7 @@ const updateItemSchema = z.object({
   billable_days:     z.number().int().positive().optional(),
   sort_order:        z.number().int().optional(),
   parent_item_id:    z.string().uuid().optional(),
+  manual_price:      z.boolean().optional(),
 });
 
 orders.patch('/:id/items/:itemId', async (c) => {
@@ -639,6 +655,22 @@ orders.patch('/:id/items/:itemId', async (c) => {
   const nextUnit = p.unit_amount_paise ?? existing[0]!.unit_amount_paise;
   const nextTotal = nextQty * nextUnit;
 
+  // Manual-price detection:
+  //   * explicit { manual_price: false } reverts the line to engine control
+  //   * editing unit_amount_paise on a rental line locks it as a manual override
+  //   * explicit { manual_price: true } also locks it
+  // A null here means "leave manual_price as-is" (COALESCE below preserves it).
+  const isRental = existing[0]!.item_type === 'rental';
+  const wantsRevert = p.manual_price === false;
+  const wantsOverride =
+    !wantsRevert &&
+    ((p.unit_amount_paise !== undefined && isRental) || p.manual_price === true);
+  const manualPriceToSet: boolean | null = wantsRevert
+    ? false
+    : wantsOverride
+      ? true
+      : null;
+
   const updated = await query<OrderItemRow>(sql`
     UPDATE order_items SET
       description       = COALESCE(${p.description       ?? null}::text, description),
@@ -648,6 +680,7 @@ orders.patch('/:id/items/:itemId', async (c) => {
       billable_days     = COALESCE(${p.billable_days     ?? null}::int,  billable_days),
       sort_order        = COALESCE(${p.sort_order        ?? null}::int,  sort_order),
       parent_item_id    = COALESCE(${p.parent_item_id    ?? null}::uuid, parent_item_id),
+      manual_price      = COALESCE(${manualPriceToSet    ?? null}::boolean, manual_price),
       total_amount_paise = ${nextTotal},
       updated_at         = now()
     WHERE id = ${itemId}
@@ -657,27 +690,49 @@ orders.patch('/:id/items/:itemId', async (c) => {
 
   if (updated.length === 0) return c.json({ error: 'not_found' }, 404);
 
+  const priceOverridden = wantsOverride && p.unit_amount_paise !== undefined && isRental;
+  const auditEventType = priceOverridden
+    ? 'orders.item.price_overridden'
+    : wantsRevert
+      ? 'orders.item.price_reverted'
+      : 'orders.item.updated';
+
   await recordOrderEvent({
     workspaceId: session.workspace.id,
     orderId: id,
     eventType: 'order.item.updated',
     fromStatus: order.status,
     toStatus: order.status,
-    payload: { item_id: itemId, fields: Object.keys(p) },
+    payload: {
+      item_id: itemId,
+      fields: Object.keys(p),
+      price_overridden: priceOverridden,
+      price_reverted: wantsRevert,
+    },
     actorUserId: session.user.id,
   });
 
   await audit({
     workspaceId: session.workspace.id,
     actorUserId: session.user.id,
-    eventType: 'orders.item.updated',
+    eventType: auditEventType,
     targetType: 'order_item',
     targetId: itemId,
-    payload: { order_id: id, fields: Object.keys(p) },
+    payload: priceOverridden
+      ? {
+          order_id: id,
+          old_unit_amount_paise: existing[0]!.unit_amount_paise,
+          new_unit_amount_paise: p.unit_amount_paise,
+        }
+      : { order_id: id, fields: Object.keys(p) },
     ipAddress, userAgent,
   });
 
-  return c.json({ item: updated[0] });
+  // Auto-recompute so the override / revert is reflected in totals immediately.
+  const { items } = await recomputeOrderTotals(id, session.workspace.id, session.user.id);
+  const fresh = items.find((it) => it.id === itemId) ?? updated[0];
+
+  return c.json({ item: fresh });
 });
 
 // ============================================================================
@@ -724,7 +779,43 @@ orders.delete('/:id/items/:itemId', async (c) => {
     ipAddress, userAgent,
   });
 
+  // Auto-recompute so cached totals drop the removed line.
+  await recomputeOrderTotals(id, session.workspace.id, session.user.id);
+
   return c.json({ ok: true });
+});
+
+// ============================================================================
+// POST /api/orders/:id/recompute — force a pricing recompute
+// ============================================================================
+orders.post('/:id/recompute', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+  if (order.status === 'closed' || order.status === 'cancelled') {
+    return c.json({ error: 'order_locked' }, 409);
+  }
+
+  const { order: fresh, items, changed } = await recomputeOrderTotals(
+    id,
+    session.workspace.id,
+    session.user.id,
+  );
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'orders.pricing.recomputed',
+    targetType: 'order',
+    targetId: id,
+    payload: { changed },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ order: fresh, items, changed });
 });
 
 // ============================================================================

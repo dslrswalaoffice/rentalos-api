@@ -32,7 +32,18 @@ export type AuditEventType =
   | 'people.person.archived'
   | 'people.person.restored'
   | 'people.role.added'
-  | 'people.role.removed';
+  | 'people.role.removed'
+  | 'orders.order.created'
+  | 'orders.order.updated'
+  | 'orders.order.deleted'
+  | 'orders.item.added'
+  | 'orders.item.updated'
+  | 'orders.item.removed'
+  | 'orders.item.price_overridden'
+  | 'orders.item.price_reverted'
+  | 'orders.status.changed'
+  | 'orders.status.forced'
+  | 'orders.pricing.recomputed';
 
 export type AuditEventInput = {
   workspaceId?: string | null;
