@@ -286,6 +286,37 @@
     .btn.ok { background: var(--ok-solid); color: #fff; border-color: var(--ok-solid); flex-shrink: 0; }
     .btn.ok:hover { background: var(--ok-strong); border-color: var(--ok-strong); }
 
+    /* ========== invoices ========== */
+    .inv-summary { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .inv-list { display: flex; flex-direction: column; }
+    .inv-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+    .inv-row:first-child { border-top: none; }
+    .inv-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; flex-shrink: 0; margin-top: 3px; white-space: nowrap; }
+    .inv-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .inv-pill.inv-draft     { background: #eef0f3; color: var(--muted-strong); }
+    .inv-pill.inv-sent      { background: var(--orange-soft); color: var(--warn-strong); }
+    .inv-pill.inv-paid      { background: var(--ok-soft); color: var(--ok-strong); }
+    .inv-pill.inv-cancelled { background: var(--bad-soft); color: var(--bad-strong); }
+    .inv-pill.inv-revised   { background: #eef0f3; color: var(--muted); }
+    .inv-main { flex: 1; min-width: 0; }
+    .inv-num { font-weight: 600; color: var(--head); font-family: var(--font-mono); font-size: 12.5px; text-decoration: none; }
+    .inv-num:hover { text-decoration: underline; }
+    .inv-row.inv-revised-row .inv-num { color: var(--muted); text-decoration: line-through; }
+    .inv-meta { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 3px; letter-spacing: 0.02em; }
+    .inv-right { text-align: right; flex-shrink: 0; }
+    .inv-amount { font-family: var(--font-mono); font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--ink); }
+    .inv-bal { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .inv-date { font-size: 11px; color: var(--muted-strong); margin-top: 2px; }
+    .inv-actions { display: flex; align-items: center; flex-shrink: 0; position: relative; }
+    .inv-empty { border: 1px dashed var(--border-strong); border-radius: 12px; padding: 32px 20px; text-align: center; }
+    .inv-empty .empty-icon { width: 48px; height: 48px; margin: 0 auto 12px; }
+    .inv-empty h4 { font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--ink); margin: 0 0 4px; }
+    .inv-empty p { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; }
+    @keyframes pulse-green { 0%, 100% { background-color: transparent; } 50% { background-color: rgba(31, 157, 87, 0.14); } }
+    @keyframes pulse-red   { 0%, 100% { background-color: transparent; } 50% { background-color: rgba(204, 51, 64, 0.14); } }
+    .inv-row.pulse-green { animation: pulse-green 2s ease-in-out; }
+    .inv-row.pulse-red   { animation: pulse-red 2s ease-in-out; }
+
     /* ========== payments ========== */
     .pay-summary { font-size: 12px; color: var(--muted); margin-top: 4px; }
     .pay-list { display: flex; flex-direction: column; }
@@ -654,6 +685,32 @@
     </div>
   </div>
 
+  <!-- ============ REGENERATE INVOICE MODAL ============ -->
+  <div class="modal-backdrop" id="regen-modal">
+    <div class="modal" role="dialog" aria-labelledby="regen-modal-title" style="max-width:460px;">
+      <header class="modal-head">
+        <div class="modal-title" id="regen-modal-title">Regenerate invoice</div>
+        <button class="modal-close" id="regen-modal-close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <form id="regen-form" novalidate>
+        <div class="modal-body">
+          <div class="modal-warn">This supersedes the current invoice with a new revision. It is audit-logged. A reason is required.</div>
+          <div id="regen-error" class="form-error" style="display:none;"></div>
+          <div class="field">
+            <label for="regen-reason">Reason <span class="req">*</span> <span class="hint">min 10 characters</span></label>
+            <textarea id="regen-reason" maxlength="500" placeholder="Why does this invoice need regenerating?"></textarea>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost" id="regen-cancel">Cancel</button>
+          <button type="submit" class="btn danger" id="regen-submit">Regenerate</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script type="module">
     import { api, ensureAuth, formatINR, rupeesToPaise, paiseToRupees } from '/_lib/api.js';
 
@@ -666,11 +723,14 @@
       canFinalize: false, // computed by GET /:id — all items terminal
       payments: [],
       paymentsSummary: { in_total: 0, out_total: 0, net: 0 },
+      invoices: [],       // array from /api/order-invoices/:orderId
+      regenInvoice: null, // invoice being regenerated (regen modal context)
       forceTo: null,      // target state for the force modal
       picked: null,       // product picked in the add-item modal
       refundOf: null,     // payment being refunded (refund modal context)
       itemStatusForce: null, // { itemId, from, to, description } for the item-status force modal
     };
+    let pendingInvoicePulse = null; // { id, kind } applied on the next render
 
     const METHOD_LABELS = {
       upi: 'UPI', bank_transfer: 'Bank Transfer', cash: 'Cash', card: 'Card',
@@ -809,6 +869,7 @@
         ${headerCardHtml()}
         ${itemsCardHtml()}
         ${paymentsCardHtml()}
+        ${invoicesCardHtml()}
         ${timelineCardHtml()}
         ${actionsCardHtml()}
         ${notesCardHtml()}
@@ -816,8 +877,19 @@
 
       wireItemsCard();
       wirePaymentsCard();
+      wireInvoicesCard();
       wireActionsCard();
       wireFinalizeBanner();
+
+      // Apply a queued row pulse after a mutation re-render.
+      if (pendingInvoicePulse) {
+        const row = document.querySelector(`[data-inv-row="${CSS.escape(pendingInvoicePulse.id)}"]`);
+        if (row) {
+          row.classList.add(`pulse-${pendingInvoicePulse.kind}`);
+          setTimeout(() => row.classList.remove(`pulse-${pendingInvoicePulse.kind}`), 2000);
+        }
+        pendingInvoicePulse = null;
+      }
     }
 
     function finalizeBannerHtml() {
@@ -1395,7 +1467,8 @@
 
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
-      if (payModal.classList.contains('open')) closePayModal();
+      if (regenModal.classList.contains('open')) closeRegenModal();
+      else if (payModal.classList.contains('open')) closePayModal();
       else if (refundModal.classList.contains('open')) closeRefundModal();
       else if (isfModal.classList.contains('open')) closeIsfModal();
       else if (itemModal.classList.contains('open')) closeItemModal();
@@ -1546,6 +1619,209 @@
     async function refreshAfterPayment() {
       await Promise.all([loadOrder(), loadPayments()]);
     }
+
+    // ================= invoices =================
+    const SEQ_LABELS = { 1: 'Rental', 2: 'Damage', 3: 'Late fee' };
+    const INV_STATUS_LABELS = { draft: 'Draft', sent: 'Sent', paid: 'Paid', cancelled: 'Cancelled', revised: 'Revised' };
+
+    async function loadInvoices() {
+      if (!state.orderId || !state.order) return;
+      try {
+        const { invoices } = await api.get(`/api/order-invoices/${encodeURIComponent(state.orderId)}`);
+        state.invoices = invoices || [];
+        render();
+      } catch (err) {
+        console.error('loadInvoices failed', err);
+      }
+    }
+    async function refreshAfterInvoice() {
+      await Promise.all([loadOrder(), loadInvoices()]);
+    }
+
+    // Enabled when all items are terminal (can_finalize) or the order is closed.
+    function orderInvoiceable() {
+      return state.canFinalize === true || state.order?.status === 'closed';
+    }
+
+    function invoiceSvg() {
+      return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>`;
+    }
+    function fmtDate(v) {
+      if (!v) return '—';
+      const d = new Date(v);
+      return isNaN(d) ? String(v) : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    function invoicesCardHtml() {
+      const invs = state.invoices || [];
+      const invoiceable = orderInvoiceable();
+      const genBtn = (id) =>
+        `<button class="btn primary" id="${id}" ${invoiceable ? '' : 'disabled title="Complete all items before invoicing"'}>+ Generate invoice</button>`;
+
+      if (!invs.length) {
+        return `
+          <div class="card">
+            <div class="card-head"><h3>Invoices</h3>${genBtn('btn-generate-invoice')}</div>
+            <div class="inv-empty">
+              <div class="empty-icon">${invoiceSvg()}</div>
+              <h4>No invoices generated yet</h4>
+              <p>Order will be invoiceable once all items are returned.</p>
+              ${genBtn('btn-generate-invoice-empty')}
+            </div>
+          </div>`;
+      }
+
+      const latestRev = invs.reduce((m, i) => Math.max(m, Number(i.revision)), 0);
+      const activeTotal = invs
+        .filter((i) => i.status !== 'revised' && i.status !== 'cancelled')
+        .reduce((s, i) => s + Number(i.total_paise), 0);
+      const summary = `Invoices: ${invs.length} · Latest: R${latestRev} · Total value: ${formatINR(activeTotal)}`;
+
+      return `
+        <div class="card">
+          <div class="card-head">
+            <div><h3>Invoices</h3><div class="inv-summary">${escapeHtml(summary)}</div></div>
+            ${genBtn('btn-generate-invoice')}
+          </div>
+          <div class="inv-list">${invs.map(invoiceRowHtml).join('')}</div>
+        </div>`;
+    }
+
+    function invoiceRowHtml(inv) {
+      const seqLabel = SEQ_LABELS[Number(inv.sequence)] || 'Invoice';
+      const statusLabel = INV_STATUS_LABELS[inv.status] || inv.status;
+      const url = `/invoice.html?id=${encodeURIComponent(inv.id)}&order=${encodeURIComponent(state.orderId)}`;
+      const showBal = inv.status !== 'paid' && inv.status !== 'cancelled';
+      const bal = showBal && inv.balance_paise != null && Number(inv.balance_paise) > 0
+        ? `<div class="inv-bal">Balance: ${formatINR(inv.balance_paise)}</div>` : '';
+      return `
+        <div class="inv-row ${inv.status === 'revised' ? 'inv-revised-row' : ''}" data-inv-row="${escapeAttr(inv.id)}">
+          <span class="inv-pill inv-${escapeAttr(inv.status)}">${escapeHtml(statusLabel)}</span>
+          <div class="inv-main">
+            <a class="inv-num" href="${escapeAttr(url)}" target="_blank" rel="noopener">Invoice ${escapeHtml(inv.invoice_number)}</a>
+            <div class="inv-meta">${escapeHtml(seqLabel)} · R${escapeHtml(String(inv.revision))} · ${escapeHtml(statusLabel)}</div>
+          </div>
+          <div class="inv-right">
+            <div class="inv-amount">${formatINR(inv.total_paise)}</div>
+            ${bal}
+            <div class="inv-date">${escapeHtml(fmtDate(inv.issued_at))}</div>
+          </div>
+          <div class="inv-actions">
+            <button class="kebab" data-inv-kebab="${escapeAttr(inv.id)}" aria-label="Invoice actions">${dotsSvg()}</button>
+          </div>
+        </div>`;
+    }
+
+    function wireInvoicesCard() {
+      const g1 = document.getElementById('btn-generate-invoice');
+      if (g1) g1.addEventListener('click', () => generateInvoice(1));
+      const g2 = document.getElementById('btn-generate-invoice-empty');
+      if (g2) g2.addEventListener('click', () => generateInvoice(1));
+      document.querySelectorAll('[data-inv-kebab]').forEach((btn) => {
+        btn.addEventListener('click', (e) => { e.stopPropagation(); openInvoiceMenu(btn, btn.dataset.invKebab); });
+      });
+    }
+
+    function openInvoiceMenu(btn, invoiceId) {
+      closeAllMenus();
+      const inv = (state.invoices || []).find((i) => i.id === invoiceId);
+      if (!inv) return;
+      const url = `/invoice.html?id=${encodeURIComponent(inv.id)}&order=${encodeURIComponent(state.orderId)}`;
+      const opts = [`<button data-inv-view="1">View invoice</button>`];
+      if (inv.status !== 'cancelled' && inv.status !== 'revised') {
+        opts.push(`<button data-inv-regen="1">Regenerate as R${Number(inv.revision) + 1}</button>`);
+      }
+      if (inv.status === 'draft') opts.push(`<button data-inv-to="sent">Mark as Sent</button>`);
+      if (inv.status === 'sent' && Number(state.order.balance_paise) === 0) {
+        opts.push(`<button data-inv-to="paid">Mark as Paid</button>`);
+      }
+      if (inv.status !== 'cancelled' && inv.status !== 'revised') {
+        opts.push(`<button class="danger" data-inv-cancel="1">Cancel invoice</button>`);
+      }
+      const menu = document.createElement('div');
+      menu.className = 'menu';
+      menu.innerHTML = opts.join('');
+      btn.parentElement.appendChild(menu);
+      menu.querySelector('[data-inv-view]')?.addEventListener('click', () => { closeAllMenus(); window.open(url, '_blank', 'noopener'); });
+      menu.querySelector('[data-inv-regen]')?.addEventListener('click', () => { closeAllMenus(); onRegenerateInvoice(inv); });
+      menu.querySelectorAll('[data-inv-to]').forEach((b) => b.addEventListener('click', () => { closeAllMenus(); invoiceTransition(inv.id, b.dataset.invTo); }));
+      menu.querySelector('[data-inv-cancel]')?.addEventListener('click', () => { closeAllMenus(); invoiceCancel(inv.id); });
+      document.addEventListener('click', closeAllMenus, { once: true });
+    }
+
+    async function generateInvoice(sequence, notes) {
+      try {
+        const body = notes ? { notes } : {};
+        const res = await api.post(`/api/order-invoices/${state.orderId}?sequence=${sequence}`, body);
+        showToast(`Invoice generated: ${res.invoice?.invoice_number ?? ''}`);
+        location.href = `/invoice.html?id=${encodeURIComponent(res.invoice.id)}&order=${encodeURIComponent(state.orderId)}`;
+      } catch (err) {
+        showToast('Could not generate: ' + (err.body?.error || err.message));
+      }
+    }
+
+    async function invoiceTransition(invoiceId, to) {
+      try {
+        await api.post(`/api/order-invoices/${state.orderId}/${invoiceId}/transitions`, { to });
+        if (to === 'sent') {
+          pendingInvoicePulse = { id: invoiceId, kind: 'green' };
+          showToast('Invoice marked as sent — remember to email/WhatsApp the customer');
+        } else if (to === 'paid') {
+          showToast('Invoice marked as paid');
+        }
+        await refreshAfterInvoice();
+      } catch (err) {
+        showToast('Action failed: ' + (err.body?.error || err.message));
+      }
+    }
+
+    async function invoiceCancel(invoiceId) {
+      if (!window.confirm('Cancel this invoice? This cannot be undone.')) return;
+      try {
+        await api.post(`/api/order-invoices/${state.orderId}/${invoiceId}/transitions`, { to: 'cancelled' });
+        pendingInvoicePulse = { id: invoiceId, kind: 'red' };
+        showToast('Invoice cancelled');
+        await refreshAfterInvoice();
+      } catch (err) {
+        showToast('Could not cancel: ' + (err.body?.error || err.message));
+      }
+    }
+
+    // Regenerate modal — one-click for draft, reason-required for sent/paid/revised.
+    const regenModal = document.getElementById('regen-modal');
+    function onRegenerateInvoice(inv) {
+      if (inv.status === 'draft') { generateInvoice(Number(inv.sequence) || 1); return; }
+      state.regenInvoice = inv;
+      document.getElementById('regen-modal-title').textContent = `Regenerate as R${Number(inv.revision) + 1}`;
+      document.getElementById('regen-error').style.display = 'none';
+      document.getElementById('regen-reason').value = '';
+      regenModal.classList.add('open');
+      setTimeout(() => document.getElementById('regen-reason').focus(), 40);
+    }
+    function closeRegenModal() { regenModal.classList.remove('open'); state.regenInvoice = null; }
+    document.getElementById('regen-modal-close').addEventListener('click', closeRegenModal);
+    document.getElementById('regen-cancel').addEventListener('click', closeRegenModal);
+    regenModal.addEventListener('click', (e) => { if (e.target === regenModal) closeRegenModal(); });
+    document.getElementById('regen-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const reason = document.getElementById('regen-reason').value.trim();
+      const errBox = document.getElementById('regen-error');
+      if (reason.length < 10) { errBox.style.display = 'block'; errBox.textContent = 'Please enter a reason of at least 10 characters.'; return; }
+      const inv = state.regenInvoice;
+      if (!inv) return;
+      const submit = document.getElementById('regen-submit');
+      submit.disabled = true; submit.textContent = 'Regenerating…';
+      try {
+        const res = await api.post(`/api/order-invoices/${state.orderId}?sequence=${Number(inv.sequence) || 1}`, { notes: reason });
+        showToast(`Invoice generated: ${res.invoice?.invoice_number ?? ''}`);
+        location.href = `/invoice.html?id=${encodeURIComponent(res.invoice.id)}&order=${encodeURIComponent(state.orderId)}`;
+      } catch (err) {
+        errBox.style.display = 'block';
+        errBox.textContent = 'Failed: ' + (err.body?.error || err.message);
+        submit.disabled = false; submit.textContent = 'Regenerate';
+      }
+    });
+    // ================= end invoices =================
 
     function refundedAgainst(paymentId) {
       return (state.payments || [])
@@ -1896,6 +2172,7 @@
         await hydrateIdentity();
         await loadOrder();
         await loadPayments();
+        await loadInvoices();
       } catch (err) {
         console.error('boot failed', err);
       }
