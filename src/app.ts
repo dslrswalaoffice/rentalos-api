@@ -7,6 +7,7 @@ import { orders } from './routes/orders.js';
 import { payments } from './routes/payments.js';
 import { invoices } from './routes/invoices.js';
 import { workspace } from './routes/workspace.js';
+import { calendar } from './routes/calendar.js';
 import { availability } from './routes/availability.js';
 import { config } from './lib/config.js';
 export const app = new Hono();
@@ -31,6 +32,7 @@ app.route('/api/orders', orders);
 app.route('/api/order-payments', payments);
 app.route('/api/order-invoices', invoices);
 app.route('/api/workspace', workspace);
+app.route('/api/calendar', calendar);
 app.route('/api/availability', availability);
 // Fallback for unknown /api/* — keep it JSON so clients can parse it.
 app.notFound((c) => {

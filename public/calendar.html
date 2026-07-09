@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>Calendar · RentalOS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Space Grotesk,Inter,sans-serif' font-weight='800' font-size='19' fill='%23202058'%3ER%3C/text%3E%3C/svg%3E">
+  <style>
+    :root {
+      --ink:            #202058;
+      --text:           #464a52;
+      --head:           #26235a;
+      --muted:          #8b9199;
+      --muted-strong:   #5b616b;
+      --muted-soft:     #9aa1ad;
+      --card:           #ffffff;
+      --bg:             #f6f7f9;
+      --side:           #fcfcfd;
+      --chrome:         #f4f5f7;
+      --thead:          #fafbfc;
+      --border:         #e6e8ec;
+      --border-strong:  #d8dbe0;
+      --accent-soft:    #ecebf4;
+      --border-accent:  #d7dcf7;
+      --orange:         #e88020;
+      --orange-soft:    #fbe9d7;
+      --focus:          #b9c0ee;
+      --ok-solid:       #1f9d57;
+      --ok-soft:        #e8f6ee;
+      --ok-strong:      #177a45;
+      --warn-solid:     #b9791b;
+      --warn-soft:      #fbf2e2;
+      --warn-strong:    #8a5a12;
+      --bad-solid:      #cc3340;
+      --bad-soft:       #fbeaeb;
+      --bad-strong:     #a3272f;
+      --font-display: 'Arzachel', 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-body:    'Ponjoung', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+      --sb-w: 232px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: var(--font-body);
+      color: var(--ink);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    ::selection { background: #d9d8ea; }
+    button, a { transition: background-color .14s ease, color .14s ease, border-color .14s ease, box-shadow .16s ease, transform .08s ease; }
+    button:not(:disabled):active { transform: translateY(0.5px); }
+    ::-webkit-scrollbar { width: 11px; height: 11px; }
+    ::-webkit-scrollbar-thumb { background: #d3d7dd; border-radius: 7px; border: 3px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background: #bfc4cc; border: 3px solid transparent; background-clip: padding-box; }
+
+    /* ========== app shell ========== */
+    .app { display: grid; grid-template-columns: var(--sb-w) minmax(0, 1fr); min-height: 100dvh; }
+
+    /* ========== sidebar ========== */
+    .sb { background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 18px 14px 14px; position: sticky; top: 0; height: 100dvh; overflow-y: auto; }
+    .sb-brand { display: flex; align-items: center; gap: 10px; padding: 6px 6px 20px; }
+    .sb-brand .logo { width: 30px; height: 30px; border-radius: 8px; background: var(--orange); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 800; font-size: 17px; flex-shrink: 0; }
+    .sb-brand .word { font-family: var(--font-display); font-weight: 600; font-size: 17px; letter-spacing: -0.01em; color: var(--ink); }
+    .sb-brand .env { margin-left: auto; font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--warn-strong); background: var(--warn-soft); padding: 2px 7px; border-radius: 999px; }
+    .sb-nav { display: flex; flex-direction: column; gap: 2px; }
+    .sb-workspace { display: flex; align-items: baseline; gap: 8px; width: 100%; margin: 14px 0 8px; padding: 8px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; transition: border-color 0.14s ease, background 0.14s ease; }
+    .sb-workspace:hover { border-color: var(--border-strong); background: var(--thead); }
+    .sb-workspace-name { font-family: var(--font-display); font-weight: 600; font-size: 12.5px; letter-spacing: 0.02em; color: var(--ink); }
+    .sb-workspace-loc { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; }
+    .sb-workspace svg { margin-left: auto; color: var(--muted); align-self: center; }
+    .sb-item { display: flex; align-items: center; gap: 10px; padding: 8px 8px; border-radius: 9px; text-decoration: none; color: var(--muted-strong); font-size: 13px; font-weight: 500; position: relative; }
+    .sb-item:hover { background: var(--bg); color: var(--ink); }
+    .sb-item.active { background: var(--accent-soft); color: var(--head); font-weight: 600; }
+    .sb-item .tile { width: 26px; height: 26px; border-radius: 7px; background: #eef0f3; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; flex-shrink: 0; }
+    .sb-item.active .tile { background: var(--head); color: #fff; }
+    .sb-item.new .tile { background: var(--orange); color: #fff; }
+    .sb-user { margin-top: auto; padding: 12px 8px 4px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+    .sb-user-avatar { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #26235a, #4b47a3); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; font-size: 13px; flex-shrink: 0; }
+    .sb-user-info { min-width: 0; flex: 1; }
+    .sb-user-name { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sb-user-role { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; margin-top: 1px; }
+
+    /* ========== main ========== */
+    .main { min-width: 0; background: var(--bg); display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--card); position: sticky; top: 0; z-index: 40; }
+    .kicker { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.14em; color: var(--muted-soft); text-transform: uppercase; }
+    .page-title { font-family: var(--font-display); font-weight: 600; font-size: 17px; letter-spacing: -0.005em; color: var(--ink); margin-top: 1px; }
+    .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+    .content { padding: 22px 24px 40px; }
+
+    /* ========== calendar controls ========== */
+    .cal-nav { display: inline-flex; align-items: center; gap: 4px; }
+    .cal-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 34px; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); color: var(--muted-strong); font-family: var(--font-body); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+    .cal-btn:hover { border-color: var(--border-strong); background: var(--thead); color: var(--ink); }
+    .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--card); }
+    .segmented button { border: none; background: transparent; padding: 0 14px; height: 34px; font-family: var(--font-body); font-size: 12.5px; font-weight: 600; color: var(--muted-strong); cursor: pointer; border-left: 1px solid var(--border); }
+    .segmented button:first-child { border-left: none; }
+    .segmented button:hover { background: var(--thead); color: var(--ink); }
+    .segmented button.active { background: var(--head); color: #fff; }
+
+    /* ========== calendar grid ========== */
+    .cal-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; position: relative; }
+    .cal-scroll { overflow: auto; max-height: calc(100dvh - 180px); position: relative; }
+    .cal-inner { position: relative; }
+
+    .cal-legend { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--thead); }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted-strong); }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+    .cal-headrow { display: flex; position: sticky; top: 0; z-index: 5; background: var(--thead); border-bottom: 1px solid var(--border); }
+    .cal-corner { position: sticky; left: 0; z-index: 6; width: 200px; flex-shrink: 0; padding: 10px 12px; background: var(--thead); border-right: 1px solid var(--border); font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; }
+    .cal-slots { display: flex; }
+    .cal-slot { flex-shrink: 0; padding: 8px 4px; font-size: 11px; color: var(--muted); text-align: center; border-right: 1px solid var(--border); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cal-slot.weekend { background: rgba(139, 145, 153, 0.06); color: var(--muted-soft); }
+
+    .cal-body { position: relative; min-height: 180px; }
+    .cal-row { display: flex; border-bottom: 1px solid var(--border); }
+    .cal-row:last-child { border-bottom: none; }
+    .cal-prod { position: sticky; left: 0; z-index: 3; width: 200px; flex-shrink: 0; padding: 12px; background: var(--card); border-right: 1px solid var(--border); }
+    .cal-prod-name { font-weight: 600; font-size: 13px; color: var(--ink); line-height: 1.25; }
+    .cal-prod-sku { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.03em; color: var(--muted); margin-top: 3px; }
+    .cal-prod-cap { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.03em; color: var(--muted-soft); margin-top: 4px; text-transform: uppercase; }
+    .cal-track { position: relative; flex-shrink: 0; min-height: 60px; background-image: linear-gradient(var(--border) 0 0); }
+
+    .booking-bar { position: absolute; height: 32px; padding: 0 8px; border-radius: 5px; font-size: 11.5px; font-weight: 600; color: #fff; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+    .booking-bar:hover { filter: brightness(1.05); box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+    .booking-bar.status-quoted     { background: var(--warn-soft); color: var(--warn-strong); box-shadow: inset 0 0 0 1px rgba(138,90,18,0.28); }
+    .booking-bar.status-confirmed  { background: var(--warn-solid); }
+    .booking-bar.status-dispatched,
+    .booking-bar.status-active     { background: var(--orange); }
+    .booking-bar.status-returned   { background: var(--ok-solid); }
+    .booking-bar.status-closed     { background: var(--muted-strong); }
+
+    .overbook-mask { position: absolute; top: 0; bottom: 0; background: rgba(204, 51, 64, 0.09); border-left: 1px dashed rgba(204,51,64,0.35); border-right: 1px dashed rgba(204,51,64,0.35); pointer-events: none; z-index: 1; }
+    .overbook-flag { position: absolute; top: 2px; font-size: 11px; line-height: 1; cursor: help; z-index: 2; transform: translateX(-50%); }
+
+    /* Empty state overlay */
+    .cal-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px; pointer-events: none; }
+    .cal-empty h4 { font-family: var(--font-display); font-weight: 600; font-size: 16px; color: var(--ink); margin: 0 0 6px; }
+    .cal-empty p { font-size: 12.5px; color: var(--muted); margin: 0; max-width: 340px; }
+
+    /* Loading */
+    .cal-card.loading .cal-scroll { opacity: 0.45; pointer-events: none; }
+    .cal-spinner { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 20; width: 26px; height: 26px; border: 3px solid var(--accent-soft); border-top-color: var(--head); border-radius: 50%; animation: spin 0.7s linear infinite; display: none; }
+    .cal-card.loading .cal-spinner { display: block; }
+    @keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+    .boot-loading { padding: 48px; text-align: center; color: var(--muted); font-size: 13px; font-family: var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
+
+    /* Tooltip */
+    .cal-tooltip { position: fixed; z-index: 100; pointer-events: none; background: var(--ink); color: #fff; padding: 8px 11px; border-radius: 8px; font-size: 11.5px; line-height: 1.5; box-shadow: 0 8px 24px -6px rgba(32,32,88,0.5); max-width: 260px; display: none; }
+    .cal-tooltip .tt-title { font-weight: 700; margin-bottom: 2px; }
+    .cal-tooltip .tt-meta { color: #c7c9e6; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.02em; }
+    .cal-tooltip .tt-dates { color: #e6e7f5; margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+    /* Toast */
+    .toast-stack { position: fixed; bottom: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+    .toast { background: var(--ink); color: #fff; padding: 11px 15px; border-radius: 10px; font-size: 12.5px; font-weight: 500; box-shadow: 0 10px 30px -8px rgba(32,32,88,0.55); max-width: 320px; }
+    .toast.error { background: var(--bad-strong); }
+
+    /* ========== responsive ========== */
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+      .sb { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); padding: 12px 16px; }
+      .sb-nav { display: none; }
+      .sb-user { display: none; }
+      .sb-workspace { display: none; }
+      .sb-brand { padding: 0; }
+    }
+    @media (max-width: 640px) {
+      .content { padding: 16px; }
+      .topbar { padding: 12px 16px; gap: 10px; flex-wrap: wrap; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- ============ SIDEBAR ============ -->
+    <aside class="sb">
+      <div class="sb-brand">
+        <span class="logo">R</span>
+        <span class="word">RentalOS</span>
+        <span class="env">v0.1</span>
+      </div>
+
+      <a href="/new-order.html" class="sb-item new" style="margin-bottom:6px;">
+        <span class="tile">NB</span>
+        <span>New order</span>
+      </a>
+
+      <button class="sb-workspace" type="button" aria-label="Switch workspace">
+        <span class="sb-workspace-name" id="ws-name">DSLRSWALA</span>
+        <span class="sb-workspace-loc" id="ws-loc">Vadodara</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+
+      <nav class="sb-nav" aria-label="Main">
+        <a href="/dashboard.html" class="sb-item"><span class="tile">DB</span><span>Dashboard</span></a>
+        <a href="/calendar.html" class="sb-item active" aria-current="page"><span class="tile">CL</span><span>Calendar</span></a>
+        <a href="/orders.html" class="sb-item"><span class="tile">RN</span><span>Orders</span></a>
+        <a href="/billing.html" class="sb-item"><span class="tile">BL</span><span>Billing</span></a>
+        <a href="/inventory.html" class="sb-item"><span class="tile">IN</span><span>Inventory</span></a>
+        <a href="/people.html" class="sb-item"><span class="tile">PE</span><span>People</span></a>
+        <a href="/insights.html" class="sb-item"><span class="tile">IS</span><span>Insights</span></a>
+        <a href="/settings.html" class="sb-item"><span class="tile">SY</span><span>Settings</span></a>
+      </nav>
+
+      <div class="sb-user">
+        <span class="sb-user-avatar" id="user-avatar">A</span>
+        <div class="sb-user-info">
+          <div class="sb-user-name" id="user-name">Aamir</div>
+          <div class="sb-user-role" id="user-role">OWNER</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN ============ -->
+    <div class="main">
+      <header class="topbar">
+        <div class="page-title-block">
+          <div class="kicker">Equipment schedule</div>
+          <div class="page-title" id="range-title">Loading…</div>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="cal-nav">
+            <button class="cal-btn" id="nav-prev" aria-label="Previous">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <button class="cal-btn" id="nav-today">Today</button>
+            <button class="cal-btn" id="nav-next" aria-label="Next">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+          <div class="segmented" id="view-switch" role="group" aria-label="View">
+            <button data-view="day">Day</button>
+            <button data-view="week">Week</button>
+            <button data-view="month">Month</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="cal-card" id="cal-card">
+          <div class="cal-legend">
+            <span class="legend-item"><span class="legend-swatch" style="background:var(--warn-soft);box-shadow:inset 0 0 0 1px rgba(138,90,18,0.28);"></span>Quoted</span>
+            <span class="legend-item"><span class="legend-swatch" style="background:var(--warn-solid);"></span>Confirmed</span>
+            <span class="legend-item"><span class="legend-swatch" style="background:var(--orange);"></span>Dispatched</span>
+            <span class="legend-item"><span class="legend-swatch" style="background:var(--ok-solid);"></span>Returned</span>
+            <span class="legend-item"><span class="legend-swatch" style="background:var(--muted-strong);"></span>Closed</span>
+            <span class="legend-item"><span style="color:var(--bad-solid);">⚠</span> Overbooked</span>
+          </div>
+          <div class="cal-spinner" aria-hidden="true"></div>
+          <div class="cal-scroll" id="cal-scroll">
+            <div class="boot-loading">Loading schedule…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cal-tooltip" id="tooltip" role="tooltip"></div>
+  <div class="toast-stack" id="toast-stack"></div>
+
+  <script type="module">
+    import { api, ensureAuth } from '/_lib/api.js';
+
+    const MS_DAY = 24 * 60 * 60 * 1000;
+
+    const STATUS_LABELS = {
+      draft: 'Draft', quoted: 'Quoted', confirmed: 'Confirmed',
+      dispatched: 'Dispatched', active: 'Active', returned: 'Returned',
+      closed: 'Closed', cancelled: 'Cancelled',
+    };
+
+    // ---------- state ----------
+    const state = {
+      calendar: {
+        view: 'week',            // 'day' | 'week' | 'month'
+        anchorDate: new Date(),  // reference date for the current view
+        products: [],
+        warnings: [],
+        loading: false,
+      },
+    };
+
+    // ---------- hydrate identity ----------
+    async function hydrateIdentity() {
+      const { user, workspace } = await ensureAuth();
+      document.getElementById('ws-name').textContent = workspace.name;
+      document.getElementById('ws-loc').textContent = workspace.location || '';
+      const first = (user.displayName || '').split(' ')[0] || 'You';
+      document.getElementById('user-name').textContent = first;
+      document.getElementById('user-role').textContent = (user.role || '').toUpperCase();
+      document.getElementById('user-avatar').textContent = first[0]?.toUpperCase() ?? 'U';
+    }
+
+    // ---------- range computation (Monday-based week) ----------
+    function getRange(view, anchor) {
+      const from = new Date(anchor);
+      const to = new Date(anchor);
+      if (view === 'day') {
+        from.setHours(0, 0, 0, 0);
+        to.setHours(23, 59, 59, 999);
+      } else if (view === 'week') {
+        const dow = (from.getDay() + 6) % 7;  // 0 = Monday
+        from.setDate(from.getDate() - dow);
+        from.setHours(0, 0, 0, 0);
+        to.setTime(from.getTime());
+        to.setDate(to.getDate() + 6);
+        to.setHours(23, 59, 59, 999);
+      } else {
+        from.setDate(1);
+        from.setHours(0, 0, 0, 0);
+        to.setMonth(to.getMonth() + 1, 0);   // last day of month
+        to.setHours(23, 59, 59, 999);
+      }
+      return { from, to };
+    }
+
+    // ---------- URL state ----------
+    function dateKey(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    function syncUrl() {
+      const cal = state.calendar;
+      const params = new URLSearchParams();
+      params.set('view', cal.view);
+      params.set('date', dateKey(cal.anchorDate));
+      history.replaceState(null, '', location.pathname + '?' + params.toString());
+    }
+    function readUrl() {
+      const params = new URLSearchParams(location.search);
+      const view = params.get('view');
+      if (view === 'day' || view === 'week' || view === 'month') state.calendar.view = view;
+      const date = params.get('date');
+      if (date) {
+        const parts = date.split('-').map(Number);
+        if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
+          const d = new Date(parts[0], parts[1] - 1, parts[2]);
+          if (!isNaN(d.getTime())) state.calendar.anchorDate = d;
+        }
+      }
+    }
+
+    // ---------- title ----------
+    function rangeTitle(view, from) {
+      if (view === 'day') {
+        return from.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+      if (view === 'week') {
+        return 'Week of ' + from.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+      return from.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+    }
+
+    // ---------- slots ----------
+    function fmtHour(h) {
+      const period = h < 12 ? 'a' : 'p';
+      const hr = (h % 12) || 12;
+      return `${hr}${period}`;
+    }
+    function buildSlots(view, from, to) {
+      const slots = [];
+      if (view === 'day') {
+        for (let h = 0; h < 24; h++) slots.push({ label: fmtHour(h), weekend: false });
+      } else if (view === 'week') {
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(from); d.setDate(d.getDate() + i);
+          const dow = d.getDay();
+          slots.push({ label: `${d.toLocaleDateString('en-IN', { weekday: 'short' })} ${d.getDate()}`, weekend: dow === 0 || dow === 6 });
+        }
+      } else {
+        const days = Math.round((to.getTime() - from.getTime()) / MS_DAY);
+        for (let i = 0; i < days; i++) {
+          const d = new Date(from); d.setDate(d.getDate() + i);
+          const dow = d.getDay();
+          slots.push({ label: `${d.getDate()}`, weekend: dow === 0 || dow === 6 });
+        }
+      }
+      return slots;
+    }
+
+    // ---------- lane assignment (greedy interval partitioning) ----------
+    function assignLanes(bookings) {
+      const sorted = [...bookings].sort((a, b) => new Date(a.start) - new Date(b.start));
+      const laneEnds = [];
+      for (const b of sorted) {
+        const s = new Date(b.start).getTime();
+        const e = new Date(b.end).getTime();
+        let lane = laneEnds.findIndex((end) => end <= s);
+        if (lane === -1) { lane = laneEnds.length; laneEnds.push(e); }
+        else laneEnds[lane] = e;
+        b._lane = lane;
+      }
+      return { sorted, lanes: Math.max(1, laneEnds.length) };
+    }
+
+    // ---------- fetch ----------
+    async function loadCalendar() {
+      const cal = state.calendar;
+      const { from, to } = getRange(cal.view, cal.anchorDate);
+      cal.range = { from, to };
+      document.getElementById('range-title').textContent = rangeTitle(cal.view, from);
+      syncUrl();
+      updateViewSwitch();
+
+      cal.loading = true;
+      document.getElementById('cal-card').classList.add('loading');
+      try {
+        const qs = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
+        const data = await api.get('/api/calendar?' + qs.toString());
+        cal.products = data.products || [];
+        cal.warnings = data.warnings || [];
+        render();
+      } catch (err) {
+        console.error('calendar load failed', err);
+        showToast(err?.body?.error === 'range_too_large' ? 'Range too large (max 100 days).' : 'Could not load the schedule.', true);
+        cal.products = [];
+        cal.warnings = [];
+        render();
+      } finally {
+        cal.loading = false;
+        document.getElementById('cal-card').classList.remove('loading');
+      }
+    }
+
+    // ---------- render ----------
+    function render() {
+      const cal = state.calendar;
+      const { from, to } = cal.range;
+      const span = to.getTime() - from.getTime();
+      const slots = buildSlots(cal.view, from, to);
+      const nCols = slots.length;
+
+      // Column width: fill available space but keep a readable minimum so wide
+      // ranges (month) scroll horizontally.
+      const scroll = document.getElementById('cal-scroll');
+      const leftW = 200;
+      const avail = Math.max(scroll.clientWidth - leftW, 320);
+      const minColW = cal.view === 'day' ? 52 : cal.view === 'week' ? 118 : 40;
+      const colW = Math.max(minColW, Math.floor(avail / nCols));
+      const trackW = colW * nCols;
+
+      const warnByProduct = new Map();
+      for (const w of cal.warnings) {
+        const list = warnByProduct.get(w.product_id) ?? [];
+        list.push(w);
+        warnByProduct.set(w.product_id, list);
+      }
+
+      const hasAnyBooking = cal.products.some((p) => (p.bookings || []).length > 0);
+
+      // Header
+      const headSlots = slots.map((s) =>
+        `<div class="cal-slot${s.weekend ? ' weekend' : ''}" style="width:${colW}px">${escapeHtml(s.label)}</div>`
+      ).join('');
+
+      // Rows
+      const rowsHtml = cal.products.map((p) => {
+        const bookings = p.bookings || [];
+        const { sorted, lanes } = assignLanes(bookings);
+        const rowH = Math.max(60, lanes * 44);
+
+        const warns = warnByProduct.get(p.id) || [];
+        const maskHtml = warns.map((w) => {
+          const wl = clamp((new Date(w.conflict_start).getTime() - from.getTime()) / span, 0, 1);
+          const wr = clamp((new Date(w.conflict_end).getTime() - from.getTime()) / span, 0, 1);
+          const left = wl * trackW;
+          const width = Math.max(2, (wr - wl) * trackW);
+          const flagTitle = `Overbook: ${w.requested_units}/${w.total_units} units at this time`;
+          return `<div class="overbook-mask" style="left:${left}px;width:${width}px"></div>` +
+                 `<div class="overbook-flag" style="left:${left}px" title="${escapeAttr(flagTitle)}">⚠</div>`;
+        }).join('');
+
+        const barsHtml = sorted.map((b) => {
+          const bl = clamp((new Date(b.start).getTime() - from.getTime()) / span, 0, 1);
+          const br = clamp((new Date(b.end).getTime() - from.getTime()) / span, 0, 1);
+          const left = bl * trackW;
+          const width = Math.max(3, (br - bl) * trackW);
+          const top = b._lane * 44 + 4;
+          const label = width < 60
+            ? `#${b.order_number}`
+            : `#${b.order_number} · ${escapeHtml(b.customer_name)}`;
+          return `<div class="booking-bar status-${escapeAttr(b.status)}"
+            style="left:${left}px;width:${width}px;top:${top}px"
+            data-order="${escapeAttr(b.order_id)}"
+            data-booking="${escapeAttr(JSON.stringify(b))}">${label}</div>`;
+        }).join('');
+
+        return `
+          <div class="cal-row">
+            <div class="cal-prod">
+              <div class="cal-prod-name">${escapeHtml(p.name)}</div>
+              <div class="cal-prod-sku">${escapeHtml(p.sku)}</div>
+              <div class="cal-prod-cap">${p.total_units} unit${p.total_units === 1 ? '' : 's'}</div>
+            </div>
+            <div class="cal-track" style="width:${trackW}px;min-height:${rowH}px">
+              ${maskHtml}
+              ${barsHtml}
+            </div>
+          </div>`;
+      }).join('');
+
+      const emptyHtml = (!cal.products.length || !hasAnyBooking)
+        ? `<div class="cal-empty">
+             <h4>No rentals scheduled for this ${cal.view === 'day' ? 'day' : cal.view === 'month' ? 'month' : 'week'}</h4>
+             <p>Change the date range or view to see rentals in another period.</p>
+           </div>`
+        : '';
+
+      scroll.innerHTML = `
+        <div class="cal-inner" style="width:${leftW + trackW}px">
+          <div class="cal-headrow">
+            <div class="cal-corner">Equipment</div>
+            <div class="cal-slots">${headSlots}</div>
+          </div>
+          <div class="cal-body">
+            ${rowsHtml || ''}
+            ${emptyHtml}
+          </div>
+        </div>`;
+
+      wireBars(scroll);
+    }
+
+    // ---------- bar interactions ----------
+    function wireBars(scroll) {
+      scroll.querySelectorAll('.booking-bar').forEach((bar) => {
+        bar.addEventListener('click', () => {
+          location.href = '/order.html?id=' + encodeURIComponent(bar.dataset.order);
+        });
+        bar.addEventListener('mouseenter', (e) => showTooltip(e, bar));
+        bar.addEventListener('mousemove', moveTooltip);
+        bar.addEventListener('mouseleave', hideTooltip);
+      });
+    }
+
+    const tooltip = document.getElementById('tooltip');
+    function showTooltip(e, bar) {
+      let b;
+      try { b = JSON.parse(bar.dataset.booking); } catch { return; }
+      const qty = `${b.quantity} unit${b.quantity === 1 ? '' : 's'}`;
+      const statusLabel = STATUS_LABELS[b.status] || b.status;
+      tooltip.innerHTML = `
+        <div class="tt-title">#${b.order_number} ${escapeHtml(b.customer_name)}</div>
+        <div class="tt-meta">${qty} · ${escapeHtml(statusLabel)}</div>
+        <div class="tt-dates">${escapeHtml(fmtDateTime(b.start))} → ${escapeHtml(fmtDateTime(b.end))}</div>`;
+      tooltip.style.display = 'block';
+      moveTooltip(e);
+    }
+    function moveTooltip(e) {
+      const pad = 14;
+      let x = e.clientX + pad;
+      let y = e.clientY + pad;
+      const rect = tooltip.getBoundingClientRect();
+      if (x + rect.width > window.innerWidth - 8) x = e.clientX - rect.width - pad;
+      if (y + rect.height > window.innerHeight - 8) y = e.clientY - rect.height - pad;
+      tooltip.style.left = Math.max(8, x) + 'px';
+      tooltip.style.top = Math.max(8, y) + 'px';
+    }
+    function hideTooltip() { tooltip.style.display = 'none'; }
+
+    // ---------- formatters ----------
+    function fmtDateTime(iso) {
+      const d = new Date(iso);
+      return d.toLocaleString('en-IN', {
+        day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+      });
+    }
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    // ---------- view switch UI ----------
+    function updateViewSwitch() {
+      document.querySelectorAll('#view-switch button').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.view === state.calendar.view);
+      });
+    }
+
+    // ---------- navigation ----------
+    function shiftAnchor(dir) {
+      const cal = state.calendar;
+      const d = new Date(cal.anchorDate);
+      if (cal.view === 'day') d.setDate(d.getDate() + dir);
+      else if (cal.view === 'week') d.setDate(d.getDate() + dir * 7);
+      else d.setMonth(d.getMonth() + dir);
+      cal.anchorDate = d;
+      loadCalendar();
+    }
+
+    document.getElementById('nav-prev').addEventListener('click', () => shiftAnchor(-1));
+    document.getElementById('nav-next').addEventListener('click', () => shiftAnchor(1));
+    document.getElementById('nav-today').addEventListener('click', () => {
+      state.calendar.anchorDate = new Date();
+      loadCalendar();
+    });
+    document.getElementById('view-switch').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-view]');
+      if (!btn) return;
+      state.calendar.view = btn.dataset.view;
+      loadCalendar();
+    });
+
+    // Re-render (recompute column widths) on resize without re-fetching.
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { if (state.calendar.range) render(); }, 150);
+    });
+
+    // ---------- toast ----------
+    function showToast(msg, isError) {
+      const stack = document.getElementById('toast-stack');
+      const el = document.createElement('div');
+      el.className = 'toast' + (isError ? ' error' : '');
+      el.textContent = msg;
+      stack.appendChild(el);
+      setTimeout(() => el.remove(), 4200);
+    }
+
+    // ---------- utils ----------
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
+
+    // ---------- go ----------
+    (async () => {
+      try {
+        readUrl();
+        await hydrateIdentity();
+        await loadCalendar();
+      } catch (err) {
+        console.error('boot failed', err);
+        showToast('Could not load the calendar.', true);
+      }
+    })();
+  </script>
+</body>
+</html>
