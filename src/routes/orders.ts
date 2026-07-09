@@ -83,6 +83,52 @@ const DISPATCH_TYPES = ['pickup', 'delivery'] as const;
 const CHANNELS = ['walk_in', 'planned', 'whatsapp', 'phone', 'other'] as const;
 
 // ----------------------------------------------------------------------------
+// Item-level status machine (advisory — mirrors order.status)
+// ----------------------------------------------------------------------------
+// pending_dispatch is initial; the last four are terminal; dispatched is a
+// non-terminal middle state. Non-canonical jumps require { force: true }.
+const ITEM_STATUSES = [
+  'pending_dispatch',
+  'dispatched',
+  'returned',
+  'returned_with_damage',
+  'not_returned_chargeable',
+  'not_returned_non_chargeable',
+  'missing',
+] as const;
+type OrderItemStatus = typeof ITEM_STATUSES[number];
+
+const CANONICAL_ITEM_TRANSITIONS: Record<OrderItemStatus, OrderItemStatus[]> = {
+  pending_dispatch:            ['dispatched', 'not_returned_non_chargeable', 'missing'],
+  dispatched:                  ['returned', 'returned_with_damage', 'not_returned_chargeable', 'missing'],
+  returned:                    ['returned_with_damage'],   // damage discovered post-return
+  returned_with_damage:        [],
+  not_returned_chargeable:     ['returned'],               // customer eventually returns it
+  not_returned_non_chargeable: ['returned'],               // customer eventually returns it
+  missing:                     ['returned'],               // recovered
+};
+
+const TERMINAL_ITEM_STATUSES: readonly OrderItemStatus[] = [
+  'returned',
+  'returned_with_damage',
+  'not_returned_chargeable',
+  'not_returned_non_chargeable',
+  'missing',
+];
+
+function isCanonicalItem(from: OrderItemStatus, to: OrderItemStatus): boolean {
+  return CANONICAL_ITEM_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+// Computed on read — an order can finalize only when every item is terminal.
+function deriveCanFinalize(items: OrderItemRow[]): boolean {
+  if (items.length === 0) return false; // empty order can't finalize
+  return items.every((item) =>
+    (TERMINAL_ITEM_STATUSES as readonly string[]).includes(item.status),
+  );
+}
+
+// ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
 function clientCtx(c: Context) {
@@ -137,6 +183,10 @@ type OrderItemRow = {
   unit_amount_paise: number;
   total_amount_paise: number;
   manual_price: boolean;
+  status: OrderItemStatus;
+  dispatched_at: string | null;
+  returned_at: string | null;
+  condition_notes: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -304,7 +354,8 @@ orders.get('/:id', async (c) => {
     loadEvents(id),
   ]);
 
-  return c.json({ order, items, events });
+  const canFinalize = deriveCanFinalize(items);
+  return c.json({ order, items, events, can_finalize: canFinalize });
 });
 
 // ============================================================================
@@ -783,6 +834,113 @@ orders.delete('/:id/items/:itemId', async (c) => {
   await recomputeOrderTotals(id, session.workspace.id, session.user.id);
 
   return c.json({ ok: true });
+});
+
+// ============================================================================
+// PATCH /api/orders/:id/items/:itemId/status — advisory item-status change
+// Body: { to, reason?, force?, condition_notes? }
+// ============================================================================
+// Physical lifecycle of a single line item. Does NOT touch order.status (that
+// stays operator-driven) and does NOT recompute pricing (money is settled by
+// the invoice module, Sub-turn 2.4). Non-canonical jumps need { force: true }.
+const itemStatusSchema = z.object({
+  to:              z.enum(ITEM_STATUSES),
+  reason:          z.string().max(500).optional(),
+  force:           z.boolean().default(false),
+  condition_notes: z.string().max(2000).optional(),
+});
+
+orders.patch('/:id/items/:itemId/status', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+  const itemId = c.req.param('itemId');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = itemStatusSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const { to, reason, force, condition_notes } = parsed.data;
+
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+  if (order.status === 'closed' || order.status === 'cancelled') {
+    return c.json({ error: 'order_locked' }, 409);
+  }
+
+  const existing = await query<OrderItemRow>(sql`
+    SELECT * FROM order_items
+    WHERE id = ${itemId}
+      AND order_id = ${id}
+      AND workspace_id = ${session.workspace.id}
+    LIMIT 1
+  `);
+  if (existing.length === 0) return c.json({ error: 'not_found' }, 404);
+
+  const from = existing[0]!.status;
+  if (from === to) {
+    return c.json({ item: existing[0], unchanged: true });
+  }
+
+  const canonical = isCanonicalItem(from, to);
+  if (!canonical && !force) {
+    return c.json({
+      error: 'non_canonical_transition',
+      from,
+      to,
+      hint: 'resubmit with { "force": true } to override — reason recommended',
+    }, 409);
+  }
+
+  // Side-effects: stamp timestamps (once) for the relevant transitions.
+  const setDispatched = to === 'dispatched';
+  const setReturned = to === 'returned' || to === 'returned_with_damage';
+
+  const updated = await query<OrderItemRow>(sql`
+    UPDATE order_items SET
+      status          = ${to}::order_item_status,
+      dispatched_at   = CASE WHEN ${setDispatched}::boolean THEN COALESCE(dispatched_at, now()) ELSE dispatched_at END,
+      returned_at     = CASE WHEN ${setReturned}::boolean   THEN COALESCE(returned_at, now())   ELSE returned_at   END,
+      condition_notes = COALESCE(${condition_notes ?? null}::text, condition_notes),
+      updated_at      = now()
+    WHERE id = ${itemId}
+      AND workspace_id = ${session.workspace.id}
+    RETURNING *
+  `);
+  if (updated.length === 0) return c.json({ error: 'not_found' }, 404);
+
+  const eventPayload: Record<string, unknown> = { item_id: itemId, from, to, canonical };
+  if (reason) eventPayload.reason = reason;
+  if (condition_notes) eventPayload.condition_notes = condition_notes;
+
+  await recordOrderEvent({
+    workspaceId: session.workspace.id,
+    orderId: id,
+    eventType: canonical ? 'order.item.status.changed' : 'order.item.status.forced',
+    payload: eventPayload,
+    actorUserId: session.user.id,
+  });
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: canonical ? 'orders.item.status.changed' : 'orders.item.status.forced',
+    targetType: 'order_item',
+    targetId: itemId,
+    payload: {
+      order_id: id,
+      item_id: itemId,
+      from,
+      to,
+      canonical,
+      reason: reason ?? null,
+      condition_notes: condition_notes ?? null,
+    },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ item: updated[0], canonical });
 });
 
 // ============================================================================
