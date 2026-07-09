@@ -249,6 +249,30 @@ Every route that mutates order state writes TWO event rows:
 
 If you write a mutation that only records one, that's a bug.
 
+### Sub-action audit convention
+
+When a single mutation has semantic sub-variants (e.g. an item update that
+overrides price vs one that reverts an override), encode the sub-variant in
+**payload flags**, not in the event_type name.
+
+Example (from `orders.item.updated`):
+
+```json
+{
+  "event_type": "orders.item.updated",
+  "payload": {
+    "fields": ["unit_amount_paise"],
+    "item_id": "...",
+    "price_overridden": true,
+    "price_reverted": false
+  }
+}
+```
+
+Rationale: keeps event_type stable per verb (`item.updated`, `payment.recorded`), lets audit rows query on payload flags when specific sub-actions matter. Avoids proliferating close-variant event_types that all mean "the item was edited."
+
+Consistent across `order_events` and `audit_events`. Do not mix conventions — if you find one payload uses a flag and another uses a distinct event_type for the same semantic concept, unify them by moving to flags.
+
 ---
 
 ## Frontend patterns

@@ -4,6 +4,7 @@ import { auth } from './routes/auth.js';
 import { inventory } from './routes/inventory.js';
 import { people } from './routes/people.js';
 import { orders } from './routes/orders.js';
+import { payments } from './routes/payments.js';
 import { availability } from './routes/availability.js';
 import { config } from './lib/config.js';
 export const app = new Hono();
@@ -25,6 +26,7 @@ app.route('/api/auth', auth);
 app.route('/api/inventory', inventory);
 app.route('/api/people', people);
 app.route('/api/orders', orders);
+app.route('/api/order-payments', payments);
 app.route('/api/availability', availability);
 // Fallback for unknown /api/* — keep it JSON so clients can parse it.
 app.notFound((c) => {

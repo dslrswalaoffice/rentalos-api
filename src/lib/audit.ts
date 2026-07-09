@@ -43,7 +43,10 @@ export type AuditEventType =
   | 'orders.item.price_reverted'
   | 'orders.status.changed'
   | 'orders.status.forced'
-  | 'orders.pricing.recomputed';
+  | 'orders.pricing.recomputed'
+  | 'orders.payment.recorded'
+  | 'orders.payment.refunded'
+  | 'orders.payment.deleted';
 
 export type AuditEventInput = {
   workspaceId?: string | null;
