@@ -255,6 +255,37 @@
     .picker-result .pr-name { font-weight: 600; color: var(--ink); font-size: 13px; }
     .picker-result .pr-sub { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 2px; letter-spacing: .03em; }
 
+    /* ========== item status ========== */
+    .item-status-anchor { position: relative; display: inline-block; }
+    .item-status-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-family: var(--font-mono); font-size: 8.5px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; cursor: pointer; border: 1px solid transparent; white-space: nowrap; }
+    .item-status-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    .item-status-pill:hover { border-color: var(--border-strong); }
+    .item-status-pill.inert { cursor: default; }
+    .item-status-pill.inert:hover { border-color: transparent; }
+    .item-status-pill.status-pending_dispatch            { background: #eef0f3; color: var(--muted-strong); }
+    .item-status-pill.status-dispatched                  { background: var(--orange-soft); color: var(--warn-strong); }
+    .item-status-pill.status-returned                    { background: var(--ok-soft); color: var(--ok-strong); }
+    .item-status-pill.status-returned_with_damage        { background: var(--warn-soft); color: var(--warn-strong); }
+    .item-status-pill.status-not_returned_chargeable     { background: var(--bad-soft); color: var(--bad-strong); }
+    .item-status-pill.status-not_returned_non_chargeable { background: var(--accent-soft); color: var(--head); }
+    .item-status-pill.status-missing                     { background: var(--bad-soft); color: var(--bad-strong); }
+
+    /* status dropdown (extends .menu) */
+    .menu.status-menu { left: 0; right: auto; min-width: 214px; }
+    .menu-header { padding: 8px 13px 4px; font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; }
+    .menu-header.warn { color: var(--warn-strong); background: var(--warn-soft); padding-top: 6px; padding-bottom: 6px; }
+    .menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
+    .menu .empty-opt { padding: 6px 13px; font-size: 11.5px; color: var(--muted); }
+    .menu button.warn { color: var(--warn-strong); }
+    .menu button.warn:hover { background: var(--warn-soft); }
+
+    /* ready-to-close banner */
+    .finalize-banner { display: flex; align-items: center; gap: 12px; background: var(--ok-soft); border: 1px solid var(--ok-strong); border-left-width: 3px; border-radius: 12px; padding: 13px 18px; margin-bottom: 16px; }
+    .finalize-banner .fb-icon { color: var(--ok-strong); flex-shrink: 0; display: inline-flex; }
+    .finalize-banner .fb-text { font-size: 13px; color: var(--ok-strong); font-weight: 500; flex: 1; }
+    .btn.ok { background: var(--ok-solid); color: #fff; border-color: var(--ok-solid); flex-shrink: 0; }
+    .btn.ok:hover { background: var(--ok-strong); border-color: var(--ok-strong); }
+
     /* ========== payments ========== */
     .pay-summary { font-size: 12px; color: var(--muted); margin-top: 4px; }
     .pay-list { display: flex; flex-direction: column; }
@@ -473,6 +504,33 @@
     </div>
   </div>
 
+  <!-- ============ FORCE ITEM STATUS MODAL ============ -->
+  <div class="modal-backdrop" id="isf-modal">
+    <div class="modal" role="dialog" aria-labelledby="isf-modal-title" style="max-width:460px;">
+      <header class="modal-head">
+        <div class="modal-title" id="isf-modal-title">Force item status change</div>
+        <button class="modal-close" id="isf-modal-close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <form id="isf-form" novalidate>
+        <div class="modal-body">
+          <div class="modal-warn">This skips normal steps and is audit-logged. A reason is required.</div>
+          <div class="pay-context" id="isf-summary"></div>
+          <div id="isf-form-error" class="form-error" style="display:none;"></div>
+          <div class="field">
+            <label for="isf-reason">Reason <span class="req">*</span> <span class="hint">min 5 characters</span></label>
+            <textarea id="isf-reason" maxlength="500" placeholder="Why is this jump necessary?"></textarea>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost" id="isf-cancel">Cancel</button>
+          <button type="submit" class="btn danger" id="isf-submit">Force change</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ============ RECORD PAYMENT MODAL ============ -->
   <div class="modal-backdrop" id="pay-modal">
     <div class="modal" role="dialog" aria-labelledby="pay-modal-title" style="max-width:480px;">
@@ -605,11 +663,13 @@
       order: null,
       items: [],
       events: [],
+      canFinalize: false, // computed by GET /:id — all items terminal
       payments: [],
       paymentsSummary: { in_total: 0, out_total: 0, net: 0 },
       forceTo: null,      // target state for the force modal
       picked: null,       // product picked in the add-item modal
       refundOf: null,     // payment being refunded (refund modal context)
+      itemStatusForce: null, // { itemId, from, to, description } for the item-status force modal
     };
 
     const METHOD_LABELS = {
@@ -652,6 +712,31 @@
       damage: 'Damage', discount: 'Discount', tax: 'Tax', deposit: 'Deposit', other: 'Other',
     };
 
+    // Item-level status — mirrors order_item_status + CANONICAL_ITEM_TRANSITIONS
+    // in src/routes/orders.ts (Sub-turn 2.3).
+    const ITEM_STATUSES = [
+      'pending_dispatch', 'dispatched', 'returned', 'returned_with_damage',
+      'not_returned_chargeable', 'not_returned_non_chargeable', 'missing',
+    ];
+    const ITEM_STATUS_LABELS = {
+      pending_dispatch: 'Pending dispatch',
+      dispatched: 'Dispatched',
+      returned: 'Returned',
+      returned_with_damage: 'Returned · Damage',
+      not_returned_chargeable: 'Not returned (charged)',
+      not_returned_non_chargeable: 'Not returned (waived)',
+      missing: 'Missing',
+    };
+    const CANONICAL_ITEM_TRANSITIONS = {
+      pending_dispatch:            ['dispatched', 'not_returned_non_chargeable', 'missing'],
+      dispatched:                  ['returned', 'returned_with_damage', 'not_returned_chargeable', 'missing'],
+      returned:                    ['returned_with_damage'],
+      returned_with_damage:        [],
+      not_returned_chargeable:     ['returned'],
+      not_returned_non_chargeable: ['returned'],
+      missing:                     ['returned'],
+    };
+
     // ---------- identity ----------
     async function hydrateIdentity() {
       const { user, workspace } = await ensureAuth();
@@ -685,10 +770,11 @@
     async function loadOrder() {
       if (!state.orderId) { renderNotFound(); return; }
       try {
-        const { order, items, events } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}`);
+        const { order, items, events, can_finalize } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}`);
         state.order = order;
         state.items = items;
         state.events = events;
+        state.canFinalize = can_finalize === true;
         render();
       } catch (err) {
         if (err.status === 404) { renderNotFound(); return; }
@@ -719,6 +805,7 @@
       renderTopbarActions();
 
       document.getElementById('content').innerHTML = `
+        ${finalizeBannerHtml()}
         ${headerCardHtml()}
         ${itemsCardHtml()}
         ${paymentsCardHtml()}
@@ -730,6 +817,23 @@
       wireItemsCard();
       wirePaymentsCard();
       wireActionsCard();
+      wireFinalizeBanner();
+    }
+
+    function finalizeBannerHtml() {
+      const o = state.order;
+      if (!state.canFinalize || TERMINAL.has(o.status)) return '';
+      return `
+        <div class="finalize-banner">
+          <span class="fb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></span>
+          <span class="fb-text">All items accounted for — this order is ready to close.</span>
+          <button class="btn ok" id="btn-close-order">Close order</button>
+        </div>`;
+    }
+
+    function wireFinalizeBanner() {
+      const btn = document.getElementById('btn-close-order');
+      if (btn) btn.addEventListener('click', closeOrderFromBanner);
     }
 
     function renderTopbarActions() {
@@ -854,9 +958,16 @@
         <button class="kebab" data-kebab="${escapeAttr(it.id)}" aria-label="Line item actions">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
         </button>`;
+      const statusVal = it.status || 'pending_dispatch';
+      const statusPill = `
+        <div style="margin-top:6px;">
+          <span class="item-status-anchor">
+            <span class="item-status-pill status-${escapeAttr(statusVal)}${locked ? ' inert' : ''}"${locked ? '' : ` data-item-status="${escapeAttr(it.id)}"`} title="${locked ? 'Order locked — status frozen' : 'Change item status'}">${escapeHtml(ITEM_STATUS_LABELS[statusVal] || statusVal)}</span>
+          </span>
+        </div>`;
       return `
         <tr data-row="${escapeAttr(it.id)}">
-          <td><div class="li-desc">${escapeHtml(it.description)}${typeTag}</div>${sub}</td>
+          <td><div class="li-desc">${escapeHtml(it.description)}${typeTag}</div>${sub}${statusPill}</td>
           <td class="num">${qtyCell}</td>
           <td class="num">${rate}</td>
           <td class="num">${days}</td>
@@ -896,6 +1007,15 @@
           return { label: `<strong>Line item edited</strong>${escapeHtml(extra)}` };
         }
         case 'order.item.removed': return { label: `<strong>Line item removed</strong>${p.description ? ': ' + escapeHtml(p.description) : ''}` };
+        case 'order.item.status.changed': {
+          const f = ITEM_STATUS_LABELS[p.from] || p.from || '', t = ITEM_STATUS_LABELS[p.to] || p.to || '';
+          return { label: `<strong>Item status changed</strong>${f && t ? ` — ${escapeHtml(f)} → ${escapeHtml(t)}` : ''}` };
+        }
+        case 'order.item.status.forced': {
+          const f = ITEM_STATUS_LABELS[p.from] || p.from || '', t = ITEM_STATUS_LABELS[p.to] || p.to || '';
+          const reason = p.reason ? ` · ${escapeHtml(p.reason)}` : '';
+          return { label: `<strong>Item status forced</strong>${f && t ? ` — ${escapeHtml(f)} → ${escapeHtml(t)}` : ''}${reason}` };
+        }
         case 'order.pricing.recomputed': {
           const oldT = p.old?.total_paise, newT = p.new?.total_paise;
           const diff = (oldT != null && newT != null) ? ` — ${formatINR(oldT)} → ${formatINR(newT)}` : '';
@@ -978,6 +1098,13 @@
       document.querySelectorAll('[data-kebab]').forEach(btn => {
         btn.addEventListener('click', (e) => { e.stopPropagation(); openItemMenu(btn); });
       });
+      document.querySelectorAll('[data-item-status]').forEach(pill => {
+        pill.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const item = state.items.find(i => i.id === pill.dataset.itemStatus);
+          if (item) openItemStatusMenu(pill, item);
+        });
+      });
     }
 
     function openItemMenu(btn) {
@@ -997,7 +1124,8 @@
       document.addEventListener('click', closeAllMenus, { once: true });
     }
     function closeAllMenus() {
-      document.querySelectorAll('.li-actions .menu, .pay-actions .menu').forEach(m => m.remove());
+      // Remove every dynamically-created popover; #more-menu is static (toggled via display).
+      document.querySelectorAll('.menu:not(#more-menu)').forEach(m => m.remove());
       const more = document.getElementById('more-menu');
       if (more) more.style.display = 'none';
     }
@@ -1124,6 +1252,129 @@
       }
     });
 
+    // ---------- item status: dropdown + transitions ----------
+    function openItemStatusMenu(pillEl, item) {
+      closeAllMenus();
+      const from = item.status || 'pending_dispatch';
+      const canon = CANONICAL_ITEM_TRANSITIONS[from] || [];
+      const nonCanon = ITEM_STATUSES.filter(s => s !== from && !canon.includes(s));
+
+      const warnIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>`;
+
+      let html = `<div class="menu-header">Change status</div>`;
+      html += canon.length
+        ? canon.map(s => `<button data-canon="${escapeAttr(s)}">→ ${escapeHtml(ITEM_STATUS_LABELS[s])}</button>`).join('')
+        : `<div class="empty-opt">No standard next step.</div>`;
+      if (nonCanon.length) {
+        html += `<div class="menu-divider"></div><div class="menu-header warn">More options (careful)</div>`;
+        html += nonCanon.map(s => `<button class="warn" data-noncanon="${escapeAttr(s)}">${warnIcon} ${escapeHtml(ITEM_STATUS_LABELS[s])}</button>`).join('');
+      }
+
+      const menu = document.createElement('div');
+      menu.className = 'menu status-menu';
+      menu.innerHTML = html;
+      // Fixed positioning escapes the table's overflow-x:auto wrapper (which would
+      // otherwise clip a tall dropdown). Anchor to the pill and clamp to viewport.
+      const rect = pillEl.getBoundingClientRect();
+      menu.style.position = 'fixed';
+      menu.style.right = 'auto';
+      menu.style.left = Math.min(rect.left, window.innerWidth - 230) + 'px';
+      menu.style.top = (rect.bottom + 4) + 'px';
+      menu.style.visibility = 'hidden';
+      document.body.appendChild(menu);
+      // If it would spill below the viewport, flip it above the pill.
+      if (rect.bottom + 4 + menu.offsetHeight > window.innerHeight - 8) {
+        menu.style.top = Math.max(8, rect.top - 4 - menu.offsetHeight) + 'px';
+      }
+      menu.style.visibility = '';
+      menu.querySelectorAll('[data-canon]').forEach(b => {
+        b.addEventListener('click', (e) => { e.stopPropagation(); closeAllMenus(); changeItemStatus(item.id, b.dataset.canon); });
+      });
+      menu.querySelectorAll('[data-noncanon]').forEach(b => {
+        b.addEventListener('click', (e) => { e.stopPropagation(); closeAllMenus(); openIsfModal(item, b.dataset.noncanon); });
+      });
+      document.addEventListener('click', closeAllMenus, { once: true });
+    }
+
+    async function changeItemStatus(itemId, to) {
+      try {
+        await api.patch(`/api/orders/${state.orderId}/items/${itemId}/status`, { to });
+        showToast(`Item status changed to ${ITEM_STATUS_LABELS[to] || to}`);
+        await loadOrder();
+      } catch (err) {
+        showToast('Status change failed: ' + (err.body?.error || err.message));
+      }
+    }
+
+    // ---------- item status force modal ----------
+    const isfModal = document.getElementById('isf-modal');
+    function openIsfModal(item, to) {
+      state.itemStatusForce = { itemId: item.id, from: item.status, to, description: item.description };
+      document.getElementById('isf-summary').textContent =
+        `Item: ${item.description} · From: ${ITEM_STATUS_LABELS[item.status] || item.status} → To: ${ITEM_STATUS_LABELS[to] || to}`;
+      document.getElementById('isf-form-error').style.display = 'none';
+      document.getElementById('isf-reason').value = '';
+      isfModal.classList.add('open');
+      setTimeout(() => document.getElementById('isf-reason').focus(), 40);
+    }
+    function closeIsfModal() { isfModal.classList.remove('open'); state.itemStatusForce = null; }
+    document.getElementById('isf-modal-close').addEventListener('click', closeIsfModal);
+    document.getElementById('isf-cancel').addEventListener('click', closeIsfModal);
+    isfModal.addEventListener('click', (e) => { if (e.target === isfModal) closeIsfModal(); });
+    document.getElementById('isf-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const ctx = state.itemStatusForce;
+      const errBox = document.getElementById('isf-form-error');
+      errBox.style.display = 'none';
+      if (!ctx) return;
+      const reason = document.getElementById('isf-reason').value.trim();
+      if (reason.length < 5) {
+        errBox.style.display = 'block';
+        errBox.textContent = 'Please enter a reason of at least 5 characters.';
+        return;
+      }
+      const submit = document.getElementById('isf-submit');
+      submit.disabled = true; submit.textContent = 'Forcing…';
+      try {
+        await api.patch(`/api/orders/${state.orderId}/items/${ctx.itemId}/status`, { to: ctx.to, force: true, reason });
+        const label = ITEM_STATUS_LABELS[ctx.to] || ctx.to;
+        closeIsfModal();
+        showToast(`Item status forced to ${label}`);
+        await loadOrder();
+      } catch (err) {
+        errBox.style.display = 'block';
+        errBox.textContent = 'Failed: ' + (err.body?.error || err.message);
+      } finally {
+        submit.disabled = false; submit.textContent = 'Force change';
+      }
+    });
+
+    // ---------- close order from the ready-to-close banner ----------
+    async function closeOrderFromBanner() {
+      const btn = document.getElementById('btn-close-order');
+      if (btn) { btn.disabled = true; btn.textContent = 'Closing…'; }
+      try {
+        try {
+          await api.post(`/api/orders/${state.orderId}/transitions`, { to: 'closed' });
+        } catch (err) {
+          // All items are terminal but the order may have skipped intermediate
+          // states (advisory model) — force the close in that one case.
+          if (err.status === 409 && err.body?.error === 'non_canonical_transition') {
+            await api.post(`/api/orders/${state.orderId}/transitions`, {
+              to: 'closed', force: true, reason: 'All items terminal — closed from ready-to-close banner',
+            });
+          } else {
+            throw err;
+          }
+        }
+        showToast('Order closed');
+        await loadOrder();
+      } catch (err) {
+        showToast('Could not close: ' + (err.body?.error || err.message));
+        if (btn) { btn.disabled = false; btn.textContent = 'Close order'; }
+      }
+    }
+
     // ---------- add line item modal ----------
     const itemModal = document.getElementById('item-modal');
     const fiType = document.getElementById('fi-type');
@@ -1156,6 +1407,7 @@
       if (e.key !== 'Escape') return;
       if (payModal.classList.contains('open')) closePayModal();
       else if (refundModal.classList.contains('open')) closeRefundModal();
+      else if (isfModal.classList.contains('open')) closeIsfModal();
       else if (itemModal.classList.contains('open')) closeItemModal();
       else if (forceModal.classList.contains('open')) closeForceModal();
     });
