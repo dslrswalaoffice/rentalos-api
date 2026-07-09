@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { auth } from './routes/auth.js';
 import { inventory } from './routes/inventory.js';
-import { admin } from './routes/admin.js';
+import { people } from './routes/people.js';
 import { config } from './lib/config.js';
 
 export const app = new Hono();
@@ -26,7 +26,7 @@ app.get('/api/health', (c) => c.json({ ok: true, ts: new Date().toISOString() })
 // Modules
 app.route('/api/auth', auth);
 app.route('/api/inventory', inventory);
-app.route('/api/admin', admin);
+app.route('/api/people', people);
 
 // Fallback for unknown /api/* — keep it JSON so clients can parse it.
 app.notFound((c) => {
