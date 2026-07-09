@@ -153,6 +153,47 @@
 
     .loading { padding: 40px; text-align: center; color: var(--muted); font-size: 13px; font-family: var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
 
+    /* ========== filters + pagination (Sub-turn 4c) ========== */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; }
+    .filter-card { margin-bottom: 16px; padding: 16px; }
+    .filter-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    .filter-row:last-child { margin-bottom: 0; }
+    .input { height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--thead); font-family: var(--font-body); font-size: 12.5px; color: var(--ink); outline: none; transition: border-color 0.14s ease, background 0.14s ease, box-shadow 0.16s ease; }
+    .input:hover { border-color: var(--border-strong); }
+    .input:focus { border-color: var(--focus); background: var(--card); box-shadow: 0 0 0 4px rgba(185, 192, 238, 0.24); }
+    select.input { cursor: pointer; }
+    #filter-q { flex: 1; min-width: 240px; }
+    .filter-row > label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-strong); }
+
+    .filter-multi { position: relative; }
+    .filter-multi summary { display: inline-flex; align-items: center; height: 36px; padding: 0 12px; background: var(--thead); border: 1px solid var(--border); border-radius: 9px; cursor: pointer; list-style: none; font-size: 12.5px; font-weight: 500; color: var(--muted-strong); }
+    .filter-multi summary::-webkit-details-marker { display: none; }
+    .filter-multi summary::marker { content: ''; }
+    .filter-multi[open] summary { border-color: var(--focus); background: var(--card); color: var(--ink); }
+    .filter-options { position: absolute; top: calc(100% + 4px); left: 0; background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 6px; min-width: 190px; z-index: 30; box-shadow: 0 10px 24px -8px rgba(32, 32, 88, 0.22); }
+    .filter-options label { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 12.5px; color: var(--ink); }
+    .filter-options label:hover { background: var(--thead); }
+
+    .btn { height: 36px; padding: 0 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); font-family: var(--font-body); font-size: 12.5px; font-weight: 600; color: var(--muted-strong); cursor: pointer; }
+    .btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--thead); color: var(--ink); }
+    .btn.ghost { background: transparent; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .filter-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .filter-chips:empty { display: none; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--accent-soft); color: var(--head); border-radius: 16px; font-size: 12px; font-weight: 500; }
+    .chip-remove { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; padding: 0; color: var(--head); display: inline-flex; }
+    .chip-remove:hover { color: var(--bad-strong); }
+
+    .pagination-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; margin-top: 16px; background: var(--thead); border: 1px solid var(--border); border-radius: 10px; flex-wrap: wrap; }
+    .pagination-info { font-size: 12.5px; color: var(--muted-strong); }
+    .pagination-info b { color: var(--head); font-variant-numeric: tabular-nums; }
+    .pagination-buttons { display: flex; gap: 12px; align-items: center; }
+    .page-indicator { font-size: 12.5px; color: var(--muted-strong); }
+    .page-indicator b { color: var(--head); }
+
+    .list-dim { opacity: 0.5; pointer-events: none; transition: opacity 0.12s ease; }
+
     /* ========== responsive ========== */
     @media (max-width: 900px) {
       .app { grid-template-columns: 1fr; }
@@ -221,11 +262,6 @@
           <div class="page-title">Every rental</div>
         </div>
 
-        <label class="search" for="search-input">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
-          <input id="search-input" type="search" placeholder="Search by customer or order number…" autocomplete="off">
-        </label>
-
         <div class="topbar-actions">
           <a class="primary-cta" href="/new-order.html">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -235,16 +271,48 @@
       </header>
 
       <div class="content">
-        <div class="content-head">
-          <div>
-            <h3 style="display:inline;">All orders</h3>
-            <span class="sub" id="orders-summary">loading…</span>
+        <div class="card filter-card">
+          <div class="filter-row">
+            <input type="search" id="filter-q" class="input" placeholder="Search order # or customer name…" autocomplete="off" />
+            <select id="filter-sort" class="input" aria-label="Sort orders">
+              <option value="created_at_desc">Newest first</option>
+              <option value="rental_start_asc">Rental start (earliest first)</option>
+              <option value="rental_start_desc">Rental start (latest first)</option>
+              <option value="order_number_desc">Order # (highest first)</option>
+              <option value="total_paise_desc">Total (highest first)</option>
+            </select>
           </div>
-          <div class="category-chips" id="status-chips"></div>
+          <div class="filter-row">
+            <details class="filter-multi" id="status-multi">
+              <summary>Status ▾</summary>
+              <div class="filter-options">
+                <label><input type="checkbox" value="draft" /> Draft</label>
+                <label><input type="checkbox" value="quoted" /> Quoted</label>
+                <label><input type="checkbox" value="confirmed" /> Confirmed</label>
+                <label><input type="checkbox" value="dispatched" /> Dispatched</label>
+                <label><input type="checkbox" value="returned" /> Returned</label>
+                <label><input type="checkbox" value="closed" /> Closed</label>
+                <label><input type="checkbox" value="cancelled" /> Cancelled</label>
+              </div>
+            </details>
+            <label>From <input type="date" id="filter-from" class="input" /></label>
+            <label>To <input type="date" id="filter-to" class="input" /></label>
+            <button class="btn ghost" id="clear-filters">Clear all</button>
+          </div>
+          <div class="filter-chips" id="filter-chips"></div>
         </div>
 
         <div id="list-wrap">
           <div class="loading">Loading orders…</div>
+        </div>
+
+        <div class="pagination-bar" id="pagination-bar" hidden>
+          <span class="pagination-info">Showing <b id="page-start">0</b>–<b id="page-end">0</b> of <b id="page-total">0</b></span>
+          <div class="pagination-buttons">
+            <button class="btn ghost" id="page-prev">← Previous</button>
+            <span class="page-indicator">Page <b id="page-current">1</b> of <b id="page-total-pages">1</b></span>
+            <button class="btn ghost" id="page-next">Next →</button>
+          </div>
         </div>
       </div>
     </div>
@@ -253,17 +321,29 @@
   <script type="module">
     import { api, ensureAuth, formatINR } from '/_lib/api.js';
 
-    // ---------- state ----------
-    let allOrders = [];
-    let counts = {};
-    let activeStatus = null;
-    let currentSearch = '';
-
-    const STATUS_ORDER = ['draft', 'quoted', 'confirmed', 'dispatched', 'returned', 'closed'];
     const STATUS_LABELS = {
       draft: 'Draft', quoted: 'Quoted', confirmed: 'Confirmed',
       dispatched: 'Dispatched', active: 'Active', returned: 'Returned',
       closed: 'Closed', cancelled: 'Cancelled',
+    };
+    const VALID_SORTS = [
+      'created_at_desc', 'created_at_asc', 'rental_start_asc',
+      'rental_start_desc', 'order_number_desc', 'total_paise_desc',
+    ];
+
+    // ---------- state ----------
+    const state = {
+      filters: {
+        q: '',
+        status: new Set(),
+        from: null,   // 'YYYY-MM-DD'
+        to: null,     // 'YYYY-MM-DD'
+        sort: 'created_at_desc',
+        page: 1,
+        limit: 20,
+      },
+      pagination: { total: 0, total_pages: 0 },
+      orders: [],
     };
 
     // ---------- hydrate identity ----------
@@ -277,26 +357,91 @@
       document.getElementById('user-avatar').textContent = first[0]?.toUpperCase() ?? 'U';
     }
 
-    // ---------- fetch + render ----------
-    async function loadOrders() {
+    // ---------- URL state ----------
+    function parseUrl() {
+      const p = new URLSearchParams(location.search);
+      const f = state.filters;
+      f.q = p.get('q') || '';
+      f.status = new Set((p.get('status') || '').split(',').map(s => s.trim()).filter(Boolean));
+      f.from = p.get('from') || null;
+      f.to = p.get('to') || null;
+      const sort = p.get('sort');
+      f.sort = VALID_SORTS.includes(sort) ? sort : 'created_at_desc';
+      const page = parseInt(p.get('page') || '1', 10);
+      f.page = Number.isFinite(page) && page >= 1 ? page : 1;
+    }
+
+    function buildQueryString(f) {
       const params = new URLSearchParams();
-      if (currentSearch) params.set('q', currentSearch);
-      if (activeStatus) params.set('status', activeStatus);
-      const url = '/api/orders' + (params.toString() ? '?' + params : '');
-      const { orders, counts: c } = await api.get(url);
-      allOrders = orders;
-      if (!activeStatus && !currentSearch) counts = c || {};
+      if (f.q) params.set('q', f.q);
+      if (f.status.size > 0) params.set('status', [...f.status].join(','));
+      if (f.from) params.set('from', f.from);
+      if (f.to) params.set('to', f.to);
+      if (f.sort !== 'created_at_desc') params.set('sort', f.sort);
+      if (f.page > 1) params.set('page', f.page);
+      return params.toString();
+    }
+
+    function syncUrl() {
+      const qs = buildQueryString(state.filters);
+      history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+    }
+
+    // Push state → URL, then re-fetch. Used by every filter/page change.
+    function changed() {
+      syncUrl();
+      load();
+    }
+
+    // Reflect state back onto the form controls (load, clear, chip removal).
+    function syncInputs() {
+      document.getElementById('filter-q').value = state.filters.q;
+      document.getElementById('filter-sort').value = state.filters.sort;
+      document.getElementById('filter-from').value = state.filters.from || '';
+      document.getElementById('filter-to').value = state.filters.to || '';
+      document.querySelectorAll('#status-multi input[type=checkbox]').forEach(cb => {
+        cb.checked = state.filters.status.has(cb.value);
+      });
+    }
+
+    // ---------- fetch + render ----------
+    async function load() {
+      const wrap = document.getElementById('list-wrap');
+      wrap.classList.add('list-dim');
+      try {
+        const qs = buildQueryString(state.filters);
+        const data = await api.get('/api/orders' + (qs ? '?' + qs : ''));
+        state.orders = data.orders || [];
+        state.pagination = data.pagination || { total: 0, total_pages: 0 };
+        if (data.pagination) state.filters.page = data.pagination.page;
+        render();
+      } catch (err) {
+        console.error('load orders failed', err);
+        state.orders = [];
+        state.pagination = { total: 0, total_pages: 0 };
+        render();
+      } finally {
+        wrap.classList.remove('list-dim');
+      }
+    }
+
+    function hasActiveFilters() {
+      const f = state.filters;
+      return !!(f.q || f.status.size || f.from || f.to);
+    }
+
+    function render() {
       renderList();
       renderChips();
-      renderSummary();
+      renderPagination();
     }
 
     function renderList() {
       const wrap = document.getElementById('list-wrap');
-      if (allOrders.length === 0) {
-        wrap.innerHTML = currentSearch || activeStatus
-          ? renderEmptyFiltered()
-          : renderEmptyOrders();
+      if (state.orders.length === 0) {
+        wrap.innerHTML = hasActiveFilters() ? renderEmptyFiltered() : renderEmptyOrders();
+        const clearBtn = wrap.querySelector('#empty-clear');
+        if (clearBtn) clearBtn.addEventListener('click', clearAll);
         return;
       }
       wrap.innerHTML = `
@@ -314,7 +459,7 @@
               </tr>
             </thead>
             <tbody>
-              ${allOrders.map(rowHtml).join('')}
+              ${state.orders.map(rowHtml).join('')}
             </tbody>
           </table>
         </div>
@@ -360,34 +505,50 @@
         </tr>`;
     }
 
+    // ---------- chips ----------
+    function fmtChipDate(d) {
+      const parts = d.split('T')[0].split('-').map(Number);
+      if (parts.length !== 3) return d;
+      return new Date(parts[0], parts[1] - 1, parts[2])
+        .toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    function chipHtml(key, text) {
+      return `<span class="chip">${text} <button class="chip-remove" data-filter="${key}" aria-label="Remove filter">×</button></span>`;
+    }
+
     function renderChips() {
-      const wrap = document.getElementById('status-chips');
-      const total = Number(counts.total || 0);
-      if (total === 0) { wrap.innerHTML = ''; return; }
-      const all = `<button class="cat-chip ${activeStatus === null ? 'active' : ''}" data-status="">All <span class="n">${total}</span></button>`;
-      const items = STATUS_ORDER
-        .filter(s => Number(counts[s === 'draft' ? 'drafts' : s]) > 0)
-        .map(s => {
-          const n = counts[s === 'draft' ? 'drafts' : s];
-          return `<button class="cat-chip ${activeStatus === s ? 'active' : ''}" data-status="${s}">${STATUS_LABELS[s]} <span class="n">${n}</span></button>`;
-        }).join('');
-      wrap.innerHTML = all + items;
-      wrap.querySelectorAll('.cat-chip').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const s = btn.getAttribute('data-status');
-          activeStatus = s || null;
-          loadOrders();
-        });
-      });
+      const f = state.filters;
+      const chips = [];
+      if (f.q) chips.push(chipHtml('q', `Search: "${escapeHtml(f.q)}"`));
+      if (f.status.size) {
+        const labels = [...f.status].map(s => STATUS_LABELS[s] || s).join(', ');
+        chips.push(chipHtml('status', `Status: ${escapeHtml(labels)}`));
+      }
+      if (f.from) chips.push(chipHtml('from', `From: ${escapeHtml(fmtChipDate(f.from))}`));
+      if (f.to) chips.push(chipHtml('to', `To: ${escapeHtml(fmtChipDate(f.to))}`));
+      document.getElementById('filter-chips').innerHTML = chips.join('');
     }
 
-    function renderSummary() {
-      const el = document.getElementById('orders-summary');
-      if (allOrders.length === 0) { el.textContent = ''; return; }
-      const total = Number(counts.total || allOrders.length);
-      el.textContent = `${allOrders.length} showing · ${total} total`;
+    // ---------- pagination ----------
+    function renderPagination() {
+      const bar = document.getElementById('pagination-bar');
+      const { total, total_pages } = state.pagination;
+      const { page, limit } = state.filters;
+      if (total === 0) { bar.hidden = true; return; }
+      bar.hidden = false;
+      const start = (page - 1) * limit + 1;
+      const end = Math.min(page * limit, total);
+      document.getElementById('page-start').textContent = start;
+      document.getElementById('page-end').textContent = end;
+      document.getElementById('page-total').textContent = total;
+      document.getElementById('page-current').textContent = page;
+      document.getElementById('page-total-pages').textContent = total_pages;
+      document.getElementById('page-prev').disabled = page <= 1;
+      document.getElementById('page-next').disabled = page >= total_pages;
     }
 
+    // ---------- empty states ----------
     function renderEmptyOrders() {
       return `
         <div class="empty">
@@ -406,8 +567,9 @@
     function renderEmptyFiltered() {
       return `
         <div class="empty">
-          <h4 style="margin-top:0;">Nothing matches</h4>
-          <p>No orders found for "${escapeHtml(currentSearch)}"${activeStatus ? ' in ' + STATUS_LABELS[activeStatus] : ''}. Try clearing the filter.</p>
+          <h4 style="margin-top:0;">No orders match these filters</h4>
+          <p>Try clearing filters or expanding the date range.</p>
+          <button class="btn" id="empty-clear">Clear all filters</button>
         </div>`;
     }
 
@@ -432,14 +594,73 @@
       return days === 1 ? '1 day' : `${days} days`;
     }
 
-    // ---------- search ----------
-    let searchTimer;
-    document.getElementById('search-input').addEventListener('input', (e) => {
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => {
-        currentSearch = e.target.value.trim();
-        loadOrders();
-      }, 200);
+    // ---------- filter wiring ----------
+    function clearAll() {
+      const f = state.filters;
+      f.q = ''; f.status = new Set(); f.from = null; f.to = null;
+      f.sort = 'created_at_desc'; f.page = 1;
+      syncInputs();
+      changed();
+    }
+
+    let qTimer;
+    document.getElementById('filter-q').addEventListener('input', (e) => {
+      clearTimeout(qTimer);
+      qTimer = setTimeout(() => {
+        state.filters.q = e.target.value.trim();
+        state.filters.page = 1;
+        changed();
+      }, 300);
+    });
+
+    document.getElementById('filter-sort').addEventListener('change', (e) => {
+      state.filters.sort = e.target.value;
+      state.filters.page = 1;
+      changed();
+    });
+
+    document.querySelectorAll('#status-multi input[type=checkbox]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) state.filters.status.add(cb.value);
+        else state.filters.status.delete(cb.value);
+        state.filters.page = 1;
+        changed();
+      });
+    });
+
+    document.getElementById('filter-from').addEventListener('change', (e) => {
+      state.filters.from = e.target.value || null;
+      state.filters.page = 1;
+      changed();
+    });
+    document.getElementById('filter-to').addEventListener('change', (e) => {
+      state.filters.to = e.target.value || null;
+      state.filters.page = 1;
+      changed();
+    });
+
+    document.getElementById('clear-filters').addEventListener('click', clearAll);
+
+    // Removable chips — delegated.
+    document.getElementById('filter-chips').addEventListener('click', (e) => {
+      const btn = e.target.closest('.chip-remove');
+      if (!btn) return;
+      const key = btn.dataset.filter;
+      if (key === 'q') state.filters.q = '';
+      else if (key === 'status') state.filters.status = new Set();
+      else if (key === 'from') state.filters.from = null;
+      else if (key === 'to') state.filters.to = null;
+      state.filters.page = 1;
+      syncInputs();
+      changed();
+    });
+
+    // Pagination (no page reset — that's the point).
+    document.getElementById('page-prev').addEventListener('click', () => {
+      if (state.filters.page > 1) { state.filters.page--; changed(); }
+    });
+    document.getElementById('page-next').addEventListener('click', () => {
+      if (state.filters.page < state.pagination.total_pages) { state.filters.page++; changed(); }
     });
 
     // ---------- utils ----------
@@ -451,8 +672,10 @@
     // ---------- go ----------
     (async () => {
       try {
+        parseUrl();
         await hydrateIdentity();
-        await loadOrders();
+        syncInputs();
+        await load();
       } catch (err) {
         console.error('boot failed', err);
       }
