@@ -255,6 +255,37 @@
     .picker-result .pr-name { font-weight: 600; color: var(--ink); font-size: 13px; }
     .picker-result .pr-sub { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 2px; letter-spacing: .03em; }
 
+    /* ========== payments ========== */
+    .pay-summary { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .pay-list { display: flex; flex-direction: column; }
+    .pay-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+    .pay-row:first-child { border-top: none; }
+    .pay-row.refund { margin-left: 24px; }
+    .pay-pill { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; flex-shrink: 0; margin-top: 3px; white-space: nowrap; }
+    .pay-pill.in { background: var(--ok-soft); color: var(--ok-strong); }
+    .pay-pill.out { background: var(--warn-soft); color: var(--warn-strong); }
+    .pay-main { flex: 1; min-width: 0; }
+    .pay-line1 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .pay-amount { font-family: var(--font-mono); font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+    .pay-amount.in { color: var(--ok-strong); }
+    .pay-amount.out { color: var(--warn-strong); }
+    .pay-method { font-size: 12px; color: var(--muted-strong); }
+    .pay-method .ref { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+    .pay-notes { font-size: 11.5px; color: var(--muted); margin-top: 3px; white-space: pre-wrap; }
+    .pay-right { text-align: right; flex-shrink: 0; }
+    .pay-date { font-size: 11.5px; color: var(--muted-strong); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .pay-actor { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .pay-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; position: relative; }
+    .pay-empty { border: 1px dashed var(--border-strong); border-radius: 12px; padding: 32px 20px; text-align: center; }
+    .pay-empty .empty-icon { width: 48px; height: 48px; margin: 0 auto 12px; }
+    .pay-empty h4 { font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--ink); margin: 0 0 4px; }
+    .pay-empty p { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; }
+    .pay-context { background: var(--thead); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; font-size: 12.5px; color: var(--muted-strong); margin-bottom: 14px; line-height: 1.55; }
+    .pay-context strong { color: var(--ink); }
+
+    /* toast */
+    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 14px 30px -12px rgba(16,24,40,.32); padding: 11px 18px; font-size: 13px; color: var(--ink); z-index: 200; max-width: 90vw; }
+
     /* ========== responsive ========== */
     @media (max-width: 900px) {
       .app { grid-template-columns: 1fr; }
@@ -442,6 +473,129 @@
     </div>
   </div>
 
+  <!-- ============ RECORD PAYMENT MODAL ============ -->
+  <div class="modal-backdrop" id="pay-modal">
+    <div class="modal" role="dialog" aria-labelledby="pay-modal-title" style="max-width:480px;">
+      <header class="modal-head">
+        <div class="modal-title" id="pay-modal-title">Record payment</div>
+        <button class="modal-close" id="pay-modal-close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <form id="pay-form" novalidate>
+        <div class="modal-body">
+          <div id="pay-form-error" class="form-error" style="display:none;"></div>
+
+          <div class="field">
+            <label for="pay-amount">Amount <span class="req">*</span></label>
+            <div class="prefix-wrap">
+              <span class="prefix">₹</span>
+              <input id="pay-amount" type="number" min="1" step="1" placeholder="0" autocomplete="off">
+            </div>
+            <div class="field-hint" id="pay-amount-hint">= 0 paise</div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="pay-method">Method <span class="req">*</span></label>
+              <select id="pay-method">
+                <option value="upi">UPI</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="cheque">Cheque</option>
+                <option value="wallet">Wallet</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="pay-datetime">Date &amp; time <span class="hint">defaults to now</span></label>
+              <input id="pay-datetime" type="datetime-local">
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="pay-reference">Reference <span class="hint">transaction ID, cheque number, etc.</span></label>
+            <input id="pay-reference" type="text" maxlength="200" placeholder="e.g. UPI-2026-04-20-XXXX" autocomplete="off">
+          </div>
+
+          <div class="field">
+            <label for="pay-notes">Notes <span class="hint">optional</span></label>
+            <textarea id="pay-notes" maxlength="1000" placeholder="Anything worth remembering — payer name, split details, etc."></textarea>
+          </div>
+
+          <div class="modal-warn" id="pay-nudge" style="display:none;">⚠️ Reference recommended for <span id="pay-nudge-method">UPI</span>. Helps trace this payment later — leave blank if unavailable.</div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost" id="pay-cancel">Cancel</button>
+          <button type="submit" class="btn primary" id="pay-submit">Record ₹0</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ REFUND PAYMENT MODAL ============ -->
+  <div class="modal-backdrop" id="refund-modal">
+    <div class="modal" role="dialog" aria-labelledby="refund-modal-title" style="max-width:480px;">
+      <header class="modal-head">
+        <div class="modal-title" id="refund-modal-title">Refund payment</div>
+        <button class="modal-close" id="refund-modal-close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <form id="refund-form" novalidate>
+        <div class="modal-body">
+          <div id="refund-form-error" class="form-error" style="display:none;"></div>
+          <div class="pay-context" id="refund-context"></div>
+
+          <div class="field">
+            <label for="refund-amount">Refund amount <span class="req">*</span></label>
+            <div class="prefix-wrap">
+              <span class="prefix">₹</span>
+              <input id="refund-amount" type="number" min="1" step="1" placeholder="0" autocomplete="off">
+            </div>
+            <div class="field-hint" id="refund-amount-hint">= 0 paise</div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="refund-method">Method <span class="req">*</span></label>
+              <select id="refund-method">
+                <option value="upi">UPI</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="cheque">Cheque</option>
+                <option value="wallet">Wallet</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="refund-datetime">Date &amp; time <span class="hint">defaults to now</span></label>
+              <input id="refund-datetime" type="datetime-local">
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="refund-reference">Reference <span class="hint">transaction ID, cheque number, etc.</span></label>
+            <input id="refund-reference" type="text" maxlength="200" placeholder="e.g. REFUND-XXXX" autocomplete="off">
+          </div>
+
+          <div class="field">
+            <label for="refund-notes">Notes <span class="hint">optional</span></label>
+            <textarea id="refund-notes" maxlength="1000" placeholder="Reason for the refund, who authorised it, etc."></textarea>
+          </div>
+
+          <div class="modal-warn" id="refund-nudge" style="display:none;">⚠️ Reference recommended for <span id="refund-nudge-method">UPI</span>. Helps trace this refund later — leave blank if unavailable.</div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost" id="refund-cancel">Cancel</button>
+          <button type="submit" class="btn danger" id="refund-submit">Refund ₹0</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script type="module">
     import { api, ensureAuth, formatINR, rupeesToPaise, paiseToRupees } from '/_lib/api.js';
 
@@ -451,8 +605,16 @@
       order: null,
       items: [],
       events: [],
-      forceTo: null,   // target state for the force modal
-      picked: null,    // product picked in the add-item modal
+      payments: [],
+      paymentsSummary: { in_total: 0, out_total: 0, net: 0 },
+      forceTo: null,      // target state for the force modal
+      picked: null,       // product picked in the add-item modal
+      refundOf: null,     // payment being refunded (refund modal context)
+    };
+
+    const METHOD_LABELS = {
+      upi: 'UPI', bank_transfer: 'Bank Transfer', cash: 'Cash', card: 'Card',
+      cheque: 'Cheque', wallet: 'Wallet', other: 'Other',
     };
 
     // DSLRSWALA billing settings — hardcoded for 2.1b (a later task fetches these).
@@ -559,12 +721,14 @@
       document.getElementById('content').innerHTML = `
         ${headerCardHtml()}
         ${itemsCardHtml()}
+        ${paymentsCardHtml()}
         ${timelineCardHtml()}
         ${actionsCardHtml()}
         ${notesCardHtml()}
       `;
 
       wireItemsCard();
+      wirePaymentsCard();
       wireActionsCard();
     }
 
@@ -833,7 +997,7 @@
       document.addEventListener('click', closeAllMenus, { once: true });
     }
     function closeAllMenus() {
-      document.querySelectorAll('.li-actions .menu').forEach(m => m.remove());
+      document.querySelectorAll('.li-actions .menu, .pay-actions .menu').forEach(m => m.remove());
       const more = document.getElementById('more-menu');
       if (more) more.style.display = 'none';
     }
@@ -990,7 +1154,9 @@
 
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
-      if (itemModal.classList.contains('open')) closeItemModal();
+      if (payModal.classList.contains('open')) closePayModal();
+      else if (refundModal.classList.contains('open')) closeRefundModal();
+      else if (itemModal.classList.contains('open')) closeItemModal();
       else if (forceModal.classList.contains('open')) closeForceModal();
     });
 
@@ -1116,6 +1282,348 @@
       }
     });
 
+    // ---------- payments: load + summary ----------
+    async function loadPayments() {
+      if (!state.orderId || !state.order) return;
+      try {
+        const { payments } = await api.get(`/api/order-payments/${encodeURIComponent(state.orderId)}`);
+        state.payments = payments || [];
+        let inT = 0, outT = 0;
+        for (const p of state.payments) {
+          if (p.direction === 'in') inT += Number(p.amount_paise);
+          else outT += Number(p.amount_paise);
+        }
+        state.paymentsSummary = { in_total: inT, out_total: outT, net: inT - outT };
+        render();
+      } catch (err) {
+        console.error('loadPayments failed', err);
+      }
+    }
+
+    // Refresh order (totals) + payments together, then a single consistent render.
+    async function refreshAfterPayment() {
+      await Promise.all([loadOrder(), loadPayments()]);
+    }
+
+    function refundedAgainst(paymentId) {
+      return (state.payments || [])
+        .filter(p => p.direction === 'out' && p.is_refund_of_payment_id === paymentId)
+        .reduce((s, p) => s + Number(p.amount_paise), 0);
+    }
+    function netRefundable(payment) {
+      return Number(payment.amount_paise) - refundedAgainst(payment.id);
+    }
+    // Defensive: the backend already strips this, but never show the linkage prefix.
+    function stripRefundPrefix(notes) {
+      if (!notes) return '';
+      return notes.replace(/^refund_of:[0-9a-fA-F-]{36}\n?/, '');
+    }
+
+    // ---------- payments: render ----------
+    function paymentsCardHtml() {
+      const o = state.order;
+      const canPay = o.status !== 'cancelled'; // cancelled locks payments; closed still accepts
+      const pays = state.payments || [];
+      const sum = state.paymentsSummary || { in_total: 0, out_total: 0, net: 0 };
+      const recordBtn = canPay ? `<button class="btn primary" id="btn-record-payment">+ Record payment</button>` : '';
+
+      if (!pays.length) {
+        const balDue = Number(o.balance_paise) > 0;
+        return `
+          <div class="card">
+            <div class="card-head"><h3>Payments</h3>${recordBtn}</div>
+            <div class="pay-empty">
+              <div class="empty-icon">${walletSvg()}</div>
+              <h4>No payments recorded yet</h4>
+              <p>Balance ${balDue ? 'due' : 'clear'}: <strong>${formatINR(o.balance_paise)}</strong></p>
+              ${canPay ? `<button class="btn primary" id="btn-record-payment-empty">Record payment</button>` : ''}
+            </div>
+          </div>`;
+      }
+
+      const rows = pays.map(paymentRowHtml).join('');
+      return `
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h3>Payments</h3>
+              <div class="pay-summary">Advance received: ${formatINR(sum.in_total)} · Refunded: ${formatINR(sum.out_total)} · Net paid: ${formatINR(sum.net)}</div>
+            </div>
+            ${recordBtn}
+          </div>
+          <div class="pay-list">${rows}</div>
+        </div>`;
+    }
+
+    function paymentRowHtml(p) {
+      const isIn = p.direction === 'in';
+      const isRefund = p.is_refund_of_payment_id != null;
+      const pillLabel = isIn ? 'PAID' : 'REFUND';
+      const methodLabel = METHOD_LABELS[p.method] || p.method;
+      const ref = p.reference ? ` · <span class="ref">${escapeHtml(p.reference)}</span>` : '';
+      const cleanNotes = stripRefundPrefix(p.notes);
+      const notes = cleanNotes ? `<div class="pay-notes">${escapeHtml(cleanNotes)}</div>` : '';
+      const actor = p.received_by_name ? `<div class="pay-actor">by ${escapeHtml(p.received_by_name)}</div>` : '';
+      const refundable = isIn ? netRefundable(p) : 0;
+      const refundBtn = (isIn && refundable > 0)
+        ? `<button class="text-btn" data-refund="${escapeAttr(p.id)}">Refund</button>` : '';
+      const kebab = p.is_deletable
+        ? `<button class="kebab" data-pay-kebab="${escapeAttr(p.id)}" aria-label="Payment actions">${dotsSvg()}</button>` : '';
+      return `
+        <div class="pay-row ${isRefund ? 'refund' : ''}">
+          <span class="pay-pill ${isIn ? 'in' : 'out'}">${isRefund ? '↳ ' : ''}${pillLabel}</span>
+          <div class="pay-main">
+            <div class="pay-line1">
+              <span class="pay-amount ${isIn ? 'in' : 'out'}">${formatINR(p.amount_paise)}</span>
+              <span class="pay-method">${escapeHtml(methodLabel)}${ref}</span>
+            </div>
+            ${notes}
+          </div>
+          <div class="pay-right">
+            <div class="pay-date">${escapeHtml(fmtDateTime(p.occurred_at))}</div>
+            ${actor}
+          </div>
+          <div class="pay-actions">${refundBtn}${kebab}</div>
+        </div>`;
+    }
+
+    function walletSvg() {
+      return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>`;
+    }
+    function dotsSvg() {
+      return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>`;
+    }
+
+    // ---------- payments: wiring ----------
+    function wirePaymentsCard() {
+      const rec = document.getElementById('btn-record-payment');
+      if (rec) rec.addEventListener('click', openPayModal);
+      const recEmpty = document.getElementById('btn-record-payment-empty');
+      if (recEmpty) recEmpty.addEventListener('click', openPayModal);
+      document.querySelectorAll('[data-refund]').forEach(btn => {
+        btn.addEventListener('click', () => openRefundModal(btn.dataset.refund));
+      });
+      document.querySelectorAll('[data-pay-kebab]').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.stopPropagation(); openPaymentMenu(btn, btn.dataset.payKebab); });
+      });
+    }
+
+    function openPaymentMenu(btn, paymentId) {
+      closeAllMenus();
+      const menu = document.createElement('div');
+      menu.className = 'menu';
+      menu.innerHTML = `<button class="danger" data-del-payment="${escapeAttr(paymentId)}">Delete payment</button>`;
+      btn.parentElement.appendChild(menu);
+      menu.querySelector('[data-del-payment]').addEventListener('click', async () => {
+        closeAllMenus();
+        if (!window.confirm('Delete this payment? This cannot be undone.')) return;
+        try {
+          await api.del(`/api/order-payments/${state.orderId}/${paymentId}`);
+          showToast('Payment deleted');
+          await refreshAfterPayment();
+        } catch (err) {
+          alert('Could not delete: ' + paymentErrorMessage(err));
+        }
+      });
+      document.addEventListener('click', closeAllMenus, { once: true });
+    }
+
+    function paymentErrorMessage(err) {
+      if (err.status === 400 && err.body?.issues) {
+        return 'Validation failed: ' + err.body.issues.map(i => (i.path?.join('.') || '') + ' ' + i.message).join('; ');
+      }
+      const code = err.body?.error;
+      if (code === 'refund_exceeds_refundable') return `Refund exceeds the refundable amount (${formatINR(err.body.refundable_paise)}).`;
+      if (code === 'order_cancelled') return 'This order is cancelled — payments are locked.';
+      if (code && String(code).startsWith('not_deletable')) return 'This payment can no longer be deleted (correction window elapsed).';
+      return 'Something went wrong: ' + (code || err.message || 'unknown error');
+    }
+
+    // ---------- record payment modal ----------
+    const payModal = document.getElementById('pay-modal');
+    const payForm = document.getElementById('pay-form');
+
+    function openPayModal() {
+      document.getElementById('pay-form-error').style.display = 'none';
+      document.getElementById('pay-amount').value = '';
+      document.getElementById('pay-method').value = 'upi';
+      document.getElementById('pay-reference').value = '';
+      document.getElementById('pay-notes').value = '';
+      document.getElementById('pay-datetime').value = toLocalDatetimeInput(new Date());
+      updatePayPreview();
+      updatePayNudge();
+      payModal.classList.add('open');
+      setTimeout(() => document.getElementById('pay-amount').focus(), 40);
+    }
+    function closePayModal() { payModal.classList.remove('open'); }
+
+    function updatePayPreview() {
+      const rupees = Number(document.getElementById('pay-amount').value || 0);
+      const paise = Math.floor((rupees > 0 ? rupees : 0) * 100);
+      document.getElementById('pay-amount-hint').textContent = `= ${paise} paise`;
+      document.getElementById('pay-submit').textContent = `Record ${formatINR(paise)}`;
+    }
+    function updatePayNudge() {
+      const method = document.getElementById('pay-method').value;
+      const ref = document.getElementById('pay-reference').value.trim();
+      const show = method !== 'cash' && !ref;
+      document.getElementById('pay-nudge').style.display = show ? 'block' : 'none';
+      document.getElementById('pay-nudge-method').textContent = METHOD_LABELS[method] || method;
+    }
+
+    document.getElementById('pay-modal-close').addEventListener('click', closePayModal);
+    document.getElementById('pay-cancel').addEventListener('click', closePayModal);
+    payModal.addEventListener('click', (e) => { if (e.target === payModal) closePayModal(); });
+    document.getElementById('pay-amount').addEventListener('input', updatePayPreview);
+    document.getElementById('pay-method').addEventListener('change', updatePayNudge);
+    document.getElementById('pay-reference').addEventListener('input', updatePayNudge);
+
+    payForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errBox = document.getElementById('pay-form-error');
+      errBox.style.display = 'none';
+      const rupees = Number(document.getElementById('pay-amount').value);
+      if (!Number.isFinite(rupees) || rupees <= 0) {
+        errBox.style.display = 'block';
+        errBox.textContent = 'Enter an amount greater than zero.';
+        return;
+      }
+      const amount_paise = Math.floor(rupees * 100);
+      const method = document.getElementById('pay-method').value;
+      const reference = document.getElementById('pay-reference').value.trim();
+      const notes = document.getElementById('pay-notes').value.trim();
+      const dt = document.getElementById('pay-datetime').value;
+      const payload = { amount_paise, method };
+      if (reference) payload.reference = reference;
+      if (notes) payload.notes = notes;
+      if (dt) payload.occurred_at = new Date(dt).toISOString();
+
+      const submit = document.getElementById('pay-submit');
+      submit.disabled = true; submit.textContent = 'Recording…';
+      try {
+        await api.post(`/api/order-payments/${state.orderId}`, payload);
+        closePayModal();
+        showToast(`Payment of ${formatINR(amount_paise)} recorded`);
+        await refreshAfterPayment();
+      } catch (err) {
+        errBox.style.display = 'block';
+        errBox.textContent = paymentErrorMessage(err);
+      } finally {
+        submit.disabled = false; updatePayPreview();
+      }
+    });
+
+    // ---------- refund modal ----------
+    const refundModal = document.getElementById('refund-modal');
+    const refundForm = document.getElementById('refund-form');
+
+    function openRefundModal(paymentId) {
+      const p = (state.payments || []).find(x => x.id === paymentId);
+      if (!p) return;
+      state.refundOf = p;
+      const refundable = netRefundable(p);
+      const already = Number(p.amount_paise) - refundable;
+      const methodLabel = METHOD_LABELS[p.method] || p.method;
+      const refText = p.reference ? ` · ${escapeHtml(p.reference)}` : '';
+      document.getElementById('refund-context').innerHTML =
+        `Refunding payment of <strong>${formatINR(p.amount_paise)}</strong> (${escapeHtml(methodLabel)}${refText})<br>`
+        + `Received ${escapeHtml(fmtDateTime(p.occurred_at))}${p.received_by_name ? ' by ' + escapeHtml(p.received_by_name) : ''}<br>`
+        + `Net refundable: <strong>${formatINR(refundable)}</strong>${already > 0 ? ` (after ${formatINR(already)} already refunded)` : ''}`;
+
+      document.getElementById('refund-form-error').style.display = 'none';
+      const amtEl = document.getElementById('refund-amount');
+      amtEl.value = paiseToRupees(refundable);
+      amtEl.max = paiseToRupees(refundable);
+      document.getElementById('refund-method').value = p.method;
+      document.getElementById('refund-reference').value = '';
+      document.getElementById('refund-notes').value = '';
+      document.getElementById('refund-datetime').value = toLocalDatetimeInput(new Date());
+      updateRefundPreview();
+      updateRefundNudge();
+      refundModal.classList.add('open');
+      setTimeout(() => amtEl.focus(), 40);
+    }
+    function closeRefundModal() { refundModal.classList.remove('open'); state.refundOf = null; }
+
+    function updateRefundPreview() {
+      const p = state.refundOf;
+      const max = p ? netRefundable(p) : 0;
+      const rupees = Number(document.getElementById('refund-amount').value || 0);
+      const paise = Math.floor((rupees > 0 ? rupees : 0) * 100);
+      document.getElementById('refund-amount-hint').textContent = `= ${paise} paise · max ${formatINR(max)}`;
+      const submit = document.getElementById('refund-submit');
+      const over = paise > max;
+      submit.disabled = !(paise > 0) || over;
+      submit.textContent = over ? 'Amount exceeds refundable' : `Refund ${formatINR(paise > 0 ? paise : 0)}`;
+    }
+    function updateRefundNudge() {
+      const method = document.getElementById('refund-method').value;
+      const ref = document.getElementById('refund-reference').value.trim();
+      const show = method !== 'cash' && !ref;
+      document.getElementById('refund-nudge').style.display = show ? 'block' : 'none';
+      document.getElementById('refund-nudge-method').textContent = METHOD_LABELS[method] || method;
+    }
+
+    document.getElementById('refund-modal-close').addEventListener('click', closeRefundModal);
+    document.getElementById('refund-cancel').addEventListener('click', closeRefundModal);
+    refundModal.addEventListener('click', (e) => { if (e.target === refundModal) closeRefundModal(); });
+    document.getElementById('refund-amount').addEventListener('input', updateRefundPreview);
+    document.getElementById('refund-method').addEventListener('change', updateRefundNudge);
+    document.getElementById('refund-reference').addEventListener('input', updateRefundNudge);
+
+    refundForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const p = state.refundOf;
+      const errBox = document.getElementById('refund-form-error');
+      errBox.style.display = 'none';
+      if (!p) return;
+      const rupees = Number(document.getElementById('refund-amount').value);
+      const amount_paise = Math.floor((Number.isFinite(rupees) ? rupees : 0) * 100);
+      const max = netRefundable(p);
+      if (!(amount_paise > 0)) {
+        errBox.style.display = 'block'; errBox.textContent = 'Enter an amount greater than zero.'; return;
+      }
+      if (amount_paise > max) {
+        errBox.style.display = 'block'; errBox.textContent = `Cannot refund more than ${formatINR(max)}.`; return;
+      }
+      const method = document.getElementById('refund-method').value;
+      const reference = document.getElementById('refund-reference').value.trim();
+      const notes = document.getElementById('refund-notes').value.trim();
+      const dt = document.getElementById('refund-datetime').value;
+      const payload = { amount_paise, method };
+      if (reference) payload.reference = reference;
+      if (notes) payload.notes = notes;
+      if (dt) payload.occurred_at = new Date(dt).toISOString();
+
+      const submit = document.getElementById('refund-submit');
+      submit.disabled = true; submit.textContent = 'Processing…';
+      try {
+        await api.post(`/api/order-payments/${state.orderId}/${p.id}/refund`, payload);
+        closeRefundModal();
+        showToast(`Refund of ${formatINR(amount_paise)} processed`);
+        await refreshAfterPayment();
+      } catch (err) {
+        errBox.style.display = 'block';
+        errBox.textContent = paymentErrorMessage(err);
+      } finally {
+        submit.disabled = false; updateRefundPreview();
+      }
+    });
+
+    // ---------- toast ----------
+    function showToast(message) {
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.textContent = message;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3000);
+    }
+
+    function toLocalDatetimeInput(d) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
     // ---------- formatters ----------
     function fmtDateTime(iso) {
       const d = new Date(iso);
@@ -1145,6 +1653,7 @@
       try {
         await hydrateIdentity();
         await loadOrder();
+        await loadPayments();
       } catch (err) {
         console.error('boot failed', err);
       }
