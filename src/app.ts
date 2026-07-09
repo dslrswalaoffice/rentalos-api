@@ -40,3 +40,5 @@ app.onError((err, c) => {
   console.error('[api error]', err);
   return c.json({ error: 'internal_error' }, 500);
 });
+
+export default app;
