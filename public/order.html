@@ -288,6 +288,36 @@
     .pill.warn { background: #fef3c7; color: #92400e; }
     .pill.bad { background: #fee2e2; color: #991b1b; }
     .pill.muted { background: #eef0f3; color: var(--muted-strong); }
+    /* 6e: contract signatures */
+    .contracts-list { display: flex; flex-direction: column; gap: 8px; }
+    .contract-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--thead); }
+    .contract-info { font-size: 13px; color: var(--ink); }
+    .contract-info small { color: var(--muted); font-size: 11.5px; }
+    .contract-role { color: var(--muted); font-weight: 400; }
+    .contracts-empty { font-size: 12.5px; color: var(--muted); padding: 6px 0; }
+    .sig-section { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .sig-title { margin: 0 0 4px; font-size: 14px; color: var(--head); display: flex; align-items: center; gap: 8px; }
+    .sig-optional { font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--muted); background: #eef0f3; padding: 1px 7px; border-radius: 999px; letter-spacing: .04em; }
+    .sig-hint { margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+    .contract-preview { margin-bottom: 12px; }
+    .contract-preview summary { cursor: pointer; font-size: 12.5px; color: var(--head); font-weight: 600; }
+    .contract-text { white-space: pre-wrap; font-family: var(--font-mono); font-size: 11px; line-height: 1.5; color: var(--muted-strong); background: var(--thead); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; max-height: 220px; overflow-y: auto; margin: 8px 0 0; }
+    .sig-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .signature-pad-wrap { border: 1px dashed var(--border-strong); border-radius: 9px; background: #fff; padding: 6px; }
+    #signature-canvas { width: 100%; height: 170px; display: block; border-radius: 6px; touch-action: none; cursor: crosshair; }
+    .signature-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+    .sig-skip { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12.5px; color: var(--muted-strong); cursor: pointer; }
+    .contract-full-text { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--ink); background: var(--thead); border: 1px solid var(--border); border-radius: 9px; padding: 16px; max-height: 46vh; overflow-y: auto; margin: 0; }
+    .contract-signature-block { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+    .contract-signature-block .signer-info { font-size: 12.5px; color: var(--muted-strong); line-height: 1.8; }
+    .contract-signature-block .signature-image img { max-width: 260px; max-height: 130px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+    @media print {
+      body.printing-contract > *:not(#contract-modal) { display: none !important; }
+      body.printing-contract #contract-modal { position: static; display: block; background: none; padding: 0; }
+      body.printing-contract #contract-modal .modal { max-width: none; box-shadow: none; border: none; }
+      body.printing-contract .modal-head, body.printing-contract .modal-foot { display: none !important; }
+      body.printing-contract .contract-full-text { max-height: none; overflow: visible; border: none; background: none; }
+    }
     .cf-status { display: inline-block; padding: 1px 7px; border-radius: 999px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
     .cf-status.confirmed { background: var(--accent-soft); color: var(--head); }
     .cf-status.dispatched, .cf-status.active { background: var(--orange-soft); color: var(--warn-strong); }
@@ -845,6 +875,35 @@
     </div>
   </div>
 
+  <!-- ============ CONTRACT DETAIL MODAL (Sub-turn 6e) ============ -->
+  <div class="modal-backdrop" id="contract-modal">
+    <div class="modal" role="dialog" aria-labelledby="contract-modal-title" style="max-width:640px;">
+      <header class="modal-head">
+        <div class="modal-title" id="contract-modal-title">Contract</div>
+        <button class="modal-close" id="contract-modal-close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <div class="modal-body" id="contract-print-area">
+        <pre class="contract-full-text" id="contract-full-text-content"></pre>
+        <div class="contract-signature-block" id="contract-signature-block" hidden>
+          <div class="signer-info">
+            <div><strong>Signed by:</strong> <span id="contract-signer-name"></span> (<span id="contract-signer-role"></span>)</div>
+            <div><strong>Date:</strong> <span id="contract-signed-at"></span></div>
+            <div><strong>Witnessed by:</strong> <span id="contract-witness-name"></span></div>
+          </div>
+          <div class="signature-image">
+            <img id="contract-signature-img" alt="Signature">
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="contract-cancel">Close</button>
+        <button type="button" class="btn primary" id="contract-print-btn">Print / Save PDF</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ REFUND PAYMENT MODAL ============ -->
   <div class="modal-backdrop" id="refund-modal">
     <div class="modal" role="dialog" aria-labelledby="refund-modal-title" style="max-width:480px;">
@@ -963,6 +1022,7 @@
     </div>
   </div>
 
+  <script src="/vendor/signature_pad.min.js"></script>
   <script type="module">
     import { api, ensureAuth, formatINR, rupeesToPaise, paiseToRupees } from '/_lib/api.js';
 
@@ -978,6 +1038,8 @@
       invoices: [],       // array from /api/order-invoices/:orderId
       regenInvoice: null, // invoice being regenerated (regen modal context)
       me: null,           // { id, displayName } — current session user
+      ws: null,           // { legal_name, settings } from /api/workspace (for contract template + flag)
+      contracts: [],      // order_contracts list (Sub-turn 6e)
       dispatchDrawer: { open: false, step: 1, selectedItemIds: new Set(), form: {}, submitting: false },
       returnDrawer: { open: false, step: 1, itemOutcomes: new Map(), form: {}, submitting: false },
       forceTo: null,      // target state for the force modal
@@ -1064,6 +1126,51 @@
       document.getElementById('user-avatar').textContent = first[0]?.toUpperCase() ?? 'U';
     }
 
+    // ---------- contracts (Sub-turn 6e) ----------
+    async function loadWorkspaceContract() {
+      try {
+        state.ws = await api.get('/api/workspace');
+      } catch (err) {
+        console.warn('workspace load failed (contracts disabled)', err);
+        state.ws = null;
+      }
+    }
+    function contractsEnabled() {
+      return state.ws?.settings?.features?.contract_signatures === true;
+    }
+    function renderTemplate(text, ctx) {
+      return String(text || '').replace(/\{(\w+)\}/g, (_, key) => (key in ctx ? ctx[key] : `{${key}}`));
+    }
+    function buildContractContext() {
+      const o = state.order || {};
+      const inr = (paise) => '₹' + (Number(paise || 0) / 100).toLocaleString('en-IN');
+      return {
+        workspace_name: state.ws?.workspace?.legal_name || 'Workspace',
+        customer_name: o.customer_name || 'Customer',
+        customer_phone: o.customer_phone || '',
+        order_number: String(o.order_number ?? ''),
+        rental_start: o.rental_start ? fmtDateTime(o.rental_start) : '',
+        rental_end: o.rental_end ? fmtDateTime(o.rental_end) : '',
+        total_amount: inr(o.total_paise),
+        deposit_required: inr(o.deposit_required_paise),
+        items_list: (state.items || [])
+          .filter(i => i.item_type === 'rental')
+          .map(i => `- ${i.description} (Qty: ${Number(i.quantity)})`)
+          .join('\n'),
+      };
+    }
+
+    async function loadContracts() {
+      if (!contractsEnabled()) { state.contracts = []; return; }
+      try {
+        const { contracts } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}/contracts`);
+        state.contracts = contracts || [];
+      } catch (err) {
+        console.warn('contracts load failed', err);
+        state.contracts = [];
+      }
+    }
+
     // ---------- billable days (mirrors src/lib/pricing.ts) ----------
     function computeBillableDays(start, end) {
       const hoursBetween = (new Date(end).getTime() - new Date(start).getTime()) / 3_600_000;
@@ -1091,6 +1198,7 @@
         state.items = items;
         state.events = events;
         state.canFinalize = can_finalize === true;
+        await loadContracts();
         render();
       } catch (err) {
         if (err.status === 404) { renderNotFound(); return; }
@@ -1126,6 +1234,7 @@
         ${itemsCardHtml()}
         ${paymentsCardHtml()}
         ${depositCardHtml()}
+        ${contractsCardHtml()}
         ${invoicesCardHtml()}
         ${timelineCardHtml()}
         ${actionsCardHtml()}
@@ -1135,6 +1244,7 @@
       wireItemsCard();
       wirePaymentsCard();
       wireDepositCard();
+      wireContractsCard();
       wireInvoicesCard();
       wireActionsCard();
       wireFinalizeBanner();
@@ -2055,6 +2165,7 @@
       else if (itemModal.classList.contains('open')) closeItemModal();
       else if (extendModal.classList.contains('open')) closeExtendModal();
       else if (depositEditModal.classList.contains('open')) closeDepositEditModal();
+      else if (contractModal.classList.contains('open')) closeContractModal();
       else if (forceModal.classList.contains('open')) closeForceModal();
     });
 
@@ -2569,16 +2680,80 @@
         <div class="dz-summary-row"><span class="k">Handed over by</span><span class="v">${escapeHtml(staffName)}</span></div>
         <div class="dz-summary-row"><span class="k">Notes</span><span class="v">${d.form.dispatch_notes ? escapeHtml(d.form.dispatch_notes) : '<span style="color:var(--muted-soft);">None</span>'}</span></div>
         ${handedEmpty ? `<div class="modal-warn" style="margin-top:14px;">⚠️ Handed-to field is blank. Audit trail will show "Not specified".</div>` : ''}
+        ${contractsEnabled() ? dzSignatureSectionHtml() : ''}
         <div id="dz-submit-error" class="form-error" style="display:none;margin-top:14px;"></div>`;
+    }
+
+    function dzSignatureSectionHtml() {
+      return `
+        <section id="signature-section" class="sig-section">
+          <h3 class="sig-title">Customer signature <span class="sig-optional">optional</span></h3>
+          <p class="sig-hint">Have the customer sign to acknowledge receipt and terms. Skip if they're not present.</p>
+          <details class="contract-preview">
+            <summary>Preview contract text</summary>
+            <pre class="contract-text" id="contract-preview-text"></pre>
+          </details>
+          <div class="sig-fields">
+            <div class="field"><label for="signer-name">Signer name</label><input type="text" id="signer-name" placeholder="Customer name" autocomplete="off"></div>
+            <div class="field"><label for="signer-role">Signer role</label>
+              <select id="signer-role"><option value="customer">Customer</option><option value="representative">Representative</option></select>
+            </div>
+          </div>
+          <div class="signature-pad-wrap">
+            <canvas id="signature-canvas"></canvas>
+            <div class="signature-actions"><button type="button" class="btn ghost tiny" id="signature-clear">Clear</button></div>
+          </div>
+          <label class="sig-skip"><input type="checkbox" id="skip-signature"> Skip signature (customer not present)</label>
+          <div id="sig-error" class="form-error" style="display:none;margin-top:8px;"></div>
+        </section>`;
     }
     function dzFoot3() {
       const n = state.dispatchDrawer.selectedItemIds.size;
       return `<button class="btn ghost" id="dz-back3">Back</button>
               <button class="btn primary" id="dz-submit">Dispatch ${n} item${n === 1 ? '' : 's'}</button>`;
     }
+    let signaturePad = null;
     function wireDzStep3() {
       document.getElementById('dz-back3').addEventListener('click', () => { state.dispatchDrawer.step = 2; renderDispatchDrawer(); });
       document.getElementById('dz-submit').addEventListener('click', submitDispatch);
+      if (contractsEnabled()) {
+        const preview = document.getElementById('contract-preview-text');
+        if (preview) preview.textContent = renderTemplate(state.ws?.settings?.contract?.template_text || '', buildContractContext());
+        const nameInput = document.getElementById('signer-name');
+        if (nameInput && !nameInput.value) nameInput.value = state.order?.customer_name || '';
+        initSignaturePad();
+        const skip = document.getElementById('skip-signature');
+        if (skip) skip.addEventListener('change', () => applySignatureDisabled(skip.checked));
+      }
+    }
+
+    function initSignaturePad() {
+      if (signaturePad && typeof signaturePad.off === 'function') signaturePad.off();
+      signaturePad = null;
+      const canvas = document.getElementById('signature-canvas');
+      if (!canvas || !window.SignaturePad) { signaturePad = null; return; }
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      // Size the backing store to the CSS box, then scale so drawing uses CSS px.
+      canvas.width = (canvas.offsetWidth || 480) * ratio;
+      canvas.height = (canvas.offsetHeight || 170) * ratio;
+      canvas.getContext('2d').scale(ratio, ratio);
+      signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgb(255,255,255)', penColor: 'rgb(0,0,0)' });
+      const clearBtn = document.getElementById('signature-clear');
+      if (clearBtn) clearBtn.addEventListener('click', () => signaturePad && signaturePad.clear());
+    }
+
+    function applySignatureDisabled(disabled) {
+      const canvas = document.getElementById('signature-canvas');
+      const clearBtn = document.getElementById('signature-clear');
+      if (canvas) canvas.style.opacity = disabled ? '0.4' : '1';
+      if (canvas) canvas.style.pointerEvents = disabled ? 'none' : 'auto';
+      if (clearBtn) clearBtn.disabled = disabled;
+      if (disabled && signaturePad) signaturePad.clear();
+    }
+
+    function collectSignatureData() {
+      if (!signaturePad || signaturePad.isEmpty()) return null;
+      return signaturePad.toDataURL('image/png').split(',')[1] || null; // strip data-URL prefix
     }
 
     async function submitDispatch() {
@@ -2587,17 +2762,45 @@
       if (!item_ids.length) return;
       const errBox = document.getElementById('dz-submit-error');
       errBox.style.display = 'none';
-      const btn = document.getElementById('dz-submit');
-      d.submitting = true; btn.disabled = true; btn.textContent = 'Dispatching…';
+
       const payload = { item_ids, received_by_user_id: d.form.received_by_user_id || state.me?.id };
       if (d.form.handed_to) payload.handed_to = d.form.handed_to;
       if (d.form.dispatch_notes) payload.dispatch_notes = d.form.dispatch_notes;
+
+      // Contract signature (flag-gated). Required only when not skipped.
+      if (contractsEnabled()) {
+        const skip = document.getElementById('skip-signature')?.checked ?? false;
+        if (!skip) {
+          const signerName = document.getElementById('signer-name')?.value.trim();
+          const sig = collectSignatureData();
+          const sigErr = document.getElementById('sig-error');
+          if (!signerName || !sig) {
+            if (sigErr) {
+              sigErr.style.display = 'block';
+              sigErr.textContent = !signerName
+                ? 'Enter the signer name, or check "Skip signature".'
+                : 'Please capture a signature, or check "Skip signature".';
+            }
+            return;
+          }
+          payload.contract = {
+            signature_png_base64: sig,
+            signer_name: signerName,
+            signer_role: document.getElementById('signer-role')?.value || 'customer',
+          };
+        }
+      }
+
+      const btn = document.getElementById('dz-submit');
+      d.submitting = true; btn.disabled = true; btn.textContent = 'Dispatching…';
       try {
         const res = await api.post(`/api/orders/${state.orderId}/dispatch`, payload);
         d.submitting = false;
         closeDispatchDrawer();
         const n = res.items_dispatched?.length ?? item_ids.length;
         showToast(`${n} item${n === 1 ? '' : 's'} dispatched${res.order_status_changed ? ' — order marked as dispatched' : ''}`);
+        if (res.contract?.signed) showToast(`Contract signed by ${res.contract.signer_name}`);
+        signaturePad = null;
         await loadOrder();
       } catch (err) {
         d.submitting = false;
@@ -3107,6 +3310,67 @@
       } finally { submit.disabled = false; submit.textContent = 'Save'; }
     });
 
+    // ---------- contracts card (Sub-turn 6e) ----------
+    function contractsCardHtml() {
+      if (!contractsEnabled()) return ''; // feature off → no card at all
+      const list = state.contracts || [];
+      const body = list.length
+        ? list.map(c => `
+            <div class="contract-row" data-id="${escapeAttr(c.id)}">
+              <div class="contract-info">
+                ${c.signed
+                  ? `<strong>Signed by ${escapeHtml(c.signer_name || 'Customer')}</strong> <span class="contract-role">(${escapeHtml(c.signer_role || 'customer')})</span><br><small>${escapeHtml(fmtDateTime(c.signed_at))}</small>`
+                  : `<strong>Unsigned contract</strong><br><small>Created ${escapeHtml(fmtDateTime(c.created_at))}</small>`}
+              </div>
+              <div class="contract-actions">
+                <button class="btn ghost tiny view-contract-btn" data-id="${escapeAttr(c.id)}">View</button>
+              </div>
+            </div>`).join('')
+        : `<div class="contracts-empty">No contracts yet. Capture a signature at dispatch to record one.</div>`;
+      return `
+        <div class="card contracts-card">
+          <div class="card-head"><h3>Contracts</h3></div>
+          <div class="contracts-list">${body}</div>
+        </div>`;
+    }
+
+    function wireContractsCard() {
+      document.querySelectorAll('.view-contract-btn').forEach(btn => {
+        btn.addEventListener('click', () => openContractDetail(btn.dataset.id));
+      });
+    }
+
+    const contractModal = document.getElementById('contract-modal');
+    async function openContractDetail(contractId) {
+      try {
+        const { contract } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}/contracts/${encodeURIComponent(contractId)}`);
+        document.getElementById('contract-full-text-content').textContent = contract.contract_text_snapshot || '';
+        const block = document.getElementById('contract-signature-block');
+        if (contract.signature_png) {
+          document.getElementById('contract-signer-name').textContent = contract.signer_name || '—';
+          document.getElementById('contract-signer-role').textContent = contract.signer_role || '—';
+          document.getElementById('contract-signed-at').textContent = fmtDateTime(contract.signed_at);
+          document.getElementById('contract-witness-name').textContent = contract.witness_name || '—';
+          document.getElementById('contract-signature-img').src = `data:image/png;base64,${contract.signature_png}`;
+          block.hidden = false;
+        } else {
+          block.hidden = true;
+        }
+        contractModal.classList.add('open');
+      } catch (err) {
+        showToast('Could not load contract: ' + (err.body?.error || err.message));
+      }
+    }
+    function closeContractModal() { contractModal.classList.remove('open'); }
+    document.getElementById('contract-modal-close').addEventListener('click', closeContractModal);
+    document.getElementById('contract-cancel').addEventListener('click', closeContractModal);
+    contractModal.addEventListener('click', (e) => { if (e.target === contractModal) closeContractModal(); });
+    document.getElementById('contract-print-btn').addEventListener('click', () => {
+      document.body.classList.add('printing-contract');
+      window.print();
+      setTimeout(() => document.body.classList.remove('printing-contract'), 200);
+    });
+
     function openPaymentMenu(btn, paymentId) {
       closeAllMenus();
       const menu = document.createElement('div');
@@ -3362,6 +3626,7 @@
     (async () => {
       try {
         await hydrateIdentity();
+        await loadWorkspaceContract();
         await loadOrder();
         await loadPayments();
         await loadInvoices();

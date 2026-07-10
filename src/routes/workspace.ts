@@ -43,6 +43,7 @@ const KNOWN_FLAGS = new Set([
   'qr_scanning', 'otp_handover', 'customer_tiers', 'vip_consolidated_billing',
   'trust_score', 'investor_module', 'cashfree_gateway', 'wati_notifications',
   'gst_split_cgst_sgst_igst', 'damage_module', 'auto_close_when_all_items_terminal',
+  'contract_signatures',
 ]);
 const METADATA_ROLES = new Set(['owner', 'manager']);
 
@@ -73,6 +74,7 @@ function clientCtx(c: Context) {
 function normalizeSettings(raw: unknown) {
   const s = (raw ?? {}) as Record<string, any>;
   const b = s.billing ?? {}, t = s.tax ?? {}, inv = s.invoice ?? {}, bd = s.bank_details ?? {}, f = s.features ?? {};
+  const contract = s.contract ?? {};
   const features: Record<string, boolean> = {};
   for (const k of KNOWN_FLAGS) features[k] = f[k] === true;
   return {
@@ -97,6 +99,10 @@ function normalizeSettings(raw: unknown) {
       ifsc: bd.ifsc ?? null,
       branch: bd.branch ?? null,
       upi_id: bd.upi_id ?? null,
+    },
+    contract: {
+      template_text: typeof contract.template_text === 'string' ? contract.template_text : '',
+      template_version: contract.template_version ?? 'v1',
     },
     features,
   };
@@ -217,6 +223,10 @@ const patchSchema = z.object({
       branch:         nullableStr(200),
       upi_id:         nullableStr(100),
     }).optional(),
+    contract: z.object({
+      template_text:    z.string().max(20000).optional(),
+      template_version: z.string().max(50).optional(),
+    }).optional(),
     features: z.record(z.string(), z.boolean()).optional(),
   }).optional(),
 });
@@ -238,7 +248,7 @@ workspace.patch('/settings', async (c) => {
   const featureKeys = sf.features ? Object.keys(sf.features) : [];
   const hasFeatures = featureKeys.length > 0;
   const hasMetadata =
-    Object.keys(wf).length > 0 || !!(sf.billing || sf.tax || sf.invoice || sf.bank_details);
+    Object.keys(wf).length > 0 || !!(sf.billing || sf.tax || sf.invoice || sf.bank_details || sf.contract);
 
   // Role gates.
   if (hasFeatures && role !== 'owner') {
@@ -264,7 +274,7 @@ workspace.patch('/settings', async (c) => {
   // Build the next settings JSONB from a clone of the current one (preserves any
   // extra keys such as the legacy `deposit` object).
   const next = JSON.parse(JSON.stringify(wsRow.settings ?? {})) as Record<string, any>;
-  for (const sub of ['billing', 'tax', 'invoice', 'bank_details'] as const) {
+  for (const sub of ['billing', 'tax', 'invoice', 'bank_details', 'contract'] as const) {
     if (sf[sub]) {
       next[sub] = { ...(next[sub] ?? {}) };
       for (const [k, v] of Object.entries(sf[sub] as Record<string, unknown>)) {

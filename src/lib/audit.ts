@@ -68,6 +68,8 @@ export type AuditEventType =
   | 'orders.invoice.status.forced'
   | 'orders.dispatch.batch'
   | 'orders.return.batch'
+  | 'orders.contract.signed'
+  | 'orders.contract.unsigned_generated'
   | 'workspace.settings.updated'
   | 'integration.configured'
   | 'integration.activated'

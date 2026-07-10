@@ -328,6 +328,17 @@ NOT `= ANY(${arr}::status_enum[])`.
 - **`is_late` is computed, not stored:** `rental_end < now() AND EXISTS(order_items still 'dispatched')`. NOTE the `order_item_status` enum has **no `'active'`** (that's an order status) — "still out" means item status `dispatched`. Returned on both the list and detail order responses.
 - Orders list accepts `?late_only=1` to show only late orders (WHERE mirrors the `is_late` predicate). `orders.html` shows a red "Late Nd" badge per row + a "Late only" filter chip with URL state.
 
+### Contract signatures at dispatch (Sub-turn 6e)
+- **`order_contracts` table** — one row **per dispatch batch** when the `contract_signatures` flag is on. Columns: `contract_text_snapshot` (rendered at signing time), `template_version`, `signature_png` (base64, nullable when unsigned), `signer_name`, `signer_role` (`customer | representative | unsigned`), `signed_at`, `ip_address inet`, `user_agent`, `witness_user_id` (the operator), `dispatch_event_id` (soft link to the `order_events` batch row).
+- **Contract template** lives at `workspaces.settings.contract.template_text` (+ `template_version`). Variables substituted at signing: `{customer_name}`, `{customer_phone}`, `{order_number}`, `{rental_start}`, `{rental_end}`, `{total_amount}`, `{deposit_required}`, `{items_list}`, `{workspace_name}`. Unknown `{tokens}` are left literal so template typos are visible.
+- **Snapshot immutability:** the rendered text is frozen on the row at signing time — editing the template later never alters old contracts (same discipline as invoices).
+- **`POST /api/orders/:id/dispatch`** accepts an optional `contract: { signature_png_base64?, signer_name, signer_role }`. When the flag is on it always writes a contract record — **signed** (`orders.contract.signed`) if a signature is present, else an **unsigned** record (`orders.contract.unsigned_generated`) for the audit trail. Contract creation is **fail-open** — a contract error never fails the dispatch. When the flag is off, no contract row is written (a payload is accepted-and-ignored).
+- **`GET /api/orders/:id/contracts`** (light list) and **`GET /api/orders/:id/contracts/:contractId`** (full text + base64 PNG + witness name; `ip_address` via `host()`).
+- **Signature storage:** base64 PNG in the DB column (no blob storage yet — migrate to Vercel Blob when scale demands).
+- **Feature flag `contract_signatures`** (default OFF) gates the dispatch-drawer signature UI + the order Contracts card. Signature is **optional** — the operator can "Skip signature" (customer not present) and still dispatch; the contract record stays unsigned.
+- **Vendored library** at `public/vendor/signature_pad.min.js` — a small, API-compatible signature pad (the upstream SignaturePad CDN was egress-blocked; this exposes `new SignaturePad(canvas,{backgroundColor,penColor})`, `.clear()`, `.isEmpty()`, `.toDataURL()`). First entry in `public/vendor/`. No CDN dependency at runtime.
+- **UI:** signature block on the dispatch drawer's confirm step (contract preview, signer name/role, canvas, skip toggle); a Contracts card on `order.html`; a contract detail modal with a Print/Save-PDF path (`window.print()` with a `printing-contract` body class that hides everything except the modal).
+
 ### Audit on every mutation
 Every route that mutates order state writes TWO event rows:
 1. `order_events` — per-order timeline the operator sees
@@ -460,6 +471,7 @@ Documented feature keys (add new ones here as they're introduced):
 * `gst_split_cgst_sgst_igst` — Indian GST breakdown (CGST+SGST intra-state, IGST inter-state)
 * `damage_module` — damage cost recovery, photo evidence, partial forfeiture
 * `auto_close_when_all_items_terminal` — automatically close orders when all items reach terminal status (default false — operator confirms via banner)
+* `contract_signatures` — on-screen customer signature capture on a rental agreement at dispatch (default false; workspace-editable template in `settings.contract.template_text`)
 
 DSLRSWALA workspace has `gst_split_cgst_sgst_igst: true` by default (GST-registered). All other flags default to `false` and get enabled as features ship.
 
