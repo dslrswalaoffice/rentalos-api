@@ -25,6 +25,36 @@ export type NotifyArgs = {
   metadata?: Record<string, unknown>;
 };
 
+type ActiveIntegration = {
+  provider: string;
+  is_active: boolean;
+};
+
+/**
+ * Load the active adapter for a category in this workspace, if any. Returns null
+ * when nothing is active. Never throws — a lookup failure must not break the
+ * in-product notification that already succeeded.
+ */
+async function loadActiveIntegration(
+  workspaceId: string,
+  category: 'whatsapp' | 'email',
+): Promise<ActiveIntegration | null> {
+  try {
+    const rows = await query<ActiveIntegration>(sql`
+      SELECT provider, is_active
+      FROM workspace_integrations
+      WHERE workspace_id = ${workspaceId}::uuid
+        AND category = ${category}::text
+        AND is_active = true
+      LIMIT 1
+    `);
+    return rows[0] ?? null;
+  } catch (err) {
+    console.error('loadActiveIntegration failed:', err, category);
+    return null;
+  }
+}
+
 const TEMPLATES: Record<string, { title: string; body?: string }> = {
   'order.created': {
     title: 'New order #{order_number}',
@@ -110,6 +140,23 @@ export async function emitNotification(args: NotifyArgs): Promise<void> {
         AND (${args.actorUserId ?? null}::uuid IS NULL OR m.user_id != ${args.actorUserId ?? null}::uuid)
     `);
 
+    // Which external channels have an active adapter this workspace? Loaded once
+    // per emit (not per recipient). Sub-turn 6a only *records* the delivery
+    // intent — it does not actually send. A configured noop adapter records
+    // 'skipped'; a real (future) adapter records 'pending' for a sender to pick
+    // up. No active adapter → no external row at all.
+    const [waIntegration, emailIntegration] = await Promise.all([
+      loadActiveIntegration(args.workspaceId, 'whatsapp'),
+      loadActiveIntegration(args.workspaceId, 'email'),
+    ]);
+    const externalChannels: Array<{ channel: 'whatsapp' | 'email'; status: 'pending' | 'skipped' }> = [];
+    if (waIntegration) {
+      externalChannels.push({ channel: 'whatsapp', status: waIntegration.provider === 'noop' ? 'skipped' : 'pending' });
+    }
+    if (emailIntegration) {
+      externalChannels.push({ channel: 'email', status: emailIntegration.provider === 'noop' ? 'skipped' : 'pending' });
+    }
+
     for (const r of recipients) {
       const inserted = await query<{ id: string }>(sql`
         INSERT INTO notifications (
@@ -146,6 +193,23 @@ export async function emitNotification(args: NotifyArgs): Promise<void> {
           ${JSON.stringify({ title, body, link_url: args.linkUrl ?? null })}::jsonb
         )
       `;
+
+      // External channels: record the delivery intent for each active adapter.
+      // 6a wires the pipe only — nothing is actually sent here.
+      for (const ext of externalChannels) {
+        await sql`
+          INSERT INTO notification_deliveries (
+            workspace_id, notification_id, channel, status, target_user_id, payload_snapshot
+          ) VALUES (
+            ${args.workspaceId}::uuid,
+            ${notificationId}::uuid,
+            ${ext.channel}::text,
+            ${ext.status}::text,
+            ${r.user_id}::uuid,
+            ${JSON.stringify({ title, body, link_url: args.linkUrl ?? null })}::jsonb
+          )
+        `;
+      }
     }
   } catch (err) {
     console.error('emitNotification failed:', err, args.eventType);

@@ -11,6 +11,7 @@ import { dashboard } from './routes/dashboard.js';
 import { notifications } from './routes/notifications.js';
 import { calendar } from './routes/calendar.js';
 import { availability } from './routes/availability.js';
+import { integrations } from './routes/integrations.js';
 import { config } from './lib/config.js';
 export const app = new Hono();
 // Request logging in dev only. Prod: rely on Vercel logs.
@@ -38,6 +39,7 @@ app.route('/api/dashboard', dashboard);
 app.route('/api/notifications', notifications);
 app.route('/api/calendar', calendar);
 app.route('/api/availability', availability);
+app.route('/api/integrations', integrations);
 // Fallback for unknown /api/* — keep it JSON so clients can parse it.
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) {
