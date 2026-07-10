@@ -1045,6 +1045,17 @@ orders.patch('/:id/items/:itemId/status', async (c) => {
     ipAddress, userAgent,
   });
 
+  // Item status drives chargeable_paise + tax breakdown (e.g.
+  // not_returned_non_chargeable → chargeable 0). Batch dispatch/return already
+  // recompute; the per-item PATCH must too, so post-invoice/return corrections
+  // update the line + order totals. Fail-open — a recompute error must not undo
+  // the status change (same pattern as emitNotification).
+  try {
+    await recomputeOrderTotals(id, session.workspace.id, session.user.id);
+  } catch (err) {
+    console.error('recompute after item-status change failed', err);
+  }
+
   emitNotification({
     workspaceId: session.workspace.id,
     actorUserId: session.user.id,

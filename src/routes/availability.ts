@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { sql, query } from '../db.js';
-import { checkAvailability, AvailabilityError } from '../lib/availability.js';
+import { checkAvailability, AvailabilityError, RESERVING_STATUSES } from '../lib/availability.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -55,7 +55,11 @@ availability.use('*', sessionMiddleware, requireAuth);
 // Kept inline in the SQL below (Neon HTTP driver doesn't cleanly serialise a
 // JS array to a Postgres enum array). If this list grows, hardcode both here
 // and in the SQL — the two need to match.
-const RESERVING_STATUS_LABEL = 'confirmed / dispatched / active';
+// Single source of truth: the canonical reserving statuses live in
+// src/lib/availability.ts. This route imports the constant so the two
+// availability code paths can never drift apart again (Sub-turn 5g).
+const RESERVING_STATUS_LABEL = RESERVING_STATUSES.join(' / ');
+const RESERVING_STATUS_CSV = RESERVING_STATUSES.join(',');
 
 const windowSchema = z.object({
   from: z.string().datetime(),
@@ -117,7 +121,7 @@ availability.get('/', async (c) => {
         AND oi.item_type = 'rental'
         AND o.workspace_id = p.workspace_id
         AND o.deleted_at IS NULL
-        AND o.status::text IN ('confirmed', 'dispatched', 'active')
+        AND o.status::text = ANY(string_to_array(${RESERVING_STATUS_CSV}::text, ','))
         AND o.rental_start < ${to}::timestamptz
         AND o.rental_end   > ${from}::timestamptz
     ) r ON true

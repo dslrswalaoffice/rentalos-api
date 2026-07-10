@@ -282,7 +282,7 @@ NOT `= ANY(${arr}::status_enum[])`.
 ### Reservation model (Sub-turn 1)
 - Assets are NOT allocated to specific units in Sub-turn 1. `order_assets` table exists but is unused until dispatch (Sub-turn 3).
 - Availability is measured at the product level: `total_units - reserved_units`.
-- Reserving statuses: `confirmed`, `dispatched`, `active`. Draft and quoted do NOT reserve inventory.
+- **`RESERVING_STATUSES`** = `['confirmed', 'dispatched', 'active', 'returned']` — the single canonical list of order statuses that reserve inventory. Defined once in `src/lib/availability.ts` and imported by any route that filters orders for availability (`src/routes/availability.ts`); both derive their SQL filter from it, so the two paths can't drift. Draft / quoted / closed / cancelled do NOT reserve. (`returned` still holds the gear until items are individually marked returned, so it counts.)
 
 ### Item types
 `rental`, `delivery_fee`, `late_fee`, `damage`, `discount`, `tax`, `deposit`, `other`. Rental items must have `product_id`. Accessories bundle under a parent via `parent_item_id`.
