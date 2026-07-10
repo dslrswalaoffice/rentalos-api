@@ -84,6 +84,8 @@ type ProductRow = {
   buffer_before_hours: number;
   buffer_after_hours: number;
   shortage_limit: number;
+  tracking_mode: string;
+  stock_quantity: number | null;
   is_active: boolean;
   is_kit: boolean;
   component_count: number;
@@ -93,6 +95,7 @@ type ProductRow = {
   available_units: number;
   rented_units: number;
   in_repair_units: number;
+  effective_capacity: number;
 };
 
 // ============================================================================
@@ -112,13 +115,15 @@ inventory.get('/products', async (c) => {
       p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
       p.specifications, p.notes, p.image_url, p.hsn_code,
       p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
+      p.tracking_mode, p.stock_quantity,
       p.is_active, p.is_kit,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = p.id)::int AS component_count,
       p.created_at, p.updated_at,
       COALESCE(a.total,     0)::int AS total_units,
       COALESCE(a.available, 0)::int AS available_units,
       COALESCE(a.rented,    0)::int AS rented_units,
-      COALESCE(a.in_repair, 0)::int AS in_repair_units
+      COALESCE(a.in_repair, 0)::int AS in_repair_units,
+      (CASE WHEN p.tracking_mode = 'bulk' THEN COALESCE(p.stock_quantity, 0) ELSE COALESCE(a.total, 0) END)::int AS effective_capacity
     FROM products p
     LEFT JOIN LATERAL (
       SELECT
@@ -164,13 +169,15 @@ inventory.get('/products/:id', async (c) => {
       p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
       p.specifications, p.notes, p.image_url, p.hsn_code,
       p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
+      p.tracking_mode, p.stock_quantity,
       p.is_active, p.is_kit,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = p.id)::int AS component_count,
       p.created_at, p.updated_at,
       COALESCE(a.total,     0)::int AS total_units,
       COALESCE(a.available, 0)::int AS available_units,
       COALESCE(a.rented,    0)::int AS rented_units,
-      COALESCE(a.in_repair, 0)::int AS in_repair_units
+      COALESCE(a.in_repair, 0)::int AS in_repair_units,
+      (CASE WHEN p.tracking_mode = 'bulk' THEN COALESCE(p.stock_quantity, 0) ELSE COALESCE(a.total, 0) END)::int AS effective_capacity
     FROM products p
     LEFT JOIN LATERAL (
       SELECT
@@ -228,8 +235,11 @@ const createSchema = z.object({
   specifications: z.record(z.unknown()).optional(),
   notes: z.string().max(2000).optional(),
   is_kit: z.boolean().default(false),
-  // How many physical units to create right now (asset rows).
+  // How many physical units to create right now (asset rows). Ignored for bulk.
   initial_units: z.number().int().min(0).max(50).default(1),
+  // Tracking mode (Sub-turn 6h): 'tracked' (asset rows) or 'bulk' (stock_quantity).
+  tracking_mode: z.enum(['tracked', 'bulk']).default('tracked'),
+  stock_quantity: z.number().int().min(0).nullable().optional(),
 });
 
 inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
@@ -242,6 +252,14 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
     return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   }
   const input = parsed.data;
+
+  // Tracking-mode / stock-quantity coupling (mirrors the DB constraint).
+  if (input.tracking_mode === 'bulk') {
+    if (input.stock_quantity == null) return c.json({ error: 'stock_quantity_required' }, 400);
+  } else if (input.stock_quantity != null) {
+    return c.json({ error: 'stock_quantity_not_allowed_for_tracked' }, 400);
+  }
+
   const sku = (input.sku ?? generateSku(input.name)).toUpperCase();
 
   // 1. Check SKU uniqueness upfront (nicer error than a bare constraint violation)
@@ -255,14 +273,14 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
   }
 
   // 2. Insert product + asset rows in a single atomic CTE.
-  //    If either step fails, both roll back.
-  const codes = assetCodesFor(sku, input.initial_units);
+  //    If either step fails, both roll back. Bulk products get NO asset rows.
+  const codes = input.tracking_mode === 'bulk' ? [] : assetCodesFor(sku, input.initial_units);
   const inserted = await query<ProductRow & { asset_ids: string[] | null }>(sql`
     WITH new_product AS (
       INSERT INTO products (
         workspace_id, sku, name, category, description,
         daily_rate, weekly_rate, monthly_rate, deposit, replacement_value,
-        specifications, notes, is_kit, created_by
+        specifications, notes, is_kit, tracking_mode, stock_quantity, created_by
       ) VALUES (
         ${session.workspace.id},
         ${sku},
@@ -277,6 +295,8 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
         ${JSON.stringify(input.specifications ?? {})}::jsonb,
         ${input.notes ?? null},
         ${input.is_kit},
+        ${input.tracking_mode}::text,
+        ${input.stock_quantity ?? null}::int,
         ${session.user.id}
       )
       RETURNING *
@@ -299,6 +319,8 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
       0::int AS rented_units,
       0::int AS in_repair_units,
       0::int AS component_count,
+      (CASE WHEN np.tracking_mode = 'bulk' THEN COALESCE(np.stock_quantity, 0)
+            ELSE (SELECT COUNT(*) FROM new_assets) END)::int AS effective_capacity,
       (SELECT array_agg(id) FROM new_assets) AS asset_ids
     FROM new_product np
   `);
@@ -354,6 +376,8 @@ const updateSchema = z.object({
   buffer_before_hours: z.number().int().min(0).max(72).optional(),
   buffer_after_hours: z.number().int().min(0).max(72).optional(),
   shortage_limit: z.number().int().min(0).max(100).optional(),
+  tracking_mode: z.enum(['tracked', 'bulk']).optional(),
+  stock_quantity: z.number().int().min(0).nullable().optional(),
   is_active: z.boolean().optional(),
   is_kit: z.boolean().optional(),
   custom_fields: z.array(z.object({ definition_id: z.string().uuid(), value: z.string().nullable() })).optional(),
@@ -372,13 +396,22 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
   const p = parsed.data;
 
   // Fetch existing to make sure it belongs to this workspace before touching it.
-  const existing = await query<{ id: string; is_active: boolean; name: string; is_kit: boolean }>(sql`
-    SELECT id, is_active, name, is_kit FROM products
+  const existing = await query<{ id: string; is_active: boolean; name: string; is_kit: boolean; tracking_mode: string; stock_quantity: number | null }>(sql`
+    SELECT id, is_active, name, is_kit, tracking_mode, stock_quantity FROM products
     WHERE id = ${id} AND workspace_id = ${session.workspace.id} AND deleted_at IS NULL
     LIMIT 1
   `);
   if (existing.length === 0) return c.json({ error: 'not_found' }, 404);
   const before = existing[0]!;
+
+  // Tracking mode is immutable after creation (Sub-turn 6h).
+  if (p.tracking_mode && p.tracking_mode !== before.tracking_mode) {
+    return c.json({ error: 'tracking_mode_immutable', reason: 'Delete and recreate the product to change tracking mode.' }, 409);
+  }
+  // Only bulk products carry a stock_quantity.
+  if (p.stock_quantity != null && before.tracking_mode !== 'bulk') {
+    return c.json({ error: 'stock_quantity_not_allowed_for_tracked' }, 409);
+  }
 
   // Un-kitting a product with components would orphan the bundle. Block it.
   if (p.is_kit === false && before.is_kit) {
@@ -412,6 +445,7 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
       buffer_before_hours = COALESCE(${p.buffer_before_hours ?? null}::integer, buffer_before_hours),
       buffer_after_hours  = COALESCE(${p.buffer_after_hours  ?? null}::integer, buffer_after_hours),
       shortage_limit      = COALESCE(${p.shortage_limit      ?? null}::integer, shortage_limit),
+      stock_quantity      = COALESCE(${p.stock_quantity      ?? null}::integer, stock_quantity),
       is_active           = COALESCE(${p.is_active           ?? null}::boolean, is_active),
       is_kit              = COALESCE(${p.is_kit              ?? null}::boolean, is_kit)
     WHERE id = ${id} AND workspace_id = ${session.workspace.id}
@@ -420,9 +454,11 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
       daily_rate, weekly_rate, monthly_rate, deposit, replacement_value,
       specifications, notes, image_url, hsn_code,
       buffer_before_hours, buffer_after_hours, shortage_limit,
+      tracking_mode, stock_quantity,
       is_active, is_kit, created_at, updated_at,
       0::int AS total_units, 0::int AS available_units,
       0::int AS rented_units, 0::int AS in_repair_units,
+      (CASE WHEN tracking_mode = 'bulk' THEN COALESCE(stock_quantity, 0) ELSE 0 END)::int AS effective_capacity,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = products.id)::int AS component_count
   `);
 

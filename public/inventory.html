@@ -140,6 +140,19 @@
     .hsn-code { font-family: var(--font-mono); font-size: 12px; color: var(--head); }
     table.products tbody tr { cursor: pointer; }
     .kit-badge { display: inline-block; margin-left: 6px; padding: 2px 8px; background: #ede9fe; color: #6d28d9; border-radius: 10px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; vertical-align: middle; }
+    /* 6h: tracking-mode badge + radio group */
+    .type-badge { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 4px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.04em; vertical-align: middle; }
+    .type-badge.type-tracked { background: #e0f2fe; color: #075985; }
+    .type-badge.type-bulk { background: #fef3c7; color: #92400e; }
+    .field-important { padding: 12px; background: var(--thead); border: 1px solid var(--border); border-radius: 9px; margin-bottom: 16px; }
+    .radio-group { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .radio-group > label { display: flex; gap: 10px; cursor: pointer; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; align-items: flex-start; background: var(--card); }
+    .radio-group > label:has(input:checked) { background: var(--accent-soft); border-color: var(--border-accent); }
+    .radio-group input:disabled ~ .radio-content { opacity: 0.6; }
+    .radio-content { display: flex; flex-direction: column; }
+    .radio-content strong { font-size: 13.5px; color: var(--head); }
+    .radio-hint { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+    .hint.locked { color: var(--warn-strong); font-style: italic; font-size: 11.5px; margin: 8px 0 0; }
     .kit-check { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--thead); cursor: pointer; font-size: 13px; color: var(--ink); }
     .kit-check input { margin: 0; }
     .kit-component-row { display: grid; grid-template-columns: 1fr 90px 70px; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); align-items: center; }
@@ -375,6 +388,21 @@
         <div class="modal-body">
           <div id="form-error" class="form-error" style="display:none;"></div>
 
+          <div class="field field-important">
+            <label>Tracking mode <span class="req">*</span></label>
+            <div class="radio-group" id="add-mode-group">
+              <label><input type="radio" name="add_tracking_mode" value="tracked" checked>
+                <div class="radio-content"><strong>Tracked</strong><span class="radio-hint">Each unit has an identifier. Best for high-value items where specific units matter (cameras, lenses).</span></div></label>
+              <label><input type="radio" name="add_tracking_mode" value="bulk">
+                <div class="radio-content"><strong>Bulk</strong><span class="radio-hint">Fungible stock, no individual identifiers. Best for cheap / consumable items (cards, cables, tape).</span></div></label>
+            </div>
+          </div>
+          <div class="field" id="add-stock-field" hidden>
+            <label for="f-stock">Stock quantity <span class="req">*</span></label>
+            <input id="f-stock" type="number" min="0" step="1" placeholder="10">
+            <div class="field-hint">Total units currently in stock. Update as you receive more or lose stock.</div>
+          </div>
+
           <div class="field">
             <label for="f-name">Product name <span class="req">*</span></label>
             <input id="f-name" name="name" type="text" required maxlength="200" placeholder="e.g. Sony FX3 Body" autocomplete="off">
@@ -413,7 +441,7 @@
             </div>
           </div>
 
-          <div class="field">
+          <div class="field" id="add-units-field">
             <label for="f-units">Initial units <span class="hint">how many do you own?</span></label>
             <input id="f-units" name="initial_units" type="number" min="0" max="50" value="1" step="1">
             <div class="field-hint" id="units-hint">Creates asset codes like <code style="font-family:var(--font-mono);color:var(--head);">SONY-FX3-BODY-01</code>, <code style="font-family:var(--font-mono);color:var(--head);">-02</code>… You can rename later.</div>
@@ -485,6 +513,21 @@
       <form id="edit-form" novalidate>
         <div class="modal-body">
           <div id="edit-error" class="form-error" style="display:none;"></div>
+          <div class="field field-important">
+            <label>Tracking mode</label>
+            <div class="radio-group" id="edit-mode-group">
+              <label><input type="radio" name="edit_tracking_mode" value="tracked" disabled>
+                <div class="radio-content"><strong>Tracked</strong><span class="radio-hint">Each unit is a serialized asset.</span></div></label>
+              <label><input type="radio" name="edit_tracking_mode" value="bulk" disabled>
+                <div class="radio-content"><strong>Bulk</strong><span class="radio-hint">Fungible stock by quantity.</span></div></label>
+            </div>
+            <p class="hint locked">Tracking mode can't be changed after creation. Delete and recreate if needed.</p>
+          </div>
+          <div class="field" id="edit-stock-field" hidden>
+            <label for="e-stock">Stock quantity</label>
+            <input id="e-stock" type="number" min="0" step="1">
+            <div class="field-hint">Total units currently in stock. Update as you receive more or lose stock.</div>
+          </div>
           <div class="field">
             <label for="e-name">Product name</label>
             <input id="e-name" type="text" maxlength="200" autocomplete="off">
@@ -672,7 +715,7 @@
         <tr data-id="${p.id}">
           <td class="product-image-cell">${thumb}</td>
           <td>
-            <div class="product-name">${escapeHtml(p.name)}${p.is_kit ? `<span class="kit-badge">KIT · ${p.component_count} item${p.component_count === 1 ? '' : 's'}</span>` : ''}${!p.is_active ? '<span class="archived-badge">archived</span>' : ''}</div>
+            <div class="product-name">${escapeHtml(p.name)}<span class="type-badge type-${escapeAttr(p.tracking_mode || 'tracked')}">${p.tracking_mode === 'bulk' ? 'BULK' : 'TRACKED'}</span>${p.is_kit ? `<span class="kit-badge">KIT · ${p.component_count} item${p.component_count === 1 ? '' : 's'}</span>` : ''}${!p.is_active ? '<span class="archived-badge">archived</span>' : ''}</div>
             <div class="product-sku">${escapeHtml(p.sku)}</div>
           </td>
           <td><span class="cat-tag">${escapeHtml(p.category)}</span></td>
@@ -770,12 +813,24 @@
       formError.style.display = 'none';
       document.getElementById('f-deposit').value = 0;
       document.getElementById('f-units').value = 1;
+      document.getElementById('f-stock').value = '';
+      const trackedRadio = document.querySelector('input[name="add_tracking_mode"][value="tracked"]');
+      if (trackedRadio) trackedRadio.checked = true;
+      applyAddMode('tracked');
       document.getElementById('advanced').classList.remove('open');
       document.getElementById('advanced-chev').style.transform = '';
       modal.classList.add('open');
       setTimeout(() => document.getElementById('f-name').focus(), 40);
     }
     function closeModal() { modal.classList.remove('open'); }
+
+    // Tracking-mode toggle (Sub-turn 6h): bulk shows stock qty + hides asset units.
+    function applyAddMode(mode) {
+      document.getElementById('add-stock-field').hidden = mode !== 'bulk';
+      document.getElementById('add-units-field').hidden = mode === 'bulk';
+    }
+    document.querySelectorAll('input[name="add_tracking_mode"]').forEach(r =>
+      r.addEventListener('change', () => applyAddMode(r.value)));
 
     document.getElementById('btn-add').addEventListener('click', openModal);
     document.getElementById('modal-close').addEventListener('click', closeModal);
@@ -826,13 +881,19 @@
       formError.style.display = 'none';
 
       const fd = new FormData(form);
+      const trackingMode = (document.querySelector('input[name="add_tracking_mode"]:checked')?.value) || 'tracked';
       const body = {
         name: (fd.get('name') || '').toString().trim(),
         category: (fd.get('category') || '').toString(),
         daily_rate: rupeesToPaise(fd.get('daily_rate') || 0),
         deposit: rupeesToPaise(fd.get('deposit') || 0),
-        initial_units: parseInt(fd.get('initial_units') || '1', 10),
+        tracking_mode: trackingMode,
       };
+      if (trackingMode === 'bulk') {
+        body.stock_quantity = Math.max(0, parseInt(document.getElementById('f-stock').value || '0', 10) || 0);
+      } else {
+        body.initial_units = parseInt(fd.get('initial_units') || '1', 10);
+      }
       const sku = (fd.get('sku') || '').toString().trim();
       if (sku) body.sku = sku.toUpperCase();
       const desc = (fd.get('description') || '').toString().trim();
@@ -855,6 +916,8 @@
         if (err.status === 409 && err.body?.error === 'sku_taken') {
           formError.textContent = `SKU "${err.body.sku}" is already in your catalog. Open the advanced section and pick a different one.`;
           document.getElementById('advanced').classList.add('open');
+        } else if (err.body?.error === 'stock_quantity_required') {
+          formError.textContent = 'Bulk products need a stock quantity.';
         } else if (err.status === 400 && err.body?.issues) {
           formError.textContent = 'Some fields are invalid: ' + err.body.issues.map(i => i.path?.join('.') + ' ' + i.message).join(', ');
         } else if (err.status === 403) {
@@ -904,6 +967,12 @@
       document.getElementById('e-buffer-after').value = p.buffer_after_hours ?? 0;
       document.getElementById('e-shortage-limit').value = p.shortage_limit ?? 0;
       document.getElementById('e-kit').checked = !!p.is_kit;
+      // Tracking mode (locked) + stock quantity (Sub-turn 6h).
+      const mode = p.tracking_mode || 'tracked';
+      const modeRadio = document.querySelector(`input[name="edit_tracking_mode"][value="${mode}"]`);
+      if (modeRadio) modeRadio.checked = true;
+      document.getElementById('edit-stock-field').hidden = mode !== 'bulk';
+      document.getElementById('e-stock').value = mode === 'bulk' ? (p.stock_quantity ?? 0) : '';
       setImagePreview(p.image_url || '');
       document.getElementById('image-progress').hidden = true;
       document.getElementById('image-error').hidden = true;
@@ -1083,6 +1152,12 @@
       if (bufferBefore !== '') body.buffer_before_hours = Math.max(0, Math.min(72, Math.round(Number(bufferBefore))));
       if (bufferAfter !== '') body.buffer_after_hours = Math.max(0, Math.min(72, Math.round(Number(bufferAfter))));
       if (shortageLimit !== '') body.shortage_limit = Math.max(0, Math.min(100, Math.round(Number(shortageLimit))));
+      // Bulk stock quantity is editable; tracking_mode is immutable (not sent).
+      const editMode = document.querySelector('input[name="edit_tracking_mode"]:checked')?.value;
+      if (editMode === 'bulk') {
+        const sq = document.getElementById('e-stock').value;
+        if (sq !== '') body.stock_quantity = Math.max(0, Math.round(Number(sq)));
+      }
       const cfValues = cfCollect();
       if (cfValues.length) body.custom_fields = cfValues;
       const submit = document.getElementById('edit-submit');
