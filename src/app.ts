@@ -8,6 +8,7 @@ import { payments } from './routes/payments.js';
 import { invoices } from './routes/invoices.js';
 import { workspace } from './routes/workspace.js';
 import { dashboard } from './routes/dashboard.js';
+import { notifications } from './routes/notifications.js';
 import { calendar } from './routes/calendar.js';
 import { availability } from './routes/availability.js';
 import { config } from './lib/config.js';
@@ -34,6 +35,7 @@ app.route('/api/order-payments', payments);
 app.route('/api/order-invoices', invoices);
 app.route('/api/workspace', workspace);
 app.route('/api/dashboard', dashboard);
+app.route('/api/notifications', notifications);
 app.route('/api/calendar', calendar);
 app.route('/api/availability', availability);
 // Fallback for unknown /api/* — keep it JSON so clients can parse it.

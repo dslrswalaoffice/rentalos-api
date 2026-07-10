@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
+import { emitNotification } from '../lib/notify.js';
 import { recomputeOrderTotals } from '../lib/pricing.js';
 import {
   sessionMiddleware,
@@ -544,6 +545,15 @@ orders.post('/', async (c) => {
     ipAddress, userAgent,
   });
 
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'order.created',
+    targetType: 'order', targetId: order.id,
+    linkUrl: `/order.html?id=${order.id}`,
+    metadata: { order_number: order.order_number, customer_name: customer[0]!.display_name },
+  }).catch(() => {});
+
   return c.json({ order }, 201);
 });
 
@@ -1035,6 +1045,19 @@ orders.patch('/:id/items/:itemId/status', async (c) => {
     ipAddress, userAgent,
   });
 
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'order.item.status.changed',
+    targetType: 'order', targetId: id,
+    linkUrl: `/order.html?id=${id}`,
+    metadata: {
+      order_number: order.order_number,
+      item_description: existing[0]!.description ?? '',
+      old_status: from, new_status: to,
+    },
+  }).catch(() => {});
+
   return c.json({ item: updated[0], canonical });
 });
 
@@ -1153,6 +1176,18 @@ orders.post('/:id/transitions', async (c) => {
     payload: { from: order.status, to, canonical, reason: reason ?? null, finalize_via_can_finalize: finalizeViaCanFinalize },
     ipAddress, userAgent,
   });
+
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: canonical ? 'order.status.changed' : 'order.status.forced',
+    targetType: 'order', targetId: id,
+    linkUrl: `/order.html?id=${id}`,
+    metadata: {
+      order_number: order.order_number, old_status: order.status, new_status: to,
+      customer_name: order.customer_name ?? '', reason: reason ?? '',
+    },
+  }).catch(() => {});
 
   return c.json({ order: updated[0], canonical });
 });
@@ -1277,6 +1312,18 @@ orders.post('/:id/dispatch', async (c) => {
     payload,
     ipAddress, userAgent,
   });
+
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'order.item.dispatched',
+    targetType: 'order', targetId: id,
+    linkUrl: `/order.html?id=${id}`,
+    metadata: {
+      order_number: order.order_number, count: requested.length,
+      handed_to: handed_to ?? 'customer', actor_name: session.user.displayName,
+    },
+  }).catch(() => {});
 
   const freshOrder = await loadOrder(id, session.workspace.id);
   const freshItems = await loadItems(id);
@@ -1452,6 +1499,18 @@ orders.post('/:id/return', async (c) => {
     payload,
     ipAddress, userAgent,
   });
+
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'order.item.returned',
+    targetType: 'order', targetId: id,
+    linkUrl: `/order.html?id=${id}`,
+    metadata: {
+      order_number: order.order_number, count: reqItems.length,
+      customer_name: order.customer_name ?? '',
+    },
+  }).catch(() => {});
 
   const freshOrder = await loadOrder(id, session.workspace.id);
   const freshItems = await loadItems(id);

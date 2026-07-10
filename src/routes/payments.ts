@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
+import { emitNotification } from '../lib/notify.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -104,6 +105,21 @@ async function loadOrderLite(orderId: string, workspaceId: string): Promise<Orde
 }
 
 // Net received = SUM(in) - SUM(out) over completed payments on this order.
+// Customer display name for a notification body (empty string if unavailable).
+async function customerNameFor(orderId: string, workspaceId: string): Promise<string> {
+  const r = await query<{ name: string }>(sql`
+    SELECT p.display_name AS name
+    FROM orders o JOIN people p ON p.id = o.customer_person_id
+    WHERE o.id = ${orderId}::uuid AND o.workspace_id = ${workspaceId}::uuid
+    LIMIT 1
+  `);
+  return r[0]?.name ?? '';
+}
+
+function rupees(paise: number): string {
+  return (Number(paise) / 100).toLocaleString('en-IN');
+}
+
 async function netReceivedPaise(orderId: string, workspaceId: string): Promise<number> {
   const rows = await query<{ net: number }>(sql`
     SELECT COALESCE(SUM(
@@ -305,6 +321,18 @@ payments.post('/:orderId', async (c) => {
     ipAddress, userAgent,
   });
 
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'payment.recorded',
+    targetType: 'payment', targetId: payment.id,
+    linkUrl: `/order.html?id=${orderId}`,
+    metadata: {
+      order_number: order.order_number, amount: rupees(input.amount_paise),
+      customer_name: await customerNameFor(orderId, session.workspace.id), method: input.method,
+    },
+  }).catch(() => {});
+
   return c.json({
     payment,
     order: {
@@ -372,6 +400,15 @@ payments.delete('/:orderId/:paymentId', async (c) => {
     },
     ipAddress, userAgent,
   });
+
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'payment.deleted',
+    targetType: 'order', targetId: orderId,
+    linkUrl: `/order.html?id=${orderId}`,
+    metadata: { order_number: order.order_number, amount: rupees(Number(p.amount_paise)) },
+  }).catch(() => {});
 
   return c.json({
     ok: true,
@@ -477,6 +514,15 @@ payments.post('/:orderId/:paymentId/refund', async (c) => {
     },
     ipAddress, userAgent,
   });
+
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'payment.refunded',
+    targetType: 'payment', targetId: refund.id,
+    linkUrl: `/order.html?id=${orderId}`,
+    metadata: { order_number: order.order_number, amount: rupees(input.amount_paise), method: input.method },
+  }).catch(() => {});
 
   return c.json({
     payment: refund,
