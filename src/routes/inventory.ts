@@ -6,6 +6,7 @@ import { audit } from '../lib/audit.js';
 import { put, del } from '@vercel/blob';
 import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
 import { getDefaultLocationId } from '../lib/availability.js';
+import { loadRecommendations } from '../lib/recommendations.js';
 import {
   loadTagsForEntity,
   loadTagsForEntities,
@@ -278,7 +279,9 @@ inventory.get('/products/:id', async (c) => {
       AND d.end_at > now()
     ORDER BY d.start_at ASC
   `);
-  return c.json({ product, assets, assets_by_location, custom_fields, tags, downtimes });
+  // Combined manual + co-rental recommendations preview (Sub-turn 8c).
+  const recommendations = await loadRecommendations(session.workspace.id, id, 6);
+  return c.json({ product, assets, assets_by_location, custom_fields, tags, downtimes, recommendations });
 });
 
 // ============================================================================

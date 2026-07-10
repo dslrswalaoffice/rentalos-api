@@ -302,6 +302,20 @@
     .dt-main { font-size: 12.5px; color: var(--ink); }
     .dt-sub { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 2px; }
     .dt-warn { margin-top: 8px; padding: 8px 10px; background: var(--warn-soft); border-left: 3px solid var(--warn-solid); border-radius: 7px; font-size: 12px; color: var(--warn-strong); }
+
+    /* ===== recommendations (Sub-turn 8c) ===== */
+    .reco-block { margin-top: 12px; }
+    .reco-block-head { display: flex; justify-content: space-between; align-items: center; }
+    .reco-block h4 { margin: 0 0 8px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .reco-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--thead); border: 1px solid var(--border); border-radius: 7px; margin-bottom: 6px; }
+    .reco-row.auto { opacity: 0.92; }
+    .reco-row.dragging { opacity: 0.5; }
+    .reco-row .drag-handle { color: var(--muted-soft); cursor: grab; font-size: 13px; user-select: none; }
+    .reco-info { flex: 1; min-width: 0; }
+    .reco-name { font-weight: 600; font-size: 13px; color: var(--head); }
+    .reco-note { font-size: 11px; color: var(--muted); font-style: italic; margin-top: 2px; }
+    .reco-meta { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .reco-empty { padding: 10px 0; font-size: 12px; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -643,6 +657,18 @@
             </div>
             <p class="field-hint" style="margin-top:0;">Maintenance windows that block this product's availability.</p>
             <div id="downtimes-list"></div>
+          </section>
+          <section class="modal-section" id="recommendations-section">
+            <h3 class="section-title">Recommendations</h3>
+            <p class="field-hint" style="margin-top:0;">Products commonly rented alongside this one. Manual curation shows first; auto-suggestions come from order history.</p>
+            <div class="reco-block">
+              <div class="reco-block-head"><h4>Manual</h4><button type="button" class="btn ghost tiny" id="add-reco-btn">+ Add</button></div>
+              <div id="reco-manual-list"></div>
+            </div>
+            <div class="reco-block">
+              <h4>From order history (last 180 days)</h4>
+              <div id="reco-auto-list"></div>
+            </div>
           </section>
         </div>
         <div class="modal-foot">
@@ -1094,6 +1120,7 @@
       cfLoadAndRender(id);
       assetLocLoadAndRender(id, mode);
       loadProductTagsAndDowntimes(id);
+      loadProductRecommendations(id);
       editModal.classList.add('open');
     }
     function closeEdit() { editModal.classList.remove('open'); editingId = null; }
@@ -1277,6 +1304,157 @@
         editingDowntimes = downtimes || [];
         renderDowntimes(); showToast('Downtime saved');
       } catch { /* ignore */ }
+    }
+
+    // ---------- recommendations (Sub-turn 8c) ----------
+    let editingManualRecos = [];  // manual recos on the open product
+    let editingAutoRecos = [];    // co-rental recos (read-only)
+
+    async function loadProductRecommendations(id) {
+      editingManualRecos = []; editingAutoRecos = [];
+      renderManualRecos(); renderAutoRecos();
+      try {
+        const [manualRes, combinedRes] = await Promise.all([
+          api.get(`/api/recommendations/products/${encodeURIComponent(id)}/manual`),
+          api.get(`/api/recommendations/products/${encodeURIComponent(id)}`),
+        ]);
+        if (editingId !== id) return;
+        editingManualRecos = manualRes.recommendations || [];
+        editingAutoRecos = (combinedRes.recommendations || []).filter(r => r.source === 'co_rental');
+      } catch { /* leave empty */ }
+      renderManualRecos();
+      renderAutoRecos();
+    }
+
+    function renderManualRecos() {
+      const list = document.getElementById('reco-manual-list');
+      if (!list) return;
+      if (!editingManualRecos.length) { list.innerHTML = `<div class="reco-empty">No manual recommendations yet.</div>`; return; }
+      list.innerHTML = editingManualRecos.map(r => `
+        <div class="reco-row" data-rid="${escapeAttr(r.product_id)}" draggable="true">
+          <div class="drag-handle" title="Drag to reorder">⋮⋮</div>
+          <div class="reco-info">
+            <div class="reco-name">${escapeHtml(r.name)}</div>
+            ${r.note ? `<div class="reco-note">${escapeHtml(r.note)}</div>` : ''}
+          </div>
+          <button type="button" class="btn ghost tiny" data-reco-del="${escapeAttr(r.product_id)}">Remove</button>
+        </div>`).join('');
+      list.querySelectorAll('[data-reco-del]').forEach(b => b.addEventListener('click', () => removeManualReco(b.dataset.recoDel)));
+      wireRecoDrag(list);
+    }
+
+    function wireRecoDrag(container) {
+      container.querySelectorAll('.reco-row').forEach(row => {
+        row.addEventListener('dragstart', () => row.classList.add('dragging'));
+        row.addEventListener('dragend', () => row.classList.remove('dragging'));
+        row.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          const dragging = container.querySelector('.reco-row.dragging');
+          if (!dragging || dragging === row) return;
+          const rect = row.getBoundingClientRect();
+          const after = (e.clientY - rect.top) > rect.height / 2;
+          container.insertBefore(dragging, after ? row.nextSibling : row);
+        });
+        row.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          const ids = [...container.querySelectorAll('.reco-row')].map(r => r.dataset.rid);
+          editingManualRecos.sort((a, b) => ids.indexOf(a.product_id) - ids.indexOf(b.product_id));
+          try { await api.post(`/api/recommendations/products/${encodeURIComponent(editingId)}/manual/reorder`, { recommended_product_ids: ids }); showToast('Order saved'); }
+          catch { showToast('Could not save order'); }
+        });
+      });
+    }
+
+    function renderAutoRecos() {
+      const list = document.getElementById('reco-auto-list');
+      if (!list) return;
+      if (!editingAutoRecos.length) {
+        list.innerHTML = `<div class="reco-empty">No co-rental data yet. Once 2+ orders include this product plus another, suggestions appear here.</div>`;
+        return;
+      }
+      list.innerHTML = editingAutoRecos.map(r => `
+        <div class="reco-row auto">
+          <div class="reco-info">
+            <div class="reco-name">${escapeHtml(r.name)}</div>
+            <div class="reco-meta">Rented together in ${r.co_occurrences} of last ${r.base_orders} orders · ${Math.round((r.confidence || 0) * 100)}% pair rate</div>
+          </div>
+          <button type="button" class="btn ghost tiny" data-reco-pin="${escapeAttr(r.product_id)}">Pin as manual</button>
+        </div>`).join('');
+      list.querySelectorAll('[data-reco-pin]').forEach(b => b.addEventListener('click', () => pinAsManual(b.dataset.recoPin)));
+    }
+
+    async function addManualReco(recommendedId, note) {
+      try {
+        await api.post(`/api/recommendations/products/${encodeURIComponent(editingId)}/manual`, {
+          recommended_product_id: recommendedId, note: note || null,
+        });
+        showToast('Recommendation added');
+        await loadProductRecommendations(editingId);
+        return true;
+      } catch (ex) {
+        const code = ex.body?.error;
+        showToast(code === 'already_recommended' ? 'Already recommended.'
+          : code === 'cannot_recommend_self' ? "A product can't recommend itself."
+          : ('Could not add: ' + (code || ex.message)));
+        return false;
+      }
+    }
+
+    function pinAsManual(recommendedId) { addManualReco(recommendedId, null); }
+
+    async function removeManualReco(recommendedId) {
+      try {
+        await api.del(`/api/recommendations/products/${encodeURIComponent(editingId)}/manual/${encodeURIComponent(recommendedId)}`);
+        editingManualRecos = editingManualRecos.filter(r => r.product_id !== recommendedId);
+        renderManualRecos(); showToast('Recommendation removed');
+        // Refresh auto (the removed product may now reappear as a suggestion).
+        loadProductRecommendations(editingId);
+      } catch (ex) { showToast('Could not remove: ' + (ex.body?.error || ex.message)); }
+    }
+
+    function openAddRecoModal() {
+      if (!editingId) return;
+      const existing = new Set(editingManualRecos.map(r => r.product_id));
+      const candidates = (allProducts || []).filter(p => p.id !== editingId && p.is_active && !existing.has(p.id));
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-backdrop open';
+      overlay.style.zIndex = '200';
+      overlay.innerHTML = `
+        <div class="modal" style="max-width:460px;">
+          <header class="modal-head"><div class="modal-title">Add recommendation</div><button class="modal-close" data-close>✕</button></header>
+          <div class="modal-body">
+            <div id="reco-err" class="form-error" style="display:none;"></div>
+            <div class="field"><label>Product *</label>
+              <input type="text" id="reco-search" placeholder="Search products…" autocomplete="off">
+              <div id="reco-candidates" style="max-height:200px;overflow-y:auto;margin-top:6px;"></div></div>
+            <div class="field"><label>Note <span class="hint">optional</span></label>
+              <input type="text" id="reco-note" maxlength="200" placeholder="e.g. essential accessory"></div>
+          </div>
+          <div class="modal-foot"><button class="btn ghost" data-close>Cancel</button></div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
+      const searchInp = overlay.querySelector('#reco-search');
+      const listEl = overlay.querySelector('#reco-candidates');
+      const renderCandidates = () => {
+        const term = searchInp.value.trim().toLowerCase();
+        const filtered = candidates.filter(p => !term || (p.name || '').toLowerCase().includes(term) || (p.sku || '').toLowerCase().includes(term)).slice(0, 30);
+        if (!filtered.length) { listEl.innerHTML = `<div class="reco-empty">No matching products.</div>`; return; }
+        listEl.innerHTML = filtered.map(p => `
+          <div class="reco-row" style="cursor:pointer;" data-pick="${escapeAttr(p.id)}">
+            <div class="reco-info"><div class="reco-name">${escapeHtml(p.name)}</div><div class="reco-meta">${escapeHtml(p.sku || '')}${p.category ? ' · ' + escapeHtml(p.category) : ''}</div></div>
+          </div>`).join('');
+        listEl.querySelectorAll('[data-pick]').forEach(el => el.addEventListener('click', async () => {
+          const note = overlay.querySelector('#reco-note').value.trim();
+          const ok = await addManualReco(el.dataset.pick, note);
+          if (ok) close();
+        }));
+      };
+      searchInp.addEventListener('input', renderCandidates);
+      renderCandidates();
+      setTimeout(() => searchInp.focus(), 40);
     }
 
     // ---------- asset relocation (Sub-turn 6i) ----------
@@ -1467,6 +1645,7 @@
     document.getElementById('edit-cancel').addEventListener('click', closeEdit);
     editModal.addEventListener('click', (e) => { if (e.target === editModal) closeEdit(); });
     document.getElementById('add-downtime-btn').addEventListener('click', openDowntimeModal);
+    document.getElementById('add-reco-btn').addEventListener('click', openAddRecoModal);
 
     document.getElementById('edit-form').addEventListener('submit', async (e) => {
       e.preventDefault();

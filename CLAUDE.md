@@ -652,6 +652,20 @@ Reusable discount codes that reuse the existing pricing/invoice/revision engine 
 
 ---
 
+## Related product recommendations (Sub-turn 8c)
+
+"Customers also rented" — a `product_recommendations` table for manual curation plus co-rental frequency computed on demand from order history. No feature flag. **Honest limitation:** at low order volume the co-rental side is legitimately empty; manual curation is the primary source until history builds.
+
+- **Two sources merged** (`src/lib/recommendations.ts`): **manual** rows (always first, workspace-curated) then **co-rental** auto-fill. Combined list is capped at **6** (manual takes precedence; a product in manual is deduped out of auto).
+- **Co-rental** = other rental products appearing in the same completed orders (`status ∈ dispatched/active/returned/closed`) as the source product over the **last 180 days** (hardcoded), with **≥ 2 co-occurrences** (threshold). `confidence = co_occurrences / base_orders`. Both sources **exclude inactive / soft-deleted products**.
+- **24h in-process cache** per `(workspace, product)` — computed at the canonical cap of 6 and sliced per request, so a varying `?limit` never poisons the key. Best-effort (Vercel recycles). Manual CRUD calls `invalidateRecommendationsCache`; the auto side expires naturally.
+- **Endpoints** (`/api/recommendations`): `GET /products/:productId` (combined, any member; `?limit` clamped to 6), `GET /products/:productId/manual` (owner/manager), `POST /products/:productId/manual` (add — rejects `cannot_recommend_self`, `product_not_found`, `already_recommended`), `POST /products/:productId/manual/reorder`, `DELETE /products/:productId/manual/:recommendedId`. Audit `recommendations.created/removed` (reorder is too noisy). DB enforces self-recommendation (`CHECK`) + duplicate (`UNIQUE`).
+- **Product detail GET** (`GET /api/inventory/products/:id`) now returns a `recommendations` array (up to 6). List endpoints do NOT (per-row overhead).
+- **UI:** product edit modal → Recommendations section (manual list with drag-reorder + remove + searchable add picker; read-only auto list with "Pin as manual"). New-order wizard → a non-blocking "Customers also rent" panel appears the first time a product is added (chips with pair-rate + "+ Add"); silent when there are no recos.
+- **Deferred:** customer-facing/storefront recos, cross-workspace, AI/ML, per-customer history, bundles (that's kits), pre-aggregation cron, configurable window/threshold, recos on `order.html`.
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.
