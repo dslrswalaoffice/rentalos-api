@@ -69,6 +69,7 @@
     table.li td{border:1px solid #e2e4e8;padding:7px 8px;text-align:right;vertical-align:top;font-variant-numeric:tabular-nums}
     table.li td.desc{text-align:left}
     table.li .li-sub{font-size:9.5px;color:#777;margin-top:2px;font-family:var(--font-mono)}
+    table.li .li-kit-includes{font-size:9.5px;color:#777;margin-top:2px;font-style:italic}
     table.li .waived{color:#8a5a12;font-size:9px;font-weight:600}
     table.li tr.discount td{color:var(--orange)}
     .muted-dash{color:#aaa}
@@ -286,6 +287,8 @@
         if (it.status === 'not_returned_non_chargeable') descExtra = ' (waived - not returned)';
         const sub = isRental && (it.product_name || it.product_sku)
           ? `<div class="li-sub">${escapeHtml(it.product_name || '')}${it.product_sku ? ' · ' + escapeHtml(it.product_sku) : ''}</div>` : '';
+        const kitInc = it.is_kit && Array.isArray(it.kit_components) && it.kit_components.length
+          ? `<div class="li-kit-includes">Includes: ${it.kit_components.map(c => `${escapeHtml(String(c.quantity))}× ${escapeHtml(c.product_name || '')}`).join(', ')}</div>` : '';
         const unitCell = isRental
           ? `${formatINR(it.daily_rate_paise)}/day × ${escapeHtml(String(it.billable_days ?? '—'))} days`
           : formatINR(it.unit_amount_paise);
@@ -293,7 +296,7 @@
         return `
           <tr class="${isDiscount ? 'discount' : ''}">
             <td>${i + 1}</td>
-            <td class="desc">${escapeHtml(it.description)}${escapeHtml(descExtra)}${sub}</td>
+            <td class="desc">${escapeHtml(it.description)}${escapeHtml(descExtra)}${sub}${kitInc}</td>
             <td>${it.hsn_code ? escapeHtml(it.hsn_code) : '<span class="muted-dash">—</span>'}</td>
             <td>${escapeHtml(String(it.quantity))}</td>
             <td>${unitCell}</td>

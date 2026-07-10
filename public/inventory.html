@@ -139,6 +139,20 @@
     .product-image-cell { width: 56px; }
     .hsn-code { font-family: var(--font-mono); font-size: 12px; color: var(--head); }
     table.products tbody tr { cursor: pointer; }
+    .kit-badge { display: inline-block; margin-left: 6px; padding: 2px 8px; background: #ede9fe; color: #6d28d9; border-radius: 10px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; vertical-align: middle; }
+    .kit-check { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--thead); cursor: pointer; font-size: 13px; color: var(--ink); }
+    .kit-check input { margin: 0; }
+    .kit-component-row { display: grid; grid-template-columns: 1fr 90px 70px; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); align-items: center; }
+    .kit-component-row:last-child { border-bottom: none; }
+    .kit-component-row .kc-name { font-weight: 600; font-size: 13px; color: var(--ink); }
+    .kit-component-row .kc-sku { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+    .kit-component-row input[type=number] { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; font-family: var(--font-mono); font-size: 12.5px; }
+    .kc-remove { background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; cursor: pointer; color: var(--bad-strong); font-size: 11px; font-weight: 600; }
+    .kc-remove:hover { background: var(--bad-soft); border-color: var(--bad-strong); }
+    .kit-add-row { display: grid; grid-template-columns: 1fr 90px auto; gap: 8px; align-items: end; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+    .kit-preview { margin-top: 14px; padding: 10px 12px; background: var(--accent-soft); border-radius: 9px; font-size: 12.5px; color: var(--head); }
+    .kit-preview.short { background: var(--warn-soft); color: var(--warn-strong); }
+    .kit-empty { padding: 16px 0; text-align: center; color: var(--muted); font-size: 12.5px; }
     .archived-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 5px; background: var(--warn-soft); color: var(--warn-strong); font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; margin-left: 6px; }
     .kebab { background: transparent; border: none; padding: 6px; border-radius: 6px; cursor: pointer; color: var(--muted); }
     .kebab:hover { background: var(--bg); color: var(--ink); }
@@ -432,12 +446,45 @@
             <label for="e-image">Image URL <span class="hint">paste an external image link</span></label>
             <input id="e-image" type="url" maxlength="2000" autocomplete="off" placeholder="https://…">
           </div>
+          <div class="field">
+            <label class="kit-check"><input type="checkbox" id="e-kit"> This is a kit (bundles multiple products)</label>
+          </div>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn ghost" id="edit-cancel">Cancel</button>
           <button type="submit" class="btn primary" id="edit-submit">Save changes</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Kit builder modal (Sub-turn 5c-2) -->
+  <div class="modal-backdrop" id="kit-modal">
+    <div class="modal" role="dialog" aria-labelledby="kit-modal-title">
+      <header class="modal-head">
+        <div class="modal-title" id="kit-modal-title">Edit kit contents</div>
+        <button class="modal-close" id="kit-close" aria-label="Close">✕</button>
+      </header>
+      <div class="modal-body">
+        <div id="kit-error" class="form-error" style="display:none;"></div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;" id="kit-name"></div>
+        <div id="kit-components"></div>
+        <div class="kit-add-row">
+          <div class="field" style="margin:0;">
+            <label for="kit-add-product">Add component</label>
+            <select id="kit-add-product"><option value="">Choose a product…</option></select>
+          </div>
+          <div class="field" style="margin:0;">
+            <label for="kit-add-qty">Qty</label>
+            <input id="kit-add-qty" type="number" min="1" step="1" value="1">
+          </div>
+          <button type="button" class="btn primary" id="kit-add-btn">Add</button>
+        </div>
+        <div class="kit-preview" id="kit-preview">Total components: 0</div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn primary" id="kit-done">Done</button>
+      </div>
     </div>
   </div>
 
@@ -520,7 +567,7 @@
         <tr data-id="${p.id}">
           <td class="product-image-cell">${thumb}</td>
           <td>
-            <div class="product-name">${escapeHtml(p.name)}${!p.is_active ? '<span class="archived-badge">archived</span>' : ''}</div>
+            <div class="product-name">${escapeHtml(p.name)}${p.is_kit ? `<span class="kit-badge">KIT · ${p.component_count} item${p.component_count === 1 ? '' : 's'}</span>` : ''}${!p.is_active ? '<span class="archived-badge">archived</span>' : ''}</div>
             <div class="product-sku">${escapeHtml(p.sku)}</div>
           </td>
           <td><span class="cat-tag">${escapeHtml(p.category)}</span></td>
@@ -748,6 +795,7 @@
       document.getElementById('e-hsn').value = p.hsn_code || '';
       document.getElementById('e-daily').value = p.daily_rate != null ? (Number(p.daily_rate) / 100) : '';
       document.getElementById('e-image').value = p.image_url || '';
+      document.getElementById('e-kit').checked = !!p.is_kit;
       loadCategoriesDatalist();
       editModal.classList.add('open');
     }
@@ -766,7 +814,9 @@
       const hsn = document.getElementById('e-hsn').value.trim();
       const daily = document.getElementById('e-daily').value;
       const image = document.getElementById('e-image').value.trim();
-      const body = {};
+      const isKit = document.getElementById('e-kit').checked;
+      const savedId = editingId;
+      const body = { is_kit: isKit };
       if (name) body.name = name;
       if (category) body.category = category;
       if (hsn) body.hsn_code = hsn;
@@ -775,12 +825,15 @@
       const submit = document.getElementById('edit-submit');
       submit.disabled = true; submit.textContent = 'Saving…';
       try {
-        await api.patch(`/api/inventory/products/${editingId}`, body);
+        await api.patch(`/api/inventory/products/${savedId}`, body);
         closeEdit();
         await loadProducts();
+        // Opening a product as a kit? Jump straight into building its contents.
+        if (isKit) openKitBuilder(savedId, name);
       } catch (ex) {
         err.style.display = 'block';
-        if (ex.status === 400) err.textContent = 'Check the fields — HSN is max 8 characters and the image must be a URL.';
+        if (ex.status === 409 && ex.body?.error === 'kit_has_components') err.textContent = 'Remove the kit’s components before turning off "is a kit".';
+        else if (ex.status === 400) err.textContent = 'Check the fields — HSN is max 8 characters and the image must be a URL.';
         else err.textContent = 'Could not save: ' + (ex.body?.error || ex.message);
       } finally {
         submit.disabled = false; submit.textContent = 'Save changes';
@@ -788,6 +841,110 @@
     });
 
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editModal.classList.contains('open')) closeEdit(); });
+
+    // ---------- kit builder (Sub-turn 5c-2) ----------
+    const kitModal = document.getElementById('kit-modal');
+    let kitId = null;
+    let kitComponents = [];
+
+    async function openKitBuilder(id, name) {
+      kitId = id;
+      document.getElementById('kit-error').style.display = 'none';
+      document.getElementById('kit-name').textContent = (name || 'Kit') + ' — contents';
+      // Populate the "add component" picker with non-kit products.
+      const picker = document.getElementById('kit-add-product');
+      picker.innerHTML = '<option value="">Choose a product…</option>' +
+        allProducts.filter(p => !p.is_kit && p.id !== id)
+          .map(p => `<option value="${escapeAttr(p.id)}">${escapeHtml(p.name)} · ${escapeHtml(p.sku)}</option>`).join('');
+      document.getElementById('kit-add-qty').value = '1';
+      kitModal.classList.add('open');
+      await refreshKitComponents();
+    }
+    function closeKit() { kitModal.classList.remove('open'); kitId = null; loadProducts(); }
+    document.getElementById('kit-close').addEventListener('click', closeKit);
+    document.getElementById('kit-done').addEventListener('click', closeKit);
+    kitModal.addEventListener('click', (e) => { if (e.target === kitModal) closeKit(); });
+
+    async function refreshKitComponents() {
+      try {
+        const data = await api.get(`/api/inventory/products/${kitId}/kit-components`);
+        kitComponents = data.components || [];
+      } catch { kitComponents = []; }
+      renderKitComponents();
+      refreshKitPreview();
+    }
+
+    function renderKitComponents() {
+      const wrap = document.getElementById('kit-components');
+      if (!kitComponents.length) { wrap.innerHTML = '<div class="kit-empty">No components yet — add the first below.</div>'; return; }
+      wrap.innerHTML = kitComponents.map(c => `
+        <div class="kit-component-row" data-cid="${escapeAttr(c.id)}">
+          <div><div class="kc-name">${escapeHtml(c.component_name)}</div><div class="kc-sku">${escapeHtml(c.component_sku)}</div></div>
+          <input type="number" min="1" step="1" value="${escapeAttr(c.quantity)}" data-qty="${escapeAttr(c.id)}">
+          <button type="button" class="kc-remove" data-remove="${escapeAttr(c.id)}">Remove</button>
+        </div>`).join('');
+      wrap.querySelectorAll('input[data-qty]').forEach(inp => {
+        inp.addEventListener('change', () => updateKitQty(inp.dataset.qty, inp.value));
+      });
+      wrap.querySelectorAll('button[data-remove]').forEach(btn => {
+        btn.addEventListener('click', () => removeKitComponent(btn.dataset.remove));
+      });
+    }
+
+    async function refreshKitPreview() {
+      const preview = document.getElementById('kit-preview');
+      preview.className = 'kit-preview';
+      preview.textContent = `Total components: ${kitComponents.length}`;
+      if (!kitComponents.length) return;
+      try {
+        const start = new Date();
+        const end = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+        const res = await fetch('/api/availability/check', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_id: kitId, quantity: 1, start: start.toISOString(), end: end.toISOString() }),
+        });
+        if (!res.ok) return;
+        const { check } = await res.json();
+        const avail = check.capacity ?? 0;
+        preview.textContent = `Total components: ${kitComponents.length} · Availability at qty 1 (next 7 days): ${avail} kit${avail === 1 ? '' : 's'}`;
+        if (avail < 1) preview.classList.add('short');
+      } catch { /* preview is a nicety */ }
+    }
+
+    document.getElementById('kit-add-btn').addEventListener('click', async () => {
+      const err = document.getElementById('kit-error'); err.style.display = 'none';
+      const productId = document.getElementById('kit-add-product').value;
+      const qty = parseInt(document.getElementById('kit-add-qty').value || '1', 10);
+      if (!productId) { err.style.display = 'block'; err.textContent = 'Pick a product to add.'; return; }
+      if (!(qty > 0)) { err.style.display = 'block'; err.textContent = 'Quantity must be at least 1.'; return; }
+      try {
+        await api.post(`/api/inventory/products/${kitId}/kit-components`, { component_product_id: productId, quantity: qty });
+        document.getElementById('kit-add-product').value = '';
+        document.getElementById('kit-add-qty').value = '1';
+        await refreshKitComponents();
+      } catch (ex) {
+        err.style.display = 'block';
+        if (ex.body?.error === 'component_already_in_kit') err.textContent = 'That product is already in this kit — edit its quantity instead.';
+        else if (ex.body?.error === 'nested_kits_not_allowed') err.textContent = 'A kit can’t contain another kit.';
+        else err.textContent = 'Could not add: ' + (ex.body?.error || ex.message);
+      }
+    });
+
+    async function updateKitQty(componentId, value) {
+      const qty = parseInt(value || '1', 10);
+      if (!(qty > 0)) { refreshKitComponents(); return; }
+      try {
+        await api.patch(`/api/inventory/products/${kitId}/kit-components/${componentId}`, { quantity: qty });
+        await refreshKitComponents();
+      } catch { refreshKitComponents(); }
+    }
+
+    async function removeKitComponent(componentId) {
+      try {
+        await api.del(`/api/inventory/products/${kitId}/kit-components/${componentId}`);
+        await refreshKitComponents();
+      } catch { /* leave list as-is */ }
+    }
 
     // ---------- utils ----------
     function escapeHtml(s) {

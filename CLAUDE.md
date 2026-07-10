@@ -256,6 +256,11 @@ NOT `= ANY(${arr}::status_enum[])`.
 - **`products` table** (migration 014 + pre-existing): `category text NOT NULL` and `image_url text` already existed from migration 002 (`idx_products_category` indexes category). Migration 014 adds only `hsn_code text CHECK (length <= 8)` nullable — Indian HSN classification code. `image_url` is an external URL (URL-only, upload UI deferred); `category` is freeform text with workspace-scoped autocomplete.
 - **`invoices.snapshot.line_items[]`** now includes `hsn_code` (from the product at generation time). Invoices generated before migration 014 retain the "—" HSN display — snapshot immutability preserved.
 - **`GET /api/inventory/categories`** returns the distinct non-null category values in the workspace; powers the inventory filter chips and the edit-modal category autocomplete.
+- **Products can be kits** (migration 015). `products.is_kit boolean NOT NULL DEFAULT false`. A kit's components live in `product_kit_items` (`kit_product_id`, `component_product_id`, `quantity`). CRUD via `/api/inventory/products/:id/kit-components` (+ `/:componentId`).
+- **Kits can't be nested.** Trigger `check_no_nested_kits` (and the application layer) block a component that is itself a kit.
+- **Kit availability is derived, not stored.** `checkAvailability()` for a kit returns `MIN` across component availabilities (accounting for the per-kit qty multiplier), plus `is_kit: true` and a `kit_components[]` breakdown. The kit product itself has no independent `total_units`.
+- **Kit pricing is fixed on the kit product** (its own `daily_rate`); component rates are ignored when booked as a kit. A kit dispatches as one line item — per-component physical tracking is a QR-scanning concern (deferred).
+- **Invoice snapshot** captures kit components under `line_items[].kit_components[]` (with `is_kit: true`) when the item is a kit. Snapshot immutability preserved — pre-migration-015 invoices have no kit fields.
 
 ---
 
