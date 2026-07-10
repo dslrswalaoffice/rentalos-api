@@ -60,7 +60,23 @@ type PersonRow = {
   created_at: string;
   updated_at: string;
   roles: Role[];
+  // Sub-turn 5b additions (present on GET /:id + tier/trust patches).
+  tier?: string | null;
+  trust_score?: number | null;
+  trust_score_updated_at?: string | null;
+  billing_address?: string | null;
+  shipping_address?: string | null;
+  default_gst_state?: string | null;
 };
+
+// Reads a workspace feature flag (missing key → false).
+async function featureEnabled(workspaceId: string, key: string): Promise<boolean> {
+  const rows = await query<{ enabled: boolean }>(sql`
+    SELECT COALESCE((settings->'features'->>${key}::text)::boolean, false) AS enabled
+    FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
+  `);
+  return rows[0]?.enabled === true;
+}
 
 // ============================================================================
 // GET /api/people — list, filterable by ?role=customer&search=rahul
@@ -77,7 +93,7 @@ people.get('/', async (c) => {
       p.id, p.display_name, p.phone, p.phone_verified_at, p.email,
       p.id_proof_type, p.id_proof_number,
       p.address_line, p.city, p.state, p.postal_code, p.country_code,
-      p.company_name, p.gstin, p.notes,
+      p.company_name, p.gstin, p.notes, p.tier,
       p.created_at, p.updated_at,
       COALESCE(
         (SELECT json_agg(pr.role ORDER BY pr.role)
@@ -132,6 +148,8 @@ people.get('/:id', async (c) => {
       p.id_proof_type, p.id_proof_number,
       p.address_line, p.city, p.state, p.postal_code, p.country_code,
       p.company_name, p.gstin, p.notes,
+      p.tier, p.trust_score, p.trust_score_updated_at,
+      p.billing_address, p.shipping_address, p.default_gst_state,
       p.created_at, p.updated_at,
       COALESCE(
         (SELECT json_agg(pr.role ORDER BY pr.role)
@@ -148,7 +166,54 @@ people.get('/:id', async (c) => {
 
   const person = rows[0];
   if (!person) return c.json({ error: 'not_found' }, 404);
-  return c.json({ person });
+
+  // Recent orders for this customer (most recent 20).
+  const orders = await query<{
+    id: string; order_number: number; rental_start: string; rental_end: string;
+    status: string; total_paise: number; balance_paise: number;
+  }>(sql`
+    SELECT o.id, o.order_number, o.rental_start, o.rental_end,
+           o.status::text AS status, o.total_paise, o.balance_paise
+    FROM orders o
+    WHERE o.customer_person_id = ${id}
+      AND o.workspace_id = ${session.workspace.id}
+      AND o.deleted_at IS NULL
+    ORDER BY o.created_at DESC
+    LIMIT 20
+  `);
+
+  // Recent payments across this customer's orders (most recent 20).
+  const payments = await query<{
+    id: string; amount_paise: number; direction: string; method: string;
+    occurred_at: string; order_id: string; order_number: number;
+  }>(sql`
+    SELECT pay.id, pay.amount_paise, pay.direction::text AS direction,
+           pay.method::text AS method, pay.occurred_at,
+           pay.order_id, o.order_number
+    FROM payments pay
+    JOIN orders o ON o.id = pay.order_id
+    WHERE o.customer_person_id = ${id}
+      AND pay.workspace_id = ${session.workspace.id}
+    ORDER BY pay.occurred_at DESC
+    LIMIT 20
+  `);
+
+  // Recent communications (most recent 20).
+  const communications = await query<{
+    id: string; channel: string; direction: string; notes: string | null;
+    occurred_at: string; logged_by_user_id: string | null; logged_by_name: string | null;
+  }>(sql`
+    SELECT com.id, com.channel, com.direction, com.notes, com.occurred_at,
+           com.logged_by_user_id, u.display_name AS logged_by_name
+    FROM person_communications com
+    LEFT JOIN users u ON u.id = com.logged_by_user_id
+    WHERE com.person_id = ${id}
+      AND com.workspace_id = ${session.workspace.id}
+    ORDER BY com.occurred_at DESC
+    LIMIT 20
+  `);
+
+  return c.json({ person, orders, payments, communications });
 });
 
 // ============================================================================
@@ -276,6 +341,8 @@ const updateSchema = z.object({
   company_name: z.string().max(200).optional(),
   gstin: z.string().max(15).optional(),
   notes: z.string().max(2000).optional(),
+  billing_address: z.string().max(1000).optional(),
+  shipping_address: z.string().max(1000).optional(),
 });
 
 people.patch('/:id', requireRole('owner', 'manager'), async (c) => {
@@ -324,13 +391,18 @@ people.patch('/:id', requireRole('owner', 'manager'), async (c) => {
       country_code    = COALESCE(${p.country_code    ?? null}::text, country_code),
       company_name    = COALESCE(${p.company_name    ?? null}::text, company_name),
       gstin           = COALESCE(${p.gstin           ?? null}::text, gstin),
-      notes           = COALESCE(${p.notes           ?? null}::text, notes)
+      notes           = COALESCE(${p.notes           ?? null}::text, notes),
+      billing_address  = COALESCE(${p.billing_address  ?? null}::text, billing_address),
+      shipping_address = COALESCE(${p.shipping_address ?? null}::text, shipping_address)
     WHERE id = ${id} AND workspace_id = ${session.workspace.id}
     RETURNING
       id, display_name, phone, phone_verified_at, email,
       id_proof_type, id_proof_number,
       address_line, city, state, postal_code, country_code,
-      company_name, gstin, notes, created_at, updated_at,
+      company_name, gstin, notes,
+      tier, trust_score, trust_score_updated_at,
+      billing_address, shipping_address, default_gst_state,
+      created_at, updated_at,
       (SELECT json_agg(role ORDER BY role) FROM person_roles
        WHERE person_id = people.id AND is_active = true) AS roles
   `);
@@ -464,6 +536,210 @@ people.delete('/:id/roles/:role', requireRole('owner', 'manager'), async (c) => 
     targetType: 'person',
     targetId: id,
     payload: { role },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ ok: true });
+});
+
+// ============================================================================
+// PATCH /api/people/:id/tier — set/clear customer tier (customer_tiers flag)
+// ============================================================================
+const tierSchema = z.object({
+  tier: z.enum(['normal', 'premium', 'vip']).nullable(),
+});
+
+people.patch('/:id/tier', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = tierSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+
+  if (!(await featureEnabled(session.workspace.id, 'customer_tiers'))) {
+    return c.json({ error: 'feature_disabled', feature: 'customer_tiers' }, 409);
+  }
+
+  const existing = await query<{ tier: string | null }>(sql`
+    SELECT tier FROM people
+    WHERE id = ${id} AND workspace_id = ${session.workspace.id} AND deleted_at IS NULL
+    LIMIT 1
+  `);
+  if (existing.length === 0) return c.json({ error: 'not_found' }, 404);
+  const from = existing[0]!.tier ?? null;
+  const to = parsed.data.tier;
+
+  const updated = await query<{ id: string; tier: string | null }>(sql`
+    UPDATE people SET tier = ${to}::text
+    WHERE id = ${id} AND workspace_id = ${session.workspace.id}
+    RETURNING id, tier
+  `);
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'people.tier.changed',
+    targetType: 'person',
+    targetId: id,
+    payload: { from, to },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ person: updated[0] });
+});
+
+// ============================================================================
+// PATCH /api/people/:id/trust-score — set/clear trust score (trust_score flag)
+// ============================================================================
+const trustSchema = z.object({
+  trust_score: z.number().int().min(0).max(100).nullable(),
+});
+
+people.patch('/:id/trust-score', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = trustSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+
+  if (!(await featureEnabled(session.workspace.id, 'trust_score'))) {
+    return c.json({ error: 'feature_disabled', feature: 'trust_score' }, 409);
+  }
+
+  const existing = await query<{ trust_score: number | null }>(sql`
+    SELECT trust_score FROM people
+    WHERE id = ${id} AND workspace_id = ${session.workspace.id} AND deleted_at IS NULL
+    LIMIT 1
+  `);
+  if (existing.length === 0) return c.json({ error: 'not_found' }, 404);
+  const from = existing[0]!.trust_score ?? null;
+  const to = parsed.data.trust_score;
+
+  const updated = await query<{ id: string; trust_score: number | null; trust_score_updated_at: string }>(sql`
+    UPDATE people SET trust_score = ${to}::int, trust_score_updated_at = now()
+    WHERE id = ${id} AND workspace_id = ${session.workspace.id}
+    RETURNING id, trust_score, trust_score_updated_at
+  `);
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'people.trust_score.changed',
+    targetType: 'person',
+    targetId: id,
+    payload: { from, to },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ person: updated[0] });
+});
+
+// ============================================================================
+// POST /api/people/:id/communications — log a manual communication
+// ============================================================================
+const commSchema = z.object({
+  channel: z.enum(['call', 'whatsapp', 'email', 'other']),
+  direction: z.enum(['in', 'out']),
+  notes: z.string().max(2000).optional(),
+  occurred_at: z.string().datetime().optional(),
+});
+
+people.post('/:id/communications', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = commSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const input = parsed.data;
+
+  const person = await query<{ id: string }>(sql`
+    SELECT id FROM people
+    WHERE id = ${id} AND workspace_id = ${session.workspace.id} AND deleted_at IS NULL
+    LIMIT 1
+  `);
+  if (person.length === 0) return c.json({ error: 'not_found' }, 404);
+
+  const created = await query<{
+    id: string; channel: string; direction: string; notes: string | null;
+    occurred_at: string; logged_by_user_id: string | null; created_at: string;
+  }>(sql`
+    INSERT INTO person_communications
+      (workspace_id, person_id, channel, direction, notes, occurred_at, logged_by_user_id)
+    VALUES (
+      ${session.workspace.id}, ${id}, ${input.channel}, ${input.direction},
+      ${input.notes ?? null}::text,
+      COALESCE(${input.occurred_at ?? null}::timestamptz, now()),
+      ${session.user.id}
+    )
+    RETURNING id, channel, direction, notes, occurred_at, logged_by_user_id, created_at
+  `);
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'people.communication.logged',
+    targetType: 'person',
+    targetId: id,
+    payload: { communication_id: created[0]!.id, channel: input.channel, direction: input.direction },
+    ipAddress, userAgent,
+  });
+
+  return c.json({
+    communication: { ...created[0], logged_by_name: session.user.displayName },
+  });
+});
+
+// ============================================================================
+// DELETE /api/people/:id/communications/:commId — 5-min own-entry correction
+// ============================================================================
+const COMM_DELETE_WINDOW_MS = 5 * 60 * 1000;
+
+people.delete('/:id/communications/:commId', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+  const commId = c.req.param('commId');
+
+  const rows = await query<{ logged_by_user_id: string | null; created_at: string }>(sql`
+    SELECT logged_by_user_id, created_at
+    FROM person_communications
+    WHERE id = ${commId} AND person_id = ${id} AND workspace_id = ${session.workspace.id}
+    LIMIT 1
+  `);
+  if (rows.length === 0) return c.json({ error: 'not_found' }, 404);
+
+  const row = rows[0]!;
+  if (row.logged_by_user_id !== session.user.id) {
+    return c.json({ error: 'not_deletable', reason: 'not_your_entry' }, 409);
+  }
+  if (Date.now() - new Date(row.created_at).getTime() > COMM_DELETE_WINDOW_MS) {
+    return c.json({ error: 'not_deletable', reason: 'window_expired' }, 409);
+  }
+
+  await sql`
+    DELETE FROM person_communications
+    WHERE id = ${commId} AND workspace_id = ${session.workspace.id}
+  `;
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'people.communication.deleted',
+    targetType: 'person',
+    targetId: id,
+    payload: { communication_id: commId },
     ipAddress, userAgent,
   });
 
