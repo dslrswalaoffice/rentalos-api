@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { sql, query } from '../db.js';
+import { checkAvailability } from '../lib/availability.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -217,17 +218,48 @@ calendar.get('/', async (c) => {
     byProduct.set(r.product_id, list);
   }
 
+  // Bars show the full non-draft/cancelled schedule (visual context).
+  const productsOut = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    total_units: p.total_units,
+    bookings: byProduct.get(p.id) ?? [],
+  }));
+
+  // Overbook warnings come from the shared availability engine — single source
+  // of truth for which statuses actually reserve inventory (confirmed /
+  // dispatched / active / returned) and for buffer application. This is
+  // intentionally narrower than the bars above: quoted / closed orders appear
+  // as bars but don't trigger overbook warnings (they aren't commitments).
+  // One call per product for the whole range; we only use `.conflicts`, then
+  // run the same interval sweep as before.
+  const availResults = await Promise.all(
+    products.map((p) =>
+      checkAvailability({
+        workspaceId: session.workspace.id,
+        productId: p.id,
+        quantity: 1, // ignored here — we only read `.conflicts`
+        start: new Date(from),
+        end: new Date(to),
+      }).catch(() => null),
+    ),
+  );
+
   const warnings: Warning[] = [];
-  const productsOut = products.map((p) => {
-    const bookings = byProduct.get(p.id) ?? [];
+  products.forEach((p, i) => {
+    const res = availResults[i];
+    if (!res) return;
+    const bookings: Booking[] = res.conflicts.map((cf) => ({
+      order_id: cf.order_id,
+      order_number: cf.order_number,
+      customer_name: cf.customer_name ?? '',
+      start: cf.start,
+      end: cf.end,
+      quantity: cf.quantity,
+      status: cf.status,
+    }));
     warnings.push(...computeWarnings(p, bookings));
-    return {
-      id: p.id,
-      name: p.name,
-      sku: p.sku,
-      total_units: p.total_units,
-      bookings,
-    };
   });
 
   return c.json({
