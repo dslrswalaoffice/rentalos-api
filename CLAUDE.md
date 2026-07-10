@@ -264,6 +264,17 @@ NOT `= ANY(${arr}::status_enum[])`.
 - **Kit availability is derived, not stored.** `checkAvailability()` for a kit returns `MIN` across component availabilities (accounting for the per-kit qty multiplier), plus `is_kit: true` and a `kit_components[]` breakdown. The kit product itself has no independent `total_units`.
 - **Kit pricing is fixed on the kit product** (its own `daily_rate`); component rates are ignored when booked as a kit. A kit dispatches as one line item — per-component physical tracking is a QR-scanning concern (deferred).
 - **Invoice snapshot** captures kit components under `line_items[].kit_components[]` (with `is_kit: true`) when the item is a kit. Snapshot immutability preserved — pre-migration-015 invoices have no kit fields.
+- **`products` availability config** (migration 018, Sub-turn 6b):
+  - `buffer_before_hours int NOT NULL DEFAULT 0 (0-72)` — prep time before this product's rentals start (charging, cleaning, packing). Applies to the EXISTING booking's window: a new booking can't start until `booking.rental_end + buffer_after` has passed.
+  - `buffer_after_hours int NOT NULL DEFAULT 0 (0-72)` — turnaround time after rentals end (inspection, reset).
+  - `shortage_limit int NOT NULL DEFAULT 0 (0-100)` — allowed overbook units above `total_units` capacity.
+- **Availability semantics (6b):**
+  - Effective conflict window for an existing booking = `[rental_start - buffer_before, rental_end + buffer_after]`. The buffer expands each existing booking, NOT the query window. SQL uses `make_interval(hours => …)` on `o.rental_start` / `o.rental_end`.
+  - Availability decision: `available: true` when `currently_booked + requested <= capacity + shortage_limit`. `shortage_used: true` when the booking exceeds `capacity` but stays within `capacity + shortage_limit`. Above that, `available: false`.
+  - `checkAvailability` returns `shortage_limit`, `shortage_used`, `applied_buffer_before_hours`, `applied_buffer_after_hours` (transparency) on every result.
+  - Workspace-level `settings.availability.buffer_hours` is **DEPRECATED** for check-time logic — the engine reads per-product buffers only. It stays in `workspace.settings` for backward compat and (future) as the seed default for new products. Existing products had `buffer_before/after_hours` backfilled from it at migration time.
+  - **Kits ignore kit-level buffer + shortage fields.** Each component uses its own product's buffers/limits during the recursive component check; the kit result surfaces `shortage_limit: 0`, `shortage_used: false`, and `applied_buffer_*: 0`.
+  - Frontend distinguishes the soft **shortage** band (amber banner, submit label "Save (shortage)" / "Add (shortage)", no override wording) from a hard **overbook** (red banner, "Save with override" / "Add with override").
 
 ---
 

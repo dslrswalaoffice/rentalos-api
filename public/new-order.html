@@ -182,6 +182,14 @@
     .availability-conflicts li:first-child{border-top:none}
     .availability-conflicts a{font-weight:500;color:var(--warn-strong);text-decoration:underline}
     .conflict-window{font-size:11px;opacity:.75;margin-top:2px}
+    /* 6b: distinguish soft shortage (amber) from hard overbook (red) */
+    .availability-warning.warning-shortage{background:#fef3c7;border-color:#d97706;color:#92400e}
+    .availability-warning.warning-shortage .availability-warning-subtitle{color:#92400e}
+    .availability-warning.warning-shortage .availability-conflicts a{color:#92400e}
+    .availability-warning.warning-block{background:#fee2e2;border-color:#b91c1c;color:#7f1d1d}
+    .availability-warning.warning-block .availability-warning-subtitle{color:#7f1d1d}
+    .availability-warning.warning-block .availability-conflicts a{color:#7f1d1d}
+    .buffer-note{margin-top:8px;font-size:11px;opacity:.7;font-style:italic}
     .cf-status{display:inline-block;padding:1px 7px;border-radius:999px;font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
     .cf-status.confirmed{background:var(--accent-soft);color:var(--head)}
     .cf-status.dispatched,.cf-status.active{background:var(--orange-soft);color:var(--warn-strong)}
@@ -992,14 +1000,29 @@
     }
 
     function renderAvailabilityWarning(check) {
-      if (!check || check.available) return '';
+      if (!check) return '';
+      // Clean: within capacity, no shortage capacity used → no banner.
+      if (check.available && !check.shortage_used) return '';
+
+      const isShortage = check.available && check.shortage_used; // amber, soft
+      const bannerClass = isShortage ? 'availability-warning warning-shortage' : 'availability-warning warning-block';
+      const icon = isShortage ? '⚠' : '⛔';
+
+      let title;
+      if (isShortage) {
+        const overbook = check.requested + check.currently_booked - check.capacity;
+        title = `Overbook allowed: ${overbook} unit${overbook !== 1 ? 's' : ''} above capacity (within shortage limit of ${check.shortage_limit})`;
+      } else {
+        const available = Math.max(0, check.capacity - check.currently_booked);
+        title = `Overbook: ${check.requested} requested, ${available} available`;
+      }
+
       const conflicts = (check.conflicts || []).map(c => `
         <li>
           <a href="/order.html?id=${escapeAttr(c.order_id)}" target="_blank">Order #${escapeHtml(String(c.order_number))}</a>
           (${escapeHtml(c.customer_name || 'Unknown')}) — ${escapeHtml(String(c.quantity))} unit(s) — ${renderStatusPill(c.status)}
           <div class="conflict-window">${escapeHtml(formatDateShort(c.start))} → ${escapeHtml(formatDateShort(c.end))}</div>
         </li>`).join('');
-      const available = Math.max(0, check.capacity - check.currently_booked);
       // Kit shortage: list which components are short (derived-capacity kits).
       let kitBlock = '';
       if (check.is_kit && Array.isArray(check.kit_components)) {
@@ -1015,14 +1038,17 @@
       const conflictBlock = conflicts
         ? `<div class="availability-warning-subtitle">Conflicts with:</div><ul class="availability-conflicts">${conflicts}</ul>`
         : '';
+      const bufferNote = (check.applied_buffer_before_hours || check.applied_buffer_after_hours)
+        ? `<div class="buffer-note">Buffer applied: ${check.applied_buffer_before_hours}h before + ${check.applied_buffer_after_hours}h after</div>`
+        : '';
       return `
-        <div class="availability-warning">
+        <div class="${bannerClass}">
           <div class="availability-warning-head">
-            <span class="availability-warning-icon">⚠</span>
-            <span class="availability-warning-title">Overbook: ${check.requested} requested, ${available} available</span>
+            <span class="availability-warning-icon">${icon}</span>
+            <span class="availability-warning-title">${title}</span>
           </div>
           <div class="availability-warning-body">
-            ${kitBlock}${conflictBlock}
+            ${kitBlock}${conflictBlock}${bufferNote}
           </div>
         </div>`;
     }
@@ -1030,12 +1056,18 @@
     function updateSaveBtnLabel() {
       const btn = document.getElementById('btn-save');
       if (!btn) return;
-      const anyOverbook = state.items.some(it => {
+      let anyHardOverbook = false, anyShortage = false;
+      for (const it of state.items) {
+        if (it.quantity <= 0) continue;
         const c = availabilityChecks.get(it.product_id);
-        return it.quantity > 0 && c && !c.available;
-      });
-      btn.textContent = anyOverbook ? 'Save with override' : 'Save as draft';
-      btn.classList.toggle('warn', anyOverbook);
+        if (!c) continue;
+        if (!c.available) anyHardOverbook = true;
+        else if (c.shortage_used) anyShortage = true;
+      }
+      if (anyHardOverbook) btn.textContent = 'Save with override';
+      else if (anyShortage) btn.textContent = 'Save (shortage)';
+      else btn.textContent = 'Save as draft';
+      btn.classList.toggle('warn', anyHardOverbook || anyShortage);
     }
 
     // ---------- go ----------

@@ -199,8 +199,15 @@
     .field .prefix-wrap input { padding-left: 30px; }
     .field textarea { min-height: 68px; resize: vertical; }
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .field-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+    .field-hint { font-size: 11px; color: var(--muted); margin-top: 5px; line-height: 1.4; }
     .field-error { font-size: 11.5px; color: var(--bad-strong); margin-top: 5px; font-weight: 500; }
+    /* edit-modal Availability section (Sub-turn 6b) */
+    .modal-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
+    .modal-section .section-title { margin: 0 0 4px 0; font-size: 14px; font-weight: 600; color: var(--head); }
+    .modal-section .section-hint { margin: 0 0 12px 0; font-size: 12px; color: var(--muted); }
+    .avail-field-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .avail-field-row .field-narrow input { width: 100%; }
+    @media (max-width: 560px) { .avail-field-row { grid-template-columns: 1fr; } }
     .advanced-toggle { background: transparent; border: none; padding: 6px 0; margin: 4px 0 14px; color: var(--head); font-family: var(--font-body); font-weight: 600; font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
     .advanced-toggle:hover { color: var(--ink); }
     .advanced { display: none; }
@@ -519,6 +526,27 @@
           <div class="field">
             <label class="kit-check"><input type="checkbox" id="e-kit"> This is a kit (bundles multiple products)</label>
           </div>
+          <section class="modal-section">
+            <h3 class="section-title">Availability</h3>
+            <p class="section-hint">Control how this product handles buffer time and overbooking.</p>
+            <div class="avail-field-row">
+              <div class="field field-narrow">
+                <label for="e-buffer-before">Buffer before <span class="hint">hours</span></label>
+                <input id="e-buffer-before" type="number" min="0" max="72" step="1" autocomplete="off">
+                <div class="field-hint">Prep time before rentals start (charging, cleaning, packing)</div>
+              </div>
+              <div class="field field-narrow">
+                <label for="e-buffer-after">Buffer after <span class="hint">hours</span></label>
+                <input id="e-buffer-after" type="number" min="0" max="72" step="1" autocomplete="off">
+                <div class="field-hint">Turnaround time after rentals end (inspection, reset)</div>
+              </div>
+              <div class="field field-narrow">
+                <label for="e-shortage-limit">Shortage limit</label>
+                <input id="e-shortage-limit" type="number" min="0" max="100" step="1" autocomplete="off">
+                <div class="field-hint">Allow this many overbooks above capacity (0 = strict, no overbook)</div>
+              </div>
+            </div>
+          </section>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn ghost" id="edit-cancel">Cancel</button>
@@ -865,6 +893,9 @@
       document.getElementById('e-hsn').value = p.hsn_code || '';
       document.getElementById('e-daily').value = p.daily_rate != null ? (Number(p.daily_rate) / 100) : '';
       document.getElementById('e-image').value = p.image_url || '';
+      document.getElementById('e-buffer-before').value = p.buffer_before_hours ?? 0;
+      document.getElementById('e-buffer-after').value = p.buffer_after_hours ?? 0;
+      document.getElementById('e-shortage-limit').value = p.shortage_limit ?? 0;
       document.getElementById('e-kit').checked = !!p.is_kit;
       setImagePreview(p.image_url || '');
       document.getElementById('image-progress').hidden = true;
@@ -992,6 +1023,9 @@
       const daily = document.getElementById('e-daily').value;
       const image = document.getElementById('e-image').value.trim();
       const isKit = document.getElementById('e-kit').checked;
+      const bufferBefore = document.getElementById('e-buffer-before').value;
+      const bufferAfter = document.getElementById('e-buffer-after').value;
+      const shortageLimit = document.getElementById('e-shortage-limit').value;
       const savedId = editingId;
       const body = { is_kit: isKit };
       if (name) body.name = name;
@@ -999,6 +1033,9 @@
       if (hsn) body.hsn_code = hsn;
       if (image) body.image_url = image;
       if (daily !== '' && Number(daily) > 0) body.daily_rate = rupeesToPaise(daily);
+      if (bufferBefore !== '') body.buffer_before_hours = Math.max(0, Math.min(72, Math.round(Number(bufferBefore))));
+      if (bufferAfter !== '') body.buffer_after_hours = Math.max(0, Math.min(72, Math.round(Number(bufferAfter))));
+      if (shortageLimit !== '') body.shortage_limit = Math.max(0, Math.min(100, Math.round(Number(shortageLimit))));
       const submit = document.getElementById('edit-submit');
       submit.disabled = true; submit.textContent = 'Saving…';
       try {

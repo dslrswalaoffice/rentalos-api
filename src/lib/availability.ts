@@ -29,7 +29,7 @@ export const RESERVING_STATUSES = [
 ] as const;
 
 const BUFFER_MIN_HOURS = 0;
-const BUFFER_MAX_HOURS = 24;
+const BUFFER_MAX_HOURS = 72;
 
 /** Thrown when the product can't be found in the workspace. Callers map the
  *  `code` to an HTTP status (product_not_found → 404). */
@@ -62,10 +62,15 @@ export type KitComponentAvailability = {
 };
 
 export type AvailabilityResult = {
-  available: boolean;
+  available: boolean; // FALSE only when demand exceeds capacity + shortage_limit
   requested: number;
   capacity: number;
   currently_booked: number;
+  shortage_limit: number;   // per-product allowed overbook (Sub-turn 6b)
+  shortage_used: boolean;   // true when overbooked but within shortage_limit
+  // Which per-product buffers were applied to the conflict window (transparency).
+  applied_buffer_before_hours: number;
+  applied_buffer_after_hours: number;
   inactive_product?: boolean;
   conflicts: AvailabilityConflict[];
   // Present only when the product is a kit (Sub-turn 5c-2).
@@ -104,11 +109,17 @@ function clampBuffer(n: number): number {
 }
 
 /**
- * Check product availability for a window. Applies the workspace's configured
- * buffer_hours by expanding the query window on both sides (buffer = prep /
- * cleaning time between rentals). Excludes an order's own bookings when
+ * Check product availability for a window. Applies THIS PRODUCT's own buffer
+ * hours (Sub-turn 6b) — not the workspace-wide value, which is now deprecated
+ * for check-time logic. The buffer expands each existing booking's window, not
+ * the query window: a booking at 10-12 with 2h before + 1h after effectively
+ * blocks 8-13 for that product. Excludes an order's own bookings when
  * `excludeOrderId` is supplied (so editing an existing order doesn't conflict
  * with itself).
+ *
+ * Overbook tolerance is per-product too: `available` stays true up to
+ * `capacity + shortage_limit`, with `shortage_used` flagging that the booking
+ * dipped into shortage capacity.
  */
 export async function checkAvailability(args: {
   workspaceId: string;
@@ -119,11 +130,20 @@ export async function checkAvailability(args: {
   excludeOrderId?: string;
 }): Promise<AvailabilityResult> {
   // Capacity = count of live assets for the product. Also grab is_active +
-  // is_kit so we can flag inactive products and route kits to the kit path.
-  const productRows = await query<{ total_units: number; is_active: boolean; is_kit: boolean }>(sql`
+  // is_kit (to flag inactive products / route kits) and the per-product buffer
+  // + shortage config.
+  const productRows = await query<{
+    total_units: number;
+    is_active: boolean;
+    is_kit: boolean;
+    buffer_before_hours: number;
+    buffer_after_hours: number;
+    shortage_limit: number;
+  }>(sql`
     SELECT
       COALESCE(a.total, 0)::int AS total_units,
-      p.is_active, p.is_kit
+      p.is_active, p.is_kit,
+      p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit
     FROM products p
     LEFT JOIN LATERAL (
       SELECT COUNT(*) AS total
@@ -142,26 +162,21 @@ export async function checkAvailability(args: {
   const isActive = productRows[0]!.is_active;
 
   // KIT PATH: capacity is derived from the components, not the kit's own assets.
+  // Kit-level buffer + shortage fields exist but are IGNORED — each component
+  // uses its own buffers/limits (see checkKitAvailability).
   if (productRows[0]!.is_kit) {
     return checkKitAvailability(args, isActive);
   }
 
-  // Buffer hours from workspace settings (default 0, clamped 0-24).
-  const wsRows = await query<{ buffer_hours: number }>(sql`
-    SELECT COALESCE((settings->'availability'->>'buffer_hours')::float8, 0) AS buffer_hours
-    FROM workspaces
-    WHERE id = ${args.workspaceId}::uuid
-    LIMIT 1
-  `);
-  const bufferHours = clampBuffer(Number(wsRows[0]?.buffer_hours ?? 0));
-  const bufferMs = bufferHours * 60 * 60 * 1000;
+  const bufferBefore = clampBuffer(Number(productRows[0]!.buffer_before_hours ?? 0));
+  const bufferAfter = clampBuffer(Number(productRows[0]!.buffer_after_hours ?? 0));
+  const shortageLimit = Math.max(0, Number(productRows[0]!.shortage_limit ?? 0));
 
-  const effStart = new Date(args.start.getTime() - bufferMs);
-  const effEnd = new Date(args.end.getTime() + bufferMs);
-
-  // Overlapping reserving-status rental lines for this product. Strict overlap
-  // (`<` / `>`) so a booking that ends exactly when the window starts does not
-  // conflict — the unit is handed back at that instant.
+  // Overlapping reserving-status rental lines for this product. The buffer
+  // expands each EXISTING booking's window: a booking effectively blocks
+  // [rental_start - buffer_before, rental_end + buffer_after]. Strict overlap
+  // (`<` / `>`) so a booking whose (buffered) end lands exactly on the window
+  // start does not conflict.
   const conflicts = await query<AvailabilityConflict>(sql`
     SELECT
       o.id            AS order_id,
@@ -182,8 +197,8 @@ export async function checkAvailability(args: {
       AND o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
       AND o.id != COALESCE(${args.excludeOrderId ?? null}::uuid,
                            '00000000-0000-0000-0000-000000000000'::uuid)
-      AND o.rental_start < ${effEnd.toISOString()}::timestamptz
-      AND o.rental_end   > ${effStart.toISOString()}::timestamptz
+      AND o.rental_start - make_interval(hours => ${bufferBefore}::int) < ${args.end.toISOString()}::timestamptz
+      AND o.rental_end   + make_interval(hours => ${bufferAfter}::int)  > ${args.start.toISOString()}::timestamptz
     ORDER BY o.rental_start ASC
   `);
 
@@ -198,13 +213,33 @@ export async function checkAvailability(args: {
   }));
 
   const currentlyBooked = normalized.reduce((sum, c) => sum + c.quantity, 0);
-  const available = currentlyBooked + args.quantity <= capacity;
+
+  // Decision: available up to capacity + shortage_limit; shortage_used flags the
+  // overbook-but-within-limit band.
+  const totalDemand = currentlyBooked + args.quantity;
+  const hardCapacity = capacity + shortageLimit;
+  let available: boolean;
+  let shortageUsed: boolean;
+  if (totalDemand <= capacity) {
+    available = true;
+    shortageUsed = false;
+  } else if (totalDemand <= hardCapacity) {
+    available = true;
+    shortageUsed = true;
+  } else {
+    available = false;
+    shortageUsed = false;
+  }
 
   const result: AvailabilityResult = {
     available,
     requested: args.quantity,
     capacity,
     currently_booked: currentlyBooked,
+    shortage_limit: shortageLimit,
+    shortage_used: shortageUsed,
+    applied_buffer_before_hours: bufferBefore,
+    applied_buffer_after_hours: bufferAfter,
     conflicts: normalized,
   };
   if (!isActive) result.inactive_product = true;
@@ -232,6 +267,10 @@ async function checkKitAvailability(
       requested: args.quantity,
       capacity: 0,
       currently_booked: 0,
+      shortage_limit: 0,
+      shortage_used: false,
+      applied_buffer_before_hours: 0,
+      applied_buffer_after_hours: 0,
       conflicts: [],
       is_kit: true,
       kit_components: [],
@@ -270,11 +309,18 @@ async function checkKitAvailability(
     component_booked: checks[i]!.currently_booked,
   }));
 
+  // Kit-level buffer + shortage fields are ignored: each component already
+  // applied its own buffers/shortage during its recursive check. Kit-level
+  // shortage would double-count, so we surface 0/false here.
   const result: AvailabilityResult = {
     available,
     requested: args.quantity,
     capacity: Number.isFinite(kitCapacity) ? Math.max(0, kitCapacity) : 0,
     currently_booked: 0, // not meaningful for a derived-capacity kit
+    shortage_limit: 0,
+    shortage_used: false,
+    applied_buffer_before_hours: 0,
+    applied_buffer_after_hours: 0,
     conflicts: available ? [] : checks.flatMap((c) => c.conflicts),
     is_kit: true,
     kit_components,
