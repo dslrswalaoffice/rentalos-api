@@ -666,6 +666,19 @@ Reusable discount codes that reuse the existing pricing/invoice/revision engine 
 
 ---
 
+## Design system foundation (Sub-turn 9a)
+
+A Stripe-inspired token layer + component styles in **`public/design-system.css`**, plus Tier-1 perceived-speed wins, demonstrated on **`settings.html` only** (proof of concept — 9b/9c/9d roll out to other pages if the direction is approved). No other HTML page loads it; `public/styles.css` (legacy) is untouched.
+
+- **Tokens** at `:root`: colors (`--bg-page/-elevated/-subtle/-hover/-active`; `--text-primary/-secondary/-tertiary/-quaternary/-inverse`; `--border-subtle/-default/-strong/-focus`; `--accent`, `--accent-hover/-active/-soft/-text`; semantic `--success/-warning/-danger/-info` each with `-soft`/`-text`); typography (`--font-sans` system stack, `--font-mono`; `--fs-xs`→`--fs-4xl`; `--fw-*`; `--lh-*`); spacing `--space-1`→`--space-8`; radii `--radius-xs`→`--radius-full` (default `--radius: 6px`); shadows `--shadow-xs`→`--shadow-lg` + `--shadow-focus`; transitions; layout (`--sidebar-width`, `--header-height`).
+- **Component classes:** `.btn` (+ `.primary/.secondary/.ghost/.destructive/.tiny/.large`), form inputs (auto-styled) + `.field`/`.label`/`.field-hint`/`.field-error` + `.toggle`, `.card` (+ `.card-head/-body/-foot`), `.table`, `.badge`/`.chip`/`.pill` (+ `-success/-warning/-danger/-info/-accent`), `.modal-backdrop`+`.modal` (+ `.modal-head/-body/-foot`, `.close-btn`), `.empty-state` (+ `-icon/-title/-description`), `.skeleton` (+ `-text/.short/.long/-title/-card/-row/-avatar`), `.sidebar-nav`/`.sidebar-item`/`.sidebar-section`, `.tabs`/`.tab`, `.toast`/`.toast-container`, `.app-shell`/`.sidebar`/`.main`/`.page-header`.
+- **Aesthetic:** warm off-white page (`#f7f8fa`), warm near-black text (`#1a1f36`), muted violet accent (`#635bff`), 6px default radius, tinted subtle shadows, system font stack.
+- **Speed (Tier 1) on settings.html:** system font stack primary (instant text, no FOIT — the Google Fonts link was removed there); inline critical CSS (bg + font) in `<head>`; `<link rel="preconnect">` to the API origin; skeleton loaders on the initial data-load; **View Transitions API** (`@view-transition { navigation: auto }`) for a silent cross-page fade where supported.
+- **How settings.html adopts it (important for 9b+):** settings.html is fully inline-styled and its whole stylesheet is built on CSS variables. 9a **remaps those legacy vars onto the Stripe palette** (`--head`/`--orange` → violet accent, `--ink` → warm near-black, fonts → system stack), which re-skins all 10 tabs **with zero markup/JS changes** (every tab's JS keeps working). `design-system.css` is loaded for the shared token layer + net-new classes (skeletons/toggles/empty-states); the page's own retuned CSS stays authoritative for existing components. **Fresh pages in 9b+ should load `design-system.css` as their primary stylesheet and use its classes directly** (the ordering caveat only exists because settings.html predates the system).
+- **What 9a is NOT:** no dark mode, no new JS/CSS dependencies, no functional changes, no other page touched.
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.
