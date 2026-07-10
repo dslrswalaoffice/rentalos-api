@@ -255,6 +255,9 @@ const checkSchema = z.object({
   start: z.string().datetime(),
   end: z.string().datetime(),
   exclude_order_id: z.string().uuid().optional(),
+  // Sub-turn 6i — which location to check tracked-asset capacity against. When
+  // omitted the engine falls back to the workspace default location.
+  location_id: z.string().uuid().optional(),
 });
 
 availability.post('/check', async (c) => {
@@ -284,6 +287,7 @@ availability.post('/check', async (c) => {
       start,
       end,
       excludeOrderId: input.exclude_order_id,
+      locationId: input.location_id,
     });
     return c.json({ check });
   } catch (err) {

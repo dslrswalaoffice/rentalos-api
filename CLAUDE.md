@@ -568,7 +568,29 @@ Workspace-defined custom fields on **orders, people, products** (not line items 
 - **Kit components can be either mode.** Kit availability is still `MIN` across components; each component's `checkAvailability` picks its own capacity source, so a bulk component contributes `floor(stock_quantity / per-kit qty)`.
 - **Reservation math is unchanged** across modes (`reserved = SUM(order_items.quantity)` over reserving orders). **Wizard / dispatch / return are mode-agnostic** — they reference product IDs + quantities, never assets directly.
 - **Inventory responses** carry `tracking_mode`, `stock_quantity`, and a computed `effective_capacity` (`stock_quantity` for bulk, else `COUNT(assets)`). The list shows a blue TRACKED / amber BULK badge.
-- No per-location stock yet (that's a later sub-turn); no stock-movement log (audit covers updates).
+- No stock-movement log (audit covers updates).
+
+---
+
+## Multi-location stock (Sub-turn 6i, Phase 1)
+
+Gear lives at physical **locations** (warehouses / branches). Phase 1 ships the locations table + management UI, puts every tracked asset at a location, tags each order with a pickup + return location (forced equal in v1), and computes tracked-product availability **per-location**. DSLRSWALA is single-location, so nothing visible changes there.
+
+- **`locations` table** (migration 024) — workspace-scoped: `name`, address fields (`address_line1/2`, `city`, `state`, `postal_code`, `phone`, `email`), `is_default`, `is_active`. Partial unique index `locations_one_default_per_workspace` (`WHERE is_default = true`) → **exactly one default per workspace**. Migration seeds one default per existing workspace (`city || ' Main'`, else `'Main warehouse'`).
+- **`assets.location_id uuid NOT NULL`** — backfilled to the workspace default, then `NOT NULL`. **New tracked assets MUST set `location_id`** (product create sets it from the optional `location_id` param, else the default). Bulk products have no asset rows, so location is irrelevant for them.
+- **`orders.pickup_location_id` + `orders.return_location_id`** — both `NOT NULL`, backfilled to default. **CHECK `orders_pickup_equals_return` (pickup = return)** — v1 forces them equal; the check is dropped in Phase 2 when transfers exist. The order create/PATCH take a single `pickup_location_id` and write both columns.
+- **Location is draft-only on order PATCH** (`409 location_locked_after_draft` otherwise) — moving it after commitment would shift the per-location reservation out from under dispatched gear.
+- **Per-location availability** (`src/lib/availability.ts`):
+  - `checkAvailability` gained an optional `locationId`; when omitted it falls back to `getDefaultLocationId(workspaceId)` so pre-6i callers are unchanged.
+  - **Tracked** products count live assets **at that location** AND reserve only against orders whose `pickup_location_id` matches. **Bulk** products stay **workspace-global** (per-location bulk is Phase 2) — the location filter is skipped for them.
+  - `getProductCapacity(workspaceId, productId, locationId?)` is location-aware for tracked; bulk ignores it.
+  - `AvailabilityResult` gained `location_id` (the checked location, or `null` for bulk / no default).
+  - **Kits pass the same `locationId` to every component check** (kits dispatch from one warehouse). Kit-level result surfaces the kit's location.
+- **`locations` route** (`/api/locations`): `GET` (any member; each row carries `asset_count` + `active_orders_count`), `POST`/`PATCH`/`DELETE` (owner/manager). The default can't be unset (`must_have_default`), deactivated (`cannot_deactivate_default`), or deleted (`cannot_delete_default`). DELETE soft-deletes (`is_active = false`) when referenced by assets/orders, else hard-deletes (`{ soft_deleted }`). Audit `locations.created/updated/deleted`.
+- **`PATCH /api/inventory/assets/:id/location`** (owner/manager) relocates one asset → audit `inventory.asset.relocated` (`from_location_id`, `to_location_id`, `product_id`).
+- **Inventory responses:** `GET /api/inventory/products` accepts `?location_id=` (products with ≥1 asset there) and returns `location_names` per product (distinct asset locations). `GET /api/inventory/products/:id` returns `assets` (individual rows with `location_id`/`location_name`) + `assets_by_location` (roll-up). Availability `POST /check` accepts optional `location_id`.
+- **UI:** Settings → **Locations** tab (add/edit/set-default/delete). New-order wizard shows a location picker **only when >1 active location** (otherwise silent default). `order.html` shows a Location row **only when the workspace has >1 location**. `inventory.html` shows a location filter row + Location column + per-asset relocate dropdowns in the edit modal — all gated on multi-location.
+- **Phase 2 (deferred):** per-location bulk stock, cross-location returns (drop the CHECK), inter-location transfer flow with a movement log.
 
 ---
 

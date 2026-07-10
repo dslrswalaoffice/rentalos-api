@@ -66,6 +66,7 @@ export type AvailabilityResult = {
   requested: number;
   capacity: number;
   capacity_source: 'assets' | 'stock_quantity'; // Sub-turn 6h — tracked vs bulk
+  location_id: string | null; // Sub-turn 6i — which location was checked (null for bulk / no default)
   currently_booked: number;
   shortage_limit: number;   // per-product allowed overbook (Sub-turn 6b)
   shortage_used: boolean;   // true when overbooked but within shortage_limit
@@ -109,17 +110,28 @@ function clampBuffer(n: number): number {
   return Math.min(BUFFER_MAX_HOURS, Math.max(BUFFER_MIN_HOURS, n));
 }
 
-// Single source of truth for a product's capacity (Sub-turn 6h). Tracked
-// products count live asset rows; bulk products use the stock_quantity column.
-// Exported for reuse (e.g. inventory listing / debugging).
+// The workspace's default location id (Sub-turn 6i). Used when a caller doesn't
+// specify one, preserving pre-multi-location behavior.
+export async function getDefaultLocationId(workspaceId: string): Promise<string | null> {
+  const rows = await query<{ id: string }>(sql`
+    SELECT id FROM locations
+    WHERE workspace_id = ${workspaceId}::uuid AND is_default = true
+    LIMIT 1
+  `);
+  return rows[0]?.id ?? null;
+}
+
+// Single source of truth for a product's capacity (Sub-turn 6h + 6i). Tracked
+// products count live asset rows AT A LOCATION (default when omitted); bulk
+// products use the workspace-global stock_quantity column (per-location bulk is
+// Phase 2, so locationId is ignored for bulk). Exported for reuse.
 export async function getProductCapacity(
   workspaceId: string,
   productId: string,
+  locationId?: string,
 ): Promise<{ capacity: number; source: 'assets' | 'stock_quantity' }> {
-  const rows = await query<{ tracking_mode: string; stock_quantity: number | null; asset_count: number }>(sql`
-    SELECT p.tracking_mode, p.stock_quantity,
-           (SELECT COUNT(*)::int FROM assets a
-            WHERE a.product_id = p.id AND a.workspace_id = p.workspace_id AND a.deleted_at IS NULL) AS asset_count
+  const rows = await query<{ tracking_mode: string; stock_quantity: number | null }>(sql`
+    SELECT p.tracking_mode, p.stock_quantity
     FROM products p
     WHERE p.id = ${productId}::uuid AND p.workspace_id = ${workspaceId}::uuid
     LIMIT 1
@@ -129,7 +141,15 @@ export async function getProductCapacity(
   if (row.tracking_mode === 'bulk') {
     return { capacity: Number(row.stock_quantity ?? 0), source: 'stock_quantity' };
   }
-  return { capacity: Number(row.asset_count ?? 0), source: 'assets' };
+  const effectiveLocationId = locationId ?? (await getDefaultLocationId(workspaceId));
+  const countRows = await query<{ c: number }>(sql`
+    SELECT COUNT(*)::int AS c FROM assets a
+    WHERE a.workspace_id = ${workspaceId}::uuid
+      AND a.product_id = ${productId}::uuid
+      AND a.deleted_at IS NULL
+      AND (${effectiveLocationId}::uuid IS NULL OR a.location_id = ${effectiveLocationId}::uuid)
+  `);
+  return { capacity: Number(countRows[0]?.c ?? 0), source: 'assets' };
 }
 
 /**
@@ -152,10 +172,16 @@ export async function checkAvailability(args: {
   start: Date;
   end: Date;
   excludeOrderId?: string;
+  locationId?: string; // Sub-turn 6i — per-location capacity for tracked products
 }): Promise<AvailabilityResult> {
-  // Capacity = count of live assets for the product. Also grab is_active +
-  // is_kit (to flag inactive products / route kits) and the per-product buffer
-  // + shortage config.
+  // Resolve the location to check against. Tracked products count assets AT this
+  // location; bulk products ignore it (workspace-global — Phase 2 adds per-loc
+  // bulk). Falls back to the workspace default so pre-6i callers behave the same.
+  const effectiveLocationId = args.locationId ?? (await getDefaultLocationId(args.workspaceId));
+
+  // Capacity = count of live assets for the product at the location. Also grab
+  // is_active + is_kit (to flag inactive products / route kits) and the
+  // per-product buffer + shortage config.
   const productRows = await query<{
     total_units: number;
     tracking_mode: string;
@@ -178,6 +204,7 @@ export async function checkAvailability(args: {
       WHERE product_id = p.id
         AND workspace_id = p.workspace_id
         AND deleted_at IS NULL
+        AND (${effectiveLocationId}::uuid IS NULL OR location_id = ${effectiveLocationId}::uuid)
     ) a ON true
     WHERE p.id = ${args.productId}::uuid
       AND p.workspace_id = ${args.workspaceId}::uuid
@@ -185,8 +212,8 @@ export async function checkAvailability(args: {
     LIMIT 1
   `);
   if (productRows.length === 0) throw new AvailabilityError('product_not_found');
-  // Capacity source depends on tracking mode (Sub-turn 6h): bulk products count
-  // stock_quantity; tracked products count live asset rows.
+  // Capacity source depends on tracking mode (6h): bulk → stock_quantity
+  // (workspace-global), tracked → live asset rows at the location (6i).
   const isBulk = productRows[0]!.tracking_mode === 'bulk';
   const capacity = isBulk ? Number(productRows[0]!.stock_quantity ?? 0) : productRows[0]!.total_units;
   const capacitySource: 'assets' | 'stock_quantity' = isBulk ? 'stock_quantity' : 'assets';
@@ -194,9 +221,10 @@ export async function checkAvailability(args: {
 
   // KIT PATH: capacity is derived from the components, not the kit's own assets.
   // Kit-level buffer + shortage fields exist but are IGNORED — each component
-  // uses its own buffers/limits (see checkKitAvailability).
+  // uses its own buffers/limits (see checkKitAvailability). The kit's location
+  // flows to every component (kits dispatch together from one warehouse).
   if (productRows[0]!.is_kit) {
-    return checkKitAvailability(args, isActive);
+    return checkKitAvailability(args, isActive, effectiveLocationId);
   }
 
   const bufferBefore = clampBuffer(Number(productRows[0]!.buffer_before_hours ?? 0));
@@ -228,6 +256,10 @@ export async function checkAvailability(args: {
       AND o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
       AND o.id != COALESCE(${args.excludeOrderId ?? null}::uuid,
                            '00000000-0000-0000-0000-000000000000'::uuid)
+      -- Tracked products reserve per-location (pickup_location_id); bulk products
+      -- reserve workspace-globally (Phase 2 adds per-location bulk).
+      AND (${isBulk}::boolean OR ${effectiveLocationId}::uuid IS NULL
+           OR o.pickup_location_id = ${effectiveLocationId}::uuid)
       AND o.rental_start - make_interval(hours => ${bufferBefore}::int) < ${args.end.toISOString()}::timestamptz
       AND o.rental_end   + make_interval(hours => ${bufferAfter}::int)  > ${args.start.toISOString()}::timestamptz
     ORDER BY o.rental_start ASC
@@ -267,6 +299,7 @@ export async function checkAvailability(args: {
     requested: args.quantity,
     capacity,
     capacity_source: capacitySource,
+    location_id: isBulk ? null : effectiveLocationId,
     currently_booked: currentlyBooked,
     shortage_limit: shortageLimit,
     shortage_used: shortageUsed,
@@ -290,6 +323,7 @@ async function checkKitAvailability(
     start: Date; end: Date; excludeOrderId?: string;
   },
   isActive: boolean,
+  effectiveLocationId: string | null,
 ): Promise<AvailabilityResult> {
   const components = await loadKitComponents(args.workspaceId, args.productId);
 
@@ -299,6 +333,7 @@ async function checkKitAvailability(
       requested: args.quantity,
       capacity: 0,
       capacity_source: 'assets',
+      location_id: effectiveLocationId,
       currently_booked: 0,
       shortage_limit: 0,
       shortage_used: false,
@@ -313,6 +348,8 @@ async function checkKitAvailability(
     return empty;
   }
 
+  // Every component checks against the SAME location as the kit — kits dispatch
+  // together from one warehouse. A bulk component ignores it internally.
   const checks = await Promise.all(
     components.map((comp) =>
       checkAvailability({
@@ -322,6 +359,7 @@ async function checkKitAvailability(
         start: args.start,
         end: args.end,
         excludeOrderId: args.excludeOrderId,
+        locationId: effectiveLocationId ?? undefined,
       }),
     ),
   );
@@ -350,6 +388,7 @@ async function checkKitAvailability(
     requested: args.quantity,
     capacity: Number.isFinite(kitCapacity) ? Math.max(0, kitCapacity) : 0,
     capacity_source: 'assets', // kit capacity is derived from components
+    location_id: effectiveLocationId,
     currently_booked: 0, // not meaningful for a derived-capacity kit
     shortage_limit: 0,
     shortage_used: false,

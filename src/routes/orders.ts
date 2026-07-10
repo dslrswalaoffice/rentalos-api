@@ -5,7 +5,7 @@ import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { emitNotification } from '../lib/notify.js';
 import { recomputeOrderTotals } from '../lib/pricing.js';
-import { checkAvailability } from '../lib/availability.js';
+import { checkAvailability, getDefaultLocationId } from '../lib/availability.js';
 import { generateInvoice } from './invoices.js';
 import { applyDepositStatus } from './payments.js';
 import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
@@ -156,6 +156,9 @@ type OrderRow = {
   dispatch_type: string;
   delivery_address: string | null;
   channel: string;
+  pickup_location_id: string;
+  return_location_id: string;
+  pickup_location_name?: string | null;
   subtotal_paise: number;
   tax_paise: number;
   discount_paise: number;
@@ -227,6 +230,7 @@ async function loadOrder(orderId: string, workspaceId: string) {
       p.display_name AS customer_name,
       p.phone        AS customer_phone,
       p.email        AS customer_email,
+      loc.name       AS pickup_location_name,
       (o.rental_end < now() AND EXISTS (
         SELECT 1 FROM order_items oi
         WHERE oi.order_id = o.id
@@ -235,6 +239,7 @@ async function loadOrder(orderId: string, workspaceId: string) {
       )) AS is_late
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
+    LEFT JOIN locations loc ON loc.id = o.pickup_location_id
     WHERE o.id = ${orderId}
       AND o.workspace_id = ${workspaceId}
       AND o.deleted_at IS NULL
@@ -509,7 +514,32 @@ const createSchema = z.object({
   channel:            z.enum(CHANNELS).default('planned'),
   notes:              z.string().max(2000).optional(),
   internal_notes:     z.string().max(2000).optional(),
+  // Sub-turn 6i — pickup location. Phase 1 forces return == pickup, so we only
+  // take one id; omitted falls back to the workspace default location.
+  pickup_location_id: z.string().uuid().optional(),
 });
+
+/** Resolve + validate an order's location (Sub-turn 6i). Falls back to the
+ *  workspace default when none is given. Returns the active, in-workspace
+ *  location id, or an error code the caller maps to a 400/404. */
+async function resolveOrderLocation(
+  workspaceId: string,
+  locationId: string | undefined,
+): Promise<{ id: string } | { error: string }> {
+  if (!locationId) {
+    const def = await getDefaultLocationId(workspaceId);
+    if (!def) return { error: 'no_default_location' };
+    return { id: def };
+  }
+  const rows = await query<{ id: string; is_active: boolean }>(sql`
+    SELECT id, is_active FROM locations
+    WHERE id = ${locationId}::uuid AND workspace_id = ${workspaceId}::uuid
+    LIMIT 1
+  `);
+  if (!rows.length) return { error: 'location_not_found' };
+  if (!rows[0]!.is_active) return { error: 'location_inactive' };
+  return { id: rows[0]!.id };
+}
 
 orders.post('/', async (c) => {
   const session = c.get('session')!;
@@ -539,13 +569,21 @@ orders.post('/', async (c) => {
     return c.json({ error: 'invalid_request', reason: 'end_before_start' }, 400);
   }
 
+  // Resolve the pickup location (Phase 1: return == pickup).
+  const loc = await resolveOrderLocation(session.workspace.id, input.pickup_location_id);
+  if ('error' in loc) {
+    const status = loc.error === 'location_not_found' ? 404 : 400;
+    return c.json({ error: loc.error }, status);
+  }
+
   const orderNumber = await nextOrderNumber(session.workspace.id);
 
   const inserted = await query<OrderRow>(sql`
     INSERT INTO orders (
       workspace_id, order_number, customer_person_id, status,
       rental_start, rental_end, dispatch_type, delivery_address,
-      channel, notes, internal_notes, created_by
+      channel, notes, internal_notes,
+      pickup_location_id, return_location_id, created_by
     ) VALUES (
       ${session.workspace.id},
       ${orderNumber},
@@ -558,6 +596,8 @@ orders.post('/', async (c) => {
       ${input.channel}::text,
       ${input.notes ?? null},
       ${input.internal_notes ?? null},
+      ${loc.id}::uuid,
+      ${loc.id}::uuid,
       ${session.user.id}
     )
     RETURNING *
@@ -612,6 +652,7 @@ const updateSchema = z.object({
   channel:            z.enum(CHANNELS).optional(),
   notes:              z.string().max(2000).optional(),
   internal_notes:     z.string().max(2000).optional(),
+  pickup_location_id: z.string().uuid().optional(),
   custom_fields:      z.array(z.object({ definition_id: z.string().uuid(), value: z.string().nullable() })).optional(),
 });
 
@@ -648,6 +689,21 @@ orders.patch('/:id', async (c) => {
     if (check.length === 0) return c.json({ error: 'customer_not_found' }, 404);
   }
 
+  // Location change only on drafts — moving it after commitment would shift the
+  // per-location reservation out from under dispatched gear (Sub-turn 6i).
+  let resolvedLocationId: string | null = null;
+  if (p.pickup_location_id) {
+    if (before.status !== 'draft') {
+      return c.json({ error: 'location_locked_after_draft' }, 409);
+    }
+    const loc = await resolveOrderLocation(session.workspace.id, p.pickup_location_id);
+    if ('error' in loc) {
+      const status = loc.error === 'location_not_found' ? 404 : 400;
+      return c.json({ error: loc.error }, status);
+    }
+    resolvedLocationId = loc.id;
+  }
+
   // Cross-field validation with merged values.
   const nextStart = p.rental_start ?? before.rental_start;
   const nextEnd   = p.rental_end   ?? before.rental_end;
@@ -665,6 +721,8 @@ orders.patch('/:id', async (c) => {
       channel            = COALESCE(${p.channel            ?? null}::text,        channel),
       notes              = COALESCE(${p.notes              ?? null}::text,        notes),
       internal_notes     = COALESCE(${p.internal_notes     ?? null}::text,        internal_notes),
+      pickup_location_id = COALESCE(${resolvedLocationId ?? null}::uuid,          pickup_location_id),
+      return_location_id = COALESCE(${resolvedLocationId ?? null}::uuid,          return_location_id),
       updated_at         = now()
     WHERE id = ${id}
       AND workspace_id = ${session.workspace.id}
@@ -1286,6 +1344,7 @@ orders.post('/:id/extend', async (c) => {
         start: oldEnd,
         end: newEnd,
         excludeOrderId: id,
+        locationId: order.pickup_location_id,
       });
       if (!check.available || check.conflicts.length > 0) {
         conflicts.push({
