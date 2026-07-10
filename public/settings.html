@@ -83,6 +83,9 @@
     .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--focus);box-shadow:0 0 0 4px rgba(185,192,238,.24)}
     .field input.mono{font-family:var(--font-mono);font-size:12.5px}
     .field textarea{min-height:120px;resize:vertical;font-size:13px;line-height:1.5}
+    .field textarea.mono.contract-template{font-family:var(--font-mono);font-size:12px;line-height:1.5;min-height:300px}
+    .template-variables{margin-bottom:8px;display:flex;flex-wrap:wrap;gap:4px}
+    .var-chip{display:inline-block;padding:3px 8px;background:#eef0f3;color:var(--muted-strong);border-radius:10px;font-size:11px;font-family:var(--font-mono);}
     .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
     .toggle-field{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}
     .toggle-field .tl{font-size:13px;color:var(--ink);font-weight:500}
@@ -287,6 +290,7 @@
       { key:'cashfree_gateway', name:'Cashfree payment gateway', desc:'Accept UPI, card, and net-banking payments directly through Cashfree. Requires API credentials.', live:false },
       { key:'wati_notifications', name:'WhatsApp notifications', desc:'Send order confirmations, dispatch alerts, return reminders, and invoices via WhatsApp Business API through WATI.', live:false },
       { key:'damage_module', name:'Damage recovery', desc:'Photo evidence, damage cost estimation, and partial deposit forfeiture workflow.', live:false },
+      { key:'contract_signatures', name:'Contract signatures', desc:'Capture an on-screen customer signature on a rental agreement at dispatch. Editable template in the Workspace tab.', live:true },
     ];
 
     // ---------- identity ----------
@@ -336,6 +340,7 @@
           tax: { ...s.tax },
           invoice: { ...s.invoice },
           bank_details: { ...s.bank_details },
+          contract: { template_text: s.contract?.template_text ?? '', template_version: s.contract?.template_version ?? 'v1' },
         },
       };
       state.baseline = JSON.parse(JSON.stringify(state.form));
@@ -457,6 +462,17 @@
               ${txt('settings.bank_details.upi_id', 'UPI ID')}
             </div>
           </details>
+        </div>
+        <div class="card">
+          <div class="section-h">Contract template</div>
+          <p class="card-sub">Used when customers sign a rental agreement at dispatch (enable the <strong>Contract signatures</strong> feature). Insert variables in curly braces.</p>
+          <div class="template-variables">
+            ${['{customer_name}','{customer_phone}','{order_number}','{rental_start}','{rental_end}','{total_amount}','{deposit_required}','{items_list}','{workspace_name}'].map(v => `<span class="var-chip">${escapeHtml(v)}</span>`).join('')}
+          </div>
+          <div class="field">
+            <textarea data-field="settings.contract.template_text" class="mono contract-template" rows="15" ${dis}>${escapeHtml(s.contract?.template_text ?? '')}</textarea>
+          </div>
+          <p class="card-sub">Editing this only affects contracts signed <strong>after</strong> the change — existing signed contracts stay frozen.</p>
         </div>`;
     }
 

@@ -287,8 +287,8 @@ async function recordOrderEvent(input: {
   toStatus?: OrderStatus | null;
   payload?: Record<string, unknown>;
   actorUserId: string;
-}) {
-  await sql`
+}): Promise<string | null> {
+  const rows = await query<{ id: string }>(sql`
     INSERT INTO order_events
       (workspace_id, order_id, event_type, from_status, to_status, payload, actor_user_id)
     VALUES (
@@ -300,7 +300,9 @@ async function recordOrderEvent(input: {
       ${JSON.stringify(input.payload ?? {})}::jsonb,
       ${input.actorUserId}
     )
-  `;
+    RETURNING id
+  `);
+  return rows[0]?.id ?? null;
 }
 
 // ============================================================================
@@ -1515,17 +1517,48 @@ orders.post('/:id/transitions', async (c) => {
 });
 
 // ============================================================================
+// Contract template rendering (Sub-turn 6e). Substitutes {variable} tokens with
+// order data; unknown tokens are left as-is so a typo in the template is visible.
+function renderContractTemplate(text: string, ctx: Record<string, string>): string {
+  return text.replace(/\{(\w+)\}/g, (_, key: string) => (key in ctx ? ctx[key]! : `{${key}}`));
+}
+
+// Asia/Kolkata display for the frozen snapshot (UTC over the wire, IST for humans).
+function contractDate(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+}
+
+function rupeesLabel(paise: number | null | undefined): string {
+  return '₹' + (Number(paise ?? 0) / 100).toLocaleString('en-IN');
+}
+
 // POST /api/orders/:id/dispatch — batch hand-over of pending items
 // ============================================================================
 // Transitions a chosen subset of pending_dispatch items to dispatched in one
 // request, stamps hand-over metadata, and (if the order is still pre-dispatch)
 // advances order.status to 'dispatched'. Records ONE batch order_event + audit
 // row — not per-item events (those would be noise).
+//
+// Sub-turn 6e: when the `contract_signatures` flag is on, a contract record is
+// written for the batch — signed if a signature payload is present, otherwise
+// an unsigned record for the audit trail. Contract creation is fail-open — it
+// never fails the dispatch itself.
 const dispatchSchema = z.object({
   item_ids:            z.array(z.string().uuid()).min(1),
   handed_to:           z.string().max(200).optional(),
   received_by_user_id: z.string().uuid().optional(),
   dispatch_notes:      z.string().max(1000).optional(),
+  contract: z.object({
+    signature_png_base64: z.string().max(200000).optional(),
+    signer_name:          z.string().max(200),
+    signer_role:          z.enum(['customer', 'representative']),
+  }).optional(),
 });
 
 orders.post('/:id/dispatch', async (c) => {
@@ -1615,7 +1648,7 @@ orders.post('/:id/dispatch', async (c) => {
     auto_order_status_transition: orderStatusChanged,
   };
 
-  await recordOrderEvent({
+  const dispatchEventId = await recordOrderEvent({
     workspaceId: session.workspace.id,
     orderId: id,
     eventType: 'order.dispatch.batch',
@@ -1661,11 +1694,161 @@ orders.post('/:id/dispatch', async (c) => {
       dispatch_notes: it.dispatch_notes,
     }));
 
+  // ---- Contract record (Sub-turn 6e) — only when the flag is on. Fail-open. ----
+  let contractSummary: {
+    id: string; signed: boolean; signer_name: string | null; signed_at: string | null;
+  } | null = null;
+  try {
+    const wsRows = await query<{ legal_name: string | null; settings: any }>(sql`
+      SELECT legal_name, settings FROM workspaces
+      WHERE id = ${session.workspace.id}::uuid LIMIT 1
+    `);
+    const ws = wsRows[0];
+    const contractsEnabled = ws?.settings?.features?.contract_signatures === true;
+    if (contractsEnabled && ws) {
+      const templateText: string = ws.settings?.contract?.template_text ?? '';
+      const templateVersion: string | null = ws.settings?.contract?.template_version ?? null;
+      const rentalLines = freshItems.filter((it) => it.item_type === 'rental');
+      const ctx: Record<string, string> = {
+        workspace_name: ws.legal_name || session.workspace.name || 'Workspace',
+        customer_name: freshOrder?.customer_name || 'Customer',
+        customer_phone: freshOrder?.customer_phone || '',
+        order_number: String(freshOrder?.order_number ?? order.order_number),
+        rental_start: contractDate(freshOrder?.rental_start ?? null),
+        rental_end: contractDate(freshOrder?.rental_end ?? null),
+        total_amount: rupeesLabel(freshOrder?.total_paise),
+        deposit_required: rupeesLabel(freshOrder?.deposit_required_paise),
+        items_list: rentalLines.map((it) => `- ${it.description} (Qty: ${Number(it.quantity)})`).join('\n'),
+      };
+      const rendered = renderContractTemplate(templateText, ctx);
+
+      const contractInput = parsed.data.contract;
+      const hasSignature = !!(contractInput && contractInput.signature_png_base64 && contractInput.signer_name);
+      // Strip any data-URL prefix — store raw base64.
+      const sigB64 = hasSignature
+        ? contractInput!.signature_png_base64!.replace(/^data:image\/\w+;base64,/, '')
+        : null;
+      // inet cast is strict — only pass an IP-shaped string, else null.
+      const safeIp = hasSignature && ipAddress && /^[0-9a-fA-F:.]+$/.test(ipAddress) ? ipAddress : null;
+
+      const inserted = await query<{ id: string; signed_at: string | null }>(sql`
+        INSERT INTO order_contracts (
+          workspace_id, order_id, dispatch_event_id,
+          contract_text_snapshot, template_version,
+          signature_png, signer_name, signer_role, signed_at,
+          ip_address, user_agent, witness_user_id
+        ) VALUES (
+          ${session.workspace.id}::uuid,
+          ${id}::uuid,
+          ${dispatchEventId}::uuid,
+          ${rendered}::text,
+          ${templateVersion}::text,
+          ${sigB64}::text,
+          ${hasSignature ? contractInput!.signer_name : null}::text,
+          ${hasSignature ? contractInput!.signer_role : 'unsigned'}::text,
+          ${hasSignature ? new Date().toISOString() : null}::timestamptz,
+          ${safeIp}::inet,
+          ${hasSignature ? userAgent : null}::text,
+          ${session.user.id}::uuid
+        )
+        RETURNING id, signed_at
+      `);
+      const contract = inserted[0]!;
+      contractSummary = {
+        id: contract.id,
+        signed: hasSignature,
+        signer_name: hasSignature ? contractInput!.signer_name : null,
+        signed_at: contract.signed_at,
+      };
+
+      await audit({
+        workspaceId: session.workspace.id,
+        actorUserId: session.user.id,
+        eventType: hasSignature ? 'orders.contract.signed' : 'orders.contract.unsigned_generated',
+        targetType: 'order',
+        targetId: id,
+        payload: {
+          contract_id: contract.id,
+          dispatch_event_id: dispatchEventId,
+          signed: hasSignature,
+          signer_name: hasSignature ? contractInput!.signer_name : null,
+          signer_role: hasSignature ? contractInput!.signer_role : 'unsigned',
+        },
+        ipAddress, userAgent,
+      });
+    }
+  } catch (err) {
+    console.error('contract creation on dispatch failed (non-fatal)', err);
+  }
+
   return c.json({
     order: freshOrder,
     items_dispatched: dispatched,
     order_status_changed: orderStatusChanged,
+    contract: contractSummary,
   });
+});
+
+// ============================================================================
+// GET /api/orders/:id/contracts — light list of an order's contracts (6e)
+// ============================================================================
+orders.get('/:id/contracts', async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+
+  const rows = await query<{
+    id: string; dispatch_event_id: string | null; signer_name: string | null;
+    signer_role: string | null; signed_at: string | null; created_at: string;
+  }>(sql`
+    SELECT id, dispatch_event_id, signer_name, signer_role, signed_at, created_at
+    FROM order_contracts
+    WHERE order_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+    ORDER BY created_at DESC
+  `);
+  return c.json({
+    contracts: rows.map((r) => ({
+      id: r.id,
+      dispatch_event_id: r.dispatch_event_id,
+      signed: r.signed_at != null,
+      signer_name: r.signer_name,
+      signer_role: r.signer_role,
+      signed_at: r.signed_at,
+      created_at: r.created_at,
+    })),
+  });
+});
+
+// ============================================================================
+// GET /api/orders/:id/contracts/:contractId — full contract + signature (6e)
+// ============================================================================
+orders.get('/:id/contracts/:contractId', async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const contractId = c.req.param('contractId');
+
+  const rows = await query<{
+    id: string; order_id: string; contract_text_snapshot: string;
+    template_version: string | null; signature_png: string | null;
+    signer_name: string | null; signer_role: string | null; signed_at: string | null;
+    ip_address: string | null; witness_user_id: string | null; witness_name: string | null;
+    created_at: string;
+  }>(sql`
+    SELECT oc.id, oc.order_id, oc.contract_text_snapshot, oc.template_version,
+           oc.signature_png, oc.signer_name, oc.signer_role, oc.signed_at,
+           host(oc.ip_address) AS ip_address, oc.witness_user_id,
+           u.display_name AS witness_name, oc.created_at
+    FROM order_contracts oc
+    LEFT JOIN users u ON u.id = oc.witness_user_id
+    WHERE oc.id = ${contractId}::uuid
+      AND oc.order_id = ${id}::uuid
+      AND oc.workspace_id = ${session.workspace.id}::uuid
+    LIMIT 1
+  `);
+  const contract = rows[0];
+  if (!contract) return c.json({ error: 'not_found' }, 404);
+  return c.json({ contract });
 });
 
 // ============================================================================
