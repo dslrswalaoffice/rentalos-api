@@ -153,6 +153,19 @@
     .kit-preview { margin-top: 14px; padding: 10px 12px; background: var(--accent-soft); border-radius: 9px; font-size: 12.5px; color: var(--head); }
     .kit-preview.short { background: var(--warn-soft); color: var(--warn-strong); }
     .kit-empty { padding: 16px 0; text-align: center; color: var(--muted); font-size: 12.5px; }
+    /* product image upload (Sub-turn 5f) */
+    .field-image { margin-bottom: 16px; }
+    .image-preview-area { width: 160px; height: 160px; border: 1px dashed var(--border-strong); border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; background: var(--thead); }
+    .image-preview-area img { width: 100%; height: 100%; object-fit: cover; }
+    .image-placeholder { text-align: center; color: var(--muted-soft); }
+    .placeholder-icon { font-size: 30px; opacity: 0.6; }
+    .placeholder-text { font-size: 11px; margin-top: 4px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; }
+    .image-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+    .image-progress { margin-top: 8px; }
+    .progress-bar-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: var(--head); transition: width 200ms ease; width: 0; }
+    .progress-text { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: var(--font-mono); }
+    .image-error { margin-top: 8px; padding: 8px 10px; background: var(--bad-soft); color: var(--bad-strong); border-radius: 8px; font-size: 12px; }
     .archived-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 5px; background: var(--warn-soft); color: var(--warn-strong); font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; margin-left: 6px; }
     .kebab { background: transparent; border: none; padding: 6px; border-radius: 6px; cursor: pointer; color: var(--muted); }
     .kebab:hover { background: var(--bg); color: var(--ink); }
@@ -481,8 +494,26 @@
             <label for="e-daily">Daily rate</label>
             <div class="prefix-wrap"><span class="prefix">₹</span><input id="e-daily" type="number" min="1" step="1"></div>
           </div>
-          <div class="field">
-            <label for="e-image">Image URL <span class="hint">paste an external image link</span></label>
+          <div class="field field-image">
+            <label>Product image</label>
+            <div class="image-preview-area">
+              <img id="image-preview" src="" alt="" hidden>
+              <div class="image-placeholder" id="image-placeholder">
+                <div class="placeholder-icon">🖼</div>
+                <div class="placeholder-text">No image</div>
+              </div>
+            </div>
+            <div class="image-actions">
+              <label class="btn small" for="image-file-input" style="cursor:pointer;">Upload image</label>
+              <input type="file" id="image-file-input" accept="image/jpeg,image/png,image/webp" hidden>
+              <button type="button" class="btn ghost small" id="image-remove-btn" hidden>Remove</button>
+            </div>
+            <div class="image-progress" id="image-progress" hidden>
+              <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-bar-fill"></div></div>
+              <div class="progress-text" id="progress-text">Uploading…</div>
+            </div>
+            <div class="image-error" id="image-error" hidden></div>
+            <div class="field-hint" style="margin-top:12px;">Or paste an image URL:</div>
             <input id="e-image" type="url" maxlength="2000" autocomplete="off" placeholder="https://…">
           </div>
           <div class="field">
@@ -835,10 +866,117 @@
       document.getElementById('e-daily').value = p.daily_rate != null ? (Number(p.daily_rate) / 100) : '';
       document.getElementById('e-image').value = p.image_url || '';
       document.getElementById('e-kit').checked = !!p.is_kit;
+      setImagePreview(p.image_url || '');
+      document.getElementById('image-progress').hidden = true;
+      document.getElementById('image-error').hidden = true;
+      document.getElementById('image-file-input').value = '';
       loadCategoriesDatalist();
       editModal.classList.add('open');
     }
     function closeEdit() { editModal.classList.remove('open'); editingId = null; }
+
+    // ---------- product image upload (Sub-turn 5f) ----------
+    const IMG_MAX_WIDTH = 1200;
+    const IMG_JPEG_QUALITY = 0.85;
+    const IMG_MAX_BYTES = 5 * 1024 * 1024;
+    const IMG_ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
+
+    function setImagePreview(url) {
+      const img = document.getElementById('image-preview');
+      const ph = document.getElementById('image-placeholder');
+      const rm = document.getElementById('image-remove-btn');
+      if (url) { img.src = url; img.hidden = false; ph.hidden = true; rm.hidden = false; }
+      else { img.src = ''; img.hidden = true; ph.hidden = false; rm.hidden = true; }
+    }
+    function showImageError(msg) {
+      const el = document.getElementById('image-error');
+      el.textContent = msg; el.hidden = false;
+    }
+    function showImageProgress(text, pct) {
+      document.getElementById('image-progress').hidden = false;
+      document.getElementById('progress-text').textContent = text;
+      document.getElementById('progress-bar-fill').style.width = pct + '%';
+    }
+    function hideImageProgress() { document.getElementById('image-progress').hidden = true; }
+
+    // Downscale to max 1200px wide, re-encode JPEG @0.85 before upload.
+    async function compressImage(file) {
+      const img = await new Promise((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = reject;
+        im.src = URL.createObjectURL(file);
+      });
+      let w = img.width, h = img.height;
+      if (w > IMG_MAX_WIDTH) { h = Math.round(h * (IMG_MAX_WIDTH / w)); w = IMG_MAX_WIDTH; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', IMG_JPEG_QUALITY));
+      URL.revokeObjectURL(img.src);
+      return blob;
+    }
+
+    document.getElementById('image-file-input').addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file || !editingId) return;
+      document.getElementById('image-error').hidden = true;
+      if (!IMG_ALLOWED.includes(file.type)) { showImageError('Unsupported file type. Use JPEG, PNG, or WebP.'); return; }
+      let uploadBlob = file;
+      showImageProgress('Compressing…', 20);
+      try { const c = await compressImage(file); if (c) uploadBlob = c; }
+      catch (err) { console.warn('compression failed, uploading original', err); }
+      if (uploadBlob.size > IMG_MAX_BYTES) {
+        hideImageProgress();
+        showImageError(`Image too large (${Math.round(uploadBlob.size / 1024 / 1024)}MB). Max 5MB after compression.`);
+        return;
+      }
+      showImageProgress('Uploading…', 60);
+      try {
+        const form = new FormData();
+        form.append('image', uploadBlob, 'image.jpg');
+        const res = await fetch(`/api/inventory/products/${editingId}/image`, { method: 'POST', credentials: 'include', body: form });
+        if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || 'upload_failed'); }
+        const data = await res.json();
+        showImageProgress('Done', 100);
+        setTimeout(hideImageProgress, 600);
+        document.getElementById('e-image').value = data.image_url;
+        setImagePreview(data.image_url);
+        // Reflect immediately in the list without waiting for Save.
+        const p = allProducts.find(x => x.id === editingId);
+        if (p) p.image_url = data.image_url;
+        renderList();
+      } catch (err) {
+        hideImageProgress();
+        showImageError('Upload failed: ' + (err.message || 'unknown error'));
+      } finally {
+        e.target.value = '';
+      }
+    });
+
+    document.getElementById('image-remove-btn').addEventListener('click', async () => {
+      if (!editingId) return;
+      if (!confirm('Remove product image?')) return;
+      document.getElementById('image-error').hidden = true;
+      try {
+        const res = await fetch(`/api/inventory/products/${editingId}/image`, { method: 'DELETE', credentials: 'include' });
+        if (!res.ok) throw new Error('remove_failed');
+        document.getElementById('e-image').value = '';
+        setImagePreview('');
+        const p = allProducts.find(x => x.id === editingId);
+        if (p) p.image_url = null;
+        renderList();
+      } catch (err) {
+        showImageError('Could not remove the image.');
+      }
+    });
+
+    // Live-preview a pasted URL.
+    document.getElementById('e-image').addEventListener('input', (e) => {
+      const v = e.target.value.trim();
+      if (v) setImagePreview(v);
+      else if (!document.getElementById('image-preview').src) setImagePreview('');
+    });
     document.getElementById('edit-close').addEventListener('click', closeEdit);
     document.getElementById('edit-cancel').addEventListener('click', closeEdit);
     editModal.addEventListener('click', (e) => { if (e.target === editModal) closeEdit(); });
