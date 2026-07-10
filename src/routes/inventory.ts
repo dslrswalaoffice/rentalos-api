@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
+import { put, del } from '@vercel/blob';
 import {
   sessionMiddleware,
   requireAuth,
@@ -639,4 +640,142 @@ inventory.delete('/products/:id/kit-components/:componentId', requireRole('owner
   });
 
   return c.json({ ok: true });
+});
+
+// ============================================================================
+// Product image upload (Sub-turn 5f) — Vercel Blob, with URL-paste fallback
+// ----------------------------------------------------------------------------
+// image_url may be an owned Blob URL (auto-cleaned on replace/delete) or an
+// external URL (never touched). The existing PATCH still accepts image_url for
+// the URL-paste path. Requires BLOB_READ_WRITE_TOKEN in the Vercel project.
+// ============================================================================
+const IMAGE_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+function buildBlobPath(workspaceId: string, productId: string): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).slice(2, 8);
+  return `workspaces/${workspaceId}/products/${productId}-${timestamp}-${random}.jpg`;
+}
+
+// Only our own Vercel Blob URLs may be deleted — external URLs are left alone.
+function isOwnedBlob(url: string | null): boolean {
+  if (!url) return false;
+  return url.includes('.blob.vercel-storage.com');
+}
+
+async function loadProductForImage(workspaceId: string, productId: string) {
+  const rows = await query<{ id: string; image_url: string | null }>(sql`
+    SELECT id, image_url FROM products
+    WHERE id = ${productId} AND workspace_id = ${workspaceId} AND deleted_at IS NULL
+    LIMIT 1
+  `);
+  return rows[0] ?? null;
+}
+
+// POST /api/inventory/products/:id/image — multipart upload (field name "image")
+inventory.post('/products/:id/image', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const productId = c.req.param('id');
+
+  const product = await loadProductForImage(session.workspace.id, productId);
+  if (!product) return c.json({ error: 'product_not_found' }, 404);
+
+  let file: File | null = null;
+  try {
+    const form = await c.req.formData();
+    const raw = form.get('image');
+    if (raw instanceof File) file = raw;
+  } catch {
+    return c.json({ error: 'invalid_multipart' }, 400);
+  }
+  if (!file) return c.json({ error: 'no_file' }, 400);
+
+  if (!IMAGE_ALLOWED_TYPES.includes(file.type)) {
+    return c.json({ error: 'invalid_file_type', allowed: IMAGE_ALLOWED_TYPES }, 400);
+  }
+  if (file.size > IMAGE_MAX_BYTES) {
+    return c.json({ error: 'file_too_large', max_bytes: IMAGE_MAX_BYTES, got_bytes: file.size }, 400);
+  }
+
+  const path = buildBlobPath(session.workspace.id, productId);
+  let blob;
+  try {
+    blob = await put(path, file, {
+      access: 'public',
+      contentType: file.type,
+      addRandomSuffix: false, // path already carries a random suffix
+    });
+  } catch (err) {
+    console.error('blob upload failed', err);
+    return c.json({ error: 'upload_failed' }, 500);
+  }
+
+  // Best-effort cleanup of the previous owned blob (never external URLs).
+  const oldUrl = product.image_url;
+  if (isOwnedBlob(oldUrl)) {
+    try { await del(oldUrl!); }
+    catch (err) { console.warn('failed to delete old blob (non-fatal)', err); }
+  }
+
+  await sql`
+    UPDATE products
+    SET image_url = ${blob.url}, updated_at = now()
+    WHERE id = ${productId} AND workspace_id = ${session.workspace.id}
+  `;
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'inventory.product.image_uploaded',
+    targetType: 'product',
+    targetId: productId,
+    payload: {
+      new_url: blob.url,
+      old_url: oldUrl,
+      old_was_owned: isOwnedBlob(oldUrl),
+      file_type: file.type,
+      file_size: file.size,
+    },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ image_url: blob.url, old_url_removed: isOwnedBlob(oldUrl) });
+});
+
+// DELETE /api/inventory/products/:id/image — clear image (delete blob if owned)
+inventory.delete('/products/:id/image', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const productId = c.req.param('id');
+
+  const product = await loadProductForImage(session.workspace.id, productId);
+  if (!product) return c.json({ error: 'product_not_found' }, 404);
+  if (!product.image_url) return c.json({ ok: true, already_empty: true });
+
+  const oldUrl = product.image_url;
+  const wasOwned = isOwnedBlob(oldUrl);
+  if (wasOwned) {
+    try { await del(oldUrl); }
+    catch (err) { console.warn('failed to delete blob (non-fatal)', err); }
+  }
+
+  await sql`
+    UPDATE products
+    SET image_url = NULL, updated_at = now()
+    WHERE id = ${productId} AND workspace_id = ${session.workspace.id}
+  `;
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'inventory.product.image_removed',
+    targetType: 'product',
+    targetId: productId,
+    payload: { removed_url: oldUrl, was_owned: wasOwned },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ ok: true, was_owned: wasOwned });
 });

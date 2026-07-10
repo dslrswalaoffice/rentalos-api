@@ -23,6 +23,8 @@ export type AuditEventType =
   | 'inventory.kit.component_added'
   | 'inventory.kit.component_updated'
   | 'inventory.kit.component_removed'
+  | 'inventory.product.image_uploaded'
+  | 'inventory.product.image_removed'
   | 'admin.migrate.success'
   | 'admin.migrate.failure'
   | 'admin.seed.success'
