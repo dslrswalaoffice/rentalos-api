@@ -541,6 +541,21 @@ Automated invoice reminders over WhatsApp and/or email, built on the 6a adapter 
 
 ---
 
+## Custom fields (Sub-turn 6g)
+
+Workspace-defined custom fields on **orders, people, products** (not line items or invoices). Two tables: `custom_field_definitions` (the per-workspace schema) + `custom_field_values` (per record).
+
+- **Field types:** `text`, `number`, `date`, `checkbox`, `dropdown` (dropdown carries `options jsonb`). **Values are stored as `text`**; type-specific parsing happens on read via the definition's `field_type`.
+- **Definitions** — `GET/POST/PATCH/DELETE /api/custom-fields/definitions` (mounted `/api/custom-fields`). Create/update/delete are **owner/manager only**. `field_key` matches `^[a-z][a-z0-9_]{0,49}$`, is **unique per (workspace, entity_type)**, and is **immutable** after creation (so does `entity_type`) — protects existing values. Dropdown create/update requires non-empty `options` (else `400 dropdown_options_required`); duplicate key → `409 field_key_taken`.
+- **Values** — `GET/PUT /api/custom-fields/values` (bulk upsert; a `null`/empty value clears the row). Any authenticated user may set values. Shared helpers `loadCustomFieldValues` / `upsertCustomFieldValues` live in `src/lib/custom_fields.ts` and are reused by the entity routes.
+- **Soft-delete:** `DELETE …/definitions/:id` sets `is_active = false`; values persist in the DB (the value FK is `ON DELETE RESTRICT`) but stop being returned/rendered.
+- **Entity integration:** single-record GETs (`GET /api/orders/:id`, `/api/people/:id`, `/api/inventory/products/:id`) include a `custom_fields` array (definitions left-joined with this record's values). **List endpoints do NOT** (per-row overhead). Each entity PATCH also accepts an optional `custom_fields: [{definition_id, value}]` to upsert inline.
+- **Sort order:** definitions render `sort_order ASC, created_at ASC`.
+- **UI:** Settings → **Custom Fields** tab (Orders / People / Products sub-tabs) manages definitions (add/edit/delete modal; field_key auto-fills from label; type toggles the options textarea). Edit forms render the fields — an inline "Custom fields" card on `order.html`, and a section in the `person.html` / `inventory.html` edit modals — saving via `PUT /api/custom-fields/values` or the entity PATCH.
+- **No feature flag** (additive), **no search integration** (custom values aren't queryable via entity search yet), no file/rich-text/relationship field types.
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.

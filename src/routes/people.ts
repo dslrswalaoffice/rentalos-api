@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { emitNotification } from '../lib/notify.js';
+import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -214,7 +215,9 @@ people.get('/:id', async (c) => {
     LIMIT 20
   `);
 
-  return c.json({ person, orders, payments, communications });
+  const custom_fields = await loadCustomFieldValues(session.workspace.id, 'person', id);
+
+  return c.json({ person, orders, payments, communications, custom_fields });
 });
 
 // ============================================================================
@@ -344,6 +347,7 @@ const updateSchema = z.object({
   notes: z.string().max(2000).optional(),
   billing_address: z.string().max(1000).optional(),
   shipping_address: z.string().max(1000).optional(),
+  custom_fields: z.array(z.object({ definition_id: z.string().uuid(), value: z.string().nullable() })).optional(),
 });
 
 people.patch('/:id', requireRole('owner', 'manager'), async (c) => {
@@ -419,6 +423,13 @@ people.patch('/:id', requireRole('owner', 'manager'), async (c) => {
     payload: { fields: Object.keys(p) },
     ipAddress, userAgent,
   });
+
+  if (p.custom_fields) {
+    await upsertCustomFieldValues({
+      workspaceId: session.workspace.id, entityType: 'person', entityId: id,
+      actorUserId: session.user.id, values: p.custom_fields,
+    });
+  }
 
   return c.json({ person: updated[0] });
 });
