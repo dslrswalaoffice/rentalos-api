@@ -312,6 +312,22 @@ NOT `= ANY(${arr}::status_enum[])`.
 - **`generateInvoice()`** now lives in `src/routes/invoices.ts` as an exported function (the POST route is a thin wrapper). Callers get a structured `{ ok, ... }` result instead of an HTTP response. `bypassReadiness` skips the all-items-terminal gate.
 - **UI:** dedicated "Extend rental" button + modal on `order.html` (visible for the four extendable statuses); the timeline renders `order.extended` distinctively (📅 with delta days, reason, delta ₹, invoice-revision note).
 
+### Deposit workflow (Sub-turn 6d)
+- A deposit is **a payment with a distinct kind**, not a new table — it reuses the payments correction-window / audit / refund infrastructure.
+  - `payments.payment_kind text` — `rental | deposit | deposit_refund | deposit_forfeit`. Existing rows backfill to `rental`. **Payments have no `deleted_at`** — deletes are hard (within the 5-minute correction window).
+  - `orders.deposit_required_paise bigint` — expected deposit (set per-order; no workspace auto-calc yet). **Distinct from the legacy `orders.deposit_paise`** (the deposit portion of the order's own line totals).
+  - `orders.deposit_status text` — `none | pending | held | partial_forfeited | fully_forfeited | released`. Denormalised; recomputed from deposit-kind payments after every deposit write/delete.
+- **Direction is derived from the kind, not the body:** `deposit_refund` → `out` (cash returned); `deposit` and `deposit_forfeit` → `in` (a forfeit reclassifies money already held).
+- **Deposits never touch rental `paid_paise` / `balance_paise`** — `netReceivedPaise()` sums `payment_kind = 'rental'` only. Deposits are refundable holdings, not sales; they do **not** appear on invoices.
+- Lifecycle: `pending` (required set, nothing collected) → `held` (deposit recorded) → `released` (deposit_refund) OR `fully_forfeited` / `partial_forfeited` (deposit_forfeit). **No auto-release on close** — the operator triggers Release or Forfeit.
+- `deposit_refund` / `deposit_forfeit` require a prior completed `deposit` payment (else `409 no_deposit_to_release`).
+- `PATCH /api/orders/:id/deposit` sets `deposit_required_paise` at any status (the generic PATCH is draft-scoped). Deposit mutations audit as `payments.deposit_recorded` / `.deposit_refunded` / `.deposit_forfeited`, and any status change audits `orders.deposit_status.changed`.
+- **UI:** a Deposit card on `order.html` (required, currently-held, status pill, status-appropriate actions) reusing the record-payment modal tagged with the deposit kind; deposit payments are excluded from the rental payment.recorded notification.
+
+### Late orders (Sub-turn 6d)
+- **`is_late` is computed, not stored:** `rental_end < now() AND EXISTS(order_items still 'dispatched')`. NOTE the `order_item_status` enum has **no `'active'`** (that's an order status) — "still out" means item status `dispatched`. Returned on both the list and detail order responses.
+- Orders list accepts `?late_only=1` to show only late orders (WHERE mirrors the `is_late` predicate). `orders.html` shows a red "Late Nd" badge per row + a "Late only" filter chip with URL state.
+
 ### Audit on every mutation
 Every route that mutates order state writes TWO event rows:
 1. `order_events` — per-order timeline the operator sees

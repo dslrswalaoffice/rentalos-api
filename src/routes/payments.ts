@@ -60,6 +60,8 @@ type OrderLite = {
   total_paise: number;
   paid_paise: number;
   balance_paise: number;
+  deposit_required_paise: number;
+  deposit_status: string;
   deleted_at: string | null;
 };
 
@@ -70,6 +72,7 @@ type PaymentRow = {
   amount_paise: number;
   direction: string;
   method: string;
+  payment_kind: string;
   reference: string | null;
   status: string;
   notes: string | null;
@@ -93,7 +96,8 @@ function clientCtx(c: Context) {
 async function loadOrderLite(orderId: string, workspaceId: string): Promise<OrderLite | null> {
   const rows = await query<OrderLite>(sql`
     SELECT id, order_number, status::text AS status,
-           total_paise, paid_paise, balance_paise, deleted_at
+           total_paise, paid_paise, balance_paise,
+           deposit_required_paise, deposit_status, deleted_at
     FROM orders
     WHERE id = ${orderId}::uuid
       AND workspace_id = ${workspaceId}::uuid
@@ -120,6 +124,10 @@ function rupees(paise: number): string {
   return (Number(paise) / 100).toLocaleString('en-IN');
 }
 
+// RENTAL payments only — deposits (deposit / deposit_refund / deposit_forfeit)
+// are refundable holdings, not sales, so they never touch the order's
+// paid_paise / balance_paise. Existing rows all backfill to 'rental', so this
+// leaves pre-6d behaviour unchanged.
 async function netReceivedPaise(orderId: string, workspaceId: string): Promise<number> {
   const rows = await query<{ net: number }>(sql`
     SELECT COALESCE(SUM(
@@ -129,8 +137,85 @@ async function netReceivedPaise(orderId: string, workspaceId: string): Promise<n
     WHERE order_id = ${orderId}::uuid
       AND workspace_id = ${workspaceId}::uuid
       AND status = 'completed'
+      AND payment_kind = 'rental'
   `);
   return Number(rows[0]?.net ?? 0);
+}
+
+// ----------------------------------------------------------------------------
+// Deposit lifecycle (Sub-turn 6d)
+// ----------------------------------------------------------------------------
+// deposit_status is denormalised on orders and recomputed from the deposit-kind
+// payments after every deposit write/delete. There is no soft-delete on
+// payments (hard DELETE within the correction window), so we sum live rows only.
+const DEPOSIT_KINDS = ['deposit', 'deposit_refund', 'deposit_forfeit'] as const;
+
+export async function computeDepositStatus(
+  orderId: string,
+  workspaceId: string,
+  requiredPaise: number,
+): Promise<string> {
+  if (Number(requiredPaise) === 0) return 'none';
+
+  const rows = await query<{ payment_kind: string; amount_paise: number }>(sql`
+    SELECT payment_kind, amount_paise
+    FROM payments
+    WHERE order_id = ${orderId}::uuid
+      AND workspace_id = ${workspaceId}::uuid
+      AND status = 'completed'
+      AND payment_kind = ANY(string_to_array(${DEPOSIT_KINDS.join(',')}::text, ','))
+  `);
+
+  const sumOf = (kind: string) =>
+    rows.filter((r) => r.payment_kind === kind).reduce((s, r) => s + Number(r.amount_paise), 0);
+  const held = sumOf('deposit');
+  const refunded = sumOf('deposit_refund');
+  const forfeited = sumOf('deposit_forfeit');
+  const netHeld = held - refunded - forfeited;
+
+  if (held === 0) return 'pending';
+  if (netHeld > 0) return 'held';
+  // netHeld === 0 (or defensively negative) → fully resolved one way or another.
+  if (forfeited > 0 && refunded > 0) return 'partial_forfeited';
+  if (forfeited >= held) return 'fully_forfeited';
+  if (refunded > 0) return 'released';
+  return 'held';
+}
+
+// Recompute + persist deposit_status; audit on change. Returns { old, new }.
+// Exported so the deposit-amount PATCH in orders.ts can reuse it.
+export async function applyDepositStatus(args: {
+  workspaceId: string;
+  orderId: string;
+  actorUserId: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+}): Promise<{ old: string; new: string } | null> {
+  const order = await loadOrderLite(args.orderId, args.workspaceId);
+  if (!order) return null;
+  const oldStatus = order.deposit_status;
+  const newStatus = await computeDepositStatus(
+    args.orderId,
+    args.workspaceId,
+    Number(order.deposit_required_paise),
+  );
+  if (newStatus === oldStatus) return { old: oldStatus, new: newStatus };
+
+  await sql`
+    UPDATE orders SET deposit_status = ${newStatus}::text, updated_at = now()
+    WHERE id = ${args.orderId}::uuid AND workspace_id = ${args.workspaceId}::uuid
+  `;
+  await audit({
+    workspaceId: args.workspaceId,
+    actorUserId: args.actorUserId,
+    eventType: 'orders.deposit_status.changed',
+    targetType: 'order',
+    targetId: args.orderId,
+    payload: { old: oldStatus, new: newStatus },
+    ipAddress: args.ipAddress,
+    userAgent: args.userAgent,
+  });
+  return { old: oldStatus, new: newStatus };
 }
 
 // Refresh paid_paise / balance_paise on the order from SUM(payments).
@@ -227,6 +312,7 @@ payments.get('/:orderId', async (c) => {
       amount_paise: Number(r.amount_paise),
       direction: r.direction,
       method: r.method,
+      payment_kind: r.payment_kind,
       reference: r.reference,
       status: r.status,
       notes: clean,
@@ -245,6 +331,8 @@ payments.get('/:orderId', async (c) => {
       total_paise: Number(order.total_paise),
       paid_paise: Number(order.paid_paise),
       balance_paise: Number(order.balance_paise),
+      deposit_required_paise: Number(order.deposit_required_paise),
+      deposit_status: order.deposit_status,
     },
     payments: paymentsOut,
   });
@@ -259,7 +347,16 @@ const createSchema = z.object({
   reference:    z.string().max(200).optional(),
   notes:        z.string().max(1000).optional(),
   occurred_at:  z.string().datetime().optional(),
+  payment_kind: z.enum(['rental', 'deposit', 'deposit_refund', 'deposit_forfeit']).default('rental'),
 });
+
+// Deposit-kind → audit event + which direction the cash moves. deposit_refund
+// returns money (out); everything else is an inbound receipt / obligation change.
+const DEPOSIT_AUDIT: Record<string, 'payments.deposit_recorded' | 'payments.deposit_refunded' | 'payments.deposit_forfeited'> = {
+  deposit: 'payments.deposit_recorded',
+  deposit_refund: 'payments.deposit_refunded',
+  deposit_forfeit: 'payments.deposit_forfeited',
+};
 
 payments.post('/:orderId', async (c) => {
   const session = c.get('session')!;
@@ -272,6 +369,8 @@ payments.post('/:orderId', async (c) => {
     return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   }
   const input = parsed.data;
+  const kind = input.payment_kind;
+  const isDeposit = kind !== 'rental';
 
   const order = await loadOrderLite(orderId, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
@@ -281,18 +380,37 @@ payments.post('/:orderId', async (c) => {
     return c.json({ error: 'order_cancelled' }, 409);
   }
 
+  // A refund/forfeit can only act on money we actually hold — require a prior
+  // completed deposit payment on this order.
+  if (kind === 'deposit_refund' || kind === 'deposit_forfeit') {
+    const held = await query<{ sum: number }>(sql`
+      SELECT COALESCE(SUM(amount_paise), 0)::bigint AS sum
+      FROM payments
+      WHERE order_id = ${orderId}::uuid AND workspace_id = ${session.workspace.id}::uuid
+        AND status = 'completed' AND payment_kind = 'deposit'
+    `);
+    if (Number(held[0]?.sum ?? 0) === 0) {
+      return c.json({ error: 'no_deposit_to_release' }, 409);
+    }
+  }
+
+  // Direction is derived from the kind, not trusted from the body: a deposit
+  // refund returns cash (out); a deposit collection and a forfeit are both
+  // inbound (a forfeit reclassifies money we already hold).
+  const direction = kind === 'deposit_refund' ? 'out' : 'in';
   const occurredAt = input.occurred_at ?? new Date().toISOString();
 
   const inserted = await query<PaymentRow>(sql`
     INSERT INTO payments (
-      workspace_id, order_id, amount_paise, direction, method,
+      workspace_id, order_id, amount_paise, direction, method, payment_kind,
       reference, status, notes, received_by, occurred_at
     ) VALUES (
       ${session.workspace.id}::uuid,
       ${orderId}::uuid,
       ${input.amount_paise}::bigint,
-      'in'::payment_direction,
+      ${direction}::payment_direction,
       ${input.method}::payment_method,
+      ${kind}::text,
       ${input.reference ?? null}::text,
       'completed'::payment_status,
       ${input.notes ?? null}::text,
@@ -303,12 +421,22 @@ payments.post('/:orderId', async (c) => {
   `);
   const payment = inserted[0]!;
 
+  // Deposits never touch rental paid/balance; still call recompute so a rental
+  // payment updates the order (recompute is a no-op for deposit-only writes).
   const rc = await recomputeOrderPayments(orderId, session.workspace.id, session.user.id);
+
+  // Deposit lifecycle: refresh deposit_status (audits its own change event).
+  if (isDeposit) {
+    await applyDepositStatus({
+      workspaceId: session.workspace.id, orderId,
+      actorUserId: session.user.id, ipAddress, userAgent,
+    });
+  }
 
   await audit({
     workspaceId: session.workspace.id,
     actorUserId: session.user.id,
-    eventType: 'orders.payment.recorded',
+    eventType: isDeposit ? DEPOSIT_AUDIT[kind]! : 'orders.payment.recorded',
     targetType: 'payment',
     targetId: payment.id,
     payload: {
@@ -316,22 +444,27 @@ payments.post('/:orderId', async (c) => {
       payment_id: payment.id,
       amount_paise: input.amount_paise,
       method: input.method,
-      direction: 'in',
+      direction,
+      payment_kind: kind,
     },
     ipAddress, userAgent,
   });
 
-  emitNotification({
-    workspaceId: session.workspace.id,
-    actorUserId: session.user.id,
-    eventType: 'payment.recorded',
-    targetType: 'payment', targetId: payment.id,
-    linkUrl: `/order.html?id=${orderId}`,
-    metadata: {
-      order_number: order.order_number, amount: rupees(input.amount_paise),
-      customer_name: await customerNameFor(orderId, session.workspace.id), method: input.method,
-    },
-  }).catch(() => {});
+  // Deposit movements aren't customer rental payments — skip the payment.recorded
+  // notification for them (it renders as a rental receipt).
+  if (!isDeposit) {
+    emitNotification({
+      workspaceId: session.workspace.id,
+      actorUserId: session.user.id,
+      eventType: 'payment.recorded',
+      targetType: 'payment', targetId: payment.id,
+      linkUrl: `/order.html?id=${orderId}`,
+      metadata: {
+        order_number: order.order_number, amount: rupees(input.amount_paise),
+        customer_name: await customerNameFor(orderId, session.workspace.id), method: input.method,
+      },
+    }).catch(() => {});
+  }
 
   return c.json({
     payment,
@@ -384,6 +517,11 @@ payments.delete('/:orderId/:paymentId', async (c) => {
   `;
 
   const rc = await recomputeOrderPayments(orderId, session.workspace.id, session.user.id);
+  // A deleted deposit-kind payment shifts the lifecycle; recompute + audit.
+  await applyDepositStatus({
+    workspaceId: session.workspace.id, orderId,
+    actorUserId: session.user.id, ipAddress, userAgent,
+  });
 
   await audit({
     workspaceId: session.workspace.id,
