@@ -253,6 +253,9 @@ NOT `= ANY(${arr}::status_enum[])`.
   - `billing_address text`, `shipping_address text` — first-class addresses (separate from invoice snapshots).
 - **`person_communications` table** (migration 013) — manual communication log per person. Columns: `id`, `workspace_id`, `person_id`, `channel` (`call`/`whatsapp`/`email`/`other`), `direction` (`in`/`out`), `notes`, `occurred_at`, `logged_by_user_id`, `created_at`. Not an immutable audit table. 5-minute correction window for delete, and only the logging user can delete their own entry.
 - Tier and trust-score writes are gated by feature flags `customer_tiers` and `trust_score` respectively — the endpoints return `409 feature_disabled` when the flag is off. The columns and the person detail page exist regardless of flag state; only the tier picker / trust input UI is flag-gated.
+- **`products` table** (migration 014 + pre-existing): `category text NOT NULL` and `image_url text` already existed from migration 002 (`idx_products_category` indexes category). Migration 014 adds only `hsn_code text CHECK (length <= 8)` nullable — Indian HSN classification code. `image_url` is an external URL (URL-only, upload UI deferred); `category` is freeform text with workspace-scoped autocomplete.
+- **`invoices.snapshot.line_items[]`** now includes `hsn_code` (from the product at generation time). Invoices generated before migration 014 retain the "—" HSN display — snapshot immutability preserved.
+- **`GET /api/inventory/categories`** returns the distinct non-null category values in the workspace; powers the inventory filter chips and the edit-modal category autocomplete.
 
 ---
 

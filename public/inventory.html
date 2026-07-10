@@ -134,6 +134,11 @@
     .units .sep { color: var(--muted-soft); font-weight: 400; }
     .units .total { color: var(--muted-strong); }
     .cat-tag { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--head); font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.02em; }
+    .product-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: var(--thead); display: block; }
+    .product-thumb-placeholder { width: 40px; height: 40px; border-radius: 6px; background: var(--accent-soft); color: var(--head); font-family: var(--font-display); font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); }
+    .product-image-cell { width: 56px; }
+    .hsn-code { font-family: var(--font-mono); font-size: 12px; color: var(--head); }
+    table.products tbody tr { cursor: pointer; }
     .archived-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 5px; background: var(--warn-soft); color: var(--warn-strong); font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; margin-left: 6px; }
     .kebab { background: transparent; border: none; padding: 6px; border-radius: 6px; cursor: pointer; color: var(--muted); }
     .kebab:hover { background: var(--bg); color: var(--ink); }
@@ -394,6 +399,48 @@
     </div>
   </div>
 
+  <!-- Edit product modal (Sub-turn 5c-1) -->
+  <div class="modal-backdrop" id="edit-modal">
+    <div class="modal" role="dialog" aria-labelledby="edit-modal-title">
+      <header class="modal-head">
+        <div class="modal-title" id="edit-modal-title">Edit product</div>
+        <button class="modal-close" id="edit-close" aria-label="Close">✕</button>
+      </header>
+      <form id="edit-form" novalidate>
+        <div class="modal-body">
+          <div id="edit-error" class="form-error" style="display:none;"></div>
+          <div class="field">
+            <label for="e-name">Product name</label>
+            <input id="e-name" type="text" maxlength="200" autocomplete="off">
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="e-category">Category</label>
+              <input id="e-category" type="text" maxlength="100" list="category-list" autocomplete="off" placeholder="e.g. Camera Body">
+              <datalist id="category-list"></datalist>
+            </div>
+            <div class="field">
+              <label for="e-hsn">HSN code <span class="hint">max 8 chars</span></label>
+              <input id="e-hsn" type="text" maxlength="8" style="font-family:var(--font-mono);" autocomplete="off" placeholder="85258010">
+            </div>
+          </div>
+          <div class="field">
+            <label for="e-daily">Daily rate</label>
+            <div class="prefix-wrap"><span class="prefix">₹</span><input id="e-daily" type="number" min="1" step="1"></div>
+          </div>
+          <div class="field">
+            <label for="e-image">Image URL <span class="hint">paste an external image link</span></label>
+            <input id="e-image" type="url" maxlength="2000" autocomplete="off" placeholder="https://…">
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost" id="edit-cancel">Cancel</button>
+          <button type="submit" class="btn primary" id="edit-submit">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script type="module">
     import { api, ensureAuth, formatINR, rupeesToPaise } from '/_lib/api.js';
 
@@ -443,8 +490,10 @@
           <table class="products">
             <thead>
               <tr>
+                <th class="product-image-cell"></th>
                 <th>Product</th>
                 <th>Category</th>
+                <th>HSN</th>
                 <th style="text-align:right;">Daily rate</th>
                 <th>Units</th>
                 <th style="width:44px;"></th>
@@ -456,18 +505,26 @@
           </table>
         </div>
       `;
+      wrap.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+        tr.addEventListener('click', () => openEdit(tr.dataset.id));
+      });
     }
 
     function rowHtml(p) {
       const availClass = p.available_units === 0 ? 'style="color:var(--bad-strong);"' : '';
       const weekly = p.weekly_rate ? `<div class="rate-sub">${formatINR(p.weekly_rate)}/wk</div>` : '';
+      const thumb = p.image_url
+        ? `<img src="${escapeAttr(p.image_url)}" alt="" class="product-thumb" onerror="this.style.display='none'">`
+        : `<div class="product-thumb-placeholder">${escapeHtml((p.name || '?').charAt(0).toUpperCase())}</div>`;
       return `
         <tr data-id="${p.id}">
+          <td class="product-image-cell">${thumb}</td>
           <td>
             <div class="product-name">${escapeHtml(p.name)}${!p.is_active ? '<span class="archived-badge">archived</span>' : ''}</div>
             <div class="product-sku">${escapeHtml(p.sku)}</div>
           </td>
           <td><span class="cat-tag">${escapeHtml(p.category)}</span></td>
+          <td>${p.hsn_code ? `<span class="hsn-code">${escapeHtml(p.hsn_code)}</span>` : '<span style="color:var(--muted-soft);">—</span>'}</td>
           <td style="text-align:right;">
             <div class="rate">${formatINR(p.daily_rate)}</div>
             ${weekly}
@@ -500,9 +557,19 @@
         btn.addEventListener('click', () => {
           const cat = btn.getAttribute('data-cat');
           activeCategory = cat || null;
+          syncCategoryUrl();
           loadProducts();
         });
       });
+    }
+
+    // Persist the active category in the URL so filtered views are shareable.
+    function syncCategoryUrl() {
+      const params = new URLSearchParams(location.search);
+      if (activeCategory) params.set('category', activeCategory);
+      else params.delete('category');
+      const qs = params.toString();
+      history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
     }
 
     function renderSummary() {
@@ -659,6 +726,69 @@
       }, 200);
     });
 
+    // ---------- edit product (Sub-turn 5c-1) ----------
+    const editModal = document.getElementById('edit-modal');
+    let editingId = null;
+
+    async function loadCategoriesDatalist() {
+      try {
+        const { categories } = await api.get('/api/inventory/categories');
+        document.getElementById('category-list').innerHTML =
+          (categories || []).map(c => `<option value="${escapeAttr(c)}">`).join('');
+      } catch { /* autocomplete is a nicety — ignore failures */ }
+    }
+
+    function openEdit(id) {
+      const p = allProducts.find(x => x.id === id);
+      if (!p) return;
+      editingId = id;
+      document.getElementById('edit-error').style.display = 'none';
+      document.getElementById('e-name').value = p.name || '';
+      document.getElementById('e-category').value = p.category || '';
+      document.getElementById('e-hsn').value = p.hsn_code || '';
+      document.getElementById('e-daily').value = p.daily_rate != null ? (Number(p.daily_rate) / 100) : '';
+      document.getElementById('e-image').value = p.image_url || '';
+      loadCategoriesDatalist();
+      editModal.classList.add('open');
+    }
+    function closeEdit() { editModal.classList.remove('open'); editingId = null; }
+    document.getElementById('edit-close').addEventListener('click', closeEdit);
+    document.getElementById('edit-cancel').addEventListener('click', closeEdit);
+    editModal.addEventListener('click', (e) => { if (e.target === editModal) closeEdit(); });
+
+    document.getElementById('edit-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!editingId) return;
+      const err = document.getElementById('edit-error');
+      err.style.display = 'none';
+      const name = document.getElementById('e-name').value.trim();
+      const category = document.getElementById('e-category').value.trim();
+      const hsn = document.getElementById('e-hsn').value.trim();
+      const daily = document.getElementById('e-daily').value;
+      const image = document.getElementById('e-image').value.trim();
+      const body = {};
+      if (name) body.name = name;
+      if (category) body.category = category;
+      if (hsn) body.hsn_code = hsn;
+      if (image) body.image_url = image;
+      if (daily !== '' && Number(daily) > 0) body.daily_rate = rupeesToPaise(daily);
+      const submit = document.getElementById('edit-submit');
+      submit.disabled = true; submit.textContent = 'Saving…';
+      try {
+        await api.patch(`/api/inventory/products/${editingId}`, body);
+        closeEdit();
+        await loadProducts();
+      } catch (ex) {
+        err.style.display = 'block';
+        if (ex.status === 400) err.textContent = 'Check the fields — HSN is max 8 characters and the image must be a URL.';
+        else err.textContent = 'Could not save: ' + (ex.body?.error || ex.message);
+      } finally {
+        submit.disabled = false; submit.textContent = 'Save changes';
+      }
+    });
+
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editModal.classList.contains('open')) closeEdit(); });
+
     // ---------- utils ----------
     function escapeHtml(s) {
       return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -668,6 +798,8 @@
     // ---------- go ----------
     (async () => {
       try {
+        const urlCat = new URLSearchParams(location.search).get('category');
+        if (urlCat) activeCategory = urlCat;
         await hydrateIdentity();
         await loadProducts();
       } catch (err) {

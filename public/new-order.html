@@ -127,8 +127,11 @@
     .gear-item:last-child{border-bottom:none}
     .gear-item.unavailable{background:var(--bad-soft)}
     .gear-item.low{background:var(--warn-soft)}
+    .gi-main{display:flex;align-items:center;gap:10px;min-width:0}
     .gi-name{font-weight:600;color:var(--ink);font-size:13px}
     .gi-sub{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);margin-top:2px;letter-spacing:.03em}
+    .product-thumb{width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0;background:var(--thead)}
+    .product-thumb-placeholder{width:40px;height:40px;border-radius:6px;background:var(--accent-soft);color:var(--head);font-family:var(--font-display);font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);flex-shrink:0}
     .gi-avail{font-family:var(--font-mono);font-weight:600;font-size:12px;font-variant-numeric:tabular-nums;min-width:60px;text-align:right}
     .gi-avail .avail{color:var(--ok-strong)}
     .gi-avail .avail.zero{color:var(--bad-strong)}
@@ -437,6 +440,26 @@
     let gearSearchTerm = '';
     const availabilityChecks = new Map();  // product_id -> latest POST /check result
     const checkTimers = new Map();         // product_id -> debounce timer
+    const productImages = {};    // product_id -> image_url (from inventory; availability doesn't carry it)
+    let productImagesLoaded = false;
+
+    // Availability doesn't return image_url (out of scope to change). Pull images
+    // once from the inventory endpoint and merge by id for the gear thumbnails.
+    async function loadProductImages() {
+      if (productImagesLoaded) return;
+      try {
+        const { products } = await api.get('/api/inventory/products');
+        for (const pr of (products || [])) if (pr.image_url) productImages[pr.id] = pr.image_url;
+      } catch { /* fail soft — placeholders render */ }
+      productImagesLoaded = true;
+    }
+
+    function thumbHtml(p) {
+      const url = productImages[p.id];
+      return url
+        ? `<img src="${escapeAttr(url)}" alt="" class="product-thumb" onerror="this.style.display='none'">`
+        : `<div class="product-thumb-placeholder">${escapeHtml((p.name || '?').charAt(0).toUpperCase())}</div>`;
+    }
 
     // ---------- identity ----------
     async function hydrateIdentity() {
@@ -629,6 +652,7 @@
     async function loadAvailability() {
       document.getElementById('gear-list-wrap').innerHTML = '<div class="loading">Checking availability…</div>';
       try {
+        await loadProductImages();
         const fromIso = new Date(state.rental_start).toISOString();
         const toIso = new Date(state.rental_end).toISOString();
         const { products } = await api.get(`/api/availability?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`);
@@ -676,9 +700,12 @@
         const warningHtml = renderAvailabilityWarning(check);
         return `
           <div class="gear-item ${rowClass}" data-product-id="${p.id}">
-            <div>
-              <div class="gi-name">${escapeHtml(p.name)}</div>
-              <div class="gi-sub">${escapeHtml(p.sku)} · ${escapeHtml(p.category || 'Uncategorised')}</div>
+            <div class="gi-main">
+              ${thumbHtml(p)}
+              <div>
+                <div class="gi-name">${escapeHtml(p.name)}</div>
+                <div class="gi-sub">${escapeHtml(p.sku)} · ${escapeHtml(p.category || 'Uncategorised')}</div>
+              </div>
             </div>
             <div class="gi-avail">
               <span class="avail ${zero ? 'zero' : (low ? 'low' : '')}">${p.available_units}</span>
