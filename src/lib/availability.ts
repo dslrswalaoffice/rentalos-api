@@ -16,9 +16,11 @@ import { sql, query } from '../db.js';
 // ============================================================================
 
 // Statuses that actually commit inventory. draft/quoted are not commitments;
-// closed/cancelled are done. NOTE: the SQL below inlines this same list as a
-// text literal (the Neon HTTP driver mis-serialises JS arrays cast to
-// order_status[], per CLAUDE.md) — keep the two in sync.
+// closed/cancelled are done. THE single source of truth — the SQL below and
+// src/routes/availability.ts both derive their status filter from this constant
+// (via string_to_array on the joined CSV, which sidesteps the Neon HTTP
+// driver's mis-serialisation of JS arrays cast to order_status[]). Change the
+// list here and every availability code path follows.
 export const RESERVING_STATUSES = [
   'confirmed',
   'dispatched',
@@ -177,7 +179,7 @@ export async function checkAvailability(args: {
       AND oi.product_id = ${args.productId}::uuid
       AND oi.item_type = 'rental'
       AND o.deleted_at IS NULL
-      AND o.status::text IN ('confirmed', 'dispatched', 'active', 'returned')
+      AND o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
       AND o.id != COALESCE(${args.excludeOrderId ?? null}::uuid,
                            '00000000-0000-0000-0000-000000000000'::uuid)
       AND o.rental_start < ${effEnd.toISOString()}::timestamptz
