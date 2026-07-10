@@ -246,6 +246,13 @@ NOT `= ANY(${arr}::status_enum[])`.
 - **`orders.gst_state` is frozen on the invoice** at generation time as `invoices.gst_state`, so a future customer address change doesn't retroactively alter an issued invoice.
 - **`order_items.chargeable_paise`** is the amount that actually gets billed (as opposed to `total_amount_paise` which is the pre-status-adjustment gross). For rental items, `chargeable_paise = 0` when `status = 'not_returned_non_chargeable'`, else equals `total_amount_paise`. For non-rental items, always equals `total_amount_paise`.
 - **DSLRSWALA workspace `place_of_supply`** is `'Gujarat'` (the state, not the city). This is corrected in migration 007 from the legacy value 'Vadodara'.
+- **`people` table** additions (migration 013):
+  - `tier text CHECK (tier IN ('normal','premium','vip'))` nullable — customer classification tier. Null = "not classified" (no backfill).
+  - `trust_score int (0-100)` nullable — algorithmic risk score placeholder, currently manually updated. Null = "not scored."
+  - `trust_score_updated_at timestamptz` — set on any `trust_score` write.
+  - `billing_address text`, `shipping_address text` — first-class addresses (separate from invoice snapshots).
+- **`person_communications` table** (migration 013) — manual communication log per person. Columns: `id`, `workspace_id`, `person_id`, `channel` (`call`/`whatsapp`/`email`/`other`), `direction` (`in`/`out`), `notes`, `occurred_at`, `logged_by_user_id`, `created_at`. Not an immutable audit table. 5-minute correction window for delete, and only the logging user can delete their own entry.
+- Tier and trust-score writes are gated by feature flags `customer_tiers` and `trust_score` respectively — the endpoints return `409 feature_disabled` when the flag is off. The columns and the person detail page exist regardless of flag state; only the tier picker / trust input UI is flag-gated.
 
 ---
 

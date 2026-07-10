@@ -125,6 +125,12 @@
     .role-tag.staff     { background: var(--ok-soft); color: var(--ok-strong); }
     .role-tag.investor  { background: var(--orange-soft); color: var(--warn-strong); }
     .role-tag.vendor    { background: #eef0f3; color: var(--muted-strong); }
+    .tier-badge { display: inline-block; padding: 3px 9px; border-radius: 12px; font-family: var(--font-mono); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .tier-badge.normal  { background: #eef0f3; color: var(--muted-strong); }
+    .tier-badge.premium { background: #dbeafe; color: #1e40af; }
+    .tier-badge.vip     { background: #fef3c7; color: #92400e; }
+    table.people tbody tr { cursor: pointer; }
+    table.people tbody tr:hover td { background: var(--thead); }
     .kebab { background: transparent; border: none; padding: 6px; border-radius: 6px; cursor: pointer; color: var(--muted); }
     .kebab:hover { background: var(--bg); color: var(--ink); }
     .company-cell { font-size: 12.5px; color: var(--text); }
@@ -392,6 +398,7 @@
     let roleCounts = {};
     let activeRole = null;
     let currentSearch = "";
+    let features = {};  // workspace feature flags (for the tier column)
 
     // ---------- identity ----------
     async function hydrateIdentity() {
@@ -425,12 +432,14 @@
         wireEmptyStateButton();
         return;
       }
+      const showTier = features.customer_tiers === true;
       wrap.innerHTML = `
         <div class="table-wrap">
           <table class="people">
             <thead>
               <tr>
                 <th>Name</th>
+                ${showTier ? '<th>Tier</th>' : ''}
                 <th>Roles</th>
                 <th>City</th>
                 <th>Company</th>
@@ -442,9 +451,21 @@
             </tbody>
           </table>
         </div>`;
+      // Whole row navigates to the person detail page.
+      wrap.querySelectorAll("tbody tr[data-id]").forEach(tr => {
+        tr.addEventListener("click", () => {
+          location.href = "/person.html?id=" + encodeURIComponent(tr.dataset.id);
+        });
+      });
+    }
+
+    function tierBadge(tier) {
+      if (!tier) return `<span style="color:var(--muted-soft); font-size:12px;">—</span>`;
+      return `<span class="tier-badge ${escapeAttr(tier)}">${escapeHtml(tier)}</span>`;
     }
 
     function rowHtml(p) {
+      const showTier = features.customer_tiers === true;
       const roles = (p.roles || []).map(r =>
         `<span class="role-tag ${r}">${r}</span>`
       ).join("");
@@ -461,11 +482,12 @@
             <div class="person-name">${escapeHtml(p.display_name)}</div>
             <div class="person-phone">${verified}${escapeHtml(p.phone)}</div>
           </td>
+          ${showTier ? `<td>${tierBadge(p.tier)}</td>` : ''}
           <td>${roles || `<span style="color:var(--muted-soft); font-size:11px;">no roles</span>`}</td>
           <td style="font-size:12.5px; color:var(--text);">${escapeHtml(p.city || "—")}</td>
           <td>${company}</td>
           <td>
-            <button class="kebab" aria-label="More actions">
+            <button class="kebab" aria-label="More actions" onclick="event.stopPropagation()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
             </button>
           </td>
@@ -668,9 +690,20 @@
     }
 
     // ---------- go ----------
+    async function loadFeatures() {
+      try {
+        const data = await api.get("/api/workspace");
+        features = data?.settings?.features || {};
+      } catch (err) {
+        console.warn("could not load feature flags", err);
+        features = {};
+      }
+    }
+
     (async () => {
       try {
         await hydrateIdentity();
+        await loadFeatures();
         await loadPeople();
       } catch (err) {
         console.error("boot failed", err);
