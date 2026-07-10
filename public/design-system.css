@@ -1519,7 +1519,469 @@ select {
 .line-item.discount .line-item-total { color: var(--success); }
 
 /* --------------------------------------------------------------------------
-   18. View Transitions (progressive; silently ignored where unsupported)
+   18. Auth shell (Sub-turn 9d) — centered card layout for sign-in / reset,
+       no sidebar. Also the token target for index.html's split-screen sign-in
+       (which keeps its bespoke layout via a var remap rather than adopting
+       these classes directly).
+   -------------------------------------------------------------------------- */
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: var(--bg-page);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow);
+}
+
+.auth-brand {
+  text-align: center;
+  margin-bottom: var(--space-5);
+}
+
+.auth-brand img {
+  height: 32px;
+  margin-bottom: var(--space-2);
+}
+
+.auth-title {
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-semibold);
+  text-align: center;
+  margin: 0 0 var(--space-2) 0;
+}
+
+.auth-subtitle {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  margin-bottom: var(--space-5);
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--fs-sm);
+  color: var(--text-tertiary);
+}
+
+.auth-footer a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: var(--fw-medium);
+}
+
+.auth-footer a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.auth-error {
+  padding: var(--space-3) var(--space-4);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  margin-bottom: var(--space-4);
+}
+
+/* --------------------------------------------------------------------------
+   19. Analytics — metric tiles, chart containers, inheritable SVG chart
+       styling (Sub-turn 9d). SVG elements take colors from these classes so
+       charts flow from design tokens automatically.
+   -------------------------------------------------------------------------- */
+.metric-tile {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+}
+
+.metric-label {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-2);
+}
+
+.metric-value {
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: var(--space-2);
+  letter-spacing: -0.02em;
+}
+
+.metric-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.metric-delta.up {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.metric-delta.down {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.metric-delta.flat {
+  background: var(--bg-subtle);
+  color: var(--text-tertiary);
+}
+
+.metric-sub {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-2);
+}
+
+.chart-container {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.chart-title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.chart-subtitle {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.chart-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.chart-body {
+  position: relative;
+  min-height: 200px;
+}
+
+.chart-legend {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* SVG chart element defaults — inheritable */
+.chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+}
+
+.chart-svg text {
+  fill: var(--text-tertiary);
+}
+
+.chart-svg .axis-line,
+.chart-svg .grid-line {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+
+.chart-svg .axis-tick {
+  stroke: var(--border-default);
+  stroke-width: 1;
+}
+
+.chart-svg .data-line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  fill: none;
+}
+
+.chart-svg .data-fill {
+  fill: var(--accent);
+  opacity: 0.1;
+}
+
+.chart-svg .data-bar {
+  fill: var(--accent);
+}
+
+.chart-svg .data-point {
+  fill: var(--accent);
+  stroke: var(--bg-elevated);
+  stroke-width: 2;
+}
+
+/* Semantic variants for charts */
+.chart-svg .success .data-line { stroke: var(--success); }
+.chart-svg .success .data-bar,
+.chart-svg .success .data-point { fill: var(--success); }
+
+.chart-svg .warning .data-line { stroke: var(--warning); }
+.chart-svg .warning .data-bar,
+.chart-svg .warning .data-point { fill: var(--warning); }
+
+.chart-svg .danger .data-line { stroke: var(--danger); }
+.chart-svg .danger .data-bar,
+.chart-svg .danger .data-point { fill: var(--danger); }
+
+/* --------------------------------------------------------------------------
+   20. Calendar — equipment-first Gantt (Sub-turn 9d). Layout mechanics match
+       the existing 4b/4c calendar; only the tokens change.
+   -------------------------------------------------------------------------- */
+.calendar-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.calendar-nav {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.calendar-nav-btn {
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  transition: all var(--transition-fast);
+}
+
+.calendar-nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.calendar-current-range {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  padding: 0 var(--space-3);
+}
+
+.calendar-view-toggle {
+  display: flex;
+  background: var(--bg-subtle);
+  border-radius: var(--radius);
+  padding: 2px;
+}
+
+.calendar-view-btn {
+  padding: 4px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  transition: all var(--transition-fast);
+}
+
+.calendar-view-btn.active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.calendar-gantt {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: auto;
+  position: relative;
+}
+
+.calendar-gantt-header {
+  display: flex;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-default);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.calendar-product-col {
+  min-width: 200px;
+  width: 200px;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-right: 1px solid var(--border-default);
+  position: sticky;
+  left: 0;
+  background: var(--bg-subtle);
+  z-index: 3;
+}
+
+.calendar-time-col {
+  flex: 1;
+  min-width: 60px;
+  padding: var(--space-2);
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.calendar-time-col.today {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: var(--fw-semibold);
+}
+
+.calendar-row {
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+  min-height: 48px;
+}
+
+.calendar-row:last-child {
+  border-bottom: none;
+}
+
+.calendar-row-header {
+  min-width: 200px;
+  width: 200px;
+  padding: var(--space-3) var(--space-4);
+  border-right: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  position: sticky;
+  left: 0;
+  background: var(--bg-elevated);
+  z-index: 1;
+}
+
+.calendar-row-body {
+  flex: 1;
+  position: relative;
+  display: flex;
+}
+
+.calendar-cell {
+  flex: 1;
+  min-width: 60px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.calendar-cell.today {
+  background: rgba(99, 91, 255, 0.03);
+}
+
+.calendar-cell.weekend {
+  background: var(--bg-subtle);
+}
+
+.calendar-booking {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  font-size: var(--fs-xs);
+  color: var(--accent-text);
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  z-index: 2;
+}
+
+.calendar-booking:hover {
+  box-shadow: var(--shadow-sm);
+  z-index: 4;
+}
+
+.calendar-booking.dispatched { background: var(--warning-soft); border-color: var(--warning); color: var(--warning-text); }
+.calendar-booking.active { background: var(--success-soft); border-color: var(--success); color: var(--success-text); }
+.calendar-booking.late { background: var(--danger-soft); border-color: var(--danger); color: var(--danger-text); }
+.calendar-booking.downtime {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--bg-subtle),
+    var(--bg-subtle) 4px,
+    var(--border-default) 4px,
+    var(--border-default) 8px
+  );
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   21. View Transitions (progressive; silently ignored where unsupported)
    -------------------------------------------------------------------------- */
 @view-transition { navigation: auto; }
 
