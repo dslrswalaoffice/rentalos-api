@@ -218,6 +218,32 @@ calendar.get('/', async (c) => {
     byProduct.set(r.product_id, list);
   }
 
+  // Downtimes overlapping the window (Sub-turn 8a) — rendered as gray bars,
+  // distinct from bookings. One batch query, grouped by product.
+  const downtimeRows = await query<{
+    product_id: string; start_at: string; end_at: string; reason: string;
+    location_id: string | null; location_name: string | null;
+  }>(sql`
+    SELECT d.product_id, d.start_at, d.end_at, d.reason, d.location_id, l.name AS location_name
+    FROM product_downtimes d
+    LEFT JOIN locations l ON l.id = d.location_id
+    WHERE d.workspace_id = ${session.workspace.id}::uuid
+      AND d.start_at <= ${to}::timestamptz
+      AND d.end_at   >= ${from}::timestamptz
+    ORDER BY d.start_at ASC
+  `);
+  const dtByProduct = new Map<string, Array<{ start: string; end: string; reason: string; location_name: string | null }>>();
+  for (const r of downtimeRows) {
+    const list = dtByProduct.get(r.product_id) ?? [];
+    list.push({
+      start: new Date(r.start_at).toISOString(),
+      end: new Date(r.end_at).toISOString(),
+      reason: r.reason,
+      location_name: r.location_name,
+    });
+    dtByProduct.set(r.product_id, list);
+  }
+
   // Bars show the full non-draft/cancelled schedule (visual context).
   const productsOut = products.map((p) => ({
     id: p.id,
@@ -225,6 +251,7 @@ calendar.get('/', async (c) => {
     sku: p.sku,
     total_units: p.total_units,
     bookings: byProduct.get(p.id) ?? [],
+    downtimes: dtByProduct.get(p.id) ?? [],
   }));
 
   // Overbook warnings come from the shared availability engine — single source
@@ -250,15 +277,19 @@ calendar.get('/', async (c) => {
   products.forEach((p, i) => {
     const res = availResults[i];
     if (!res) return;
-    const bookings: Booking[] = res.conflicts.map((cf) => ({
-      order_id: cf.order_id,
-      order_number: cf.order_number,
-      customer_name: cf.customer_name ?? '',
-      start: cf.start,
-      end: cf.end,
-      quantity: cf.quantity,
-      status: cf.status,
-    }));
+    // Exclude downtime rows (Sub-turn 8a) — they aren't bookings and get their
+    // own gray bars; counting them here would fire spurious overbook warnings.
+    const bookings: Booking[] = res.conflicts
+      .filter((cf) => cf.type !== 'downtime')
+      .map((cf) => ({
+        order_id: cf.order_id,
+        order_number: cf.order_number,
+        customer_name: cf.customer_name ?? '',
+        start: cf.start,
+        end: cf.end,
+        quantity: cf.quantity,
+        status: cf.status,
+      }));
     warnings.push(...computeWarnings(p, bookings));
   });
 

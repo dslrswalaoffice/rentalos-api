@@ -239,6 +239,21 @@
     .notif-meta { font-size: 11px; color: var(--muted); opacity: 0.8; font-family: var(--font-mono); }
     .notif-empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 13px; }
 
+    /* ===== tags (Sub-turn 8a) ===== */
+    .tag-chip { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10.5px; font-weight: 600; margin-right: 4px; line-height: 1.6; }
+    .tag-chip.tag-red { background: #fee2e2; color: #991b1b; }
+    .tag-chip.tag-orange { background: #ffedd5; color: #9a3412; }
+    .tag-chip.tag-yellow { background: #fef3c7; color: #92400e; }
+    .tag-chip.tag-green { background: #d1fae5; color: #065f46; }
+    .tag-chip.tag-blue { background: #dbeafe; color: #1e40af; }
+    .tag-chip.tag-purple { background: #ede9fe; color: #5b21b6; }
+    .tag-chip.tag-pink { background: #fce7f3; color: #9d174d; }
+    .tag-chip.tag-gray { background: #e5e7eb; color: #374151; }
+    .row-tags { display: inline-flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+    .tag-filter-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0 0 12px; }
+    .tag-filter-row .tf-label { font-size: 11px; color: var(--muted); }
+    .tf-chip { cursor: pointer; border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: 3px 6px; }
+    .tf-chip.active { border-color: var(--head); box-shadow: 0 0 0 1px var(--head); }
   </style>
 </head>
 <body>
@@ -345,6 +360,7 @@
             <button class="btn ghost" id="clear-filters">Clear all</button>
           </div>
           <div class="filter-chips" id="filter-chips"></div>
+          <div class="tag-filter-row" id="tag-filter-row" style="display:none;"></div>
         </div>
 
         <div id="list-wrap">
@@ -387,9 +403,11 @@
         page: 1,
         limit: 20,
         late_only: false,
+        tags: new Set(), // Sub-turn 8a — AND-filter tag ids
       },
       pagination: { total: 0, total_pages: 0 },
       orders: [],
+      workspaceTags: [],
     };
 
     // ---------- hydrate identity ----------
@@ -416,6 +434,7 @@
       const page = parseInt(p.get('page') || '1', 10);
       f.page = Number.isFinite(page) && page >= 1 ? page : 1;
       f.late_only = p.get('late_only') === '1';
+      f.tags = new Set((p.getAll('tag_ids') || []).flatMap(v => v.split(',')).map(s => s.trim()).filter(Boolean));
     }
 
     function buildQueryString(f) {
@@ -427,6 +446,7 @@
       if (f.sort !== 'created_at_desc') params.set('sort', f.sort);
       if (f.page > 1) params.set('page', f.page);
       if (f.late_only) params.set('late_only', '1');
+      for (const id of (f.tags || [])) params.append('tag_ids', id);
       return params.toString();
     }
 
@@ -476,13 +496,37 @@
 
     function hasActiveFilters() {
       const f = state.filters;
-      return !!(f.q || f.status.size || f.from || f.to || f.late_only);
+      return !!(f.q || f.status.size || f.from || f.to || f.late_only || (f.tags && f.tags.size));
     }
 
     function render() {
       renderList();
       renderChips();
+      renderTagFilterRow();
       renderPagination();
+    }
+
+    // ---------- tag filter (Sub-turn 8a) ----------
+    async function loadWorkspaceTags() {
+      try { const { tags } = await api.get('/api/tags'); state.workspaceTags = tags || []; }
+      catch { state.workspaceTags = []; }
+      renderTagFilterRow();
+    }
+
+    function renderTagFilterRow() {
+      const row = document.getElementById('tag-filter-row');
+      if (!row) return;
+      if (!state.workspaceTags.length) { row.style.display = 'none'; return; }
+      row.style.display = 'flex';
+      row.innerHTML = `<span class="tf-label">Tags:</span>` + state.workspaceTags.map(t =>
+        `<button class="tf-chip ${state.filters.tags.has(t.id) ? 'active' : ''}" data-tagf="${escapeAttr(t.id)}"><span class="tag-chip tag-${escapeAttr(t.color)}" style="pointer-events:none;">${escapeHtml(t.name)}</span></button>`
+      ).join('');
+      row.querySelectorAll('[data-tagf]').forEach(b => b.addEventListener('click', () => {
+        const id = b.dataset.tagf;
+        if (state.filters.tags.has(id)) state.filters.tags.delete(id); else state.filters.tags.add(id);
+        state.filters.page = 1;
+        changed();
+      }));
     }
 
     function renderList() {
@@ -540,6 +584,7 @@
           <td>
             <div class="customer-name">${escapeHtml(o.customer_name)}</div>
             ${o.customer_phone ? `<div class="customer-phone">${escapeHtml(o.customer_phone)}</div>` : ''}
+            ${(o.tags && o.tags.length) ? `<div class="row-tags">${o.tags.map(t => `<span class="tag-chip tag-${escapeAttr(t.color)}">${escapeHtml(t.name)}</span>`).join('')}</div>` : ''}
           </td>
           <td>
             <div class="rental-window">${window}</div>
@@ -659,6 +704,7 @@
       const f = state.filters;
       f.q = ''; f.status = new Set(); f.from = null; f.to = null;
       f.sort = 'created_at_desc'; f.page = 1; f.late_only = false;
+      f.tags = new Set();
       syncInputs();
       changed();
     }
@@ -742,6 +788,7 @@
         parseUrl();
         await hydrateIdentity();
         syncInputs();
+        loadWorkspaceTags();
         await load();
       } catch (err) {
         console.error('boot failed', err);

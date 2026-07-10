@@ -220,6 +220,21 @@
     .notif-meta { font-size: 11px; color: var(--muted); opacity: 0.8; font-family: var(--font-mono); }
     .notif-empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 13px; }
 
+    /* ===== tags (Sub-turn 8a) ===== */
+    .tag-chip { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10.5px; font-weight: 600; margin-right: 4px; line-height: 1.6; }
+    .tag-chip.tag-red { background: #fee2e2; color: #991b1b; }
+    .tag-chip.tag-orange { background: #ffedd5; color: #9a3412; }
+    .tag-chip.tag-yellow { background: #fef3c7; color: #92400e; }
+    .tag-chip.tag-green { background: #d1fae5; color: #065f46; }
+    .tag-chip.tag-blue { background: #dbeafe; color: #1e40af; }
+    .tag-chip.tag-purple { background: #ede9fe; color: #5b21b6; }
+    .tag-chip.tag-pink { background: #fce7f3; color: #9d174d; }
+    .tag-chip.tag-gray { background: #e5e7eb; color: #374151; }
+    .row-tags { display: inline-flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+    .tag-filter-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0 0 12px; }
+    .tag-filter-row .tf-label { font-size: 11px; color: var(--muted); }
+    .tf-chip { cursor: pointer; border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: 3px 6px; }
+    .tf-chip.active { border-color: var(--head); box-shadow: 0 0 0 1px var(--head); }
   </style>
 </head>
 <body>
@@ -306,6 +321,7 @@
           </div>
           <div class="role-chips" id="role-chips"></div>
         </div>
+        <div class="tag-filter-row" id="tag-filter-row" style="display:none;"></div>
 
         <div id="list-wrap">
           <div class="loading">Loading people…</div>
@@ -451,15 +467,42 @@
       document.getElementById("user-avatar").textContent = (first[0] || "U").toUpperCase();
     }
 
+    // ---------- tags (Sub-turn 8a) ----------
+    let workspaceTags = [];
+    const activeTagFilter = new Set();
+
+    async function loadWorkspaceTags() {
+      try { const { tags } = await api.get('/api/tags'); workspaceTags = tags || []; }
+      catch { workspaceTags = []; }
+      renderTagFilterRow();
+    }
+
+    function renderTagFilterRow() {
+      const row = document.getElementById('tag-filter-row');
+      if (!row) return;
+      if (!workspaceTags.length) { row.style.display = 'none'; return; }
+      row.style.display = 'flex';
+      row.innerHTML = `<span class="tf-label">Tags:</span>` + workspaceTags.map(t =>
+        `<button class="tf-chip ${activeTagFilter.has(t.id) ? 'active' : ''}" data-tagf="${escapeAttr(t.id)}"><span class="tag-chip tag-${escapeAttr(t.color)}" style="pointer-events:none;">${escapeHtml(t.name)}</span></button>`
+      ).join('');
+      row.querySelectorAll('[data-tagf]').forEach(b => b.addEventListener('click', () => {
+        const id = b.dataset.tagf;
+        if (activeTagFilter.has(id)) activeTagFilter.delete(id); else activeTagFilter.add(id);
+        renderTagFilterRow();
+        loadPeople();
+      }));
+    }
+
     // ---------- fetch + render ----------
     async function loadPeople() {
       const params = new URLSearchParams();
       if (currentSearch) params.set("search", currentSearch);
       if (activeRole) params.set("role", activeRole);
+      for (const id of activeTagFilter) params.append('tag_ids', id);
       const url = "/api/people" + (params.toString() ? "?" + params : "");
       const { people, by_role } = await api.get(url);
       allPeople = people;
-      if (!activeRole && !currentSearch) roleCounts = by_role || {};
+      if (!activeRole && !currentSearch && activeTagFilter.size === 0) roleCounts = by_role || {};
       renderList();
       renderChips();
       renderSummary();
@@ -521,6 +564,7 @@
           <td>
             <div class="person-name">${escapeHtml(p.display_name)}</div>
             <div class="person-phone">${verified}${escapeHtml(p.phone)}</div>
+            ${(p.tags && p.tags.length) ? `<div class="row-tags">${p.tags.map(t => `<span class="tag-chip tag-${escapeAttr(t.color)}">${escapeHtml(t.name)}</span>`).join('')}</div>` : ''}
           </td>
           ${showTier ? `<td>${tierBadge(p.tier)}</td>` : ''}
           <td>${roles || `<span style="color:var(--muted-soft); font-size:11px;">no roles</span>`}</td>
@@ -744,6 +788,7 @@
       try {
         await hydrateIdentity();
         await loadFeatures();
+        loadWorkspaceTags();
         await loadPeople();
       } catch (err) {
         console.error("boot failed", err);

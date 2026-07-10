@@ -614,6 +614,29 @@ Owner-facing business intelligence ("how is the business performing?"), distinct
 
 ---
 
+## Product downtimes + tags (Sub-turn 8a)
+
+Two independent, additive features (migration 026) bundled because neither touches pricing or the wizard. No feature flag.
+
+### Downtimes
+- **`product_downtimes` table** — `(workspace_id, product_id, location_id nullable, start_at, end_at, reason, created_by_user_id)`, `CHECK (end_at > start_at)`. A `NULL` location_id = all locations; a set location_id = that location only.
+- **Availability integration** (`src/lib/availability.ts`): `checkAvailability` loads downtimes overlapping the requested window via `loadDowntimeConflicts`. A downtime **blocks the full capacity** for its window. Tracked products match workspace-wide (`location_id IS NULL`) **plus** this-location downtimes; bulk products (location null) match only workspace-wide ones. **If ANY downtime intersects the window, the product is `available: false`** (simple + safe over-blocking; sub-day precision deferred).
+- **`AvailabilityResult`** gained `has_downtime_conflict: boolean`. Each conflict row now has a **`type: 'booking' | 'downtime'`** discriminant. Downtime rows carry `reason`, `downtime_id`, `location_scope` and sentinel booking fields (`order_id: ''`, `quantity: capacity`) so numeric consumers (dashboard sweep) don't break. **`calendar.ts` filters `type !== 'downtime'`** out of its booking bars.
+- **Route `/api/downtimes`** (any authenticated member): `GET /products/:productId` (`?upcoming=1`), `POST` (advisory — returns `booking_conflicts[]` of overlapping reserving-status orders but always creates), `PATCH /:id`, `DELETE /:id` (hard delete). Audit `downtimes.created/updated/deleted`.
+- **Product detail GET** now returns `downtimes` (windows not yet ended). **UI:** a Downtimes section on the product edit modal (add-modal with start/end/location/reason + a conflict warning banner from the create response); the new-order wizard's availability banner shows downtime rows with a 🔧 + reason; the calendar renders downtimes as gray hatched bands (distinct from booking bars).
+
+### Tags
+- **`tags`** (`workspace_id, name UNIQUE per ws, color, sort_order, is_active`) + **`tag_assignments`** (`tag_id, entity_type IN (product|person|order), entity_id`, `UNIQUE (workspace_id, tag_id, entity_type, entity_id)`). **8 preset colors** (`red/orange/yellow/green/blue/purple/pink/gray`) enforced by a DB CHECK. **Soft-delete** (`is_active = false`) preserves assignments.
+- **Route `/api/tags`**: `GET` (active tags + `usage_count`), `POST`/`PATCH`/`DELETE`/`POST /reorder` (**owner/manager**), `POST|DELETE|PUT /assignments` (**any member**; assign is idempotent via `ON CONFLICT`; PUT replaces all tags on an entity). Only tag CRUD is audited (`tags.created/updated/deleted`) — assignments are too noisy.
+- **Shared helpers** in `src/lib/tags.ts`: `loadTagsForEntity`, `loadTagsForEntities` (batch, for list pages), `filterEntityIdsByTags` (AND semantics — the Neon driver can't nest `sql` fragments, so callers resolve matching ids first then constrain `id = ANY(...)`), `replaceEntityTags`, `parseTagIdsParam`.
+- **Entity integration:** single-record GETs (`product`, `person`, `order`) return a `tags` array; list endpoints batch-load `tags` per row **and** accept a repeated/CSV **`?tag_ids=`** filter (AND semantics — an entity must carry all selected tags); each entity PATCH also accepts `tag_ids` (replace-all). **UI:** Settings → **Tags** tab (CRUD + drag-to-reorder + color picker); tag chips on inventory/orders/people rows; a tag filter chip row (multi-select, AND) on those lists; a tag assignment picker on the product edit modal + `order.html` + `person.html`.
+- **DELETE assignment needs a body** — the client `api.del()` sends none, so unassign uses a raw `fetch(..., { method: 'DELETE', body })`.
+
+### Deferred
+Recurring downtimes, downtime notifications to affected bookings, per-location bulk downtime, tag hierarchies/descriptions, tags on line items/invoices, bulk (multi-entity) tag assignment, tag colors beyond the 8 presets.
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.

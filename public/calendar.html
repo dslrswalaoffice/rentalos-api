@@ -140,6 +140,9 @@
     .booking-bar.status-closed     { background: var(--muted-strong); }
 
     .overbook-mask { position: absolute; top: 0; bottom: 0; background: rgba(204, 51, 64, 0.09); border-left: 1px dashed rgba(204,51,64,0.35); border-right: 1px dashed rgba(204,51,64,0.35); pointer-events: none; z-index: 1; }
+    /* Downtime band (Sub-turn 8a) — gray, behind bookings, distinct from bars. */
+    .downtime-band { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, rgba(107,114,128,0.14), rgba(107,114,128,0.14) 6px, rgba(107,114,128,0.22) 6px, rgba(107,114,128,0.22) 12px); border-left: 1px solid rgba(75,85,99,0.4); border-right: 1px solid rgba(75,85,99,0.4); z-index: 1; }
+    .downtime-tag { position: absolute; top: 3px; font-size: 10px; color: #4b5563; background: rgba(255,255,255,0.7); border-radius: 4px; padding: 0 4px; z-index: 2; pointer-events: none; }
     .overbook-flag { position: absolute; top: 2px; font-size: 11px; line-height: 1; cursor: help; z-index: 2; transform: translateX(-50%); }
 
     /* Empty state overlay */
@@ -525,6 +528,18 @@
                  `<div class="overbook-flag" style="left:${left}px" title="${escapeAttr(flagTitle)}">⚠</div>`;
         }).join('');
 
+        // Downtime bands (Sub-turn 8a) — full-height gray, rendered behind bars.
+        const downtimeHtml = (p.downtimes || []).map((d) => {
+          const dl = clamp((new Date(d.start).getTime() - from.getTime()) / span, 0, 1);
+          const dr = clamp((new Date(d.end).getTime() - from.getTime()) / span, 0, 1);
+          const left = dl * trackW;
+          const width = Math.max(2, (dr - dl) * trackW);
+          const scope = d.location_name ? ` (${d.location_name})` : '';
+          const title = `Downtime: ${d.reason}${scope}`;
+          const tag = width >= 26 ? `<div class="downtime-tag" style="left:${left + 2}px">🔧</div>` : '';
+          return `<div class="downtime-band" style="left:${left}px;width:${width}px" title="${escapeAttr(title)}"></div>${tag}`;
+        }).join('');
+
         const barsHtml = sorted.map((b) => {
           const bl = clamp((new Date(b.start).getTime() - from.getTime()) / span, 0, 1);
           const br = clamp((new Date(b.end).getTime() - from.getTime()) / span, 0, 1);
@@ -548,6 +563,7 @@
               <div class="cal-prod-cap">${p.total_units} unit${p.total_units === 1 ? '' : 's'}</div>
             </div>
             <div class="cal-track" style="width:${trackW}px;min-height:${rowH}px">
+              ${downtimeHtml}
               ${maskHtml}
               ${barsHtml}
             </div>

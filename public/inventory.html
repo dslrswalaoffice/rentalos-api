@@ -279,6 +279,29 @@
     .notif-meta { font-size: 11px; color: var(--muted); opacity: 0.8; font-family: var(--font-mono); }
     .notif-empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 13px; }
 
+    /* ===== tags + downtimes (Sub-turn 8a) ===== */
+    .tag-chip { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10.5px; font-weight: 600; margin-right: 4px; line-height: 1.6; }
+    .tag-chip.tag-red { background: #fee2e2; color: #991b1b; }
+    .tag-chip.tag-orange { background: #ffedd5; color: #9a3412; }
+    .tag-chip.tag-yellow { background: #fef3c7; color: #92400e; }
+    .tag-chip.tag-green { background: #d1fae5; color: #065f46; }
+    .tag-chip.tag-blue { background: #dbeafe; color: #1e40af; }
+    .tag-chip.tag-purple { background: #ede9fe; color: #5b21b6; }
+    .tag-chip.tag-pink { background: #fce7f3; color: #9d174d; }
+    .tag-chip.tag-gray { background: #e5e7eb; color: #374151; }
+    .tag-chip .tag-x { margin-left: 5px; cursor: pointer; opacity: 0.6; font-weight: 700; }
+    .tag-chip .tag-x:hover { opacity: 1; }
+    .row-tags { display: inline-flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+    .entity-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 8px; }
+    .tag-picker-pop { position: absolute; z-index: 200; background: var(--card); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 12px 30px -10px rgba(16,24,40,0.35); padding: 8px; min-width: 200px; max-height: 260px; overflow-y: auto; }
+    .tag-pick-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 7px; cursor: pointer; font-size: 12.5px; }
+    .tag-pick-item:hover { background: var(--thead); }
+    .tag-pick-item.checked { background: var(--accent-soft); }
+    .dt-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); }
+    .dt-row:last-child { border-bottom: none; }
+    .dt-main { font-size: 12.5px; color: var(--ink); }
+    .dt-sub { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+    .dt-warn { margin-top: 8px; padding: 8px 10px; background: var(--warn-soft); border-left: 3px solid var(--warn-solid); border-radius: 7px; font-size: 12px; color: var(--warn-strong); }
   </style>
 </head>
 <body>
@@ -369,6 +392,9 @@
         </div>
         <div class="content-head" id="location-filter-row" style="display:none;padding-top:0;">
           <div class="category-chips" id="location-chips"></div>
+        </div>
+        <div class="content-head" id="tag-filter-row" style="display:none;padding-top:0;">
+          <div class="category-chips" id="tag-filter-chips"></div>
         </div>
 
         <div id="list-wrap">
@@ -606,6 +632,18 @@
             <p class="field-hint" style="margin-top:0;">Move individual units between locations. Changing a unit's location updates per-location availability.</p>
             <div id="asset-loc-list"></div>
           </section>
+          <section class="modal-section" id="product-tags-section">
+            <h3 class="section-title">Tags</h3>
+            <div class="entity-tags" id="product-tags"></div>
+          </section>
+          <section class="modal-section" id="downtimes-section">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <h3 class="section-title">Downtimes</h3>
+              <button type="button" class="btn ghost tiny" id="add-downtime-btn">+ Add downtime</button>
+            </div>
+            <p class="field-hint" style="margin-top:0;">Maintenance windows that block this product's availability.</p>
+            <div id="downtimes-list"></div>
+          </section>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn ghost" id="edit-cancel">Cancel</button>
@@ -699,11 +737,40 @@
       });
     }
 
+    // ---------- tags (Sub-turn 8a) ----------
+    let workspaceTags = [];
+    const activeTagFilter = new Set();
+
+    async function loadWorkspaceTags() {
+      try { const { tags } = await api.get('/api/tags'); workspaceTags = tags || []; }
+      catch { workspaceTags = []; }
+      renderTagFilterChips();
+    }
+
+    function renderTagFilterChips() {
+      const row = document.getElementById('tag-filter-row');
+      const wrap = document.getElementById('tag-filter-chips');
+      if (!row || !wrap) return;
+      if (!workspaceTags.length) { row.style.display = 'none'; return; }
+      row.style.display = 'flex';
+      wrap.innerHTML = `<span style="font-size:11px;color:var(--muted);align-self:center;">Tags:</span>` +
+        workspaceTags.map(t =>
+          `<button class="cat-chip ${activeTagFilter.has(t.id) ? 'active' : ''}" data-tagf="${escapeAttr(t.id)}"><span class="tag-chip tag-${escapeAttr(t.color)}" style="pointer-events:none;">${escapeHtml(t.name)}</span></button>`
+        ).join('');
+      wrap.querySelectorAll('[data-tagf]').forEach(btn => btn.addEventListener('click', () => {
+        const id = btn.dataset.tagf;
+        if (activeTagFilter.has(id)) activeTagFilter.delete(id); else activeTagFilter.add(id);
+        renderTagFilterChips();
+        loadProducts();
+      }));
+    }
+
     async function loadProducts() {
       const params = new URLSearchParams();
       if (currentSearch) params.set('search', currentSearch);
       if (activeCategory) params.set('category', activeCategory);
       if (activeLocation) params.set('location_id', activeLocation);
+      for (const id of activeTagFilter) params.append('tag_ids', id);
       const url = '/api/inventory/products' + (params.toString() ? '?' + params : '');
       const { products, by_category } = await api.get(url);
       allProducts = products;
@@ -761,6 +828,7 @@
           <td>
             <div class="product-name">${escapeHtml(p.name)}<span class="type-badge type-${escapeAttr(p.tracking_mode || 'tracked')}">${p.tracking_mode === 'bulk' ? 'BULK' : 'TRACKED'}</span>${p.is_kit ? `<span class="kit-badge">KIT · ${p.component_count} item${p.component_count === 1 ? '' : 's'}</span>` : ''}${!p.is_active ? '<span class="archived-badge">archived</span>' : ''}</div>
             <div class="product-sku">${escapeHtml(p.sku)}</div>
+            ${(p.tags && p.tags.length) ? `<div class="row-tags">${p.tags.map(t => `<span class="tag-chip tag-${escapeAttr(t.color)}">${escapeHtml(t.name)}</span>`).join('')}</div>` : ''}
           </td>
           <td><span class="cat-tag">${escapeHtml(p.category)}</span></td>
           ${multiLocation ? `<td>${p.tracking_mode === 'bulk' ? '<span style="color:var(--muted-soft);">—</span>' : (p.location_names ? escapeHtml(p.location_names) : '<span style="color:var(--muted-soft);">—</span>')}</td>` : ''}
@@ -1025,9 +1093,191 @@
       loadCategoriesDatalist();
       cfLoadAndRender(id);
       assetLocLoadAndRender(id, mode);
+      loadProductTagsAndDowntimes(id);
       editModal.classList.add('open');
     }
     function closeEdit() { editModal.classList.remove('open'); editingId = null; }
+
+    // ---------- product tags + downtimes in edit modal (Sub-turn 8a) ----------
+    let editingTags = [];       // current assigned tags on the open product
+    let editingDowntimes = [];  // upcoming downtimes on the open product
+
+    async function loadProductTagsAndDowntimes(id) {
+      editingTags = []; editingDowntimes = [];
+      renderProductTags(); renderDowntimes();
+      try {
+        const res = await api.get(`/api/inventory/products/${encodeURIComponent(id)}`);
+        if (editingId !== id) return;
+        editingTags = res.tags || [];
+        editingDowntimes = res.downtimes || [];
+      } catch { /* leave empty */ }
+      renderProductTags();
+      renderDowntimes();
+    }
+
+    function renderProductTags() {
+      const wrap = document.getElementById('product-tags');
+      if (!wrap) return;
+      const chips = editingTags.map(t =>
+        `<span class="tag-chip tag-${escapeAttr(t.color)}">${escapeHtml(t.name)}<span class="tag-x" data-untag="${escapeAttr(t.id)}">×</span></span>`).join('');
+      wrap.innerHTML = chips + `<button type="button" class="btn ghost tiny" id="add-tag-to-product">+ Tag</button>`;
+      wrap.querySelectorAll('[data-untag]').forEach(x => x.addEventListener('click', () => toggleProductTag(x.dataset.untag, false)));
+      const addBtn = document.getElementById('add-tag-to-product');
+      if (addBtn) addBtn.addEventListener('click', (e) => openTagPicker(e.currentTarget));
+    }
+
+    function openTagPicker(anchor) {
+      document.querySelectorAll('.tag-picker-pop').forEach(p => p.remove());
+      if (!workspaceTags.length) { showToast('No tags yet — create some in Settings → Tags'); return; }
+      const pop = document.createElement('div');
+      pop.className = 'tag-picker-pop';
+      const assigned = new Set(editingTags.map(t => t.id));
+      pop.innerHTML = workspaceTags.map(t =>
+        `<div class="tag-pick-item ${assigned.has(t.id) ? 'checked' : ''}" data-pick="${escapeAttr(t.id)}">
+          <span class="tag-chip tag-${escapeAttr(t.color)}" style="pointer-events:none;">${escapeHtml(t.name)}</span>
+          ${assigned.has(t.id) ? '<span style="margin-left:auto;color:var(--ok-strong);">✓</span>' : ''}
+        </div>`).join('');
+      document.body.appendChild(pop);
+      const r = anchor.getBoundingClientRect();
+      pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
+      pop.style.left = (window.scrollX + r.left) + 'px';
+      pop.querySelectorAll('[data-pick]').forEach(item => item.addEventListener('click', () => {
+        const id = item.dataset.pick;
+        const has = editingTags.some(t => t.id === id);
+        toggleProductTag(id, !has);
+        pop.remove();
+      }));
+      const off = (e) => { if (!pop.contains(e.target) && e.target !== anchor) { pop.remove(); document.removeEventListener('mousedown', off); } };
+      setTimeout(() => document.addEventListener('mousedown', off), 0);
+    }
+
+    async function toggleProductTag(tagId, assign) {
+      if (!editingId) return;
+      try {
+        if (assign) {
+          await api.post('/api/tags/assignments', { tag_id: tagId, entity_type: 'product', entity_id: editingId });
+          const t = workspaceTags.find(x => x.id === tagId);
+          if (t && !editingTags.some(e => e.id === t.id)) editingTags.push({ id: t.id, name: t.name, color: t.color });
+        } else {
+          // api.del() sends no body; the unassign endpoint needs one → raw fetch.
+          await fetch('/api/tags/assignments', {
+            method: 'DELETE', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag_id: tagId, entity_type: 'product', entity_id: editingId }),
+          });
+          editingTags = editingTags.filter(t => t.id !== tagId);
+        }
+        renderProductTags();
+        loadWorkspaceTags();   // refresh usage counts
+        loadProducts();        // refresh row chips
+      } catch (ex) { showToast('Could not update tag: ' + (ex.body?.error || ex.message)); }
+    }
+
+    function renderDowntimes() {
+      const list = document.getElementById('downtimes-list');
+      if (!list) return;
+      if (!editingDowntimes.length) { list.innerHTML = `<div class="cf-empty" style="padding:12px 0;">No scheduled downtimes.</div>`; return; }
+      list.innerHTML = editingDowntimes.map(d => {
+        const scope = d.location_name ? escapeHtml(d.location_name) : 'All locations';
+        return `<div class="dt-row">
+          <div>
+            <div class="dt-main">🔧 ${escapeHtml(fmtDtRange(d.start_at, d.end_at))} · ${escapeHtml(d.reason)}</div>
+            <div class="dt-sub">${scope}</div>
+          </div>
+          <button type="button" class="btn ghost tiny" data-dt-del="${escapeAttr(d.id)}">Delete</button>
+        </div>`;
+      }).join('');
+      list.querySelectorAll('[data-dt-del]').forEach(b => b.addEventListener('click', () => deleteDowntime(b.dataset.dtDel)));
+    }
+
+    function fmtDtRange(a, b) {
+      const opt = { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+      try { return new Date(a).toLocaleString('en-IN', opt) + ' → ' + new Date(b).toLocaleString('en-IN', opt); }
+      catch { return a + ' → ' + b; }
+    }
+
+    async function deleteDowntime(id) {
+      if (!window.confirm('Delete this downtime? Availability will no longer be blocked for that window.')) return;
+      try {
+        await api.del(`/api/downtimes/${id}`);
+        editingDowntimes = editingDowntimes.filter(d => d.id !== id);
+        renderDowntimes(); showToast('Downtime removed');
+      } catch (ex) { showToast('Could not delete: ' + (ex.body?.error || ex.message)); }
+    }
+
+    function openDowntimeModal() {
+      if (!editingId) return;
+      const locOpts = multiLocation
+        ? `<div class="field"><label>Location</label><select id="dt-location"><option value="">All locations</option>${locationsList.map(l => `<option value="${escapeAttr(l.id)}">${escapeHtml(l.name)}</option>`).join('')}</select></div>`
+        : '';
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-backdrop open';
+      overlay.style.zIndex = '200';
+      overlay.innerHTML = `
+        <div class="modal" style="max-width:460px;">
+          <header class="modal-head"><div class="modal-title">Add downtime</div><button class="modal-close" data-close>✕</button></header>
+          <div class="modal-body">
+            <div id="dt-err" class="form-error" style="display:none;"></div>
+            <div class="field-row">
+              <div class="field"><label>Start</label><input type="datetime-local" id="dt-start"></div>
+              <div class="field"><label>End</label><input type="datetime-local" id="dt-end"></div>
+            </div>
+            ${locOpts}
+            <div class="field"><label>Reason *</label><input type="text" id="dt-reason" maxlength="500" placeholder="e.g. CMOS sensor service"></div>
+            <div id="dt-conflict-warn"></div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn ghost" data-close>Cancel</button>
+            <button class="btn primary" id="dt-save">Save downtime</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
+      overlay.querySelector('#dt-save').addEventListener('click', () => saveDowntime(overlay, close));
+    }
+
+    async function saveDowntime(overlay, close) {
+      const err = overlay.querySelector('#dt-err');
+      err.style.display = 'none';
+      const startV = overlay.querySelector('#dt-start').value;
+      const endV = overlay.querySelector('#dt-end').value;
+      const reason = overlay.querySelector('#dt-reason').value.trim();
+      const locSel = overlay.querySelector('#dt-location');
+      const location_id = locSel && locSel.value ? locSel.value : null;
+      if (!startV || !endV || !reason) { err.textContent = 'Start, end and reason are all required.'; err.style.display = 'block'; return; }
+      const start_at = new Date(startV).toISOString();
+      const end_at = new Date(endV).toISOString();
+      if (new Date(end_at) <= new Date(start_at)) { err.textContent = 'End must be after start.'; err.style.display = 'block'; return; }
+      const btn = overlay.querySelector('#dt-save'); btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        const res = await api.post('/api/downtimes', { product_id: editingId, start_at, end_at, reason, location_id });
+        // Advisory: show booking conflicts, but the downtime was still created.
+        const conflicts = res.booking_conflicts || [];
+        if (conflicts.length) {
+          overlay.querySelector('#dt-conflict-warn').innerHTML =
+            `<div class="dt-warn">⚠ ${conflicts.length} existing booking${conflicts.length === 1 ? '' : 's'} overlap this window (created anyway). Orders: ${conflicts.map(c => '#' + c.order_number).join(', ')}.</div>`;
+          btn.disabled = false; btn.textContent = 'Done';
+          btn.onclick = () => { close(); refreshDowntimes(); };
+        } else {
+          close(); refreshDowntimes();
+        }
+      } catch (ex) {
+        btn.disabled = false; btn.textContent = 'Save downtime';
+        err.textContent = 'Could not save: ' + (ex.body?.error || ex.message);
+        err.style.display = 'block';
+      }
+    }
+
+    async function refreshDowntimes() {
+      if (!editingId) return;
+      try {
+        const { downtimes } = await api.get(`/api/downtimes/products/${encodeURIComponent(editingId)}?upcoming=1`);
+        editingDowntimes = downtimes || [];
+        renderDowntimes(); showToast('Downtime saved');
+      } catch { /* ignore */ }
+    }
 
     // ---------- asset relocation (Sub-turn 6i) ----------
     async function assetLocLoadAndRender(id, mode) {
@@ -1216,6 +1466,7 @@
     document.getElementById('edit-close').addEventListener('click', closeEdit);
     document.getElementById('edit-cancel').addEventListener('click', closeEdit);
     editModal.addEventListener('click', (e) => { if (e.target === editModal) closeEdit(); });
+    document.getElementById('add-downtime-btn').addEventListener('click', openDowntimeModal);
 
     document.getElementById('edit-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1400,6 +1651,7 @@
         if (urlCat) activeCategory = urlCat;
         await hydrateIdentity();
         await loadLocations();
+        await loadWorkspaceTags();
         await loadProducts();
       } catch (err) {
         console.error('boot failed', err);
