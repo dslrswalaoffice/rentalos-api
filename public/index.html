@@ -3,33 +3,43 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#202058">
+  <meta name="theme-color" content="#635bff">
   <title>Sign in · RentalOS</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Space Grotesk,Inter,sans-serif' font-weight='800' font-size='19' fill='%23202058'%3ER%3C/text%3E%3C/svg%3E">
+  <!-- Sub-turn 9d — perceived-speed: warm a connection to the API origin
+       before the first fetch (same-origin here, harmless where it is). The
+       Google Fonts links are dropped in favour of the system font stack so the
+       sign-in text paints instantly with no FOIT. -->
+  <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23635bff'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <!-- Stripe-inspired design system (Sub-turn 9d completes the rollout). Loaded
+       before the page's own styles so this bespoke split-screen sign-in stays
+       authoritative for its layout while adopting the shared token palette via
+       the :root remap below. @view-transition ships from design-system.css. -->
+  <link rel="stylesheet" href="/design-system.css">
   <style>
-    /* -------- design tokens (mirror the prototype's light-theme `pt`) -------- */
+    /* -------- Sub-turn 9d: legacy tokens remapped onto the Stripe design-system
+       palette. Every rule below references these vars, so the whole split-screen
+       sign-in re-skins with zero markup/JS changes — the layout mechanics and
+       all element IDs are byte-identical. Fonts drop to the system stack. -------- */
     :root {
-      --ink:            #202058;   /* pt.ink   — near-black indigo, primary text */
-      --text:           #464a52;
-      --head:           #26235a;   /* pt.head  — heading / accent indigo */
-      --muted:          #8b9199;
-      --muted-strong:   #5b616b;
-      --card:           #ffffff;   /* pt.card  */
-      --bg:             #f6f7f9;   /* pt.bg    — page bg / right-panel */
-      --side:           #fcfcfd;   /* pt.side  — input bg */
-      --border:         #e6e8ec;
-      --border-strong:  #d8dbe0;
-      --accent-soft:    #ecebf4;   /* pt.accentSoft */
-      --orange:         #e88020;   /* brand orange — logo mark */
-      --focus:          #b9c0ee;
+      --ink:            #1a1f36;   /* warm near-black — primary text */
+      --text:           #3c4257;
+      --head:           #635bff;   /* violet accent — headings / links */
+      --muted:          #8792a2;
+      --muted-strong:   #4f566b;
+      --card:           #ffffff;   /* elevated surface */
+      --bg:             #f7f8fa;   /* warm off-white page bg */
+      --side:           #f7f8fa;   /* input bg */
+      --border:         #e3e8ee;
+      --border-strong:  #d5dbe4;
+      --accent-soft:    #e9e8ff;   /* violet soft */
+      --orange:         #635bff;   /* brand mark — remapped to the violet accent */
+      --focus:          #a5a0ff;   /* violet focus ring */
 
-      /* type stacks — Arzachel/Ponjoung first so real fonts slot in if loaded */
-      --font-display: 'Arzachel', 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      --font-body:    'Ponjoung', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+      /* system font stack — instant paint, no FOIT (Google Fonts dropped) */
+      --font-display: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+      --font-body:    system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+      --font-mono:    ui-monospace, "SF Mono", "JetBrains Mono", Consolas, monospace;
 
       --shadow-card:    0 20px 48px -24px rgba(16, 24, 40, 0.28);
       --shadow-btn:     0 6px 16px -6px rgba(32, 32, 88, 0.50);
