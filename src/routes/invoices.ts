@@ -84,6 +84,7 @@ type OrderFull = {
 type ItemRow = {
   id: string; item_type: string; description: string;
   product_id: string | null; product_name: string | null; product_sku: string | null;
+  hsn_code: string | null;
   quantity: number; daily_rate_paise: number | null; billable_days: number | null;
   unit_amount_paise: number; total_amount_paise: number; chargeable_paise: number;
   cgst_paise: number; sgst_paise: number; igst_paise: number;
@@ -121,6 +122,7 @@ async function loadItems(orderId: string, workspaceId: string): Promise<ItemRow[
   return await query<ItemRow>(sql`
     SELECT oi.id, oi.item_type::text AS item_type, oi.description,
            oi.product_id, pr.name AS product_name, pr.sku AS product_sku,
+           pr.hsn_code AS hsn_code,
            oi.quantity, oi.daily_rate_paise, oi.billable_days,
            oi.unit_amount_paise, oi.total_amount_paise, oi.chargeable_paise,
            oi.cgst_paise, oi.sgst_paise, oi.igst_paise,
@@ -344,6 +346,7 @@ invoices.post('/:orderId', async (c) => {
       description: i.description,
       product_name: i.product_name,
       product_sku: i.product_sku,
+      hsn_code: i.hsn_code ?? null,
       quantity: Number(i.quantity),
       daily_rate_paise: String(i.daily_rate_paise ?? ''),
       billable_days: i.billable_days,

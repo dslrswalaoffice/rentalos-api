@@ -78,6 +78,7 @@ type ProductRow = {
   specifications: Record<string, unknown>;
   notes: string | null;
   image_url: string | null;
+  hsn_code: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -102,7 +103,7 @@ inventory.get('/products', async (c) => {
     SELECT
       p.id, p.sku, p.name, p.category, p.description,
       p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
-      p.specifications, p.notes, p.image_url, p.is_active,
+      p.specifications, p.notes, p.image_url, p.hsn_code, p.is_active,
       p.created_at, p.updated_at,
       COALESCE(a.total,     0)::int AS total_units,
       COALESCE(a.available, 0)::int AS available_units,
@@ -151,7 +152,7 @@ inventory.get('/products/:id', async (c) => {
     SELECT
       p.id, p.sku, p.name, p.category, p.description,
       p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
-      p.specifications, p.notes, p.image_url, p.is_active,
+      p.specifications, p.notes, p.image_url, p.hsn_code, p.is_active,
       p.created_at, p.updated_at,
       COALESCE(a.total,     0)::int AS total_units,
       COALESCE(a.available, 0)::int AS available_units,
@@ -176,6 +177,23 @@ inventory.get('/products/:id', async (c) => {
   const product = rows[0];
   if (!product) return c.json({ error: 'not_found' }, 404);
   return c.json({ product });
+});
+
+// ============================================================================
+// GET /api/inventory/categories — distinct category values in the workspace.
+// Powers the inventory category filter + the edit-modal autocomplete.
+// ============================================================================
+inventory.get('/categories', async (c) => {
+  const session = c.get('session')!;
+  const rows = await query<{ category: string }>(sql`
+    SELECT DISTINCT category
+    FROM products
+    WHERE workspace_id = ${session.workspace.id}
+      AND category IS NOT NULL
+      AND deleted_at IS NULL
+    ORDER BY category ASC
+  `);
+  return c.json({ categories: rows.map((r) => r.category) });
 });
 
 // ============================================================================
@@ -314,6 +332,8 @@ const updateSchema = z.object({
   replacement_value: z.number().int().positive().optional(),
   specifications: z.record(z.unknown()).optional(),
   notes: z.string().max(2000).optional(),
+  image_url: z.string().max(2000).optional(),
+  hsn_code: z.string().max(8).optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -354,12 +374,14 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
       replacement_value = COALESCE(${p.replacement_value ?? null}::integer, replacement_value),
       specifications    = COALESCE(${p.specifications ? JSON.stringify(p.specifications) : null}::jsonb, specifications),
       notes             = COALESCE(${p.notes             ?? null}::text,    notes),
+      image_url         = COALESCE(${p.image_url         ?? null}::text,    image_url),
+      hsn_code          = COALESCE(${p.hsn_code          ?? null}::text,    hsn_code),
       is_active         = COALESCE(${p.is_active         ?? null}::boolean, is_active)
     WHERE id = ${id} AND workspace_id = ${session.workspace.id}
     RETURNING
       id, sku, name, category, description,
       daily_rate, weekly_rate, monthly_rate, deposit, replacement_value,
-      specifications, notes, image_url, is_active, created_at, updated_at,
+      specifications, notes, image_url, hsn_code, is_active, created_at, updated_at,
       0::int AS total_units, 0::int AS available_units,
       0::int AS rented_units, 0::int AS in_repair_units
   `);

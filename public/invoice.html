@@ -294,7 +294,7 @@
           <tr class="${isDiscount ? 'discount' : ''}">
             <td>${i + 1}</td>
             <td class="desc">${escapeHtml(it.description)}${escapeHtml(descExtra)}${sub}</td>
-            <td><span class="muted-dash">—</span></td>
+            <td>${it.hsn_code ? escapeHtml(it.hsn_code) : '<span class="muted-dash">—</span>'}</td>
             <td>${escapeHtml(String(it.quantity))}</td>
             <td>${unitCell}</td>
             <td>${formatINR(it.chargeable_paise)}${waivedBadge}</td>
