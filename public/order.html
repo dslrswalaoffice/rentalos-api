@@ -551,6 +551,18 @@
     .tag-pick-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 7px; cursor: pointer; font-size: 12.5px; }
     .tag-pick-item:hover { background: var(--thead); }
     .tag-pick-item.checked { background: var(--accent-soft); }
+
+    /* ===== coupon card (Sub-turn 8b) ===== */
+    .coupon-card .coupon-empty, .coupon-card .coupon-active { padding: 4px 2px; }
+    .coupon-input-row { display: flex; gap: 8px; align-items: center; }
+    .coupon-input { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: var(--font-mono); text-transform: uppercase; font-size: 13px; color: var(--ink); background: var(--card); letter-spacing: 0.04em; }
+    .coupon-input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 4px rgba(185,192,238,0.24); }
+    .coupon-error { color: var(--bad-strong); font-size: 12px; margin-top: 6px; }
+    .coupon-preview { padding: 8px 10px; background: var(--accent-soft); border-radius: 7px; margin-top: 8px; font-size: 12.5px; color: var(--head); }
+    .coupon-preview-hint { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+    .coupon-active { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; background: var(--accent-soft); border-radius: 8px; }
+    .coupon-active-code { font-family: var(--font-mono); font-weight: 700; color: var(--head); letter-spacing: 0.04em; }
+    .coupon-active-savings { color: var(--ok-strong); font-weight: 600; font-size: 12.5px; margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -1225,13 +1237,14 @@
     async function loadOrder() {
       if (!state.orderId) { renderNotFound(); return; }
       try {
-        const { order, items, events, can_finalize, custom_fields, tags } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}`);
+        const { order, items, events, can_finalize, custom_fields, tags, coupon_redemption } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}`);
         state.order = order;
         state.items = items;
         state.events = events;
         state.canFinalize = can_finalize === true;
         state.customFields = custom_fields || [];
         state.tags = tags || [];
+        state.couponRedemption = coupon_redemption || null;
         await loadContracts();
         render();
       } catch (err) {
@@ -1266,6 +1279,7 @@
         ${finalizeBannerHtml()}
         ${headerCardHtml()}
         ${itemsCardHtml()}
+        ${couponCardHtml()}
         ${paymentsCardHtml()}
         ${depositCardHtml()}
         ${contractsCardHtml()}
@@ -1283,6 +1297,7 @@
       wireContractsCard();
       wireCustomFieldsCard();
       wireTagsCard();
+      wireCouponCard();
       wireInvoicesCard();
       wireActionsCard();
       wireFinalizeBanner();
@@ -1370,7 +1385,7 @@
             </div>
             <div class="totals">
               <div class="total-line"><span class="tl-label">Subtotal</span><span class="tl-value">${formatINR(o.subtotal_paise)}</span></div>
-              ${Number(o.discount_paise) > 0 ? `<div class="total-line"><span class="tl-label">Discount</span><span class="tl-value">− ${formatINR(o.discount_paise)}</span></div>` : ''}
+              ${Number(o.discount_paise) > 0 ? `<div class="total-line"><span class="tl-label">Discount${state.couponRedemption ? ' · ' + escapeHtml(state.couponRedemption.code) : ''}</span><span class="tl-value">− ${formatINR(o.discount_paise)}</span></div>` : ''}
               <div class="total-line"><span class="tl-label">Tax</span><span class="tl-value">${formatINR(o.tax_paise)}</span></div>
               <div class="total-line grand sep"><span class="tl-label">Total</span><span class="tl-value">${formatINR(o.total_paise)}</span></div>
               <div class="total-line"><span class="tl-label">Paid</span><span class="tl-value">${formatINR(o.paid_paise)}</span></div>
@@ -3528,6 +3543,120 @@
         }
         await loadOrder();
       } catch (ex) { showToast('Could not update tag: ' + (ex.body?.error || ex.message)); }
+    }
+
+    // ---------- coupon card (Sub-turn 8b) ----------
+    function couponCardHtml() {
+      const o = state.order || {};
+      const locked = o.status === 'closed' || o.status === 'cancelled';
+      const red = state.couponRedemption;
+      let body;
+      if (red) {
+        body = `
+          <div class="coupon-active">
+            <div>
+              <div class="coupon-active-code">${escapeHtml(red.code)}</div>
+              <div class="coupon-active-savings">You save ${formatINR(red.discount_paise_applied)}${red.description ? ' · ' + escapeHtml(red.description) : ''}</div>
+            </div>
+            ${locked ? '' : `<button class="btn ghost tiny" id="remove-coupon-btn">Remove</button>`}
+          </div>`;
+      } else if (locked) {
+        body = `<div class="coupon-empty"><span style="color:var(--muted);font-size:12.5px;">No coupon applied.</span></div>`;
+      } else {
+        body = `
+          <div class="coupon-empty">
+            <div class="coupon-input-row">
+              <input type="text" id="coupon-code-input" class="coupon-input" placeholder="Enter code" autocomplete="off">
+              <button class="btn primary tiny" id="apply-coupon-btn">Apply</button>
+            </div>
+            <div class="coupon-error" id="coupon-error" hidden></div>
+            <div class="coupon-preview" id="coupon-preview" hidden></div>
+          </div>`;
+      }
+      return `<div class="card coupon-card"><div class="card-head"><h3>Coupon</h3></div>${body}</div>`;
+    }
+
+    function wireCouponCard() {
+      const input = document.getElementById('coupon-code-input');
+      const applyBtn = document.getElementById('apply-coupon-btn');
+      const removeBtn = document.getElementById('remove-coupon-btn');
+
+      if (input) {
+        input.addEventListener('input', () => {
+          input.value = input.value.toUpperCase();
+          scheduleCouponPreview(input.value.trim());
+        });
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyCoupon(); } });
+      }
+      if (applyBtn) applyBtn.addEventListener('click', applyCoupon);
+      if (removeBtn) removeBtn.addEventListener('click', removeCoupon);
+    }
+
+    let couponPreviewTimer = null;
+    function scheduleCouponPreview(code) {
+      clearTimeout(couponPreviewTimer);
+      const preview = document.getElementById('coupon-preview');
+      const errEl = document.getElementById('coupon-error');
+      if (!preview || !errEl) return;
+      if (code.length < 2) { preview.hidden = true; errEl.hidden = true; return; }
+      couponPreviewTimer = setTimeout(async () => {
+        try {
+          const res = await fetch('/api/coupons/validate', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, order_id: state.orderId }),
+          });
+          const data = await res.json();
+          if (data.valid) {
+            preview.hidden = false; errEl.hidden = true;
+            preview.innerHTML = `Discount: <strong>${formatINR(data.preview.discount_paise)}</strong> → new subtotal ${formatINR(data.preview.new_subtotal_paise)}${data.coupon.description ? `<div class="coupon-preview-hint">${escapeHtml(data.coupon.description)}</div>` : ''}`;
+          } else {
+            preview.hidden = true; errEl.hidden = false;
+            errEl.textContent = data.message || 'Invalid coupon';
+          }
+        } catch { /* ignore transient */ }
+      }, 400);
+    }
+
+    async function applyCoupon() {
+      const input = document.getElementById('coupon-code-input');
+      if (!input) return;
+      const code = input.value.trim().toUpperCase();
+      if (code.length < 2) return;
+      const btn = document.getElementById('apply-coupon-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '…'; }
+      try {
+        const res = await fetch('/api/coupons/apply', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, order_id: state.orderId }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.valid === false) {
+          if (btn) { btn.disabled = false; btn.textContent = 'Apply'; }
+          const errEl = document.getElementById('coupon-error');
+          if (errEl) { errEl.hidden = false; errEl.textContent = data.message || data.error || 'Could not apply coupon'; }
+          return;
+        }
+        showToast(`Coupon applied — ${formatINR(data.discount_paise)} off`);
+        await loadOrder();
+      } catch (ex) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Apply'; }
+        showToast('Could not apply coupon');
+      }
+    }
+
+    async function removeCoupon() {
+      if (!window.confirm('Remove the coupon from this order?')) return;
+      try {
+        const res = await fetch('/api/coupons/remove', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: state.orderId }),
+        });
+        if (res.ok) { showToast('Coupon removed'); await loadOrder(); }
+        else { const d = await res.json().catch(() => ({})); showToast(d.error || 'Could not remove coupon'); }
+      } catch { showToast('Could not remove coupon'); }
     }
 
     function openPaymentMenu(btn, paymentId) {

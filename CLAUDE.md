@@ -637,6 +637,21 @@ Recurring downtimes, downtime notifications to affected bookings, per-location b
 
 ---
 
+## Coupons / discount codes (Sub-turn 8b)
+
+Reusable discount codes that reuse the existing pricing/invoice/revision engine rather than fighting it. Two tables: `coupons` (definitions) + `coupon_redemptions` (per-order usage). No feature flag.
+
+- **`order_item_type` already had `'discount'`** (migration 004) — migration 027 only creates the two coupon tables. The discount is materialised as an `order_items` row (`item_type='discount'`, **negative** `total_amount_paise`), so invoices/revisions/recompute handle it for free.
+- **Discount model** (`coupons`): `discount_type` `percentage` (1-100) or `fixed` (paise); `max_discount_paise` optional cap for percentage; `min_order_paise` eligibility floor; `valid_from`/`valid_until` (both optional); `max_uses_total` (workspace-wide) + `max_uses_per_customer` (historical, non-removed redemptions); `is_active` soft-delete. **Code UPPERCASE-normalised on create + lookup**, unique per workspace, immutable after creation.
+- **The discount line is coupon-driven inside `recomputeOrderTotals`** (`src/lib/pricing.ts`): after summing the subtotal (SUBTOTAL_TYPES = rental/delivery_fee/late_fee/damage/other), `resolveCouponDiscount()` reads the active redemption and recomputes the discount against the **current** subtotal, then upserts/deletes the single `discount` line. So a percentage coupon stays correct after an extension/edit re-prices the order. Manual discount lines aren't a thing — the coupon owns the discount line.
+- **GST on the discounted base.** Legacy single-tax mode already nets the discount via `taxableBase = subtotal − discount`. In **GST-split mode** (DSLRSWALA default) the discount line carries a **negative** per-line CGST/SGST/IGST (computed on the discount amount and negated) so `lineTaxSum` — and thus the order tax — lands on `subtotal − discount`. SUBTOTAL_TYPES ≡ TAXABLE_ITEM_TYPES here, so the offset is exact. Discount line sorts at 9000 (before the 9999 auto-tax line).
+- **Endpoints** (`/api/coupons`): `GET`/`POST`/`GET /:id`/`PATCH /:id`/`DELETE /:id` (owner/manager; `:id` UUID-constrained so `/validate`,`/apply`,`/remove` literals aren't captured). `POST /validate` (any member — preview discount, never mutates), `POST /apply` (insert redemption + recompute + audit + `order.coupon.applied` notification), `POST /remove` (mark `removed_at` + recompute → discount line auto-deleted). Audit `coupons.created/updated/deactivated/applied/removed`.
+- **One active coupon per order** — partial unique index `coupon_redemptions_one_active_per_order (order_id) WHERE removed_at IS NULL`. Removal keeps the row (audit); usage caps count non-removed redemptions, so **cancelling an order does NOT free the cap** (prevents gaming).
+- **Order detail GET** returns `coupon_redemption` (active only) alongside the existing `subtotal_paise`/`discount_paise`/`tax_paise`/`total_paise` split. **UI:** Settings → **Coupons** tab (CRUD + deactivate); a Coupon card on `order.html` (code input → 400 ms live `validate` preview → apply; active state shows code + savings + Remove); the order totals line shows `Discount · CODE`; `invoice.html` already renders the discount line (now tinted green).
+- **Deferred:** product/category-scoped coupons, stacking, auto-apply, customer self-service, referral/BOGO/first-order-only, time-of-day rules.
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.

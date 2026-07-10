@@ -523,15 +523,31 @@ orders.get('/:id', async (c) => {
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
 
-  const [items, events, customFields, tags] = await Promise.all([
+  const [items, events, customFields, tags, redemption] = await Promise.all([
     loadItems(id),
     loadEvents(id),
     loadCustomFieldValues(session.workspace.id, 'order', id),
     loadTagsForEntity(session.workspace.id, 'order', id),
+    // Active coupon redemption (Sub-turn 8b), if any.
+    query<{
+      id: string; discount_paise_applied: number; applied_at: string;
+      code: string; discount_type: string; discount_value: number; description: string | null;
+    }>(sql`
+      SELECT cr.id, cr.discount_paise_applied, cr.applied_at,
+             c.code, c.discount_type, c.discount_value, c.description
+      FROM coupon_redemptions cr
+      JOIN coupons c ON c.id = cr.coupon_id
+      WHERE cr.order_id = ${id}::uuid AND cr.workspace_id = ${session.workspace.id}::uuid
+        AND cr.removed_at IS NULL
+      LIMIT 1
+    `),
   ]);
 
   const canFinalize = deriveCanFinalize(items);
-  return c.json({ order, items, events, can_finalize: canFinalize, custom_fields: customFields, tags });
+  return c.json({
+    order, items, events, can_finalize: canFinalize, custom_fields: customFields, tags,
+    coupon_redemption: redemption[0] ?? null,
+  });
 });
 
 // ============================================================================
