@@ -5,6 +5,8 @@ import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { emitNotification } from '../lib/notify.js';
 import { recomputeOrderTotals } from '../lib/pricing.js';
+import { checkAvailability } from '../lib/availability.js';
+import { generateInvoice } from './invoices.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -1103,6 +1105,226 @@ orders.post('/:id/recompute', async (c) => {
   });
 
   return c.json({ order: fresh, items, changed });
+});
+
+// ============================================================================
+// POST /api/orders/:id/extend — first-class rental extension (Sub-turn 6c)
+// ----------------------------------------------------------------------------
+// Customers extend mid-flight ("keep the camera two more days"). This moves
+// rental_end forward, availability-checks the EXTENSION WINDOW only (advisory,
+// per app-wide warn-don't-block), re-prices via recomputeOrderTotals, and —
+// following Booqable, which invoices running orders freely — revises any
+// existing invoice through the shared generateInvoice() path (old snapshots
+// stay immutable). Dedicated order.extended timeline + orders.extended audit +
+// notification. Contraction (moving rental_end backward) is NOT supported here.
+// ============================================================================
+const EXTENDABLE_STATUSES: readonly OrderStatus[] = ['confirmed', 'dispatched', 'active', 'returned'];
+const MAX_EXTENSION_DAYS = 365;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+const extendSchema = z.object({
+  new_rental_end: z.string().datetime(),
+  reason: z.string().max(500).optional(),
+});
+
+type ExtensionConflict = {
+  product_id: string;
+  product_name: string | null;
+  quantity: number;
+  available: boolean;
+  shortage_used: boolean;
+  order_conflicts: unknown[];
+};
+
+orders.post('/:id/extend', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = extendSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const { new_rental_end, reason } = parsed.data;
+
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+  if (!EXTENDABLE_STATUSES.includes(order.status)) {
+    return c.json({ error: 'not_extendable', status: order.status }, 409);
+  }
+  if (!order.rental_end) {
+    return c.json({ error: 'not_extendable', reason: 'no_rental_end' }, 409);
+  }
+
+  const oldEnd = new Date(order.rental_end);
+  const newEnd = new Date(new_rental_end);
+  if (newEnd.getTime() <= oldEnd.getTime()) {
+    return c.json({ error: 'not_an_extension', reason: 'new_end_must_be_after_current_end' }, 400);
+  }
+  const deltaMs = newEnd.getTime() - oldEnd.getTime();
+  if (deltaMs > MAX_EXTENSION_DAYS * MS_PER_DAY) {
+    return c.json({ error: 'range_too_large', max_days: MAX_EXTENSION_DAYS }, 400);
+  }
+  const deltaDays = Math.ceil(deltaMs / MS_PER_DAY);
+
+  const oldTotalPaise = Number(order.total_paise);
+
+  // Availability sweep of the extension window (current end → new end) per
+  // rental line. Advisory: collect conflicts, never block. Fail-soft per item.
+  const items = await loadItems(id);
+  const rentalItems = items.filter((it) => it.item_type === 'rental' && it.product_id);
+  const conflicts: ExtensionConflict[] = [];
+  for (const it of rentalItems) {
+    try {
+      const check = await checkAvailability({
+        workspaceId: session.workspace.id,
+        productId: it.product_id!,
+        quantity: Number(it.quantity),
+        start: oldEnd,
+        end: newEnd,
+        excludeOrderId: id,
+      });
+      if (!check.available || check.conflicts.length > 0) {
+        conflicts.push({
+          product_id: it.product_id!,
+          product_name: it.product_name ?? null,
+          quantity: Number(it.quantity),
+          available: check.available,
+          shortage_used: check.shortage_used,
+          order_conflicts: check.conflicts,
+        });
+      }
+    } catch (err) {
+      console.error('extension availability check failed', err);
+    }
+  }
+
+  // Move rental_end forward.
+  await sql`
+    UPDATE orders SET rental_end = ${newEnd.toISOString()}::timestamptz, updated_at = now()
+    WHERE id = ${id} AND workspace_id = ${session.workspace.id}
+  `;
+
+  // Re-price for its side effects (writes the order.pricing.recomputed timeline
+  // event), then reload the persisted order so totals are fresh. Fail-open on the
+  // recompute itself.
+  let recomputeChanged = false;
+  try {
+    const rc = await recomputeOrderTotals(id, session.workspace.id, session.user.id);
+    recomputeChanged = rc.changed;
+  } catch (err) {
+    console.error('recompute after extension failed', err);
+  }
+  // Mirror the recompute route: the pricing recompute also gets an audit row.
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'orders.pricing.recomputed',
+    targetType: 'order',
+    targetId: id,
+    payload: { changed: recomputeChanged, via: 'extension' },
+    ipAddress, userAgent,
+  });
+  const freshOrder = (await loadOrder(id, session.workspace.id)) ?? order;
+  const newTotalPaise = Number(freshOrder.total_paise);
+  const deltaPaise = newTotalPaise - oldTotalPaise;
+
+  // Invoice revision (Booqable pattern): if the order already has any invoice
+  // and isn't closed, generate a fresh revision through the shared path. Old
+  // snapshots stay immutable. Fail-open — a revision error never fails the
+  // extension.
+  let invoiceRevision: { revised: boolean; new_invoice_id: string | null; new_revision_number: number | null } = {
+    revised: false, new_invoice_id: null, new_revision_number: null,
+  };
+  try {
+    const existingInv = await query<{ n: number; seq: number | null }>(sql`
+      SELECT COUNT(*)::int AS n, MIN(sequence)::int AS seq
+      FROM invoices
+      WHERE order_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+    `);
+    const hasInvoice = (existingInv[0]?.n ?? 0) > 0;
+    if (hasInvoice && freshOrder.status !== 'closed') {
+      const seq = existingInv[0]?.seq ?? 1;
+      const gen = await generateInvoice({
+        workspaceId: session.workspace.id,
+        userId: session.user.id,
+        orderId: id,
+        sequence: Number(seq),
+        notes: reason ? `Extension: ${reason}` : 'Auto-revision on rental extension',
+        ipAddress, userAgent,
+        bypassReadiness: true,
+      });
+      if (gen.ok) {
+        invoiceRevision = {
+          revised: true,
+          new_invoice_id: gen.invoice.id as string,
+          new_revision_number: gen.revision,
+        };
+      }
+    }
+  } catch (err) {
+    console.error('invoice revision on extension failed', err);
+  }
+
+  const eventPayload = {
+    old_rental_end: oldEnd.toISOString(),
+    new_rental_end: newEnd.toISOString(),
+    delta_days: deltaDays,
+    delta_paise: deltaPaise,
+    reason: reason ?? null,
+    conflicts,
+    invoice_revised: invoiceRevision.revised,
+    new_invoice_id: invoiceRevision.new_invoice_id,
+    new_revision_number: invoiceRevision.new_revision_number,
+  };
+
+  await recordOrderEvent({
+    workspaceId: session.workspace.id,
+    orderId: id,
+    eventType: 'order.extended',
+    fromStatus: order.status,
+    toStatus: order.status,
+    payload: eventPayload,
+    actorUserId: session.user.id,
+  });
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'orders.extended',
+    targetType: 'order',
+    targetId: id,
+    payload: eventPayload,
+    ipAddress, userAgent,
+  });
+
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'order.extended',
+    targetType: 'order', targetId: id,
+    linkUrl: `/order.html?id=${id}`,
+    metadata: {
+      order_number: order.order_number,
+      delta_days: deltaDays,
+      customer_name: order.customer_name ?? '',
+      actor_name: session.user.displayName ?? '',
+    },
+  }).catch(() => {});
+
+  return c.json({
+    order: {
+      id: freshOrder.id,
+      rental_end: freshOrder.rental_end,
+      total_paise: newTotalPaise,
+      balance_paise: Number(freshOrder.balance_paise),
+      status: freshOrder.status,
+    },
+    delta: { days: deltaDays, paise: deltaPaise },
+    conflicts,
+    invoice_revision: invoiceRevision,
+  });
 });
 
 // ============================================================================

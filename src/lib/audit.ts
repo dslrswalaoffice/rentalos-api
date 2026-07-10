@@ -52,6 +52,7 @@ export type AuditEventType =
   | 'orders.item.price_reverted'
   | 'orders.status.changed'
   | 'orders.status.forced'
+  | 'orders.extended'
   | 'orders.pricing.recomputed'
   | 'orders.payment.recorded'
   | 'orders.payment.refunded'

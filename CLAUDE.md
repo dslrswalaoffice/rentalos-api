@@ -301,6 +301,17 @@ NOT `= ANY(${arr}::status_enum[])`.
 ### Item types
 `rental`, `delivery_fee`, `late_fee`, `damage`, `discount`, `tax`, `deposit`, `other`. Rental items must have `product_id`. Accessories bundle under a parent via `parent_item_id`.
 
+### Rental extension (Sub-turn 6c)
+- **`POST /api/orders/:id/extend`** — first-class rental extension. Body: `{ new_rental_end, reason? }`. Allowed only when order status ∈ `confirmed`, `dispatched`, `active`, `returned` (else `409 not_extendable`). Rejects `400 not_an_extension` (new end ≤ current end) and `400 range_too_large` (> 365 days out).
+- **Extension semantics:**
+  - Availability is checked for the **extension window only** (`current rental_end → new rental_end`), per rental line item — advisory (warns, never blocks), fail-soft per item.
+  - `recomputeOrderTotals` fires automatically after the date moves; manual price overrides are preserved.
+  - **Invoice revision (Booqable pattern):** if the order already has any invoice AND isn't `closed`, a fresh revision is generated through the shared `generateInvoice()` helper (extracted from the invoices route; the route's behavior is unchanged). The extension passes `bypassReadiness: true` so a still-running order can be re-invoiced — Booqable invoices running orders at any lifecycle point. Old invoice snapshots stay immutable. Invoice generation is fail-open — a revision error never fails the extension.
+  - Writes an `order.extended` timeline event + `orders.extended` audit row (payload: `old_rental_end`, `new_rental_end`, `delta_days`, `delta_paise`, `reason`, `conflicts`, `invoice_revised`, `new_invoice_id`, `new_revision_number`), and emits an `order.extended` notification to other members.
+  - **Contraction (moving `rental_end` backward) is NOT supported here** — use the normal order edit path.
+- **`generateInvoice()`** now lives in `src/routes/invoices.ts` as an exported function (the POST route is a thin wrapper). Callers get a structured `{ ok, ... }` result instead of an HTTP response. `bypassReadiness` skips the all-items-terminal gate.
+- **UI:** dedicated "Extend rental" button + modal on `order.html` (visible for the four extendable statuses); the timeline renders `order.extended` distinctively (📅 with delta days, reason, delta ₹, invoice-revision note).
+
 ### Audit on every mutation
 Every route that mutates order state writes TWO event rows:
 1. `order_events` — per-order timeline the operator sees

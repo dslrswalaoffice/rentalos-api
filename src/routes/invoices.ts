@@ -205,31 +205,50 @@ const generateSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
-invoices.post('/:orderId', async (c) => {
-  const session = c.get('session')!;
-  const { ipAddress, userAgent } = clientCtx(c);
-  const orderId = c.req.param('orderId');
-  const sequence = Math.max(1, Number(c.req.query('sequence') || 1) || 1);
+// Extracted so the rental-extension flow (POST /api/orders/:id/extend) can
+// generate an invoice revision through the EXACT same snapshot / GST / kit path
+// the route uses — no duplicated builder. Returns a structured result (not an
+// HTTP response) so each caller maps it. `bypassReadiness` lets an extension
+// re-invoice a still-running order (Booqable invoices running orders freely at
+// any lifecycle point); the HTTP route keeps the readiness gate.
+export type GenerateInvoiceResult =
+  | {
+      ok: true;
+      invoice: Record<string, unknown>;
+      order: ReturnType<typeof orderLite>;
+      superseded: { id: string; invoice_number: string } | null;
+      revision: number;
+      invoice_number: string;
+    }
+  | { ok: false; error: string; status: 400 | 404 | 409; reason?: string };
 
-  const body = await c.req.json().catch(() => ({}));
-  const parsed = generateSchema.safeParse(body ?? {});
-  if (!parsed.success) {
-    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
-  }
-  const notes = parsed.data.notes ?? null;
+export async function generateInvoice(params: {
+  workspaceId: string;
+  userId: string;
+  orderId: string;
+  sequence: number;
+  notes: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  bypassReadiness?: boolean;
+}): Promise<GenerateInvoiceResult> {
+  // Shim so the (byte-identical) body below keeps referencing session.*.
+  const session = { workspace: { id: params.workspaceId }, user: { id: params.userId } };
+  const { ipAddress, userAgent, orderId, sequence, notes } = params;
 
   let order = await loadOrderFull(orderId, session.workspace.id);
-  if (!order) return c.json({ error: 'not_found' }, 404);
+  if (!order) return { ok: false, error: 'not_found', status: 404 };
 
   if (order.status === 'cancelled') {
-    return c.json({ error: 'cancelled_order_cannot_invoice' }, 409);
+    return { ok: false, error: 'cancelled_order_cannot_invoice', status: 409 };
   }
 
   // Readiness gate: closed orders always allowed; otherwise every item must be
   // in a terminal state (can_finalize) — computed server-side from ground truth.
+  // The extension flow passes bypassReadiness so a running order can be re-invoiced.
   let items = await loadItems(orderId, session.workspace.id);
-  if (order.status !== 'closed' && !deriveCanFinalize(items)) {
-    return c.json({ error: 'order_not_ready_for_invoice', reason: 'items_still_active' }, 409);
+  if (!params.bypassReadiness && order.status !== 'closed' && !deriveCanFinalize(items)) {
+    return { ok: false, error: 'order_not_ready_for_invoice', status: 409, reason: 'items_still_active' };
   }
 
   // Recompute so chargeable + GST split are fresh (skip for locked orders, which
@@ -502,7 +521,36 @@ invoices.post('/:orderId', async (c) => {
     },
   }).catch(() => {});
 
-  return c.json({ invoice, order: orderLite(order), superseded }, 201);
+  return { ok: true, invoice, order: orderLite(order), superseded, revision, invoice_number: invoiceNumber };
+}
+
+// POST /:orderId — generate a new invoice (thin wrapper over generateInvoice)
+invoices.post('/:orderId', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const orderId = c.req.param('orderId');
+  const sequence = Math.max(1, Number(c.req.query('sequence') || 1) || 1);
+
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = generateSchema.safeParse(body ?? {});
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+
+  const result = await generateInvoice({
+    workspaceId: session.workspace.id,
+    userId: session.user.id,
+    orderId,
+    sequence,
+    notes: parsed.data.notes ?? null,
+    ipAddress, userAgent,
+  });
+  if (!result.ok) {
+    const payload: Record<string, unknown> = { error: result.error };
+    if (result.reason) payload.reason = result.reason;
+    return c.json(payload, result.status);
+  }
+  return c.json({ invoice: result.invoice, order: result.order, superseded: result.superseded }, 201);
 });
 
 // ============================================================================
