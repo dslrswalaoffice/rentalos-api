@@ -48,6 +48,17 @@ export type AvailabilityConflict = {
   status: string;
 };
 
+export type KitComponentAvailability = {
+  component_product_id: string;
+  component_name: string;
+  component_sku: string;
+  per_kit_qty: number;       // qty of this component in ONE kit
+  required_qty: number;      // per_kit_qty * requested kit quantity
+  available: boolean;
+  component_capacity: number;
+  component_booked: number;
+};
+
 export type AvailabilityResult = {
   available: boolean;
   requested: number;
@@ -55,7 +66,35 @@ export type AvailabilityResult = {
   currently_booked: number;
   inactive_product?: boolean;
   conflicts: AvailabilityConflict[];
+  // Present only when the product is a kit (Sub-turn 5c-2).
+  is_kit?: boolean;
+  kit_components?: KitComponentAvailability[];
+  reason?: string;
 };
+
+export type KitComponentRow = {
+  component_product_id: string;
+  quantity: number;
+  component_name: string;
+  component_sku: string;
+};
+
+// Kit components (kit_product_id → components). Exported: the invoice snapshot
+// builder reuses it so "what's in a kit" has a single source of truth.
+export async function loadKitComponents(
+  workspaceId: string,
+  kitProductId: string,
+): Promise<KitComponentRow[]> {
+  return await query<KitComponentRow>(sql`
+    SELECT pki.component_product_id, pki.quantity,
+           p.name AS component_name, p.sku AS component_sku
+    FROM product_kit_items pki
+    JOIN products p ON p.id = pki.component_product_id
+    WHERE pki.workspace_id = ${workspaceId}::uuid
+      AND pki.kit_product_id = ${kitProductId}::uuid
+    ORDER BY p.name ASC
+  `);
+}
 
 function clampBuffer(n: number): number {
   if (!Number.isFinite(n)) return 0;
@@ -77,12 +116,12 @@ export async function checkAvailability(args: {
   end: Date;
   excludeOrderId?: string;
 }): Promise<AvailabilityResult> {
-  // Capacity = count of live assets for the product. Also grab is_active so we
-  // can flag (but still answer for) inactive products.
-  const productRows = await query<{ total_units: number; is_active: boolean }>(sql`
+  // Capacity = count of live assets for the product. Also grab is_active +
+  // is_kit so we can flag inactive products and route kits to the kit path.
+  const productRows = await query<{ total_units: number; is_active: boolean; is_kit: boolean }>(sql`
     SELECT
       COALESCE(a.total, 0)::int AS total_units,
-      p.is_active
+      p.is_active, p.is_kit
     FROM products p
     LEFT JOIN LATERAL (
       SELECT COUNT(*) AS total
@@ -99,6 +138,11 @@ export async function checkAvailability(args: {
   if (productRows.length === 0) throw new AvailabilityError('product_not_found');
   const capacity = productRows[0]!.total_units;
   const isActive = productRows[0]!.is_active;
+
+  // KIT PATH: capacity is derived from the components, not the kit's own assets.
+  if (productRows[0]!.is_kit) {
+    return checkKitAvailability(args, isActive);
+  }
 
   // Buffer hours from workspace settings (default 0, clamped 0-24).
   const wsRows = await query<{ buffer_hours: number }>(sql`
@@ -160,6 +204,78 @@ export async function checkAvailability(args: {
     capacity,
     currently_booked: currentlyBooked,
     conflicts: normalized,
+  };
+  if (!isActive) result.inactive_product = true;
+  return result;
+}
+
+// ----------------------------------------------------------------------------
+// Kit availability = every component must be available at (kit qty × per-kit
+// component qty). Derived capacity = MIN over components of floor(component
+// capacity / per-kit qty). Component checks recurse into the standard path
+// (nested kits are blocked at the DB, so recursion is one level deep).
+// ----------------------------------------------------------------------------
+async function checkKitAvailability(
+  args: {
+    workspaceId: string; productId: string; quantity: number;
+    start: Date; end: Date; excludeOrderId?: string;
+  },
+  isActive: boolean,
+): Promise<AvailabilityResult> {
+  const components = await loadKitComponents(args.workspaceId, args.productId);
+
+  if (components.length === 0) {
+    const empty: AvailabilityResult = {
+      available: false,
+      requested: args.quantity,
+      capacity: 0,
+      currently_booked: 0,
+      conflicts: [],
+      is_kit: true,
+      kit_components: [],
+      reason: 'kit_has_no_components',
+    };
+    if (!isActive) empty.inactive_product = true;
+    return empty;
+  }
+
+  const checks = await Promise.all(
+    components.map((comp) =>
+      checkAvailability({
+        workspaceId: args.workspaceId,
+        productId: comp.component_product_id,
+        quantity: args.quantity * Number(comp.quantity),
+        start: args.start,
+        end: args.end,
+        excludeOrderId: args.excludeOrderId,
+      }),
+    ),
+  );
+
+  const kitCapacity = Math.min(
+    ...components.map((comp, i) => Math.floor(checks[i]!.capacity / Number(comp.quantity))),
+  );
+  const available = checks.every((c) => c.available);
+
+  const kit_components: KitComponentAvailability[] = components.map((comp, i) => ({
+    component_product_id: comp.component_product_id,
+    component_name: comp.component_name,
+    component_sku: comp.component_sku,
+    per_kit_qty: Number(comp.quantity),
+    required_qty: args.quantity * Number(comp.quantity),
+    available: checks[i]!.available,
+    component_capacity: checks[i]!.capacity,
+    component_booked: checks[i]!.currently_booked,
+  }));
+
+  const result: AvailabilityResult = {
+    available,
+    requested: args.quantity,
+    capacity: Number.isFinite(kitCapacity) ? Math.max(0, kitCapacity) : 0,
+    currently_booked: 0, // not meaningful for a derived-capacity kit
+    conflicts: available ? [] : checks.flatMap((c) => c.conflicts),
+    is_kit: true,
+    kit_components,
   };
   if (!isActive) result.inactive_product = true;
   return result;

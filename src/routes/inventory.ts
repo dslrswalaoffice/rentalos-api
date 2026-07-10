@@ -80,6 +80,8 @@ type ProductRow = {
   image_url: string | null;
   hsn_code: string | null;
   is_active: boolean;
+  is_kit: boolean;
+  component_count: number;
   created_at: string;
   updated_at: string;
   total_units: number;
@@ -103,7 +105,8 @@ inventory.get('/products', async (c) => {
     SELECT
       p.id, p.sku, p.name, p.category, p.description,
       p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
-      p.specifications, p.notes, p.image_url, p.hsn_code, p.is_active,
+      p.specifications, p.notes, p.image_url, p.hsn_code, p.is_active, p.is_kit,
+      (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = p.id)::int AS component_count,
       p.created_at, p.updated_at,
       COALESCE(a.total,     0)::int AS total_units,
       COALESCE(a.available, 0)::int AS available_units,
@@ -152,7 +155,8 @@ inventory.get('/products/:id', async (c) => {
     SELECT
       p.id, p.sku, p.name, p.category, p.description,
       p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
-      p.specifications, p.notes, p.image_url, p.hsn_code, p.is_active,
+      p.specifications, p.notes, p.image_url, p.hsn_code, p.is_active, p.is_kit,
+      (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = p.id)::int AS component_count,
       p.created_at, p.updated_at,
       COALESCE(a.total,     0)::int AS total_units,
       COALESCE(a.available, 0)::int AS available_units,
@@ -213,6 +217,7 @@ const createSchema = z.object({
   replacement_value: z.number().int().positive().optional(),
   specifications: z.record(z.unknown()).optional(),
   notes: z.string().max(2000).optional(),
+  is_kit: z.boolean().default(false),
   // How many physical units to create right now (asset rows).
   initial_units: z.number().int().min(0).max(50).default(1),
 });
@@ -247,7 +252,7 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
       INSERT INTO products (
         workspace_id, sku, name, category, description,
         daily_rate, weekly_rate, monthly_rate, deposit, replacement_value,
-        specifications, notes, created_by
+        specifications, notes, is_kit, created_by
       ) VALUES (
         ${session.workspace.id},
         ${sku},
@@ -261,6 +266,7 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
         ${input.replacement_value ?? null},
         ${JSON.stringify(input.specifications ?? {})}::jsonb,
         ${input.notes ?? null},
+        ${input.is_kit},
         ${session.user.id}
       )
       RETURNING *
@@ -282,6 +288,7 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
       (SELECT COUNT(*) FROM new_assets)::int AS available_units,
       0::int AS rented_units,
       0::int AS in_repair_units,
+      0::int AS component_count,
       (SELECT array_agg(id) FROM new_assets) AS asset_ids
     FROM new_product np
   `);
@@ -335,6 +342,7 @@ const updateSchema = z.object({
   image_url: z.string().max(2000).optional(),
   hsn_code: z.string().max(8).optional(),
   is_active: z.boolean().optional(),
+  is_kit: z.boolean().optional(),
 });
 
 inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
@@ -350,13 +358,24 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
   const p = parsed.data;
 
   // Fetch existing to make sure it belongs to this workspace before touching it.
-  const existing = await query<{ id: string; is_active: boolean; name: string }>(sql`
-    SELECT id, is_active, name FROM products
+  const existing = await query<{ id: string; is_active: boolean; name: string; is_kit: boolean }>(sql`
+    SELECT id, is_active, name, is_kit FROM products
     WHERE id = ${id} AND workspace_id = ${session.workspace.id} AND deleted_at IS NULL
     LIMIT 1
   `);
   if (existing.length === 0) return c.json({ error: 'not_found' }, 404);
   const before = existing[0]!;
+
+  // Un-kitting a product with components would orphan the bundle. Block it.
+  if (p.is_kit === false && before.is_kit) {
+    const comps = await query<{ n: number }>(sql`
+      SELECT COUNT(*)::int AS n FROM product_kit_items
+      WHERE kit_product_id = ${id} AND workspace_id = ${session.workspace.id}
+    `);
+    if ((comps[0]?.n ?? 0) > 0) {
+      return c.json({ error: 'kit_has_components', reason: 'remove_components_first' }, 409);
+    }
+  }
 
   // COALESCE-based partial update: any field the caller omits is preserved.
   // We deliberately do NOT support clearing nullable fields (setting to NULL) via
@@ -376,14 +395,16 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
       notes             = COALESCE(${p.notes             ?? null}::text,    notes),
       image_url         = COALESCE(${p.image_url         ?? null}::text,    image_url),
       hsn_code          = COALESCE(${p.hsn_code          ?? null}::text,    hsn_code),
-      is_active         = COALESCE(${p.is_active         ?? null}::boolean, is_active)
+      is_active         = COALESCE(${p.is_active         ?? null}::boolean, is_active),
+      is_kit            = COALESCE(${p.is_kit            ?? null}::boolean, is_kit)
     WHERE id = ${id} AND workspace_id = ${session.workspace.id}
     RETURNING
       id, sku, name, category, description,
       daily_rate, weekly_rate, monthly_rate, deposit, replacement_value,
-      specifications, notes, image_url, hsn_code, is_active, created_at, updated_at,
+      specifications, notes, image_url, hsn_code, is_active, is_kit, created_at, updated_at,
       0::int AS total_units, 0::int AS available_units,
-      0::int AS rented_units, 0::int AS in_repair_units
+      0::int AS rented_units, 0::int AS in_repair_units,
+      (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = products.id)::int AS component_count
   `);
 
   if (updated.length === 0) return c.json({ error: 'not_found' }, 404);
@@ -453,6 +474,167 @@ inventory.delete('/products/:id', requireRole('owner', 'manager'), async (c) => 
     targetType: 'product',
     targetId: id,
     payload: { via: 'delete' },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ ok: true });
+});
+
+// ============================================================================
+// Kit components (Sub-turn 5c-2)
+// ----------------------------------------------------------------------------
+// A kit product (is_kit=true) bundles other products via product_kit_items.
+// Kit capacity is derived at check time (see src/lib/availability.ts); these
+// endpoints just CRUD the component list. Nested kits are blocked both here and
+// by the check_no_nested_kits DB trigger.
+// ============================================================================
+
+async function loadKit(workspaceId: string, kitId: string) {
+  const rows = await query<{ id: string; name: string; sku: string; is_kit: boolean }>(sql`
+    SELECT id, name, sku, is_kit FROM products
+    WHERE id = ${kitId} AND workspace_id = ${workspaceId} AND deleted_at IS NULL
+    LIMIT 1
+  `);
+  return rows[0] ?? null;
+}
+
+// GET /api/inventory/products/:id/kit-components
+inventory.get('/products/:id/kit-components', async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+
+  const kit = await loadKit(session.workspace.id, id);
+  if (!kit) return c.json({ error: 'not_found' }, 404);
+  if (!kit.is_kit) return c.json({ error: 'not_a_kit' }, 400);
+
+  const components = await query<{
+    id: string; component_product_id: string; component_name: string;
+    component_sku: string; quantity: number;
+  }>(sql`
+    SELECT pki.id, pki.component_product_id,
+           p.name AS component_name, p.sku AS component_sku, pki.quantity
+    FROM product_kit_items pki
+    JOIN products p ON p.id = pki.component_product_id
+    WHERE pki.kit_product_id = ${id} AND pki.workspace_id = ${session.workspace.id}
+    ORDER BY p.name ASC
+  `);
+
+  return c.json({
+    kit: { id: kit.id, name: kit.name, sku: kit.sku },
+    components,
+  });
+});
+
+// POST /api/inventory/products/:id/kit-components — add a component
+const kitAddSchema = z.object({
+  component_product_id: z.string().uuid(),
+  quantity: z.number().int().positive(),
+});
+
+inventory.post('/products/:id/kit-components', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = kitAddSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const input = parsed.data;
+
+  const kit = await loadKit(session.workspace.id, id);
+  if (!kit) return c.json({ error: 'not_found' }, 404);
+  if (!kit.is_kit) return c.json({ error: 'not_a_kit' }, 400);
+  if (input.component_product_id === id) return c.json({ error: 'kit_cannot_contain_itself' }, 400);
+
+  const comp = await query<{ id: string; is_kit: boolean }>(sql`
+    SELECT id, is_kit FROM products
+    WHERE id = ${input.component_product_id} AND workspace_id = ${session.workspace.id} AND deleted_at IS NULL
+    LIMIT 1
+  `);
+  if (comp.length === 0) return c.json({ error: 'component_not_found' }, 404);
+  if (comp[0]!.is_kit) return c.json({ error: 'nested_kits_not_allowed' }, 400);
+
+  const dup = await query<{ id: string }>(sql`
+    SELECT id FROM product_kit_items
+    WHERE kit_product_id = ${id} AND component_product_id = ${input.component_product_id}
+      AND workspace_id = ${session.workspace.id}
+    LIMIT 1
+  `);
+  if (dup.length > 0) return c.json({ error: 'component_already_in_kit', reason: 'update_instead' }, 409);
+
+  const inserted = await query<{ id: string; component_product_id: string; quantity: number }>(sql`
+    INSERT INTO product_kit_items (workspace_id, kit_product_id, component_product_id, quantity)
+    VALUES (${session.workspace.id}, ${id}, ${input.component_product_id}, ${input.quantity})
+    RETURNING id, component_product_id, quantity
+  `);
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'inventory.kit.component_added',
+    targetType: 'product',
+    targetId: id,
+    payload: { component_product_id: input.component_product_id, quantity: input.quantity },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ component: inserted[0] });
+});
+
+// PATCH /api/inventory/products/:id/kit-components/:componentId — update qty
+const kitQtySchema = z.object({ quantity: z.number().int().positive() });
+
+inventory.patch('/products/:id/kit-components/:componentId', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+  const componentId = c.req.param('componentId');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = kitQtySchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+
+  const updated = await query<{ id: string; component_product_id: string; quantity: number }>(sql`
+    UPDATE product_kit_items SET quantity = ${parsed.data.quantity}, updated_at = now()
+    WHERE id = ${componentId} AND kit_product_id = ${id} AND workspace_id = ${session.workspace.id}
+    RETURNING id, component_product_id, quantity
+  `);
+  if (updated.length === 0) return c.json({ error: 'not_found' }, 404);
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'inventory.kit.component_updated',
+    targetType: 'product',
+    targetId: id,
+    payload: { kit_item_id: componentId, quantity: parsed.data.quantity },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ component: updated[0] });
+});
+
+// DELETE /api/inventory/products/:id/kit-components/:componentId — remove
+inventory.delete('/products/:id/kit-components/:componentId', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+  const componentId = c.req.param('componentId');
+
+  const deleted = await query<{ id: string; component_product_id: string }>(sql`
+    DELETE FROM product_kit_items
+    WHERE id = ${componentId} AND kit_product_id = ${id} AND workspace_id = ${session.workspace.id}
+    RETURNING id, component_product_id
+  `);
+  if (deleted.length === 0) return c.json({ error: 'not_found' }, 404);
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'inventory.kit.component_removed',
+    targetType: 'product',
+    targetId: id,
+    payload: { kit_item_id: componentId, component_product_id: deleted[0]!.component_product_id },
     ipAddress, userAgent,
   });
 

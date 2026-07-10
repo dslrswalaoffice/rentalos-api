@@ -132,6 +132,12 @@
     .gi-sub{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);margin-top:2px;letter-spacing:.03em}
     .product-thumb{width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--border);flex-shrink:0;background:var(--thead)}
     .product-thumb-placeholder{width:40px;height:40px;border-radius:6px;background:var(--accent-soft);color:var(--head);font-family:var(--font-display);font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);flex-shrink:0}
+    .kit-badge{display:inline-block;margin-left:6px;padding:2px 7px;background:#ede9fe;color:#6d28d9;border-radius:10px;font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}
+    .kit-toggle{color:var(--head);cursor:pointer;font-weight:600;text-decoration:none}
+    .kit-toggle:hover{text-decoration:underline}
+    .kit-panel{padding:8px 14px 12px 62px;background:var(--thead);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted-strong)}
+    .kit-panel .kit-component{padding:3px 0}
+    .kit-panel .kit-loading{color:var(--muted-soft);font-family:var(--font-mono);font-size:11px}
     .gi-avail{font-family:var(--font-mono);font-weight:600;font-size:12px;font-variant-numeric:tabular-nums;min-width:60px;text-align:right}
     .gi-avail .avail{color:var(--ok-strong)}
     .gi-avail .avail.zero{color:var(--bad-strong)}
@@ -441,15 +447,20 @@
     const availabilityChecks = new Map();  // product_id -> latest POST /check result
     const checkTimers = new Map();         // product_id -> debounce timer
     const productImages = {};    // product_id -> image_url (from inventory; availability doesn't carry it)
+    const productKits = {};      // product_id -> { is_kit, component_count }
+    const kitComponentsCache = {}; // kit product_id -> [components]
     let productImagesLoaded = false;
 
-    // Availability doesn't return image_url (out of scope to change). Pull images
-    // once from the inventory endpoint and merge by id for the gear thumbnails.
+    // Availability doesn't return image_url / is_kit (out of scope to change).
+    // Pull them once from the inventory endpoint and merge by id.
     async function loadProductImages() {
       if (productImagesLoaded) return;
       try {
         const { products } = await api.get('/api/inventory/products');
-        for (const pr of (products || [])) if (pr.image_url) productImages[pr.id] = pr.image_url;
+        for (const pr of (products || [])) {
+          if (pr.image_url) productImages[pr.id] = pr.image_url;
+          productKits[pr.id] = { is_kit: !!pr.is_kit, component_count: pr.component_count || 0 };
+        }
       } catch { /* fail soft — placeholders render */ }
       productImagesLoaded = true;
     }
@@ -459,6 +470,33 @@
       return url
         ? `<img src="${escapeAttr(url)}" alt="" class="product-thumb" onerror="this.style.display='none'">`
         : `<div class="product-thumb-placeholder">${escapeHtml((p.name || '?').charAt(0).toUpperCase())}</div>`;
+    }
+
+    function isKit(p) { const k = productKits[p.id]; return !!(k && k.is_kit); }
+    function kitBadge(p) {
+      const k = productKits[p.id];
+      if (!k || !k.is_kit) return '';
+      return `<span class="kit-badge">KIT · ${k.component_count} item${k.component_count === 1 ? '' : 's'}</span>`;
+    }
+    async function toggleKitPanel(kitId) {
+      const panel = document.getElementById('kit-panel-' + kitId);
+      if (!panel) return;
+      if (!panel.hidden) { panel.hidden = true; return; }
+      panel.hidden = false;
+      if (panel.dataset.loaded) return;
+      panel.innerHTML = '<div class="kit-loading">Loading contents…</div>';
+      try {
+        let comps = kitComponentsCache[kitId];
+        if (!comps) {
+          const data = await api.get('/api/inventory/products/' + encodeURIComponent(kitId) + '/kit-components');
+          comps = data.components || [];
+          kitComponentsCache[kitId] = comps;
+        }
+        panel.innerHTML = comps.length
+          ? comps.map(c => `<div class="kit-component">${escapeHtml(String(c.quantity))}× ${escapeHtml(c.component_name)} <span style="color:var(--muted-soft);">${escapeHtml(c.component_sku)}</span></div>`).join('')
+          : '<div class="kit-loading">No components in this kit.</div>';
+        panel.dataset.loaded = '1';
+      } catch { panel.innerHTML = '<div class="kit-loading">Could not load contents.</div>'; }
     }
 
     // ---------- identity ----------
@@ -703,8 +741,8 @@
             <div class="gi-main">
               ${thumbHtml(p)}
               <div>
-                <div class="gi-name">${escapeHtml(p.name)}</div>
-                <div class="gi-sub">${escapeHtml(p.sku)} · ${escapeHtml(p.category || 'Uncategorised')}</div>
+                <div class="gi-name">${escapeHtml(p.name)}${kitBadge(p)}</div>
+                <div class="gi-sub">${escapeHtml(p.sku)} · ${escapeHtml(p.category || 'Uncategorised')}${isKit(p) ? ` · <a class="kit-toggle" data-kit="${escapeAttr(p.id)}">▾ contents</a>` : ''}</div>
               </div>
             </div>
             <div class="gi-avail">
@@ -716,7 +754,7 @@
               <span class="qty-val">${qty}</span>
               <button type="button" data-action="inc">+</button>
             </div>
-          </div>${warningHtml}`;
+          </div>${isKit(p) ? `<div class="kit-panel" id="kit-panel-${escapeAttr(p.id)}" hidden></div>` : ''}${warningHtml}`;
       }).join('') + '</div>';
 
       wrap.querySelectorAll('.qty-picker').forEach(picker => {
@@ -724,6 +762,9 @@
         picker.querySelectorAll('button').forEach(btn => {
           btn.addEventListener('click', () => adjustQty(productId, btn.dataset.action));
         });
+      });
+      wrap.querySelectorAll('.kit-toggle').forEach(a => {
+        a.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleKitPanel(a.dataset.kit); });
       });
       updateGearNextBtn();
       updateSaveBtnLabel();
@@ -961,6 +1002,21 @@
           <div class="conflict-window">${escapeHtml(formatDateShort(c.start))} → ${escapeHtml(formatDateShort(c.end))}</div>
         </li>`).join('');
       const available = Math.max(0, check.capacity - check.currently_booked);
+      // Kit shortage: list which components are short (derived-capacity kits).
+      let kitBlock = '';
+      if (check.is_kit && Array.isArray(check.kit_components)) {
+        const short = check.kit_components.filter(kc => !kc.available);
+        if (short.length) {
+          kitBlock = `
+            <div class="availability-warning-subtitle">Insufficient components:</div>
+            <ul class="availability-conflicts">${short.map(kc => `
+              <li><strong>${escapeHtml(kc.component_name)}</strong>: ${escapeHtml(String(kc.component_capacity))} available, need ${escapeHtml(String(kc.required_qty))} for this booking</li>
+            `).join('')}</ul>`;
+        }
+      }
+      const conflictBlock = conflicts
+        ? `<div class="availability-warning-subtitle">Conflicts with:</div><ul class="availability-conflicts">${conflicts}</ul>`
+        : '';
       return `
         <div class="availability-warning">
           <div class="availability-warning-head">
@@ -968,8 +1024,7 @@
             <span class="availability-warning-title">Overbook: ${check.requested} requested, ${available} available</span>
           </div>
           <div class="availability-warning-body">
-            <div class="availability-warning-subtitle">Conflicts with:</div>
-            <ul class="availability-conflicts">${conflicts}</ul>
+            ${kitBlock}${conflictBlock}
           </div>
         </div>`;
     }

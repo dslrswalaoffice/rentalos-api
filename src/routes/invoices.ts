@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { recomputeOrderTotals, resolveGstState } from '../lib/pricing.js';
+import { loadKitComponents } from '../lib/availability.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -84,7 +85,7 @@ type OrderFull = {
 type ItemRow = {
   id: string; item_type: string; description: string;
   product_id: string | null; product_name: string | null; product_sku: string | null;
-  hsn_code: string | null;
+  hsn_code: string | null; is_kit: boolean | null;
   quantity: number; daily_rate_paise: number | null; billable_days: number | null;
   unit_amount_paise: number; total_amount_paise: number; chargeable_paise: number;
   cgst_paise: number; sgst_paise: number; igst_paise: number;
@@ -122,7 +123,7 @@ async function loadItems(orderId: string, workspaceId: string): Promise<ItemRow[
   return await query<ItemRow>(sql`
     SELECT oi.id, oi.item_type::text AS item_type, oi.description,
            oi.product_id, pr.name AS product_name, pr.sku AS product_sku,
-           pr.hsn_code AS hsn_code,
+           pr.hsn_code AS hsn_code, pr.is_kit AS is_kit,
            oi.quantity, oi.daily_rate_paise, oi.billable_days,
            oi.unit_amount_paise, oi.total_amount_paise, oi.chargeable_paise,
            oi.cgst_paise, oi.sgst_paise, oi.igst_paise,
@@ -307,6 +308,21 @@ invoices.post('/:orderId', async (c) => {
   const invoiceNumber = buildInvoiceNumber(numberFormat, ymd, order.order_number, sequence, revision);
   const generatedAt = new Date().toISOString();
 
+  // Pre-load kit components for any kit line items — the snapshot is built
+  // synchronously below, so gather the async data first. Frozen into the
+  // snapshot for audit; the customer still sees one line.
+  const kitComponentMap = new Map<string, { product_name: string; product_sku: string; per_kit_qty: number }[]>();
+  for (const it of items) {
+    if (it.is_kit && it.product_id) {
+      const comps = await loadKitComponents(session.workspace.id, it.product_id);
+      kitComponentMap.set(it.id, comps.map((cmp) => ({
+        product_name: cmp.component_name,
+        product_sku: cmp.component_sku,
+        per_kit_qty: Number(cmp.quantity),
+      })));
+    }
+  }
+
   const snapshot = {
     workspace: {
       id: ws.id,
@@ -347,6 +363,14 @@ invoices.post('/:orderId', async (c) => {
       product_name: i.product_name,
       product_sku: i.product_sku,
       hsn_code: i.hsn_code ?? null,
+      is_kit: i.is_kit ?? false,
+      kit_components: i.is_kit
+        ? (kitComponentMap.get(i.id) ?? []).map((cmp) => ({
+            product_name: cmp.product_name,
+            product_sku: cmp.product_sku,
+            quantity: cmp.per_kit_qty * Number(i.quantity),
+          }))
+        : null,
       quantity: Number(i.quantity),
       daily_rate_paise: String(i.daily_rate_paise ?? ''),
       billable_days: i.billable_days,
