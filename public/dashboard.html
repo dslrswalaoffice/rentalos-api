@@ -908,6 +908,50 @@
         transition-duration: 0.001ms !important;
       }
     }
+
+    /* ========== command center widgets (Sub-turn 5a) ========== */
+    .dash-updated { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.03em; color: var(--muted-soft); white-space: nowrap; }
+    #dash-refresh.spinning svg { animation: dash-spin 0.7s linear infinite; }
+    @keyframes dash-spin { to { transform: rotate(360deg); } }
+
+    .widget-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; padding: 4px 0 8px; }
+    @media (max-width: 1024px) { .widget-grid { grid-template-columns: 1fr; } }
+    .widget { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; min-height: 210px; }
+    .widget.alert { border-color: #f0cdd1; background: linear-gradient(180deg, #fdf5f6, var(--card) 60%); }
+    .widget-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .widget-title { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.09em; margin: 0; }
+    .widget-count { font-family: var(--font-display); font-size: 18px; font-weight: 600; color: var(--head); }
+    .widget.alert .widget-count { color: var(--bad-strong); }
+    .widget-body { flex: 1; min-height: 0; }
+    .widget-foot { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12.5px; }
+    .widget-foot a { color: var(--head); text-decoration: none; font-weight: 600; }
+    .widget-foot a:hover { text-decoration: underline; }
+    .widget-empty { padding: 26px 0; text-align: center; color: var(--ok-strong); font-size: 13px; font-weight: 500; }
+    .widget-skel { padding: 26px 0; text-align: center; color: var(--muted-soft); font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+
+    .widget-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13px; }
+    .widget-row:last-child { border-bottom: none; }
+    .widget-row:hover { background: var(--accent-soft); margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 6px; }
+    .widget-row:hover + .widget-row { border-top: 1px solid transparent; }
+    .wr-num { font-family: var(--font-mono); font-weight: 700; color: var(--ink); font-size: 12.5px; flex-shrink: 0; }
+    .wr-main { flex: 1; min-width: 0; }
+    .wr-name { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wr-meta { font-size: 11px; color: var(--muted); margin-top: 1px; font-variant-numeric: tabular-nums; }
+    .wr-right { flex-shrink: 0; text-align: right; }
+    .wr-overdue { color: var(--bad-strong); font-weight: 600; font-size: 11.5px; }
+    .wr-amount { font-family: var(--font-mono); font-weight: 700; color: var(--ink); font-size: 12.5px; }
+    .wr-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .wr-pill.confirmed { background: var(--accent-soft); color: var(--head); }
+    .wr-pill.dispatched, .wr-pill.active { background: var(--orange-soft); color: var(--warn-strong); }
+    .wr-pill.returned, .wr-pill.closed { background: var(--ok-soft); color: var(--ok-strong); }
+    .wr-more { padding: 8px 0 0; font-size: 12px; color: var(--muted); }
+
+    .widget-big-number { font-family: var(--font-display); font-size: 30px; font-weight: 700; color: var(--head); margin: 6px 0 2px; letter-spacing: -0.01em; }
+    .widget.alert .widget-big-number, .widget-big-number.bad { color: var(--bad-strong); }
+    .widget-big-sub { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .widget-comparison { font-size: 12.5px; color: var(--muted); margin-top: 6px; font-weight: 500; }
+    .widget-comparison.up { color: var(--ok-strong); }
+    .widget-comparison.down { color: var(--bad-strong); }
   </style>
 </head>
 <body>
@@ -1039,6 +1083,11 @@
             </div>
           </div>
 
+          <span class="dash-updated" id="dash-updated"></span>
+          <button class="iconbtn" id="dash-refresh" aria-label="Refresh dashboard" title="Refresh">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+          </button>
+
           <a href="/new-order.html" class="primary-cta">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
             New order
@@ -1048,380 +1097,169 @@
 
       <!-- ================ content ================ -->
       <div class="content">
-        <!-- attention tray — what needs action right now -->
-        <div class="section-title">
-          <h3>Needs your attention</h3>
-          <span class="sub">4 things blocking cash or capacity today</span>
-        </div>
-
-        <div class="attention-grid">
-          <a href="/orders.html?tab=overdue" class="attention bad">
-            <span class="attention-badge">3</span>
-            <div class="attention-body">
-              <div class="attention-title">Overdue returns</div>
-              <div class="attention-meta">₹96,000 exposure · 2 over 48h · Skyline, Aarav, one more</div>
-            </div>
-            <span class="attention-action">Call clients
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </span>
-          </a>
-
-          <a href="/repairs.html?ticket=RPR-091" class="attention warn">
-            <span class="attention-badge">1</span>
-            <div class="attention-body">
-              <div class="attention-title">Damage claim awaiting your verdict</div>
-              <div class="attention-meta">Sony 24–70 GM · Nirvana Films · charge deposit or repair?</div>
-            </div>
-            <span class="attention-action">Review claim
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </span>
-          </a>
-
-          <a href="/insights.html?tab=capital" class="attention warn">
-            <span class="attention-badge">7</span>
-            <div class="attention-body">
-              <div class="attention-title">Investor payouts due today</div>
-              <div class="attention-meta">₹1,18,400 across 7 investors · monthly distribution</div>
-            </div>
-            <span class="attention-action">Approve batch
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </span>
-          </a>
-
-          <a href="/orders.html?tab=quotes" class="attention warn">
-            <span class="attention-badge">4</span>
-            <div class="attention-body">
-              <div class="attention-title">Quotes cold for 3+ days</div>
-              <div class="attention-meta">₹2,84,000 in play · send a WhatsApp nudge from Shoaib</div>
-            </div>
-            <span class="attention-action">Send follow-ups
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </span>
-          </a>
-        </div>
-
-        <!-- primary KPIs -->
-        <div class="section-title" style="margin-top:24px;">
-          <h3>This month at a glance</h3>
-          <span class="sub">1 – 7 Jul · updated just now</span>
-        </div>
-
-        <div class="kpi-grid">
-          <!-- Revenue -->
-          <a href="/insights.html" class="kpi">
-            <div class="kpi-label">Revenue · Jul</div>
-            <div class="kpi-value">₹8,42,500</div>
-            <div class="kpi-sub">
-              <span class="kpi-chip up">▲ +12.4%</span>
-              <span>vs ₹7,49,000 · Jun</span>
-            </div>
-            <svg class="kpi-spark" viewBox="0 0 126 30" preserveAspectRatio="none" aria-hidden="true">
-              <polyline points="0,26 18,24 36,25 54,18 72,20 90,12 108,14 126,6" fill="none" stroke="#1f9d57" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
-              <polyline points="0,30 0,26 18,24 36,25 54,18 72,20 90,12 108,14 126,6 126,30" fill="#1f9d57" fill-opacity="0.08" stroke="none"/>
-            </svg>
-          </a>
-
-          <!-- Fleet utilisation -->
-          <a href="/inventory.html" class="kpi">
-            <div class="kpi-label">Fleet utilisation</div>
-            <div class="kpi-value">68%</div>
-            <div class="kpi-sub">
-              <span class="kpi-chip up">▲ +5 pts</span>
-              <span>112 of 164 units out</span>
-            </div>
-            <svg class="kpi-spark" viewBox="0 0 126 30" preserveAspectRatio="none" aria-hidden="true">
-              <polyline points="0,20 18,22 36,18 54,19 72,14 90,15 108,10 126,9" fill="none" stroke="#26235a" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
-              <polyline points="0,30 0,20 18,22 36,18 54,19 72,14 90,15 108,10 126,9 126,30" fill="#26235a" fill-opacity="0.08" stroke="none"/>
-            </svg>
-          </a>
-
-          <!-- Overdue returns (alert) -->
-          <a href="/orders.html?tab=overdue" class="kpi alert">
-            <div class="kpi-label">Overdue returns</div>
-            <div class="kpi-value">3</div>
-            <div class="kpi-sub">
-              <span class="kpi-chip down">2 over 48h</span>
-              <span>₹96,000 exposure</span>
-            </div>
-            <div class="kpi-spark" style="height:30px;display:flex;align-items:end;gap:4px;padding:0 2px;">
-              <span style="flex:1;height:60%;background:#f4c4c8;border-radius:2px;"></span>
-              <span style="flex:1;height:80%;background:#f4c4c8;border-radius:2px;"></span>
-              <span style="flex:1;height:100%;background:#cc3340;border-radius:2px;"></span>
-            </div>
-          </a>
-
-          <!-- Deposits held -->
-          <a href="/billing.html?tab=deposits" class="kpi">
-            <div class="kpi-label">Deposits held</div>
-            <div class="kpi-value">₹2,15,000</div>
-            <div class="kpi-sub">
-              <span class="kpi-chip flat">— refundable</span>
-              <span>14 active orders</span>
-            </div>
-            <div class="kpi-spark" style="height:30px;display:flex;align-items:center;padding:0 2px;">
-              <div style="flex:1;height:6px;background:var(--border);border-radius:999px;overflow:hidden;">
-                <div style="height:100%;width:64%;background:linear-gradient(90deg,var(--head),var(--orange));"></div>
-              </div>
-            </div>
-          </a>
-        </div>
-
-        <!-- secondary KPIs -->
-        <div class="section-title" style="margin-top:22px;">
-          <h3>Money moving this week</h3>
-          <span class="sub">investor payouts, repair costs, dispatched value</span>
-        </div>
-
-        <div class="kpi-mini-grid">
-          <div class="kpi-mini">
-            <div class="kpi-mini-label">Investor payouts due</div>
-            <div class="kpi-mini-value">₹1,18,400</div>
-            <div class="kpi-mini-sub">
-              <span class="kpi-chip flat">7 investors</span>
-            </div>
-          </div>
-          <div class="kpi-mini">
-            <div class="kpi-mini-label">Open repair tickets</div>
-            <div class="kpi-mini-value">4</div>
-            <div class="kpi-mini-sub">
-              <span class="kpi-chip down">1 critical</span>
-            </div>
-          </div>
-          <div class="kpi-mini">
-            <div class="kpi-mini-label">Avg daily rate</div>
-            <div class="kpi-mini-value">₹2,940</div>
-            <div class="kpi-mini-sub">
-              <span class="kpi-chip up">▲ +3.1%</span>
-            </div>
-          </div>
-          <div class="kpi-mini">
-            <div class="kpi-mini-label">New orders · 7d</div>
-            <div class="kpi-mini-value">19</div>
-            <div class="kpi-mini-sub">
-              <span class="kpi-chip up">▲ +4</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- going out / coming back -->
-        <div class="section-title" style="margin-top:24px;">
-          <h3>On the floor today</h3>
-          <span class="sub">what's going out, what's coming back — filter by range</span>
-        </div>
-
-        <div class="split-grid">
-          <!-- GOING OUT -->
-          <section class="panel">
-            <header class="panel-head">
-              <span class="panel-title">Going out</span>
-              <span class="panel-count" id="go-count">2 today</span>
-              <div class="range-picker" id="go-picker">
-                <button class="range-picker-btn" data-picker="go">
-                  <span id="go-label">Today</span>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-                </button>
-                <div class="range-picker-drop" data-picker-drop="go">
-                  <button class="range-picker-opt active" data-range="today"    data-side="go">Today</button>
-                  <button class="range-picker-opt"        data-range="tomorrow" data-side="go">Tomorrow</button>
-                  <button class="range-picker-opt"        data-range="next7"    data-side="go">Next 7 days</button>
-                  <button class="range-picker-opt"        data-range="nextweek" data-side="go">Next week</button>
-                  <button class="range-picker-opt"        data-range="nextmonth" data-side="go">Next month</button>
-                </div>
-              </div>
-            </header>
-            <div id="go-list"></div>
-          </section>
-
-          <!-- COMING BACK -->
-          <section class="panel">
-            <header class="panel-head">
-              <span class="panel-title">Coming back</span>
-              <span class="panel-count" id="cb-count">2 today</span>
-              <div class="range-picker" id="cb-picker">
-                <button class="range-picker-btn" data-picker="cb">
-                  <span id="cb-label">Today</span>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-                </button>
-                <div class="range-picker-drop" data-picker-drop="cb">
-                  <button class="range-picker-opt active" data-range="today"    data-side="cb">Today</button>
-                  <button class="range-picker-opt"        data-range="tomorrow" data-side="cb">Tomorrow</button>
-                  <button class="range-picker-opt"        data-range="next7"    data-side="cb">Next 7 days</button>
-                  <button class="range-picker-opt"        data-range="nextweek" data-side="cb">Next week</button>
-                  <button class="range-picker-opt"        data-range="nextmonth" data-side="cb">Next month</button>
-                </div>
-              </div>
-            </header>
-            <div id="cb-list"></div>
-          </section>
-        </div>
-
-        <!-- activity feed -->
-        <div class="section-title" style="margin-top:24px;">
-          <h3>Recent activity</h3>
-          <span class="sub">last 12 hours across every hub</span>
-        </div>
-
-        <div class="activity">
-          <div class="activity-item">
-            <div class="activity-tag"><span class="status-chip chip-out">OUT</span></div>
-            <div class="activity-body">
-              <div class="activity-text">Dispatched Sony FX3 +2 items</div>
-              <div class="activity-meta">Aarav Studios · BK-2214</div>
-            </div>
-            <div class="activity-time">12m</div>
-          </div>
-          <div class="activity-item">
-            <div class="activity-tag"><span class="status-chip chip-ok">RTN</span></div>
-            <div class="activity-body">
-              <div class="activity-text">Returned DJI RS 3 Pro, condition OK</div>
-              <div class="activity-meta">Meera Kapadia · BK-2198</div>
-            </div>
-            <div class="activity-time">48m</div>
-          </div>
-          <div class="activity-item">
-            <div class="activity-tag"><span class="status-chip chip-ok">PAY</span></div>
-            <div class="activity-body">
-              <div class="activity-text">Payment received ₹64,000 (balance)</div>
-              <div class="activity-meta">Nirvana Films · INV-1042</div>
-            </div>
-            <div class="activity-time">2h</div>
-          </div>
-          <div class="activity-item">
-            <div class="activity-tag"><span class="status-chip chip-bad">RPR</span></div>
-            <div class="activity-body">
-              <div class="activity-text">Repair opened — Canon R5 shutter</div>
-              <div class="activity-meta">Ticket RPR-087 · critical</div>
-            </div>
-            <div class="activity-time">3h</div>
-          </div>
-          <div class="activity-item">
-            <div class="activity-tag"><span class="status-chip chip-warn">BKG</span></div>
-            <div class="activity-body">
-              <div class="activity-text">New order drafted — 3-day wedding</div>
-              <div class="activity-meta">Isha Trivedi · BK-2219</div>
-            </div>
-            <div class="activity-time">5h</div>
-          </div>
-          <div class="activity-item">
-            <div class="activity-tag"><span class="status-chip chip-bad">LATE</span></div>
-            <div class="activity-body">
-              <div class="activity-text">Overdue flagged — Aputure 600d ×2</div>
-              <div class="activity-meta">Skyline Events · BK-2176</div>
-            </div>
-            <div class="activity-time">6h</div>
-          </div>
+        <div class="widget-grid" id="widget-grid">
+          <div class="widget"><div class="widget-body"><div class="widget-skel">Loading briefing…</div></div></div>
         </div>
       </div>
     </div>
   </div>
 
   <script type="module">
-    import { ensureAuth } from '/_lib/api.js';
+    import { ensureAuth, formatINR } from '/_lib/api.js';
 
-    // ---------- data (pulled from prototype's dashboard arrays) ----------
-    const goingOutAll = [
-      { day:0,  when:'Today · 10:30', client:'Aarav Studios',       items:'Sony FX3 +2',       id:'BK-2214', tone:'out',  status:'READY' },
-      { day:0,  when:'Today · 14:00', client:'Vadodara Weddings',   items:'Sony A7S III +3',   id:'BK-2221', tone:'out',  status:'READY' },
-      { day:1,  when:'Tue · 09:30',   client:'Nirvana Films',       items:'Canon R5 +4',       id:'BK-2205', tone:'pend', status:'CONFIRMED' },
-      { day:3,  when:'Thu · 11:00',   client:'Rangoli Productions', items:'Godox kit +5',      id:'BK-2223', tone:'pend', status:'CONFIRMED' },
-      { day:6,  when:'Sun · 08:00',   client:'Isha Trivedi',        items:'Wedding kit +6',    id:'BK-2219', tone:'warn', status:'DRAFT' },
-      { day:12, when:'15 Jul',        client:'Lens & Light',        items:'Sony A7S III +2',   id:'BK-2224', tone:'pend', status:'CONFIRMED' },
-      { day:20, when:'23 Jul',        client:'Pixel Story Co.',     items:'Sennheiser MKH ×2', id:'BK-2231', tone:'pend', status:'CONFIRMED' }
-    ];
-    const comingBackAll = [
-      { day:0,  when:'Today · 18:00', client:'Skyline Events',      items:'Aputure 600d ×2',   id:'BK-2176', tone:'bad',  status:'OVERDUE' },
-      { day:0,  when:'Today · 19:00', client:'Meera Kapadia',       items:'DJI RS 3 Pro',      id:'BK-2198', tone:'out',  status:'DUE' },
-      { day:1,  when:'Tue · 18:00',   client:'Aarav Studios',       items:'Sony FX3 +2',       id:'BK-2214', tone:'out',  status:'DUE' },
-      { day:3,  when:'Thu · 17:00',   client:'Nirvana Films',       items:'Canon R5 +4',       id:'BK-2205', tone:'pend', status:'ON TIME' },
-      { day:7,  when:'18 Jul',        client:'Vadodara Weddings',   items:'Sony A7S III +3',   id:'BK-2221', tone:'pend', status:'ON TIME' },
-      { day:15, when:'22 Jul',        client:'Rangoli Productions', items:'Godox kit +5',      id:'BK-2223', tone:'pend', status:'ON TIME' }
-    ];
-    const RANGES = {
-      today:     { label: 'Today',        min: 0, max: 0 },
-      tomorrow:  { label: 'Tomorrow',     min: 1, max: 1 },
-      next7:     { label: 'Next 7 days',  min: 0, max: 7 },
-      nextweek:  { label: 'Next week',    min: 7, max: 13 },
-      nextmonth: { label: 'Next month',   min: 0, max: 30 }
-    };
+    const STATUS_LABELS = { draft:'Draft', quoted:'Quoted', confirmed:'Confirmed', dispatched:'Dispatched', active:'Active', returned:'Returned', closed:'Closed', cancelled:'Cancelled' };
+    const MAX_ROWS = 10;
 
-    // ---------- render ----------
-    function renderList(sideKey, list, range) {
-      const container = document.getElementById(sideKey + '-list');
-      const label     = document.getElementById(sideKey + '-label');
-      const count     = document.getElementById(sideKey + '-count');
-      const { min, max, label: rLabel } = RANGES[range];
-      const filtered = list.filter(x => x.day >= min && x.day <= max);
-      label.textContent = rLabel;
-      count.textContent = filtered.length + (filtered.length === 1 ? ' order' : ' orders');
+    const state = { dashboard: { data: null, loading: false, loaded_at: null } };
 
-      if (filtered.length === 0) {
-        container.innerHTML = '<div class="empty-row">No orders in this range.</div>';
-        return;
-      }
-      container.innerHTML = filtered.map(function (r) {
-        return (
-          '<a href="/orders/' + r.id + '.html" class="order-row">' +
-            '<span class="order-when">' + r.when + '</span>' +
-            '<div class="order-body">' +
-              '<div class="order-client">' + r.client + '</div>' +
-              '<div class="order-items">' + r.items + '</div>' +
-            '</div>' +
-            '<span class="status-chip chip-' + r.tone + '">' +
-              '<span class="dot"></span>' + r.status +
-            '</span>' +
-            '<span class="order-id">' + r.id + '</span>' +
-          '</a>'
-        );
-      }).join('');
+    // ---------- helpers ----------
+    function escapeHtml(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+    function escapeAttr(s){ return escapeHtml(s).replace(/`/g,'&#96;'); }
+    function fmtTime(iso){ const d=new Date(iso); if(isNaN(d)) return ''; return d.toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit',hour12:true}); }
+    function fmtDayShort(iso){ const d=new Date(iso); if(isNaN(d)) return ''; return d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'}); }
+    function timeAgo(date){ const secs=Math.round((Date.now()-date.getTime())/1000); if(secs<45) return 'just now'; const m=Math.round(secs/60); if(m<60) return `${m} min ago`; const h=Math.round(m/60); if(h<24) return `${h}h ago`; return date.toLocaleDateString('en-IN',{day:'numeric',month:'short'}); }
+    function pill(status){ const s=String(status||'').toLowerCase(); return `<span class="wr-pill ${escapeAttr(s)}">${escapeHtml(STATUS_LABELS[s]||s)}</span>`; }
+
+    // ---------- widget builders ----------
+    function widgetShell(title, countText, bodyHtml, footHtml, alert){
+      return `<div class="widget${alert?' alert':''}">
+        <div class="widget-head"><h3 class="widget-title">${escapeHtml(title)}</h3>${countText!==''?`<span class="widget-count">${escapeHtml(String(countText))}</span>`:''}</div>
+        <div class="widget-body">${bodyHtml}</div>
+        ${footHtml?`<div class="widget-foot">${footHtml}</div>`:''}
+      </div>`;
+    }
+    function emptyState(msg){ return `<div class="widget-empty">${escapeHtml(msg)} ✓</div>`; }
+
+    function orderRows(orders, metaFn){
+      let html = orders.slice(0, MAX_ROWS).map(o => `
+        <div class="widget-row" data-href="/order.html?id=${escapeAttr(o.id)}">
+          <span class="wr-num">#${escapeHtml(String(o.order_number))}</span>
+          <div class="wr-main">
+            <div class="wr-name">${escapeHtml(o.customer_name || 'Unknown')}</div>
+            <div class="wr-meta">${metaFn(o)}</div>
+          </div>
+          <span class="wr-right">${pill(o.status)}</span>
+        </div>`).join('');
+      if (orders.length > MAX_ROWS) html += `<div class="wr-more">+${orders.length - MAX_ROWS} more</div>`;
+      return html;
     }
 
-    const state = { go: 'today', cb: 'today' };
-    renderList('go', goingOutAll,   state.go);
-    renderList('cb', comingBackAll, state.cb);
+    function renderReturningToday(w){
+      const body = w.count ? orderRows(w.orders, o => `${o.pending_count} item${o.pending_count===1?'':'s'} · ${fmtTime(o.rental_end)}`) : emptyState('Nothing due back today');
+      return widgetShell('Returning today', `${w.count} order${w.count===1?'':'s'}`, body, '<a href="/calendar.html?view=day">Open calendar →</a>');
+    }
+    function renderDispatchingToday(w){
+      const body = w.count ? orderRows(w.orders, o => `${o.pending_count} item${o.pending_count===1?'':'s'} · ${fmtTime(o.rental_start)}`) : emptyState('Nothing to hand over today');
+      return widgetShell('Dispatching today', `${w.count} order${w.count===1?'':'s'}`, body, '<a href="/calendar.html?view=day">Open calendar →</a>');
+    }
+    function renderOverdue(w){
+      const body = w.count ? (w.orders.slice(0,MAX_ROWS).map(o => `
+        <div class="widget-row" data-href="/order.html?id=${escapeAttr(o.id)}">
+          <span class="wr-num">#${escapeHtml(String(o.order_number))}</span>
+          <div class="wr-main"><div class="wr-name">${escapeHtml(o.customer_name||'Unknown')}</div>
+          <div class="wr-meta">${o.pending_count} item${o.pending_count===1?'':'s'} · <span class="wr-overdue">${Math.floor(o.days_overdue)} day${Math.floor(o.days_overdue)===1?'':'s'} overdue</span></div></div>
+          <span class="wr-right">${pill(o.status)}</span>
+        </div>`).join('') + (w.count>MAX_ROWS?`<div class="wr-more">+${w.count-MAX_ROWS} more</div>`:'')) : emptyState('No overdue returns');
+      return widgetShell('Overdue returns', `${w.count}`, body, '<a href="/orders.html?status=dispatched">View orders →</a>', w.count>0);
+    }
+    function renderOverbook(w){
+      const body = w.count ? (w.warnings.slice(0,MAX_ROWS).map(cf => `
+        <div class="widget-row" data-href="/calendar.html?view=week&date=${escapeAttr((cf.conflict_start||'').slice(0,10))}">
+          <div class="wr-main"><div class="wr-name">${escapeHtml(cf.product_name)}</div>
+          <div class="wr-meta">${cf.total_units} cap · ${cf.requested_units} booked · ${fmtDayShort(cf.conflict_start)} → ${fmtDayShort(cf.conflict_end)}</div></div>
+          <span class="wr-right"><span class="wr-overdue">⚠</span></span>
+        </div>`).join('') + (w.count>MAX_ROWS?`<div class="wr-more">+${w.count-MAX_ROWS} more</div>`:'')) : emptyState('No conflicts in the next 14 days');
+      return widgetShell('Overbook warnings', `${w.count}`, body, '<a href="/calendar.html?view=week">Open calendar →</a>', w.count>0);
+    }
+    function renderUnpaid(w){
+      const total = w.total_unpaid_paise || 0;
+      let body;
+      if (total > 0){
+        const rows = (w.top_5||[]).map(o=>`
+          <div class="widget-row" data-href="/order.html?id=${escapeAttr(o.id)}">
+            <span class="wr-num">#${escapeHtml(String(o.order_number))}</span>
+            <div class="wr-main"><div class="wr-name">${escapeHtml(o.customer_name||'Unknown')}</div></div>
+            <span class="wr-right"><span class="wr-amount">${formatINR(o.balance_paise)}</span></span>
+          </div>`).join('');
+        body = `<div class="widget-big-number">${formatINR(total)}</div><div class="widget-big-sub">outstanding across active orders</div>${rows}`;
+      } else body = emptyState('No outstanding balance');
+      return widgetShell('Unpaid balance', '', body, '<a href="/billing.html">Open billing →</a>');
+    }
+    function renderRevenue(w){
+      const tw = w.this_week_paise || 0, lw = w.last_week_paise || 0;
+      let body;
+      if (tw === 0 && lw === 0){
+        body = `<div class="widget-big-number">${formatINR(0)}</div><div class="widget-big-sub">No payments recorded yet this week</div>`;
+      } else {
+        let cmp;
+        if (w.delta_pct === null || lw === 0){ cmp = `<div class="widget-comparison">— no baseline last week</div>`; }
+        else { const up = w.delta_pct >= 0; cmp = `<div class="widget-comparison ${up?'up':'down'}">${up?'▲':'▼'} ${Math.abs(w.delta_pct)}% vs last week</div>`; }
+        body = `<div class="widget-big-number">${formatINR(tw)}</div><div class="widget-big-sub">Last week: ${formatINR(lw)}</div>${cmp}`;
+      }
+      return widgetShell("This week's revenue", '', body, '<a href="/insights.html">Open insights →</a>');
+    }
 
-    // ---------- range picker interactivity ----------
-    document.querySelectorAll('.range-picker-btn').forEach(function (btn) {
-      btn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        const side = btn.getAttribute('data-picker');
-        const picker = document.getElementById(side + '-picker');
-        // close the other one
-        document.querySelectorAll('.range-picker.open').forEach(function (p) {
-          if (p !== picker) p.classList.remove('open');
-        });
-        picker.classList.toggle('open');
+    // ---------- render ----------
+    function render(){
+      const grid = document.getElementById('widget-grid');
+      const d = state.dashboard.data;
+      if (state.dashboard.loading && !d){
+        grid.innerHTML = Array.from({length:6}).map(()=>`<div class="widget"><div class="widget-body"><div class="widget-skel">Loading…</div></div></div>`).join('');
+        return;
+      }
+      if (!d){ grid.innerHTML = `<div class="widget"><div class="widget-body"><div class="widget-skel">Couldn't load — hit refresh</div></div></div>`; return; }
+      grid.innerHTML = [
+        renderReturningToday(d.returning_today),
+        renderDispatchingToday(d.dispatching_today),
+        renderOverdue(d.overdue_returns),
+        renderOverbook(d.overbook_warnings),
+        renderUnpaid(d.unpaid_balance),
+        renderRevenue(d.revenue_week),
+      ].join('');
+      grid.querySelectorAll('.widget-row[data-href]').forEach(row=>{
+        row.addEventListener('click', ()=>{ location.href = row.dataset.href; });
       });
-    });
-    document.querySelectorAll('.range-picker-opt').forEach(function (opt) {
-      opt.addEventListener('click', function () {
-        const side = opt.getAttribute('data-side');
-        const range = opt.getAttribute('data-range');
-        state[side] = range;
-        // update active state
-        document.querySelectorAll('.range-picker-opt[data-side="' + side + '"]').forEach(function (o) {
-          o.classList.toggle('active', o.getAttribute('data-range') === range);
-        });
-        renderList(side, side === 'go' ? goingOutAll : comingBackAll, range);
-        document.getElementById(side + '-picker').classList.remove('open');
-      });
-    });
+      updateStamp();
+    }
 
-    // click-outside to close pickers + notif
-    document.addEventListener('click', function (e) {
-      document.querySelectorAll('.range-picker.open').forEach(function (p) {
-        if (!p.contains(e.target)) p.classList.remove('open');
-      });
-      const nw = document.getElementById('notif-wrap');
-      if (nw.classList.contains('open') && !nw.contains(e.target)) nw.classList.remove('open');
-    });
+    function updateStamp(){
+      const el = document.getElementById('dash-updated');
+      el.textContent = state.dashboard.loaded_at ? 'Updated ' + timeAgo(state.dashboard.loaded_at) : '';
+    }
 
-    // ---------- notification dropdown ----------
+    async function loadDashboard(){
+      state.dashboard.loading = true;
+      document.getElementById('dash-refresh').classList.add('spinning');
+      render();
+      try {
+        const res = await fetch('/api/dashboard', { credentials:'include' });
+        if (res.status === 401){ window.location.replace('/index.html'); return; }
+        if (!res.ok) throw new Error('dashboard fetch failed: ' + res.status);
+        state.dashboard.data = await res.json();
+        state.dashboard.loaded_at = new Date();
+      } catch (err){
+        console.error(err);
+      } finally {
+        state.dashboard.loading = false;
+        document.getElementById('dash-refresh').classList.remove('spinning');
+        render();
+      }
+    }
+
+    document.getElementById('dash-refresh').addEventListener('click', loadDashboard);
+    setInterval(updateStamp, 60000);
+
+    // ---------- notification dropdown (pre-existing shell) ----------
     document.getElementById('notif-btn').addEventListener('click', function (e) {
       e.stopPropagation();
       document.getElementById('notif-wrap').classList.toggle('open');
     });
+    document.addEventListener('click', function (e) {
+      const nw = document.getElementById('notif-wrap');
+      if (nw && nw.classList.contains('open') && !nw.contains(e.target)) nw.classList.remove('open');
+    });
 
-    // ---------- identity hydration + time-aware greeting ----------
+    // ---------- identity hydration + greeting, then load ----------
     (async () => {
       let firstName = 'Aamir';
       try {
@@ -1433,8 +1271,6 @@
         document.getElementById('user-role').textContent = user.role[0].toUpperCase() + user.role.slice(1);
         document.getElementById('user-avatar').textContent = firstName[0]?.toUpperCase() ?? 'U';
       } catch (err) {
-        // ensureAuth already redirected to /index.html on 401. Anything else
-        // is a genuine error; leave the hardcoded fallback name in place.
         if (err.status !== 401) console.error('identity hydration failed', err);
       }
       const h = new Date().getHours();
@@ -1445,6 +1281,7 @@
       else if (h < 22) g = `Good evening, ${firstName}`;
       else g = `Working late, ${firstName}`;
       document.getElementById('greeting').textContent = g;
+      loadDashboard();
     })();
 
     // ---------- keyboard shortcut: / or ⌘K to focus search ----------
@@ -1458,6 +1295,7 @@
         document.getElementById('global-search').focus();
       }
     });
+
   </script>
 </body>
 </html>
