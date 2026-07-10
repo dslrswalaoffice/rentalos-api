@@ -68,6 +68,10 @@ const TEMPLATES: Record<string, { title: string; body?: string }> = {
     title: 'Order #{order_number} force-moved to {new_status}',
     body: 'Reason: {reason}',
   },
+  'order.extended': {
+    title: 'Order #{order_number} extended by {delta_days} day(s)',
+    body: 'Customer: {customer_name}. Extended by {actor_name}.',
+  },
   'order.item.dispatched': {
     title: '{count} items dispatched on Order #{order_number}',
     body: 'Handed to {handed_to} by {actor_name}',
