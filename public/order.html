@@ -276,6 +276,18 @@
     .availability-line.warn { color: var(--warn-strong); }
     .availability-line .ea-detail { color: var(--muted); font-size: 11.5px; }
     .tl-sub { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+    /* 6d: deposit card + status pills */
+    .btn.tiny { padding: 5px 10px; font-size: 11.5px; border-radius: 8px; }
+    .deposit-card .label { color: var(--muted-strong); font-size: 12.5px; }
+    .deposit-card .value { font-weight: 600; color: var(--head); }
+    .deposit-amount, .deposit-status { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; }
+    .deposit-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .deposit-final-note { font-size: 12px; color: var(--muted); }
+    .pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+    .pill.ok { background: #d1fae5; color: #065f46; }
+    .pill.warn { background: #fef3c7; color: #92400e; }
+    .pill.bad { background: #fee2e2; color: #991b1b; }
+    .pill.muted { background: #eef0f3; color: var(--muted-strong); }
     .cf-status { display: inline-block; padding: 1px 7px; border-radius: 999px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
     .cf-status.confirmed { background: var(--accent-soft); color: var(--head); }
     .cf-status.dispatched, .cf-status.active { background: var(--orange-soft); color: var(--warn-strong); }
@@ -805,6 +817,34 @@
     </div>
   </div>
 
+  <!-- ============ EDIT DEPOSIT AMOUNT MODAL (Sub-turn 6d) ============ -->
+  <div class="modal-backdrop" id="deposit-edit-modal">
+    <div class="modal" role="dialog" aria-labelledby="deposit-edit-title" style="max-width:420px;">
+      <header class="modal-head">
+        <div class="modal-title" id="deposit-edit-title">Deposit amount</div>
+        <button class="modal-close" id="deposit-edit-close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <form id="deposit-edit-form" novalidate>
+        <div class="modal-body">
+          <div id="deposit-edit-error" class="form-error" style="display:none;"></div>
+          <div class="field">
+            <label for="deposit-edit-amount">Required deposit <span class="hint">0 to disable</span></label>
+            <div class="prefix-wrap">
+              <span class="prefix">₹</span>
+              <input id="deposit-edit-amount" type="number" min="0" step="1" placeholder="0" autocomplete="off">
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost" id="deposit-edit-cancel">Cancel</button>
+          <button type="submit" class="btn primary" id="deposit-edit-submit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ============ REFUND PAYMENT MODAL ============ -->
   <div class="modal-backdrop" id="refund-modal">
     <div class="modal" role="dialog" aria-labelledby="refund-modal-title" style="max-width:480px;">
@@ -1085,6 +1125,7 @@
         ${headerCardHtml()}
         ${itemsCardHtml()}
         ${paymentsCardHtml()}
+        ${depositCardHtml()}
         ${invoicesCardHtml()}
         ${timelineCardHtml()}
         ${actionsCardHtml()}
@@ -1093,6 +1134,7 @@
 
       wireItemsCard();
       wirePaymentsCard();
+      wireDepositCard();
       wireInvoicesCard();
       wireActionsCard();
       wireFinalizeBanner();
@@ -2012,6 +2054,7 @@
       else if (isfModal.classList.contains('open')) closeIsfModal();
       else if (itemModal.classList.contains('open')) closeItemModal();
       else if (extendModal.classList.contains('open')) closeExtendModal();
+      else if (depositEditModal.classList.contains('open')) closeDepositEditModal();
       else if (forceModal.classList.contains('open')) closeForceModal();
     });
 
@@ -2147,6 +2190,9 @@
         state.payments = payments || [];
         let inT = 0, outT = 0;
         for (const p of state.payments) {
+          // Deposits are refundable holdings, not rental payments — the deposit
+          // card tracks them; the rental summary counts rental-kind only.
+          if (p.payment_kind && p.payment_kind !== 'rental') continue;
           if (p.direction === 'in') inT += Number(p.amount_paise);
           else outT += Number(p.amount_paise);
         }
@@ -2872,17 +2918,20 @@
         </div>`;
     }
 
+    const DEPOSIT_ROW_LABEL = { deposit: 'DEPOSIT', deposit_refund: 'DEPOSIT REFUND', deposit_forfeit: 'FORFEIT' };
     function paymentRowHtml(p) {
       const isIn = p.direction === 'in';
       const isRefund = p.is_refund_of_payment_id != null;
-      const pillLabel = isIn ? 'PAID' : 'REFUND';
+      const isDeposit = p.payment_kind && p.payment_kind !== 'rental';
+      const pillLabel = isDeposit ? DEPOSIT_ROW_LABEL[p.payment_kind] : (isIn ? 'PAID' : 'REFUND');
       const methodLabel = METHOD_LABELS[p.method] || p.method;
       const ref = p.reference ? ` · <span class="ref">${escapeHtml(p.reference)}</span>` : '';
       const cleanNotes = stripRefundPrefix(p.notes);
       const notes = cleanNotes ? `<div class="pay-notes">${escapeHtml(cleanNotes)}</div>` : '';
       const actor = p.received_by_name ? `<div class="pay-actor">by ${escapeHtml(p.received_by_name)}</div>` : '';
       const refundable = isIn ? netRefundable(p) : 0;
-      const refundBtn = (isIn && refundable > 0)
+      // Deposits are released/forfeited via the Deposit card, not the rental refund flow.
+      const refundBtn = (isIn && !isDeposit && refundable > 0)
         ? `<button class="text-btn" data-refund="${escapeAttr(p.id)}">Refund</button>` : '';
       const kebab = p.is_deletable
         ? `<button class="kebab" data-pay-kebab="${escapeAttr(p.id)}" aria-label="Payment actions">${dotsSvg()}</button>` : '';
@@ -2925,6 +2974,139 @@
       });
     }
 
+    // ---------- deposit card (Sub-turn 6d) ----------
+    const DEPOSIT_STATUS_PILL = {
+      none:              { label: 'None',              cls: 'muted' },
+      pending:           { label: 'Pending',           cls: 'warn' },
+      held:              { label: 'Held',              cls: 'ok' },
+      partial_forfeited: { label: 'Partial forfeited', cls: 'warn' },
+      fully_forfeited:   { label: 'Forfeited',          cls: 'bad' },
+      released:          { label: 'Released',           cls: 'muted' },
+    };
+    function renderDepositStatusPill(status) {
+      const p = DEPOSIT_STATUS_PILL[status] || DEPOSIT_STATUS_PILL.none;
+      return `<span class="pill ${p.cls}">${p.label}</span>`;
+    }
+
+    function depositPayments() {
+      return (state.payments || []).filter(p => ['deposit', 'deposit_refund', 'deposit_forfeit'].includes(p.payment_kind));
+    }
+    function depositHeldNetPaise() {
+      let held = 0, refunded = 0, forfeited = 0;
+      for (const p of depositPayments()) {
+        const amt = Number(p.amount_paise);
+        if (p.payment_kind === 'deposit') held += amt;
+        else if (p.payment_kind === 'deposit_refund') refunded += amt;
+        else if (p.payment_kind === 'deposit_forfeit') forfeited += amt;
+      }
+      return Math.max(0, held - refunded - forfeited);
+    }
+
+    function depositCardHtml() {
+      const o = state.order;
+      if (o.status === 'cancelled') return ''; // cancelled orders don't manage deposits
+      const required = Number(o.deposit_required_paise || 0);
+      const status = o.deposit_status || 'none';
+      const netHeld = depositHeldNetPaise();
+
+      let actions = '';
+      if (status === 'none') {
+        // No required amount set yet — a deposit payment wouldn't register until
+        // a required amount exists, so prompt that first.
+        actions = `<button class="btn primary tiny" id="btn-deposit-set">Set deposit amount</button>`;
+      } else if (status === 'pending') {
+        actions = `<button class="btn primary tiny" id="btn-deposit-record">Record deposit</button>`;
+      } else if (status === 'held') {
+        actions = `
+          <button class="btn ghost tiny" id="btn-deposit-release">Release deposit</button>
+          <button class="btn danger tiny" id="btn-deposit-forfeit">Forfeit deposit</button>`;
+      } else {
+        // released / fully_forfeited / partial_forfeited → read-only summary.
+        actions = `<div class="deposit-final-note">Deposit fully resolved. See payment records above.</div>`;
+      }
+
+      return `
+        <div class="card deposit-card">
+          <div class="card-head">
+            <h3>Deposit</h3>
+            <button class="btn ghost tiny" id="btn-deposit-edit">Edit amount</button>
+          </div>
+          <div class="deposit-amount"><span class="label">Required</span><span class="value">${formatINR(required)}</span></div>
+          <div class="deposit-amount"><span class="label">Currently held</span><span class="value">${formatINR(netHeld)}</span></div>
+          <div class="deposit-status"><span class="label">Status</span><span class="value">${renderDepositStatusPill(status)}</span></div>
+          <div class="deposit-actions" id="deposit-actions">${actions}</div>
+        </div>`;
+    }
+
+    function wireDepositCard() {
+      const edit = document.getElementById('btn-deposit-edit');
+      if (edit) edit.addEventListener('click', openDepositEditModal);
+      const setAmt = document.getElementById('btn-deposit-set');
+      if (setAmt) setAmt.addEventListener('click', openDepositEditModal);
+      const rec = document.getElementById('btn-deposit-record');
+      if (rec) rec.addEventListener('click', () => openDepositPayModal('deposit'));
+      const rel = document.getElementById('btn-deposit-release');
+      if (rel) rel.addEventListener('click', () => openDepositPayModal('deposit_refund'));
+      const forf = document.getElementById('btn-deposit-forfeit');
+      if (forf) forf.addEventListener('click', () => openDepositPayModal('deposit_forfeit'));
+    }
+
+    // Reuse the record-payment modal, tagged with a deposit kind. Prefill amount
+    // from the required (collection) or the net held (release/forfeit).
+    function openDepositPayModal(kind) {
+      const o = state.order;
+      payKind = kind;
+      const titleMap = {
+        deposit: 'Record deposit',
+        deposit_refund: 'Release deposit',
+        deposit_forfeit: 'Forfeit deposit',
+      };
+      const prefillPaise = kind === 'deposit' ? Number(o.deposit_required_paise || 0) : depositHeldNetPaise();
+      document.getElementById('pay-form-error').style.display = 'none';
+      document.getElementById('pay-amount').value = prefillPaise > 0 ? paiseToRupees(prefillPaise) : '';
+      document.getElementById('pay-method').value = 'upi';
+      document.getElementById('pay-reference').value = '';
+      document.getElementById('pay-notes').value = '';
+      document.getElementById('pay-datetime').value = toLocalDatetimeInput(new Date());
+      document.getElementById('pay-modal-title').textContent = titleMap[kind] || 'Record payment';
+      updatePayPreview();
+      updatePayNudge();
+      payModal.classList.add('open');
+      setTimeout(() => document.getElementById('pay-amount').focus(), 40);
+    }
+
+    // ---------- edit deposit amount modal ----------
+    function openDepositEditModal() {
+      const o = state.order;
+      document.getElementById('deposit-edit-error').style.display = 'none';
+      document.getElementById('deposit-edit-amount').value = Number(o.deposit_required_paise)
+        ? paiseToRupees(Number(o.deposit_required_paise)) : '';
+      depositEditModal.classList.add('open');
+      setTimeout(() => document.getElementById('deposit-edit-amount').focus(), 40);
+    }
+    function closeDepositEditModal() { depositEditModal.classList.remove('open'); }
+    const depositEditModal = document.getElementById('deposit-edit-modal');
+    document.getElementById('deposit-edit-close').addEventListener('click', closeDepositEditModal);
+    document.getElementById('deposit-edit-cancel').addEventListener('click', closeDepositEditModal);
+    depositEditModal.addEventListener('click', (e) => { if (e.target === depositEditModal) closeDepositEditModal(); });
+    document.getElementById('deposit-edit-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errBox = document.getElementById('deposit-edit-error');
+      errBox.style.display = 'none';
+      const rupees = Number(document.getElementById('deposit-edit-amount').value || 0);
+      if (!Number.isFinite(rupees) || rupees < 0) { errBox.style.display = 'block'; errBox.textContent = 'Enter a non-negative amount.'; return; }
+      const submit = document.getElementById('deposit-edit-submit');
+      submit.disabled = true; submit.textContent = 'Saving…';
+      try {
+        await api.patch(`/api/orders/${state.orderId}/deposit`, { deposit_required_paise: Math.round(rupees * 100) });
+        closeDepositEditModal();
+        showToast('Deposit amount updated');
+        await loadOrder();
+      } catch (err) {
+        errBox.style.display = 'block'; errBox.textContent = 'Could not save: ' + (err.body?.error || err.message);
+      } finally { submit.disabled = false; submit.textContent = 'Save'; }
+    });
+
     function openPaymentMenu(btn, paymentId) {
       closeAllMenus();
       const menu = document.createElement('div');
@@ -2952,6 +3134,7 @@
       const code = err.body?.error;
       if (code === 'refund_exceeds_refundable') return `Refund exceeds the refundable amount (${formatINR(err.body.refundable_paise)}).`;
       if (code === 'order_cancelled') return 'This order is cancelled — payments are locked.';
+      if (code === 'no_deposit_to_release') return 'No held deposit to release or forfeit on this order.';
       if (code && String(code).startsWith('not_deletable')) return 'This payment can no longer be deleted (correction window elapsed).';
       return 'Something went wrong: ' + (code || err.message || 'unknown error');
     }
@@ -2959,8 +3142,11 @@
     // ---------- record payment modal ----------
     const payModal = document.getElementById('pay-modal');
     const payForm = document.getElementById('pay-form');
+    let payKind = 'rental'; // 'rental' | 'deposit' | 'deposit_refund' | 'deposit_forfeit'
 
     function openPayModal() {
+      payKind = 'rental';
+      document.getElementById('pay-modal-title').textContent = 'Record payment';
       document.getElementById('pay-form-error').style.display = 'none';
       document.getElementById('pay-amount').value = '';
       document.getElementById('pay-method').value = 'upi';
@@ -3014,13 +3200,18 @@
       if (reference) payload.reference = reference;
       if (notes) payload.notes = notes;
       if (dt) payload.occurred_at = new Date(dt).toISOString();
+      if (payKind !== 'rental') payload.payment_kind = payKind;
 
       const submit = document.getElementById('pay-submit');
       submit.disabled = true; submit.textContent = 'Recording…';
       try {
         await api.post(`/api/order-payments/${state.orderId}`, payload);
         closePayModal();
-        showToast(`Payment of ${formatINR(amount_paise)} recorded`);
+        const doneMsg = payKind === 'deposit' ? `Deposit of ${formatINR(amount_paise)} recorded`
+          : payKind === 'deposit_refund' ? `Deposit of ${formatINR(amount_paise)} released`
+          : payKind === 'deposit_forfeit' ? `Deposit of ${formatINR(amount_paise)} forfeited`
+          : `Payment of ${formatINR(amount_paise)} recorded`;
+        showToast(doneMsg);
         await refreshAfterPayment();
       } catch (err) {
         errBox.style.display = 'block';

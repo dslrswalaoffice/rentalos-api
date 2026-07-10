@@ -131,6 +131,10 @@
     .rental-sub { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: 0.02em; }
     .status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
     .status-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    /* 6d: late badge + late-only toggle */
+    .late-badge { display: inline-flex; align-items: center; margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .chip-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; height: 36px; background: var(--thead); border: 1px solid var(--border); border-radius: 9px; font-size: 12.5px; color: var(--muted-strong); cursor: pointer; }
+    .chip-toggle input { cursor: pointer; }
     .status-draft      { background: #eef0f3; color: var(--muted-strong); }
     .status-quoted     { background: var(--warn-soft); color: var(--warn-strong); }
     .status-confirmed  { background: var(--accent-soft); color: var(--head); }
@@ -336,6 +340,7 @@
             </details>
             <label>From <input type="date" id="filter-from" class="input" /></label>
             <label>To <input type="date" id="filter-to" class="input" /></label>
+            <label class="chip-toggle"><input type="checkbox" id="filter-late-only" /> Late only</label>
             <button class="btn ghost" id="clear-filters">Clear all</button>
           </div>
           <div class="filter-chips" id="filter-chips"></div>
@@ -380,6 +385,7 @@
         sort: 'created_at_desc',
         page: 1,
         limit: 20,
+        late_only: false,
       },
       pagination: { total: 0, total_pages: 0 },
       orders: [],
@@ -408,6 +414,7 @@
       f.sort = VALID_SORTS.includes(sort) ? sort : 'created_at_desc';
       const page = parseInt(p.get('page') || '1', 10);
       f.page = Number.isFinite(page) && page >= 1 ? page : 1;
+      f.late_only = p.get('late_only') === '1';
     }
 
     function buildQueryString(f) {
@@ -418,6 +425,7 @@
       if (f.to) params.set('to', f.to);
       if (f.sort !== 'created_at_desc') params.set('sort', f.sort);
       if (f.page > 1) params.set('page', f.page);
+      if (f.late_only) params.set('late_only', '1');
       return params.toString();
     }
 
@@ -441,6 +449,7 @@
       document.querySelectorAll('#status-multi input[type=checkbox]').forEach(cb => {
         cb.checked = state.filters.status.has(cb.value);
       });
+      document.getElementById('filter-late-only').checked = state.filters.late_only;
     }
 
     // ---------- fetch + render ----------
@@ -466,7 +475,7 @@
 
     function hasActiveFilters() {
       const f = state.filters;
-      return !!(f.q || f.status.size || f.from || f.to);
+      return !!(f.q || f.status.size || f.from || f.to || f.late_only);
     }
 
     function render() {
@@ -511,10 +520,19 @@
       });
     }
 
+    function daysLate(rentalEnd) {
+      if (!rentalEnd) return 0;
+      const diff = Date.now() - new Date(rentalEnd).getTime();
+      return diff > 0 ? Math.floor(diff / 86400000) : 0;
+    }
+
     function rowHtml(o) {
       const window = formatWindow(o.rental_start, o.rental_end);
       const days = calcDays(o.rental_start, o.rental_end);
       const channelClass = o.channel === 'walk_in' ? 'walk-in' : '';
+      const lateBadge = o.is_late
+        ? `<span class="late-badge">Late ${daysLate(o.rental_end)}d</span>`
+        : '';
       return `
         <tr data-id="${o.id}">
           <td><div class="order-num">#${o.order_number}</div></td>
@@ -531,6 +549,7 @@
           </td>
           <td>
             <span class="status-pill status-${escapeAttr(o.status)}">${STATUS_LABELS[o.status] || o.status}</span>
+            ${lateBadge}
           </td>
           <td style="text-align:right;">
             <div class="order-total">${formatINR(o.total_paise)}</div>
@@ -566,6 +585,7 @@
       }
       if (f.from) chips.push(chipHtml('from', `From: ${escapeHtml(fmtChipDate(f.from))}`));
       if (f.to) chips.push(chipHtml('to', `To: ${escapeHtml(fmtChipDate(f.to))}`));
+      if (f.late_only) chips.push(chipHtml('late_only', 'Late only'));
       document.getElementById('filter-chips').innerHTML = chips.join('');
     }
 
@@ -637,7 +657,7 @@
     function clearAll() {
       const f = state.filters;
       f.q = ''; f.status = new Set(); f.from = null; f.to = null;
-      f.sort = 'created_at_desc'; f.page = 1;
+      f.sort = 'created_at_desc'; f.page = 1; f.late_only = false;
       syncInputs();
       changed();
     }
@@ -678,6 +698,12 @@
       changed();
     });
 
+    document.getElementById('filter-late-only').addEventListener('change', (e) => {
+      state.filters.late_only = e.target.checked;
+      state.filters.page = 1;
+      changed();
+    });
+
     document.getElementById('clear-filters').addEventListener('click', clearAll);
 
     // Removable chips — delegated.
@@ -689,6 +715,7 @@
       else if (key === 'status') state.filters.status = new Set();
       else if (key === 'from') state.filters.from = null;
       else if (key === 'to') state.filters.to = null;
+      else if (key === 'late_only') state.filters.late_only = false;
       state.filters.page = 1;
       syncInputs();
       changed();

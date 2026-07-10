@@ -7,6 +7,7 @@ import { emitNotification } from '../lib/notify.js';
 import { recomputeOrderTotals } from '../lib/pricing.js';
 import { checkAvailability } from '../lib/availability.js';
 import { generateInvoice } from './invoices.js';
+import { applyDepositStatus } from './payments.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -161,6 +162,8 @@ type OrderRow = {
   deposit_paise: number;
   paid_paise: number;
   balance_paise: number;
+  deposit_required_paise: number;
+  deposit_status: string;
   notes: string | null;
   internal_notes: string | null;
   created_by: string | null;
@@ -170,6 +173,7 @@ type OrderRow = {
   customer_name?: string;
   customer_phone?: string;
   customer_email?: string | null;
+  is_late?: boolean;
 };
 
 type OrderItemRow = {
@@ -221,7 +225,13 @@ async function loadOrder(orderId: string, workspaceId: string) {
       o.*,
       p.display_name AS customer_name,
       p.phone        AS customer_phone,
-      p.email        AS customer_email
+      p.email        AS customer_email,
+      (o.rental_end < now() AND EXISTS (
+        SELECT 1 FROM order_items oi
+        WHERE oi.order_id = o.id
+          AND oi.workspace_id = o.workspace_id
+          AND oi.status::text = 'dispatched'
+      )) AS is_late
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
     WHERE o.id = ${orderId}
@@ -328,6 +338,7 @@ const listQuerySchema = z.object({
   ]).default('created_at_desc'),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  late_only: z.coerce.boolean().default(false),
 });
 
 orders.get('/', async (c) => {
@@ -341,11 +352,13 @@ orders.get('/', async (c) => {
     sort: c.req.query('sort'),
     page: c.req.query('page'),
     limit: c.req.query('limit'),
+    late_only: c.req.query('late_only'),
   });
   if (!parsed.success) {
     return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   }
   const qp = parsed.data;
+  const lateOnly = qp.late_only;
 
   // Status: comma-separated → validated array. Any unknown enum value is a 400.
   let statusArr: string[] = [];
@@ -381,10 +394,17 @@ orders.get('/', async (c) => {
       o.channel,
       o.subtotal_paise, o.tax_paise, o.discount_paise, o.total_paise,
       o.deposit_paise, o.paid_paise, o.balance_paise,
+      o.deposit_required_paise, o.deposit_status,
       o.notes, o.internal_notes, o.created_by,
       o.created_at, o.updated_at, o.deleted_at,
       p.display_name AS customer_name,
-      p.phone        AS customer_phone
+      p.phone        AS customer_phone,
+      (o.rental_end < now() AND EXISTS (
+        SELECT 1 FROM order_items oi
+        WHERE oi.order_id = o.id
+          AND oi.workspace_id = o.workspace_id
+          AND oi.status::text = 'dispatched'
+      )) AS is_late
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
     WHERE o.workspace_id = ${session.workspace.id}
@@ -396,6 +416,14 @@ orders.get('/', async (c) => {
            OR CAST(o.order_number AS text) ILIKE ${searchPattern}::text)
       AND (${fromNorm}::timestamptz IS NULL OR o.rental_start >= ${fromNorm}::timestamptz)
       AND (${toNorm}::timestamptz   IS NULL OR o.rental_start <= ${toNorm}::timestamptz)
+      AND (${lateOnly}::boolean = false OR (
+        o.rental_end < now() AND EXISTS (
+          SELECT 1 FROM order_items oi
+          WHERE oi.order_id = o.id
+            AND oi.workspace_id = o.workspace_id
+            AND oi.status::text = 'dispatched'
+        )
+      ))
     ORDER BY
       (CASE WHEN ${sort}::text = 'created_at_desc'   THEN o.created_at   END) DESC NULLS LAST,
       (CASE WHEN ${sort}::text = 'created_at_asc'    THEN o.created_at   END) ASC  NULLS LAST,
@@ -420,6 +448,14 @@ orders.get('/', async (c) => {
            OR CAST(o.order_number AS text) ILIKE ${searchPattern}::text)
       AND (${fromNorm}::timestamptz IS NULL OR o.rental_start >= ${fromNorm}::timestamptz)
       AND (${toNorm}::timestamptz   IS NULL OR o.rental_start <= ${toNorm}::timestamptz)
+      AND (${lateOnly}::boolean = false OR (
+        o.rental_end < now() AND EXISTS (
+          SELECT 1 FROM order_items oi
+          WHERE oi.order_id = o.id
+            AND oi.workspace_id = o.workspace_id
+            AND oi.status::text = 'dispatched'
+        )
+      ))
   `);
   const total = counted[0]?.total ?? 0;
   const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
@@ -433,6 +469,7 @@ orders.get('/', async (c) => {
       from: fromNorm,
       to: toNorm,
       sort,
+      late_only: lateOnly,
     },
   });
 });
@@ -1105,6 +1142,58 @@ orders.post('/:id/recompute', async (c) => {
   });
 
   return c.json({ order: fresh, items, changed });
+});
+
+// ============================================================================
+// PATCH /api/orders/:id/deposit — set the required deposit amount (Sub-turn 6d)
+// ----------------------------------------------------------------------------
+// Dedicated (not the generic PATCH, which is draft-scoped) so the deposit can be
+// set at any order status. Recomputes deposit_status (e.g. none → pending when
+// set > 0 with nothing held yet).
+// ============================================================================
+const depositSchema = z.object({
+  deposit_required_paise: z.number().int().nonnegative(),
+});
+
+orders.patch('/:id/deposit', async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = depositSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+
+  const updated = await query<{ id: string }>(sql`
+    UPDATE orders SET deposit_required_paise = ${parsed.data.deposit_required_paise}::bigint, updated_at = now()
+    WHERE id = ${id} AND workspace_id = ${session.workspace.id}
+    RETURNING id
+  `);
+  if (updated.length === 0) return c.json({ error: 'not_found' }, 404);
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'orders.order.updated',
+    targetType: 'order',
+    targetId: id,
+    payload: { fields: ['deposit_required_paise'], deposit_required_paise: parsed.data.deposit_required_paise },
+    ipAddress, userAgent,
+  });
+
+  // Recompute deposit_status now that the required amount changed.
+  await applyDepositStatus({
+    workspaceId: session.workspace.id, orderId: id,
+    actorUserId: session.user.id, ipAddress, userAgent,
+  });
+
+  const fresh = await loadOrder(id, session.workspace.id);
+  return c.json({ order: fresh });
 });
 
 // ============================================================================
