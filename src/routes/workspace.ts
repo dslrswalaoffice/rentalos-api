@@ -104,6 +104,9 @@ function normalizeSettings(raw: unknown) {
       template_text: typeof contract.template_text === 'string' ? contract.template_text : '',
       template_version: contract.template_version ?? 'v1',
     },
+    // Reminders are passed through raw (deeply nested per-channel config). The
+    // settings UI reads/writes this object directly.
+    reminders: s.reminders ?? {},
     features,
   };
 }
@@ -186,6 +189,32 @@ workspace.get('/', async (c) => {
 // ============================================================================
 const nullableStr = (max: number) => z.string().max(max).nullable().optional();
 
+// Reminder template sub-schemas (Sub-turn 6f).
+const reminderChannelSchema = z.array(z.enum(['whatsapp', 'email'])).optional();
+const reminderWhatsappSchema = z.object({
+  template_name:  z.string().max(200).optional(),
+  variable_order: z.array(z.string().max(50)).optional(),
+}).optional();
+const reminderEmailSchema = z.object({
+  subject: z.string().max(500).optional(),
+  body:    z.string().max(20000).optional(),
+}).optional();
+const reminderUpcomingSchema = z.object({
+  enabled:         z.boolean().optional(),
+  days_before_due: z.number().int().min(0).max(30).optional(),
+  channels:        reminderChannelSchema,
+  whatsapp:        reminderWhatsappSchema,
+  email:           reminderEmailSchema,
+});
+const reminderOverdueSchema = z.object({
+  enabled:           z.boolean().optional(),
+  days_after_due:    z.number().int().min(0).max(90).optional(),
+  repeat_every_days: z.number().int().min(1).max(90).optional(),
+  channels:          reminderChannelSchema,
+  whatsapp:          reminderWhatsappSchema,
+  email:             reminderEmailSchema,
+});
+
 const patchSchema = z.object({
   workspace: z.object({
     legal_name:      z.string().max(200).optional(),
@@ -227,6 +256,13 @@ const patchSchema = z.object({
       template_text:    z.string().max(20000).optional(),
       template_version: z.string().max(50).optional(),
     }).optional(),
+    reminders: z.object({
+      sender_name: z.string().max(200).optional(),
+      templates: z.object({
+        invoice_upcoming: reminderUpcomingSchema.optional(),
+        invoice_overdue: reminderOverdueSchema.optional(),
+      }).optional(),
+    }).optional(),
     features: z.record(z.string(), z.boolean()).optional(),
   }).optional(),
 });
@@ -248,7 +284,7 @@ workspace.patch('/settings', async (c) => {
   const featureKeys = sf.features ? Object.keys(sf.features) : [];
   const hasFeatures = featureKeys.length > 0;
   const hasMetadata =
-    Object.keys(wf).length > 0 || !!(sf.billing || sf.tax || sf.invoice || sf.bank_details || sf.contract);
+    Object.keys(wf).length > 0 || !!(sf.billing || sf.tax || sf.invoice || sf.bank_details || sf.contract || sf.reminders);
 
   // Role gates.
   if (hasFeatures && role !== 'owner') {
@@ -274,7 +310,7 @@ workspace.patch('/settings', async (c) => {
   // Build the next settings JSONB from a clone of the current one (preserves any
   // extra keys such as the legacy `deposit` object).
   const next = JSON.parse(JSON.stringify(wsRow.settings ?? {})) as Record<string, any>;
-  for (const sub of ['billing', 'tax', 'invoice', 'bank_details', 'contract'] as const) {
+  for (const sub of ['billing', 'tax', 'invoice', 'bank_details', 'contract', 'reminders'] as const) {
     if (sf[sub]) {
       next[sub] = { ...(next[sub] ?? {}) };
       for (const [k, v] of Object.entries(sf[sub] as Record<string, unknown>)) {
