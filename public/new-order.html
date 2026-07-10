@@ -159,6 +159,25 @@
     .alert{padding:10px 14px;border-radius:9px;font-size:12.5px;font-weight:500;margin-bottom:16px}
     .alert.error{background:var(--bad-soft);color:var(--bad-strong);border-left:3px solid var(--bad-solid)}
     .alert.warn{background:var(--warn-soft);color:var(--warn-strong);border-left:3px solid var(--warn-solid)}
+
+    /* availability overbook warning (Sub-turn 4d-2) */
+    .btn.orange.warn{background:var(--warn-solid);border-color:var(--warn-solid);box-shadow:none}
+    .btn.orange.warn:hover{background:#a56814}
+    .availability-warning{background:var(--warn-soft);border:1px solid var(--warn-strong);border-radius:6px;padding:12px 14px;margin:12px 0;font-size:13px;color:var(--warn-strong)}
+    .availability-warning-head{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:8px}
+    .availability-warning-icon{font-size:16px}
+    .availability-warning-title{flex:1}
+    .availability-warning-subtitle{font-size:12px;font-weight:500;margin-bottom:6px;color:var(--warn-strong);opacity:.85}
+    .availability-conflicts{list-style:none;padding:0;margin:0}
+    .availability-conflicts li{padding:6px 0;border-top:1px solid rgba(0,0,0,.05)}
+    .availability-conflicts li:first-child{border-top:none}
+    .availability-conflicts a{font-weight:500;color:var(--warn-strong);text-decoration:underline}
+    .conflict-window{font-size:11px;opacity:.75;margin-top:2px}
+    .cf-status{display:inline-block;padding:1px 7px;border-radius:999px;font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+    .cf-status.confirmed{background:var(--accent-soft);color:var(--head)}
+    .cf-status.dispatched,.cf-status.active{background:var(--orange-soft);color:var(--warn-strong)}
+    .cf-status.returned,.cf-status.closed{background:#e8f6ee;color:#177a45}
+    .cf-status.quoted,.cf-status.draft{background:#eef0f3;color:var(--muted-strong)}
     .alert.info{background:var(--accent-soft);color:var(--head);border-left:3px solid var(--head)}
 
     .loading{padding:40px;text-align:center;color:var(--muted);font-size:12.5px;font-family:var(--font-mono);letter-spacing:.04em;text-transform:uppercase}
@@ -416,6 +435,8 @@
     };
     let availabilityCache = [];  // products from GET /api/availability
     let gearSearchTerm = '';
+    const availabilityChecks = new Map();  // product_id -> latest POST /check result
+    const checkTimers = new Map();         // product_id -> debounce timer
 
     // ---------- identity ----------
     async function hydrateIdentity() {
@@ -613,14 +634,17 @@
         const { products } = await api.get(`/api/availability?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`);
         availabilityCache = products;
         // reconcile any existing selected items with fresh availability
+        // Keep the operator's chosen quantity even if it now exceeds availability
+        // (overbook is advisory — the warning banner surfaces it, we don't clamp).
         state.items = state.items.filter(it => {
           const p = availabilityCache.find(x => x.id === it.product_id);
           if (!p) return false;
           it.available = p.available_units;
-          it.quantity = Math.min(it.quantity, p.available_units);
           return it.quantity > 0;
         });
         renderGearList();
+        // Rental window may have changed — recheck every selected item now.
+        for (const it of state.items) scheduleCheck(it.product_id, true);
       } catch (err) {
         document.getElementById('gear-list-wrap').innerHTML = `<div class="alert error">Couldn't load availability. ${escapeHtml(err.body?.error || err.message || '')}</div>`;
       }
@@ -646,6 +670,10 @@
         const zero = p.available_units === 0;
         const low  = p.available_units > 0 && p.available_units <= Math.ceil(p.total_units * 0.3);
         const rowClass = zero ? 'unavailable' : (low ? 'low' : '');
+        // Overbook is advisory: the '+' is never disabled — going over capacity
+        // surfaces a warning banner instead of being blocked.
+        const check = qty > 0 ? availabilityChecks.get(p.id) : null;
+        const warningHtml = renderAvailabilityWarning(check);
         return `
           <div class="gear-item ${rowClass}" data-product-id="${p.id}">
             <div>
@@ -659,9 +687,9 @@
             <div class="qty-picker" data-product-id="${p.id}">
               <button type="button" data-action="dec" ${qty === 0 ? 'disabled' : ''}>−</button>
               <span class="qty-val">${qty}</span>
-              <button type="button" data-action="inc" ${qty >= p.available_units ? 'disabled' : ''}>+</button>
+              <button type="button" data-action="inc">+</button>
             </div>
-          </div>`;
+          </div>${warningHtml}`;
       }).join('') + '</div>';
 
       wrap.querySelectorAll('.qty-picker').forEach(picker => {
@@ -671,6 +699,7 @@
         });
       });
       updateGearNextBtn();
+      updateSaveBtnLabel();
     }
 
     function adjustQty(productId, action) {
@@ -688,12 +717,14 @@
         };
         state.items.push(item);
       }
-      if (action === 'inc' && item.quantity < p.available_units) item.quantity++;
+      // No cap on inc — overbook is allowed with an advisory warning.
+      if (action === 'inc') item.quantity++;
       if (action === 'dec' && item.quantity > 0) item.quantity--;
       if (item.quantity === 0) {
         state.items = state.items.filter(it => it.product_id !== productId);
       }
       renderGearList();
+      scheduleCheck(productId);
     }
 
     function updateGearNextBtn() {
@@ -825,7 +856,7 @@
         }
         errBox.innerHTML = `<div class="alert error">${escapeHtml(msg)}</div>`;
         btn.disabled = false;
-        btn.textContent = 'Save as draft';
+        updateSaveBtnLabel();
       }
     }
 
@@ -834,6 +865,98 @@
       return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
     function escapeAttr(s) { return escapeHtml(s).replace(/`/g,'&#96;'); }
+
+    // ---------- availability (Sub-turn 4d-2) ----------
+    // Fail-open: any failure returns null → callers treat it as "no warning".
+    async function checkAvailabilityApi(productId, quantity, start, end, excludeOrderId) {
+      if (!productId || !quantity || quantity <= 0 || !start || !end) return null;
+      try {
+        const res = await fetch('/api/availability/check', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product_id: productId,
+            quantity,
+            start,
+            end,
+            exclude_order_id: excludeOrderId || undefined,
+          }),
+        });
+        if (!res.ok) { console.warn('Availability check failed:', res.status); return null; }
+        const data = await res.json();
+        return data.check;
+      } catch (err) {
+        console.warn('Availability check error:', err);
+        return null;
+      }
+    }
+
+    // Per-product 500ms debounce. `immediate` skips the delay (item add / window change).
+    function scheduleCheck(productId, immediate = false) {
+      clearTimeout(checkTimers.get(productId));
+      const item = state.items.find(it => it.product_id === productId);
+      if (!item || item.quantity <= 0) {
+        availabilityChecks.delete(productId);
+        updateSaveBtnLabel();
+        return;
+      }
+      const run = async () => {
+        const start = state.rental_start ? new Date(state.rental_start).toISOString() : null;
+        const end   = state.rental_end   ? new Date(state.rental_end).toISOString()   : null;
+        const check = await checkAvailabilityApi(productId, item.quantity, start, end, null);
+        if (check) availabilityChecks.set(productId, check);
+        else availabilityChecks.delete(productId);
+        renderGearList();
+      };
+      if (immediate) run();
+      else checkTimers.set(productId, setTimeout(run, 500));
+    }
+
+    function formatDateShort(iso) {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+
+    function renderStatusPill(status) {
+      const s = String(status || '').toLowerCase();
+      const label = s.charAt(0).toUpperCase() + s.slice(1);
+      return `<span class="cf-status ${escapeAttr(s)}">${escapeHtml(label)}</span>`;
+    }
+
+    function renderAvailabilityWarning(check) {
+      if (!check || check.available) return '';
+      const conflicts = (check.conflicts || []).map(c => `
+        <li>
+          <a href="/order.html?id=${escapeAttr(c.order_id)}" target="_blank">Order #${escapeHtml(String(c.order_number))}</a>
+          (${escapeHtml(c.customer_name || 'Unknown')}) — ${escapeHtml(String(c.quantity))} unit(s) — ${renderStatusPill(c.status)}
+          <div class="conflict-window">${escapeHtml(formatDateShort(c.start))} → ${escapeHtml(formatDateShort(c.end))}</div>
+        </li>`).join('');
+      const available = Math.max(0, check.capacity - check.currently_booked);
+      return `
+        <div class="availability-warning">
+          <div class="availability-warning-head">
+            <span class="availability-warning-icon">⚠</span>
+            <span class="availability-warning-title">Overbook: ${check.requested} requested, ${available} available</span>
+          </div>
+          <div class="availability-warning-body">
+            <div class="availability-warning-subtitle">Conflicts with:</div>
+            <ul class="availability-conflicts">${conflicts}</ul>
+          </div>
+        </div>`;
+    }
+
+    function updateSaveBtnLabel() {
+      const btn = document.getElementById('btn-save');
+      if (!btn) return;
+      const anyOverbook = state.items.some(it => {
+        const c = availabilityChecks.get(it.product_id);
+        return it.quantity > 0 && c && !c.available;
+      });
+      btn.textContent = anyOverbook ? 'Save with override' : 'Save as draft';
+      btn.classList.toggle('warn', anyOverbook);
+    }
 
     // ---------- go ----------
     (async () => {
