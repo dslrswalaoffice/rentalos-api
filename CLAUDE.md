@@ -556,6 +556,22 @@ Workspace-defined custom fields on **orders, people, products** (not line items 
 
 ---
 
+## Product tracking modes (Sub-turn 6h)
+
+`products.tracking_mode text` = `'tracked'` (default) or `'bulk'`, plus `products.stock_quantity int` (nullable).
+
+- **Tracked** (current behavior, all existing products backfilled here): each unit is a serialized `assets` row. Capacity = `COUNT(assets)`. `stock_quantity` MUST be NULL.
+- **Bulk**: fungible stock (memory cards, cables, tape). No asset rows are created. Capacity = `stock_quantity`. Bulk products MUST have `stock_quantity` set.
+- **DB constraint `products_bulk_requires_quantity`** enforces the mode↔stock coupling.
+- **Mode is immutable after creation.** The product PATCH rejects a changed `tracking_mode` with `409 tracking_mode_immutable` ("delete and recreate"); the edit modal shows the mode read-only (radios disabled). Create/PATCH validation also returns `400 stock_quantity_required` (bulk w/o qty) and `stock_quantity_not_allowed_for_tracked`.
+- **`getProductCapacity(workspaceId, productId)`** in `src/lib/availability.ts` is the single capacity source → `{ capacity, source: 'assets' | 'stock_quantity' }`. `checkAvailability` computes capacity mode-aware inline (same logic) and returns `capacity_source` on every result.
+- **Kit components can be either mode.** Kit availability is still `MIN` across components; each component's `checkAvailability` picks its own capacity source, so a bulk component contributes `floor(stock_quantity / per-kit qty)`.
+- **Reservation math is unchanged** across modes (`reserved = SUM(order_items.quantity)` over reserving orders). **Wizard / dispatch / return are mode-agnostic** — they reference product IDs + quantities, never assets directly.
+- **Inventory responses** carry `tracking_mode`, `stock_quantity`, and a computed `effective_capacity` (`stock_quantity` for bulk, else `COUNT(assets)`). The list shows a blue TRACKED / amber BULK badge.
+- No per-location stock yet (that's a later sub-turn); no stock-movement log (audit covers updates).
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.

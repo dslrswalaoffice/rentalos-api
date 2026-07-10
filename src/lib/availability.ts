@@ -65,6 +65,7 @@ export type AvailabilityResult = {
   available: boolean; // FALSE only when demand exceeds capacity + shortage_limit
   requested: number;
   capacity: number;
+  capacity_source: 'assets' | 'stock_quantity'; // Sub-turn 6h — tracked vs bulk
   currently_booked: number;
   shortage_limit: number;   // per-product allowed overbook (Sub-turn 6b)
   shortage_used: boolean;   // true when overbooked but within shortage_limit
@@ -108,6 +109,29 @@ function clampBuffer(n: number): number {
   return Math.min(BUFFER_MAX_HOURS, Math.max(BUFFER_MIN_HOURS, n));
 }
 
+// Single source of truth for a product's capacity (Sub-turn 6h). Tracked
+// products count live asset rows; bulk products use the stock_quantity column.
+// Exported for reuse (e.g. inventory listing / debugging).
+export async function getProductCapacity(
+  workspaceId: string,
+  productId: string,
+): Promise<{ capacity: number; source: 'assets' | 'stock_quantity' }> {
+  const rows = await query<{ tracking_mode: string; stock_quantity: number | null; asset_count: number }>(sql`
+    SELECT p.tracking_mode, p.stock_quantity,
+           (SELECT COUNT(*)::int FROM assets a
+            WHERE a.product_id = p.id AND a.workspace_id = p.workspace_id AND a.deleted_at IS NULL) AS asset_count
+    FROM products p
+    WHERE p.id = ${productId}::uuid AND p.workspace_id = ${workspaceId}::uuid
+    LIMIT 1
+  `);
+  const row = rows[0];
+  if (!row) return { capacity: 0, source: 'assets' };
+  if (row.tracking_mode === 'bulk') {
+    return { capacity: Number(row.stock_quantity ?? 0), source: 'stock_quantity' };
+  }
+  return { capacity: Number(row.asset_count ?? 0), source: 'assets' };
+}
+
 /**
  * Check product availability for a window. Applies THIS PRODUCT's own buffer
  * hours (Sub-turn 6b) — not the workspace-wide value, which is now deprecated
@@ -134,6 +158,8 @@ export async function checkAvailability(args: {
   // + shortage config.
   const productRows = await query<{
     total_units: number;
+    tracking_mode: string;
+    stock_quantity: number | null;
     is_active: boolean;
     is_kit: boolean;
     buffer_before_hours: number;
@@ -142,6 +168,7 @@ export async function checkAvailability(args: {
   }>(sql`
     SELECT
       COALESCE(a.total, 0)::int AS total_units,
+      p.tracking_mode, p.stock_quantity,
       p.is_active, p.is_kit,
       p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit
     FROM products p
@@ -158,7 +185,11 @@ export async function checkAvailability(args: {
     LIMIT 1
   `);
   if (productRows.length === 0) throw new AvailabilityError('product_not_found');
-  const capacity = productRows[0]!.total_units;
+  // Capacity source depends on tracking mode (Sub-turn 6h): bulk products count
+  // stock_quantity; tracked products count live asset rows.
+  const isBulk = productRows[0]!.tracking_mode === 'bulk';
+  const capacity = isBulk ? Number(productRows[0]!.stock_quantity ?? 0) : productRows[0]!.total_units;
+  const capacitySource: 'assets' | 'stock_quantity' = isBulk ? 'stock_quantity' : 'assets';
   const isActive = productRows[0]!.is_active;
 
   // KIT PATH: capacity is derived from the components, not the kit's own assets.
@@ -235,6 +266,7 @@ export async function checkAvailability(args: {
     available,
     requested: args.quantity,
     capacity,
+    capacity_source: capacitySource,
     currently_booked: currentlyBooked,
     shortage_limit: shortageLimit,
     shortage_used: shortageUsed,
@@ -266,6 +298,7 @@ async function checkKitAvailability(
       available: false,
       requested: args.quantity,
       capacity: 0,
+      capacity_source: 'assets',
       currently_booked: 0,
       shortage_limit: 0,
       shortage_used: false,
@@ -316,6 +349,7 @@ async function checkKitAvailability(
     available,
     requested: args.quantity,
     capacity: Number.isFinite(kitCapacity) ? Math.max(0, kitCapacity) : 0,
+    capacity_source: 'assets', // kit capacity is derived from components
     currently_booked: 0, // not meaningful for a derived-capacity kit
     shortage_limit: 0,
     shortage_used: false,
