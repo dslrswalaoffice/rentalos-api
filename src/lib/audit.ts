@@ -40,6 +40,8 @@ export type AuditEventType =
   | 'coupons.deactivated'
   | 'coupons.applied'
   | 'coupons.removed'
+  | 'recommendations.created'
+  | 'recommendations.removed'
   | 'admin.migrate.success'
   | 'admin.migrate.failure'
   | 'admin.seed.success'

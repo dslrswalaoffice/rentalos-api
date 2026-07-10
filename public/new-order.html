@@ -123,6 +123,17 @@
 
     /* gear picker */
     .gear-list{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px}
+    /* recommendations panel (Sub-turn 8c) */
+    .reco-panel{margin-top:14px;padding:10px 12px;background:var(--accent-soft);border-left:3px solid var(--head);border-radius:8px}
+    .reco-panel[hidden]{display:none}
+    .reco-panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-family:var(--font-mono);font-size:10px;color:var(--head);text-transform:uppercase;letter-spacing:0.08em;font-weight:600}
+    .reco-close-btn{background:none;border:none;font-size:18px;line-height:1;color:var(--muted);cursor:pointer;padding:0 4px}
+    .reco-close-btn:hover{color:var(--ink)}
+    .reco-panel-body{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+    .reco-chip{min-width:170px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+    .reco-chip-name{font-weight:600;font-size:12.5px;color:var(--head)}
+    .reco-chip-meta{font-family:var(--font-mono);font-size:9.5px;color:var(--muted)}
+    .reco-chip .btn{align-self:flex-start;margin-top:2px}
     .gear-item{display:grid;grid-template-columns:1fr auto auto;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);align-items:center}
     .gear-item:last-child{border-bottom:none}
     .gear-item.unavailable{background:var(--bad-soft)}
@@ -391,6 +402,14 @@
 
             <div id="gear-list-wrap">
               <div class="loading">Checking availability…</div>
+            </div>
+
+            <div class="reco-panel" id="reco-panel" hidden>
+              <div class="reco-panel-head">
+                <span>Customers also rent</span>
+                <button class="reco-close-btn" id="close-reco-btn" aria-label="Dismiss">×</button>
+              </div>
+              <div class="reco-panel-body" id="reco-panel-body"></div>
             </div>
           </div>
 
@@ -825,6 +844,7 @@
         state.items.push(item);
       }
       // No cap on inc — overbook is allowed with an advisory warning.
+      const wasZero = item.quantity === 0;
       if (action === 'inc') item.quantity++;
       if (action === 'dec' && item.quantity > 0) item.quantity--;
       if (item.quantity === 0) {
@@ -832,6 +852,59 @@
       }
       renderGearList();
       scheduleCheck(productId);
+      // First add of a product → surface "customers also rent" (Sub-turn 8c).
+      if (action === 'inc' && wasZero) showRecoForProduct(productId);
+    }
+
+    // ---------- recommendations panel (Sub-turn 8c) ----------
+    async function showRecoForProduct(productId) {
+      const panel = document.getElementById('reco-panel');
+      const body = document.getElementById('reco-panel-body');
+      if (!panel || !body) return;
+      let recos = [];
+      try {
+        const res = await fetch(`/api/recommendations/products/${encodeURIComponent(productId)}?limit=4`, { credentials: 'same-origin' });
+        if (!res.ok) { panel.hidden = true; return; }
+        recos = (await res.json()).recommendations || [];
+      } catch { panel.hidden = true; return; }
+      // Don't suggest products already on the order; stay silent if nothing's left.
+      const onOrder = new Set(state.items.filter(it => it.quantity > 0).map(it => it.product_id));
+      recos = recos.filter(r => !onOrder.has(r.product_id));
+      if (!recos.length) { panel.hidden = true; return; }
+      body.innerHTML = recos.map(r => {
+        const meta = r.source === 'manual' ? 'Suggested' : `${Math.round((r.confidence || 0) * 100)}% pair rate`;
+        return `
+        <div class="reco-chip">
+          <div class="reco-chip-name">${escapeHtml(r.name)}</div>
+          <div class="reco-chip-meta">${escapeHtml(meta)}${r.daily_rate ? ' · ' + formatINR(r.daily_rate) + '/day' : ''}</div>
+          <button class="btn primary tiny" data-reco-add="${escapeAttr(r.product_id)}" data-reco-name="${escapeAttr(r.name)}" data-reco-rate="${escapeAttr(String(r.daily_rate ?? ''))}" data-reco-sku="${escapeAttr(r.sku ?? '')}">+ Add</button>
+        </div>`;
+      }).join('');
+      panel.hidden = false;
+      body.querySelectorAll('[data-reco-add]').forEach(btn => btn.addEventListener('click', () => addRecommendedProduct(btn.dataset)));
+    }
+
+    // Add a recommended product to the order. It may not be in availabilityCache
+    // if it's out of the current gear window filter, so seed the item directly.
+    function addRecommendedProduct(ds) {
+      const productId = ds.recoAdd;
+      let item = state.items.find(it => it.product_id === productId);
+      if (!item) {
+        const cached = availabilityCache.find(x => x.id === productId);
+        item = {
+          product_id: productId,
+          name: cached?.name || ds.recoName || 'Product',
+          sku: cached?.sku || ds.recoSku || '',
+          quantity: 0,
+          daily_rate: cached?.daily_rate ?? (ds.recoRate ? Number(ds.recoRate) : 0),
+          available: cached?.available_units ?? 0,
+        };
+        state.items.push(item);
+      }
+      item.quantity++;
+      renderGearList();
+      scheduleCheck(productId);
+      showRecoForProduct(productId);
     }
 
     function updateGearNextBtn() {
@@ -842,6 +915,10 @@
     document.getElementById('gear-search-input').addEventListener('input', (e) => {
       gearSearchTerm = e.target.value.trim();
       renderGearList();
+    });
+
+    document.getElementById('close-reco-btn').addEventListener('click', () => {
+      document.getElementById('reco-panel').hidden = true;
     });
 
     document.getElementById('btn-back-3').addEventListener('click', () => goToStep(2));
