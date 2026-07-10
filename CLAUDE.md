@@ -594,6 +594,26 @@ Gear lives at physical **locations** (warehouses / branches). Phase 1 ships the 
 
 ---
 
+## Analytics dashboard (Sub-turn 7)
+
+Owner-facing business intelligence ("how is the business performing?"), distinct from the Command Center's operational "what needs attention now?". One page (`/analytics.html`), reachable from the sidebar.
+
+- **Owner/manager only.** The route (`/api/analytics`) chains `requireRole('owner','manager')`; staff/client/investor get `403`. The page also role-checks client-side after `ensureAuth()`.
+- **Four sections:** Revenue, Utilization, Customers, Operational health. A time-range selector at top drives all four.
+- **Time range:** presets (7d / 30d / quarter / YTD / last year) + custom. Default 30 days. Every headline number shows a delta vs the **previous equivalent range** (`prevEnd = rangeStart - 1ms`, `prevStart = prevEnd - duration`).
+- **Computed on demand** from the live tables — **no analytics tables, no pre-aggregation**. A 5-minute in-process `Map` cache per `(workspace, section, rangeStart, rangeEnd)` key (`src/lib/analytics.ts`). Best-effort only — Vercel recycles instances — which is fine since the queries are cheap. CSV endpoints bypass the cache.
+- **Revenue basis:** `SUM(order_items.total_amount_paise)` where `item_type = 'rental'` and the parent order status ∈ {`dispatched`,`active`,`returned`,`closed`}, filtered by `orders.rental_start` in range. (The spec called this `line_total_paise`; the real column is `total_amount_paise`.) Deposits + non-rental lines are excluded.
+- **Utilization:** `unit_days_rented / (capacity × days_in_range)` per non-kit product. Capacity is mode-aware (bulk → `stock_quantity`; tracked → live asset count) and **workspace-wide across all locations** — analytics counts every location, so it does NOT call `getProductCapacity` (which resolves to the default location only and would undercount multi-location workspaces). `unit_days` clips each rental's `[start,end]` to the range. Displayed capped at 150% (overbook can exceed 100%). Products with zero capacity are skipped.
+- **Customer intelligence:** new vs returning by whether the customer had any completed order **before** the range start. Top 10 by in-range revenue (with tier pill). Repeat rate = share of in-range customers with 2+ completed orders all-time.
+- **Operational health:** avg rental days, avg order value, cancellation rate, late returns, damage/forfeit count. **Late returns** = an `order_events` row with `event_type LIKE 'order.return.%'` whose `occurred_at > orders.rental_end` (note: the timeline event is `order.return.batch`/`order.item.returned`, and the column is `occurred_at`, not `created_at`). **Damage/forfeits** = orders with `deposit_status` ∈ {`fully_forfeited`,`partial_forfeited`}.
+- **Charts:** vanilla SVG, **no chart library**. Line chart for the revenue daily trend; ranked bars for top products / categories / customers.
+- **CSV export** per section: `/api/analytics/{revenue|utilization|customers}/csv?start=…&end=…` with a `Content-Disposition: attachment` header. Revenue exports the daily trend, utilization exports `all_products`, customers exports the top 10.
+- **Read-only:** no writes, no audit events for viewing.
+- **Migration 025** adds three additive indexes (orders by status+rental_start, order_items by order+type, orders by customer+status). No data change.
+- **No feature flag** (additive, owner-gated). No forecasting, AI insights, cohort/LTV curves, report builder, scheduled reports, or cross-workspace comparison.
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.

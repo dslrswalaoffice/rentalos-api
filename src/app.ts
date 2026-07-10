@@ -15,6 +15,7 @@ import { integrations } from './routes/integrations.js';
 import { reminders } from './routes/reminders.js';
 import { customFields } from './routes/custom_fields.js';
 import { locations } from './routes/locations.js';
+import { analytics } from './routes/analytics.js';
 import { config } from './lib/config.js';
 export const app = new Hono();
 // Request logging in dev only. Prod: rely on Vercel logs.
@@ -46,6 +47,7 @@ app.route('/api/integrations', integrations);
 app.route('/api/reminders', reminders);
 app.route('/api/custom-fields', customFields);
 app.route('/api/locations', locations);
+app.route('/api/analytics', analytics);
 // Fallback for unknown /api/* — keep it JSON so clients can parse it.
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) {
