@@ -99,6 +99,22 @@
     .channel-config{margin-top:10px;border-top:1px solid var(--border);padding-top:8px}
     .channel-config summary{cursor:pointer;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--head)}
     .channel-config .field{margin-top:10px}
+    /* 6g: custom fields */
+    .cf-subtabs{display:flex;gap:6px;margin-bottom:14px}
+    .cf-subtab{padding:7px 14px;border:1px solid var(--border);border-radius:9px;background:var(--card);font-family:var(--font-body);font-size:12.5px;font-weight:600;color:var(--muted-strong);cursor:pointer}
+    .cf-subtab.active{background:var(--head);color:#fff;border-color:var(--head)}
+    .cf-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+    .cf-title{margin:0;font-size:15px;color:var(--ink)}
+    .cf-rows{display:flex;flex-direction:column;gap:6px}
+    .cf-empty{font-size:12.5px;color:var(--muted);padding:8px 0}
+    .cf-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:9px}
+    .cf-info{flex:1;min-width:0}
+    .cf-label{font-weight:600;color:var(--head);font-size:13.5px}
+    .cf-meta{font-size:11px;color:var(--muted);margin-top:2px}
+    .cf-meta code{background:#eef0f3;padding:1px 5px;border-radius:4px;font-family:var(--font-mono);font-size:10.5px}
+    .cf-type{text-transform:uppercase;letter-spacing:.04em;font-family:var(--font-mono);font-size:10px}
+    .cf-req{color:var(--bad-strong);font-weight:700;font-size:9.5px;font-family:var(--font-mono);text-transform:uppercase;margin-left:6px}
+    .cf-actions{display:flex;gap:6px;flex-shrink:0}
     .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
     .toggle-field{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}
     .toggle-field .tl{font-size:13px;color:var(--ink);font-weight:500}
@@ -271,6 +287,7 @@
         <button class="tab active" data-tab="workspace">Workspace</button>
         <button class="tab" data-tab="features">Features</button>
         <button class="tab" data-tab="integrations">Integrations</button>
+        <button class="tab" data-tab="custom-fields">Custom Fields</button>
         <button class="tab" data-tab="users">Users</button>
       </nav>
       <div class="content" id="content"><div class="loading">Loading settings…</div></div>
@@ -330,7 +347,7 @@
         resetForm();
         hydrateIdentity();
         const hash = (location.hash || '#workspace').slice(1);
-        state.tab = ['workspace', 'features', 'integrations', 'users'].includes(hash) ? hash : 'workspace';
+        state.tab = ['workspace', 'features', 'integrations', 'custom-fields', 'users'].includes(hash) ? hash : 'workspace';
         render();
       } catch (err) {
         document.getElementById('content').innerHTML =
@@ -369,6 +386,7 @@
       if (state.tab === 'workspace') { el.innerHTML = workspaceTab(); wireWorkspaceTab(); }
       else if (state.tab === 'features') { el.innerHTML = featuresTab(); wireFeaturesTab(); }
       else if (state.tab === 'integrations') { el.innerHTML = integrationsTab(); wireIntegrationsTab(); }
+      else if (state.tab === 'custom-fields') { el.innerHTML = customFieldsTab(); wireCustomFieldsTab(); }
       else { el.innerHTML = usersTab(); }
     }
 
@@ -660,6 +678,158 @@
         cb.checked = !value; // revert
         showToast('Could not update flag: ' + (err.body?.error || err.message));
       }
+    }
+
+    // ---------- custom fields tab (Sub-turn 6g) ----------
+    let cfEntity = 'order';
+    let cfDefs = [];
+    const CF_ENTITY_LABEL = { order: 'Orders', person: 'People', product: 'Products' };
+    const CF_TYPE_LABEL = { text: 'Text', number: 'Number', date: 'Date', checkbox: 'Checkbox', dropdown: 'Dropdown' };
+
+    function customFieldsTab() {
+      const owner = canEditMetadata();
+      const note = owner ? '' : `<div class="notice">Only owners and managers can manage custom fields. Values are still editable on each record.</div>`;
+      const subtabs = ['order', 'person', 'product'].map(e =>
+        `<button class="cf-subtab ${cfEntity === e ? 'active' : ''}" data-cf-entity="${e}">${CF_ENTITY_LABEL[e]}</button>`).join('');
+      return `${note}
+        <div class="cf-subtabs">${subtabs}</div>
+        <div class="card">
+          <div class="cf-header">
+            <h3 class="cf-title">${CF_ENTITY_LABEL[cfEntity]} custom fields</h3>
+            ${owner ? `<button class="btn primary" id="cf-add-btn">+ Add field</button>` : ''}
+          </div>
+          <div class="cf-rows" id="cf-rows"><div class="loading">Loading…</div></div>
+        </div>`;
+    }
+
+    function wireCustomFieldsTab() {
+      document.querySelectorAll('[data-cf-entity]').forEach(b =>
+        b.addEventListener('click', () => { cfEntity = b.dataset.cfEntity; render(); }));
+      const add = document.getElementById('cf-add-btn');
+      if (add) add.addEventListener('click', () => openCfModal(null));
+      loadCfDefs();
+    }
+
+    async function loadCfDefs() {
+      try {
+        const { definitions } = await api.get(`/api/custom-fields/definitions?entity_type=${cfEntity}`);
+        cfDefs = definitions || [];
+      } catch { cfDefs = []; }
+      renderCfRows();
+    }
+
+    function renderCfRows() {
+      const rows = document.getElementById('cf-rows');
+      if (!rows) return;
+      const owner = canEditMetadata();
+      if (!cfDefs.length) {
+        rows.innerHTML = `<div class="cf-empty">No custom fields yet. Add one to capture per-${cfEntity} data.</div>`;
+        return;
+      }
+      rows.innerHTML = cfDefs.map(d => `
+        <div class="cf-row" data-id="${escapeAttr(d.id)}">
+          <div class="cf-info">
+            <div class="cf-label">${escapeHtml(d.label)}${d.is_required ? ' <span class="cf-req">Required</span>' : ''}</div>
+            <div class="cf-meta"><code>${escapeHtml(d.field_key)}</code> · <span class="cf-type">${escapeHtml(CF_TYPE_LABEL[d.field_type] || d.field_type)}</span>${d.field_type === 'dropdown' && Array.isArray(d.options) ? ` · ${d.options.length} option${d.options.length === 1 ? '' : 's'}` : ''}</div>
+          </div>
+          ${owner ? `<div class="cf-actions">
+            <button class="btn ghost tiny" data-cf-edit="${escapeAttr(d.id)}">Edit</button>
+            <button class="btn ghost tiny" data-cf-del="${escapeAttr(d.id)}">Delete</button>
+          </div>` : ''}
+        </div>`).join('');
+      rows.querySelectorAll('[data-cf-edit]').forEach(b => b.addEventListener('click', () => openCfModal(b.dataset.cfEdit)));
+      rows.querySelectorAll('[data-cf-del]').forEach(b => b.addEventListener('click', () => deleteCf(b.dataset.cfDel)));
+    }
+
+    function slugifyKey(s) {
+      return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^([0-9])/, 'f_$1').slice(0, 50);
+    }
+
+    function openCfModal(id) {
+      const editing = id ? cfDefs.find(d => d.id === id) : null;
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal">
+          <div class="modal-head">
+            <h3>${editing ? 'Edit' : 'Add'} custom field</h3>
+            <p class="card-sub">For ${escapeHtml(CF_ENTITY_LABEL[cfEntity])}</p>
+          </div>
+          <div class="modal-body">
+            <div id="cf-err" class="form-error" style="display:none"></div>
+            <div class="field"><label>Label *</label>
+              <input type="text" id="cf-label" value="${escapeAttr(editing?.label ?? '')}" placeholder="e.g. Shoot Location"></div>
+            <div class="field"><label>Field key *</label>
+              <input type="text" id="cf-key" value="${escapeAttr(editing?.field_key ?? '')}" placeholder="shoot_location" ${editing ? 'disabled' : ''}>
+              <p class="card-sub" style="margin:4px 0 0">Machine name — lowercase letters/numbers/underscore. ${editing ? 'Immutable after creation.' : 'Auto-fills from the label.'}</p></div>
+            <div class="field"><label>Type *</label>
+              <select id="cf-type">${Object.entries(CF_TYPE_LABEL).map(([v, l]) => `<option value="${v}" ${editing?.field_type === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+            <div class="field" id="cf-options-wrap" style="display:${editing?.field_type === 'dropdown' ? 'block' : 'none'}">
+              <label>Options (one per line)</label>
+              <textarea id="cf-options" rows="4" placeholder="Commercial&#10;Wedding&#10;Documentary">${escapeHtml((editing?.options || []).join('\n'))}</textarea></div>
+            <div class="field"><label>Help text <span class="hint">optional</span></label>
+              <input type="text" id="cf-help" value="${escapeAttr(editing?.help_text ?? '')}" placeholder="Extra guidance shown below the field"></div>
+            <label class="switch-inline"><input type="checkbox" id="cf-required" ${editing?.is_required ? 'checked' : ''}> Required field</label>
+          </div>
+          <div class="modal-foot">
+            <button class="btn ghost" data-close>Cancel</button>
+            <button class="btn primary" id="cf-save">Save</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
+      const typeSel = overlay.querySelector('#cf-type');
+      typeSel.addEventListener('change', () => {
+        overlay.querySelector('#cf-options-wrap').style.display = typeSel.value === 'dropdown' ? 'block' : 'none';
+      });
+      if (!editing) {
+        const labelInp = overlay.querySelector('#cf-label');
+        const keyInp = overlay.querySelector('#cf-key');
+        labelInp.addEventListener('input', () => { if (!keyInp.dataset.touched) keyInp.value = slugifyKey(labelInp.value); });
+        keyInp.addEventListener('input', () => { keyInp.dataset.touched = '1'; });
+      }
+      overlay.querySelector('#cf-save').addEventListener('click', () => saveCf(overlay, editing, close));
+      setTimeout(() => overlay.querySelector('#cf-label').focus(), 40);
+    }
+
+    async function saveCf(overlay, editing, close) {
+      const err = overlay.querySelector('#cf-err');
+      err.style.display = 'none';
+      const label = overlay.querySelector('#cf-label').value.trim();
+      const field_key = overlay.querySelector('#cf-key').value.trim();
+      const field_type = overlay.querySelector('#cf-type').value;
+      const help_text = overlay.querySelector('#cf-help').value.trim();
+      const is_required = overlay.querySelector('#cf-required').checked;
+      const options = overlay.querySelector('#cf-options').value.split('\n').map(s => s.trim()).filter(Boolean);
+      if (!label) { err.textContent = 'Label is required.'; err.style.display = 'block'; return; }
+      if (!editing && !/^[a-z][a-z0-9_]{0,49}$/.test(field_key)) { err.textContent = 'Field key must start with a lowercase letter (lowercase letters/numbers/underscore only).'; err.style.display = 'block'; return; }
+      if (field_type === 'dropdown' && !options.length) { err.textContent = 'A dropdown needs at least one option.'; err.style.display = 'block'; return; }
+      const saveBtn = overlay.querySelector('#cf-save'); saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+      try {
+        if (editing) {
+          await api.patch(`/api/custom-fields/definitions/${editing.id}`, { label, field_type, options: field_type === 'dropdown' ? options : undefined, is_required, help_text: help_text || null });
+        } else {
+          await api.post('/api/custom-fields/definitions', { entity_type: cfEntity, field_key, label, field_type, options: field_type === 'dropdown' ? options : undefined, is_required, help_text: help_text || undefined });
+        }
+        close(); showToast('Custom field saved'); await loadCfDefs();
+      } catch (ex) {
+        saveBtn.disabled = false; saveBtn.textContent = 'Save';
+        const code = ex.body?.error;
+        err.textContent = code === 'field_key_taken' ? 'That field key is already in use for this entity.'
+          : code === 'dropdown_options_required' ? 'A dropdown needs at least one option.'
+          : code === 'insufficient_role' ? 'Only owners and managers can manage custom fields.'
+          : ('Could not save: ' + (code || ex.message));
+        err.style.display = 'block';
+      }
+    }
+
+    async function deleteCf(id) {
+      const d = cfDefs.find(x => x.id === id);
+      if (!window.confirm(`Remove "${d?.label || 'this field'}" from forms? Existing values are preserved in the database. Continue?`)) return;
+      try { await api.del(`/api/custom-fields/definitions/${id}`); showToast('Custom field removed'); await loadCfDefs(); }
+      catch (ex) { showToast('Could not remove: ' + (ex.body?.error || ex.message)); }
     }
 
     // ---------- users tab ----------

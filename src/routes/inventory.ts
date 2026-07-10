@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { put, del } from '@vercel/blob';
+import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -188,7 +189,8 @@ inventory.get('/products/:id', async (c) => {
 
   const product = rows[0];
   if (!product) return c.json({ error: 'not_found' }, 404);
-  return c.json({ product });
+  const custom_fields = await loadCustomFieldValues(session.workspace.id, 'product', id);
+  return c.json({ product, custom_fields });
 });
 
 // ============================================================================
@@ -354,6 +356,7 @@ const updateSchema = z.object({
   shortage_limit: z.number().int().min(0).max(100).optional(),
   is_active: z.boolean().optional(),
   is_kit: z.boolean().optional(),
+  custom_fields: z.array(z.object({ definition_id: z.string().uuid(), value: z.string().nullable() })).optional(),
 });
 
 inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
@@ -439,6 +442,13 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
     payload: { fields: changed },
     ipAddress, userAgent,
   });
+
+  if (p.custom_fields) {
+    await upsertCustomFieldValues({
+      workspaceId: session.workspace.id, entityType: 'product', entityId: id,
+      actorUserId: session.user.id, values: p.custom_fields,
+    });
+  }
 
   return c.json({ product: updated[0] });
 });

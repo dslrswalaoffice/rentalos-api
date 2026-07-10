@@ -8,6 +8,7 @@ import { recomputeOrderTotals } from '../lib/pricing.js';
 import { checkAvailability } from '../lib/availability.js';
 import { generateInvoice } from './invoices.js';
 import { applyDepositStatus } from './payments.js';
+import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -486,13 +487,14 @@ orders.get('/:id', async (c) => {
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
 
-  const [items, events] = await Promise.all([
+  const [items, events, customFields] = await Promise.all([
     loadItems(id),
     loadEvents(id),
+    loadCustomFieldValues(session.workspace.id, 'order', id),
   ]);
 
   const canFinalize = deriveCanFinalize(items);
-  return c.json({ order, items, events, can_finalize: canFinalize });
+  return c.json({ order, items, events, can_finalize: canFinalize, custom_fields: customFields });
 });
 
 // ============================================================================
@@ -610,6 +612,7 @@ const updateSchema = z.object({
   channel:            z.enum(CHANNELS).optional(),
   notes:              z.string().max(2000).optional(),
   internal_notes:     z.string().max(2000).optional(),
+  custom_fields:      z.array(z.object({ definition_id: z.string().uuid(), value: z.string().nullable() })).optional(),
 });
 
 orders.patch('/:id', async (c) => {
@@ -690,6 +693,14 @@ orders.patch('/:id', async (c) => {
     payload: { fields: changedFields },
     ipAddress, userAgent,
   });
+
+  // Custom field values (Sub-turn 6g) — accepted inline to save a roundtrip.
+  if (p.custom_fields) {
+    await upsertCustomFieldValues({
+      workspaceId: session.workspace.id, entityType: 'order', entityId: id,
+      actorUserId: session.user.id, values: p.custom_fields,
+    });
+  }
 
   // Moving the rental window changes billable days -> recompute rental pricing.
   const windowMoved =

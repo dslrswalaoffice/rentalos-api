@@ -319,6 +319,12 @@
       body.printing-contract .contract-full-text { max-height: none; overflow: visible; border: none; background: none; }
     }
     .cf-status { display: inline-block; padding: 1px 7px; border-radius: 999px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    /* 6g: custom field inputs */
+    .cf-field { margin-bottom: 12px; }
+    .cf-field label { display: block; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .08em; color: var(--muted-strong); text-transform: uppercase; margin-bottom: 6px; }
+    .cf-field input[type=text], .cf-field input[type=number], .cf-field input[type=date], .cf-field select { width: 100%; padding: 9px 11px; font-family: var(--font-body); font-size: 13.5px; color: var(--ink); background: var(--card); border: 1px solid var(--border); border-radius: 9px; outline: none; }
+    .cf-field .cf-check { display: inline-flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; font-family: var(--font-body); font-size: 13.5px; color: var(--ink); font-weight: 400; }
+    .cf-help { font-size: 11px; color: var(--muted); margin: 5px 0 0; }
     .cf-status.confirmed { background: var(--accent-soft); color: var(--head); }
     .cf-status.dispatched, .cf-status.active { background: var(--orange-soft); color: var(--warn-strong); }
     .cf-status.returned, .cf-status.closed { background: #e8f6ee; color: #177a45; }
@@ -1193,11 +1199,12 @@
     async function loadOrder() {
       if (!state.orderId) { renderNotFound(); return; }
       try {
-        const { order, items, events, can_finalize } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}`);
+        const { order, items, events, can_finalize, custom_fields } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}`);
         state.order = order;
         state.items = items;
         state.events = events;
         state.canFinalize = can_finalize === true;
+        state.customFields = custom_fields || [];
         await loadContracts();
         render();
       } catch (err) {
@@ -1235,6 +1242,7 @@
         ${paymentsCardHtml()}
         ${depositCardHtml()}
         ${contractsCardHtml()}
+        ${customFieldsCardHtml()}
         ${invoicesCardHtml()}
         ${timelineCardHtml()}
         ${actionsCardHtml()}
@@ -1245,6 +1253,7 @@
       wirePaymentsCard();
       wireDepositCard();
       wireContractsCard();
+      wireCustomFieldsCard();
       wireInvoicesCard();
       wireActionsCard();
       wireFinalizeBanner();
@@ -3370,6 +3379,62 @@
       window.print();
       setTimeout(() => document.body.classList.remove('printing-contract'), 200);
     });
+
+    // ---------- custom fields (Sub-turn 6g) ----------
+    function cfInputHtml(f) {
+      const req = f.is_required ? 'required' : '';
+      const help = f.help_text ? `<p class="cf-help">${escapeHtml(f.help_text)}</p>` : '';
+      const label = `<label>${escapeHtml(f.label)}${f.is_required ? ' *' : ''}</label>`;
+      const def = escapeAttr(f.definition_id);
+      const val = f.value ?? '';
+      let input;
+      switch (f.field_type) {
+        case 'number': input = `<input type="number" data-cf-def="${def}" value="${escapeAttr(val)}" ${req}>`; break;
+        case 'date': input = `<input type="date" data-cf-def="${def}" value="${escapeAttr(val)}" ${req}>`; break;
+        case 'checkbox': input = `<label class="cf-check"><input type="checkbox" data-cf-def="${def}" ${val === 'true' ? 'checked' : ''}> Yes</label>`; break;
+        case 'dropdown': input = `<select data-cf-def="${def}" ${req}><option value="">— Select —</option>${(f.options || []).map(o => `<option value="${escapeAttr(o)}" ${o === val ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>`; break;
+        default: input = `<input type="text" data-cf-def="${def}" value="${escapeAttr(val)}" ${req}>`;
+      }
+      return `<div class="field cf-field">${label}${input}${help}</div>`;
+    }
+    function cfCollect(root) {
+      const values = [];
+      (root || document).querySelectorAll('[data-cf-def]').forEach(el => {
+        const definition_id = el.dataset.cfDef;
+        const value = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : (el.value || null);
+        values.push({ definition_id, value });
+      });
+      return values;
+    }
+
+    function customFieldsCardHtml() {
+      const fields = state.customFields || [];
+      if (!fields.length) return '';
+      return `
+        <div class="card">
+          <div class="card-head"><h3>Custom fields</h3></div>
+          <div id="cf-inputs">${fields.map(cfInputHtml).join('')}</div>
+          <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+            <button class="btn primary" id="cf-save-btn">Save custom fields</button>
+          </div>
+        </div>`;
+    }
+    function wireCustomFieldsCard() {
+      const btn = document.getElementById('cf-save-btn');
+      if (!btn) return;
+      btn.addEventListener('click', async () => {
+        const values = cfCollect(document.getElementById('cf-inputs'));
+        btn.disabled = true; btn.textContent = 'Saving…';
+        try {
+          await api.put('/api/custom-fields/values', { entity_type: 'order', entity_id: state.orderId, values });
+          showToast('Custom fields saved');
+          await loadOrder();
+        } catch (err) {
+          btn.disabled = false; btn.textContent = 'Save custom fields';
+          showToast('Could not save: ' + (err.body?.error || err.message));
+        }
+      });
+    }
 
     function openPaymentMenu(btn, paymentId) {
       closeAllMenus();

@@ -208,6 +208,9 @@
     .avail-field-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
     .avail-field-row .field-narrow input { width: 100%; }
     @media (max-width: 560px) { .avail-field-row { grid-template-columns: 1fr; } }
+    /* 6g custom fields */
+    .cf-field { margin-bottom: 12px; }
+    .cf-field .cf-check { display: inline-flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; font-family: var(--font-body); font-size: 13.5px; color: var(--ink); font-weight: 400; }
     .advanced-toggle { background: transparent; border: none; padding: 6px 0; margin: 4px 0 14px; color: var(--head); font-family: var(--font-body); font-weight: 600; font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
     .advanced-toggle:hover { color: var(--ink); }
     .advanced { display: none; }
@@ -546,6 +549,10 @@
                 <div class="field-hint">Allow this many overbooks above capacity (0 = strict, no overbook)</div>
               </div>
             </div>
+          </section>
+          <section class="modal-section" id="cf-section" data-cf-section hidden>
+            <h3 class="section-title">Custom fields</h3>
+            <div id="cf-inputs"></div>
           </section>
         </div>
         <div class="modal-foot">
@@ -902,9 +909,49 @@
       document.getElementById('image-error').hidden = true;
       document.getElementById('image-file-input').value = '';
       loadCategoriesDatalist();
+      cfLoadAndRender(id);
       editModal.classList.add('open');
     }
     function closeEdit() { editModal.classList.remove('open'); editingId = null; }
+
+    // ---------- custom fields (Sub-turn 6g) ----------
+    function cfInputHtml(f) {
+      const req = f.is_required ? 'required' : '';
+      const help = f.help_text ? `<p class="field-hint">${escapeHtml(f.help_text)}</p>` : '';
+      const label = `<label>${escapeHtml(f.label)}${f.is_required ? ' *' : ''}</label>`;
+      const def = escapeAttr(f.definition_id);
+      const val = f.value ?? '';
+      let input;
+      switch (f.field_type) {
+        case 'number': input = `<input type="number" data-cf-def="${def}" value="${escapeAttr(val)}" ${req}>`; break;
+        case 'date': input = `<input type="date" data-cf-def="${def}" value="${escapeAttr(val)}" ${req}>`; break;
+        case 'checkbox': input = `<label class="cf-check"><input type="checkbox" data-cf-def="${def}" ${val === 'true' ? 'checked' : ''}> Yes</label>`; break;
+        case 'dropdown': input = `<select data-cf-def="${def}" ${req}><option value="">— Select —</option>${(f.options || []).map(o => `<option value="${escapeAttr(o)}" ${o === val ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>`; break;
+        default: input = `<input type="text" data-cf-def="${def}" value="${escapeAttr(val)}" ${req}>`;
+      }
+      return `<div class="field cf-field">${label}${input}${help}</div>`;
+    }
+    async function cfLoadAndRender(id) {
+      const section = document.getElementById('cf-section');
+      const wrap = document.getElementById('cf-inputs');
+      section.hidden = true; wrap.innerHTML = '';
+      try {
+        const { values } = await api.get(`/api/custom-fields/values?entity_type=product&entity_id=${encodeURIComponent(id)}`);
+        if (editingId !== id) return; // modal changed while loading
+        if (!values || !values.length) return;
+        section.hidden = false;
+        wrap.innerHTML = values.map(cfInputHtml).join('');
+      } catch { /* leave hidden */ }
+    }
+    function cfCollect() {
+      const values = [];
+      document.querySelectorAll('#cf-inputs [data-cf-def]').forEach(el => {
+        const definition_id = el.dataset.cfDef;
+        const value = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : (el.value || null);
+        values.push({ definition_id, value });
+      });
+      return values;
+    }
 
     // ---------- product image upload (Sub-turn 5f) ----------
     const IMG_MAX_WIDTH = 1200;
@@ -1036,6 +1083,8 @@
       if (bufferBefore !== '') body.buffer_before_hours = Math.max(0, Math.min(72, Math.round(Number(bufferBefore))));
       if (bufferAfter !== '') body.buffer_after_hours = Math.max(0, Math.min(72, Math.round(Number(bufferAfter))));
       if (shortageLimit !== '') body.shortage_limit = Math.max(0, Math.min(100, Math.round(Number(shortageLimit))));
+      const cfValues = cfCollect();
+      if (cfValues.length) body.custom_fields = cfValues;
       const submit = document.getElementById('edit-submit');
       submit.disabled = true; submit.textContent = 'Saving…';
       try {
