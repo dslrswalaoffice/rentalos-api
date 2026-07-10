@@ -219,6 +219,30 @@
       .field-row { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; } }
+  
+    /* ========== notifications bell + drawer (Sub-turn 5d) ========== */
+    .notif-bell-wrap { position: relative; }
+    .notif-bell { background: none; border: none; padding: 8px; cursor: pointer; color: var(--head); position: relative; display: flex; align-items: center; }
+    .notif-bell:hover { background: var(--thead); border-radius: 6px; }
+    .notif-badge { position: absolute; top: 4px; right: 4px; background: var(--bad-strong); color: #fff; border-radius: 10px; font-size: 10px; font-weight: 600; padding: 2px 5px; min-width: 16px; text-align: center; line-height: 1.2; }
+    .notif-badge[hidden] { display: none; }
+    .notif-drawer { position: absolute; top: 100%; right: 0; margin-top: 8px; width: 360px; max-height: 480px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(16,24,40,0.14); z-index: 60; display: flex; flex-direction: column; }
+    .notif-drawer[hidden] { display: none; }
+    .notif-drawer-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .notif-drawer-head h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); font-family: var(--font-display); }
+    .notif-mark-all { background: none; border: none; color: var(--head); font-size: 12px; cursor: pointer; padding: 0; font-weight: 600; }
+    .notif-mark-all:hover { text-decoration: underline; }
+    .notif-drawer-body { flex: 1; overflow-y: auto; padding: 4px 0; }
+    .notif-item { padding: 10px 16px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 100ms ease; }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-item:hover { background: var(--thead); }
+    .notif-item.unread { background: rgba(59,130,246,0.05); }
+    .notif-item.unread .notif-title::before { content: ''; display: inline-block; width: 6px; height: 6px; background: #3b82f6; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+    .notif-title { font-size: 13px; font-weight: 500; color: var(--head); margin-bottom: 2px; }
+    .notif-body { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .notif-meta { font-size: 11px; color: var(--muted); opacity: 0.8; font-family: var(--font-mono); }
+    .notif-empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+
   </style>
 </head>
 <body>
@@ -276,6 +300,23 @@
         </label>
 
         <div class="topbar-actions">
+          <div class="notif-bell-wrap">
+            <button class="notif-bell" id="notif-bell" aria-label="Notifications">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2a7 7 0 0 0-7 7v3.6L3 15h18l-2-2.4V9a7 7 0 0 0-7-7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+              <span class="notif-badge" id="notif-badge" hidden>0</span>
+            </button>
+            <div class="notif-drawer" id="notif-drawer" hidden>
+              <header class="notif-drawer-head">
+                <h3>Notifications</h3>
+                <button class="notif-mark-all" id="notif-mark-all">Mark all read</button>
+              </header>
+              <div class="notif-drawer-body" id="notif-drawer-body"></div>
+            </div>
+          </div>
+
           <button class="primary-cta" id="btn-add">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             Add product
@@ -963,6 +1004,91 @@
         console.error('boot failed', err);
       }
     })();
+  
+    // ========== notifications bell + drawer (Sub-turn 5d) ==========
+    (function initNotifications() {
+      const bell = document.getElementById('notif-bell');
+      const badge = document.getElementById('notif-badge');
+      const drawer = document.getElementById('notif-drawer');
+      const drawerBody = document.getElementById('notif-drawer-body');
+      const markAllBtn = document.getElementById('notif-mark-all');
+      if (!bell || !drawer) return;
+      let pollTimer = null;
+      const esc = (typeof escapeHtml === 'function') ? escapeHtml : (s => String(s ?? ''));
+      const escA = (typeof escapeAttr === 'function') ? escapeAttr : esc;
+
+      function timeAgoN(iso) {
+        const diff = Date.now() - new Date(iso).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return 'just now';
+        if (mins < 60) return mins + 'm ago';
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return hrs + 'h ago';
+        return Math.floor(hrs / 24) + 'd ago';
+      }
+      function updateBadge(count) {
+        if (count > 0) { badge.textContent = count > 99 ? '99+' : String(count); badge.hidden = false; }
+        else { badge.hidden = true; }
+      }
+      async function fetchCount() {
+        try {
+          const res = await fetch('/api/notifications/unread-count', { credentials: 'include' });
+          if (!res.ok) return;
+          const { count } = await res.json();
+          updateBadge(count);
+        } catch {}
+      }
+      async function loadList() {
+        drawerBody.innerHTML = '<div class="notif-empty">Loading…</div>';
+        try {
+          const res = await fetch('/api/notifications?limit=20', { credentials: 'include' });
+          if (!res.ok) throw new Error();
+          const { notifications } = await res.json();
+          renderList(notifications);
+        } catch { drawerBody.innerHTML = '<div class="notif-empty">Failed to load notifications</div>'; }
+      }
+      function renderList(items) {
+        if (!items || items.length === 0) { drawerBody.innerHTML = '<div class="notif-empty">No notifications</div>'; return; }
+        drawerBody.innerHTML = items.map(n => `
+          <div class="notif-item ${n.read_at ? '' : 'unread'}" data-id="${escA(n.id)}" data-link="${escA(n.link_url || '')}">
+            <div class="notif-title">${esc(n.title)}</div>
+            ${n.body ? `<div class="notif-body">${esc(n.body)}</div>` : ''}
+            <div class="notif-meta">${esc(n.actor_name || 'System')} · ${esc(timeAgoN(n.created_at))}</div>
+          </div>`).join('');
+        drawerBody.querySelectorAll('.notif-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const id = el.dataset.id, link = el.dataset.link;
+            if (el.classList.contains('unread')) {
+              fetch(`/api/notifications/${id}/read`, { method: 'POST', credentials: 'include' }).then(() => fetchCount()).catch(() => {});
+            }
+            if (link) window.location.href = link;
+          });
+        });
+      }
+      async function markAllRead() {
+        try {
+          await fetch('/api/notifications/mark-all-read', { method: 'POST', credentials: 'include' });
+          await fetchCount();
+          await loadList();
+        } catch {}
+      }
+      bell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (drawer.hidden) { drawer.hidden = false; loadList(); } else { drawer.hidden = true; }
+      });
+      document.addEventListener('click', (e) => {
+        if (!drawer.contains(e.target) && !bell.contains(e.target)) drawer.hidden = true;
+      });
+      markAllBtn.addEventListener('click', markAllRead);
+      function startPolling() { if (pollTimer) return; pollTimer = setInterval(() => { if (!document.hidden) fetchCount(); }, 60000); }
+      function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopPolling(); else { fetchCount(); startPolling(); }
+      });
+      fetchCount();
+      startPolling();
+    })();
+
   </script>
 </body>
 </html>
