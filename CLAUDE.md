@@ -520,6 +520,27 @@ No concrete third-party adapters (only noop), no auto-send on business events, n
 
 ---
 
+## Multi-channel invoice reminders (Sub-turn 6f)
+
+Automated invoice reminders over WhatsApp and/or email, built on the 6a adapter architecture. `invoice_reminders` logs every send attempt with the channel **actually used**.
+
+- **Two concrete adapters now `implemented: true`:** `smtp` (email, uses `nodemailer`) and `wati` (WhatsApp, native `fetch`). All others remain noop/stub. Registered in `IMPLEMENTED_ADAPTERS` + metadata in `src/lib/adapters/registry.ts`.
+- **Reminder types:** `invoice_upcoming` (N days before due) and `invoice_overdue` (N days after due, repeats every `repeat_every_days`). Config lives in `settings.reminders.templates.*` per workspace.
+- **Channel priority** is a per-type array, e.g. `['whatsapp','email']` — try WhatsApp first, fall back to email. A channel is **skipped** (logged) if its adapter is inactive OR the customer lacks that contact method; the next channel is tried.
+- **WhatsApp uses pre-approved templates only** — `template_name` + `variable_order` per workspace; variables are sent as parameters (not freeform text). **Email uses inline `subject`+`body`** with `{variable}` substitution.
+- **`due_date`:** migration 021 adds a nullable `invoices.due_date` (invoices had none). The scheduler uses `COALESCE(due_date, issued_at + settings.invoice.default_due_days)`. Invoice generation is untouched — the column stays null unless set directly.
+- **Endpoints** (mounted at `/api/reminders`; invoices are served at `/api/order-invoices`, so the invoice-scoped reminder routes live under the reminders mount):
+  - `POST /api/reminders/trigger` — cron; header `X-Reminder-Secret` must equal `REMINDER_TRIGGER_SECRET` (else 401). Iterates all workspaces. No session.
+  - `POST /api/reminders/invoices/:invoiceId/send` — manual (session); optional `{ channel }` override; **bypasses the cooldown**.
+  - `GET /api/reminders/invoices/:invoiceId` — reminder log.
+- **24h cooldown** across all channels (in the cron eligibility SQL) + per-type dedup (upcoming: once ever; overdue: once per `repeat_every_days`). Manual send skips the cooldown.
+- **Cron** via GitHub Actions hourly (`.github/workflows/reminders.yml`) — free, self-throttling.
+- **Audit** `invoices.reminder.sent` / `.failed` (+ `.skipped` reserved); in-product `invoice.reminder.sent` notification to other members on success.
+- **Adapters load decrypted credentials** from the active `workspace_integrations` row (AES-GCM via `INTEGRATION_ENC_KEY`) — same as 6a; a missing key just yields empty creds (send fails, logged).
+- **PREREQUISITE:** `REMINDER_TRIGGER_SECRET` (64-char hex) in the Vercel env AND as a GitHub Actions secret. WhatsApp additionally needs a WATI account + Meta-approved templates; email needs any SMTP.
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.

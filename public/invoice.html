@@ -122,6 +122,31 @@
     .form-error{padding:10px 12px;margin:0 0 14px;background:var(--bad-soft);color:var(--bad-strong);border-radius:8px;font-size:12.5px;font-weight:500;border-left:3px solid var(--bad-solid)}
     .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--border);background:#fafbfc}
     .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--card);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 14px 30px -12px rgba(16,24,40,.32);padding:11px 18px;font-size:13px;color:var(--ink);z-index:200;max-width:90vw}
+    /* 6f: reminders card */
+    .reminders-wrap{max-width:820px;margin:0 auto 24px;padding:0 12px}
+    .reminders-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
+    .reminders-card .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+    .reminders-card h3{margin:0;font-size:15px;color:var(--ink)}
+    .send-reminder-group{display:flex;align-items:center;gap:8px}
+    .input.tiny{padding:6px 9px;font-size:12.5px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--ink)}
+    .rem-loading,.rem-empty{font-size:12.5px;color:var(--muted);padding:8px 0}
+    .rem-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-top:1px solid var(--border)}
+    .rem-row:first-child{border-top:none}
+    .rem-icon{font-size:18px;line-height:1.2}
+    .rem-main{flex:1;min-width:0}
+    .rem-line1{font-size:13px;color:var(--ink)}
+    .rem-target{font-weight:600}
+    .rem-detail{font-size:12px;color:var(--muted);margin-top:2px}
+    .rem-meta{font-size:10.5px;color:var(--muted-soft);font-family:var(--font-mono);margin-top:3px}
+    .rem-err{font-size:11.5px;color:var(--bad-strong);margin-top:3px}
+    .rem-right{text-align:right;flex-shrink:0}
+    .rem-date{font-size:10.5px;color:var(--muted);margin-top:4px}
+    .rem-status{display:inline-flex;padding:2px 9px;border-radius:999px;font-family:var(--font-mono);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+    .rem-status.ok{background:#d1fae5;color:#065f46}
+    .rem-status.bad{background:#fee2e2;color:#991b1b}
+    .rem-status.warn{background:#fef3c7;color:#92400e}
+    .rem-status.muted{background:#eef0f3;color:var(--muted-strong)}
+    .rem-skip{font-size:10.5px;color:var(--muted);font-style:italic}
 
     @media (max-width:640px){ .invoice-document{padding:12mm 8mm;margin:12px} .inv-top,.inv-parties{flex-direction:column;gap:12px} .inv-title{text-align:left} }
 
@@ -183,6 +208,8 @@
           </div>
   </div>
   <div class="invoice-document" id="doc"><div class="loading">Loading invoice…</div></div>
+
+  <div class="reminders-wrap no-print" id="reminders-wrap"></div>
 
   <!-- Regenerate modal -->
   <div class="modal-backdrop no-print" id="regen-modal">
@@ -256,6 +283,87 @@
       const snap = inv.snapshot || {};
       renderActionBar();
       document.getElementById('doc').innerHTML = documentHtml(inv, snap);
+      renderRemindersCard();
+      loadReminders();
+    }
+
+    // ---------- reminders (Sub-turn 6f) ----------
+    const REMINDER_CHANNEL_ICON = { whatsapp: '💬', email: '📧', sms: '📱' };
+    const REMINDER_STATUS_CLS = { sent: 'ok', failed: 'bad', skipped: 'muted', queued: 'warn' };
+
+    function renderRemindersCard() {
+      const wrap = document.getElementById('reminders-wrap');
+      if (!wrap) return;
+      wrap.innerHTML = `
+        <div class="card reminders-card">
+          <div class="card-head">
+            <h3>Reminders</h3>
+            <div class="send-reminder-group">
+              <select id="manual-send-channel" class="input tiny" aria-label="Reminder channel">
+                <option value="">Auto (from config)</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="email">Email</option>
+              </select>
+              <button class="btn primary" id="send-reminder-btn">Send now</button>
+            </div>
+          </div>
+          <div id="reminders-log"><div class="rem-loading">Loading…</div></div>
+        </div>`;
+      document.getElementById('send-reminder-btn').addEventListener('click', sendReminderNow);
+    }
+
+    async function sendReminderNow() {
+      const btn = document.getElementById('send-reminder-btn');
+      const channel = document.getElementById('manual-send-channel').value || undefined;
+      btn.disabled = true; const restore = btn.textContent; btn.textContent = 'Sending…';
+      try {
+        const data = await api.post(`/api/reminders/invoices/${encodeURIComponent(state.invoiceId)}/send`, channel ? { channel } : {});
+        if (data.status === 'sent') showToast(`Reminder sent via ${data.channel || 'configured channel'}`);
+        else showToast(`Not sent: ${data.reason || 'no channel available'}`);
+        await loadReminders();
+      } catch (err) {
+        showToast('Send failed: ' + (err.body?.error || err.message));
+      } finally {
+        btn.disabled = false; btn.textContent = restore;
+      }
+    }
+
+    async function loadReminders() {
+      const log = document.getElementById('reminders-log');
+      if (!log) return;
+      try {
+        const { reminders } = await api.get(`/api/reminders/invoices/${encodeURIComponent(state.invoiceId)}`);
+        if (!reminders || !reminders.length) {
+          log.innerHTML = `<div class="rem-empty">No reminders sent yet.</div>`;
+          return;
+        }
+        log.innerHTML = reminders.map(r => {
+          const icon = REMINDER_CHANNEL_ICON[r.channel] || '•';
+          const cls = REMINDER_STATUS_CLS[r.status] || 'muted';
+          const detail = r.channel === 'email'
+            ? escapeHtml(r.subject_snapshot || '')
+            : (r.template_name ? `Template: ${escapeHtml(r.template_name)}` : '');
+          const meta = [r.provider, r.triggered_by, r.triggered_by_name].filter(Boolean).map(escapeHtml).join(' · ');
+          const err = r.status === 'failed' && r.error_message ? `<div class="rem-err">${escapeHtml(r.error_message)}</div>` : '';
+          const skip = r.status === 'skipped' && r.skip_reason ? `<span class="rem-skip">${escapeHtml(r.skip_reason)}</span>` : '';
+          return `
+            <div class="rem-row">
+              <span class="rem-icon">${icon}</span>
+              <div class="rem-main">
+                <div class="rem-line1"><span class="rem-target">${escapeHtml(r.target_address || '')}</span> ${skip}</div>
+                ${detail ? `<div class="rem-detail">${detail}</div>` : ''}
+                <div class="rem-meta">${meta}</div>
+                ${err}
+              </div>
+              <div class="rem-right">
+                <span class="rem-status ${cls}">${escapeHtml(r.status)}</span>
+                <div class="rem-date">${escapeHtml(fmtDate(r.sent_at || r.created_at))}</div>
+              </div>
+            </div>`;
+        }).join('');
+      } catch (err) {
+        log.innerHTML = `<div class="rem-empty">Couldn't load reminders.</div>`;
+      }
     }
 
     function nextRevision() { return Number(state.invoice.revision) + 1; }

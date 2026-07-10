@@ -86,6 +86,19 @@
     .field textarea.mono.contract-template{font-family:var(--font-mono);font-size:12px;line-height:1.5;min-height:300px}
     .template-variables{margin-bottom:8px;display:flex;flex-wrap:wrap;gap:4px}
     .var-chip{display:inline-block;padding:3px 8px;background:#eef0f3;color:var(--muted-strong);border-radius:10px;font-size:11px;font-family:var(--font-mono);}
+    /* 6f: reminders */
+    .template-block{border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:12px}
+    .template-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .template-header h4{margin:0;font-size:13.5px;color:var(--head)}
+    .switch-inline{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted-strong);cursor:pointer}
+    .channel-priority{margin:10px 0}
+    .mini-label{display:block;font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-strong);margin-bottom:6px}
+    .channel-checkboxes{display:flex;flex-direction:column;gap:6px}
+    .channel-checkboxes label{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer}
+    .hint-sub{font-size:11px;color:var(--muted-soft);margin:6px 0 0}
+    .channel-config{margin-top:10px;border-top:1px solid var(--border);padding-top:8px}
+    .channel-config summary{cursor:pointer;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--head)}
+    .channel-config .field{margin-top:10px}
     .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
     .toggle-field{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}
     .toggle-field .tl{font-size:13px;color:var(--ink);font-weight:500}
@@ -341,6 +354,7 @@
           invoice: { ...s.invoice },
           bank_details: { ...s.bank_details },
           contract: { template_text: s.contract?.template_text ?? '', template_version: s.contract?.template_version ?? 'v1' },
+          reminders: JSON.parse(JSON.stringify(s.reminders ?? {})),
         },
       };
       state.baseline = JSON.parse(JSON.stringify(state.form));
@@ -473,7 +487,96 @@
             <textarea data-field="settings.contract.template_text" class="mono contract-template" rows="15" ${dis}>${escapeHtml(s.contract?.template_text ?? '')}</textarea>
           </div>
           <p class="card-sub">Editing this only affects contracts signed <strong>after</strong> the change — existing signed contracts stay frozen.</p>
+        </div>
+        ${remindersSectionHtml()}`;
+    }
+
+    function reminderTemplateBlock(key, title, tmpl, dis, extraFields) {
+      const chan = (v) => (Array.isArray(tmpl.channels) && tmpl.channels.includes(v)) ? 'checked' : '';
+      const varsCsv = (tmpl.whatsapp?.variable_order || []).join(', ');
+      const base = `settings.reminders.templates.${key}`;
+      const extra = extraFields.map(([field, label, min, max]) => `
+        <div class="field field-narrow">
+          <label>${escapeHtml(label)}</label>
+          <input type="number" data-field="${base}.${field}" min="${min}" max="${max}" value="${escapeAttr(tmpl[field] ?? '')}" ${dis}>
+        </div>`).join('');
+      return `
+        <div class="template-block">
+          <div class="template-header">
+            <h4>${escapeHtml(title)}</h4>
+            <label class="switch-inline"><input type="checkbox" data-field="${base}.enabled" ${tmpl.enabled ? 'checked' : ''} ${dis}> Enabled</label>
+          </div>
+          <div class="field-row">${extra}</div>
+          <div class="channel-priority">
+            <label class="mini-label">Channel priority (tried in order, falls back if unavailable)</label>
+            <div class="channel-checkboxes">
+              <label><input type="checkbox" data-rem-chan="${key}" value="whatsapp" ${chan('whatsapp')} ${dis}> WhatsApp (primary)</label>
+              <label><input type="checkbox" data-rem-chan="${key}" value="email" ${chan('email')} ${dis}> Email (fallback)</label>
+            </div>
+            <p class="hint-sub">Check both for automatic fallback. Uncheck all to disable this reminder's sends.</p>
+          </div>
+          <details class="channel-config" open>
+            <summary>WhatsApp template</summary>
+            <div class="field"><label>Template name (as approved in WATI)</label>
+              <input type="text" data-field="${base}.whatsapp.template_name" value="${escapeAttr(tmpl.whatsapp?.template_name ?? '')}" placeholder="invoice_upcoming_reminder" ${dis}></div>
+            <div class="field"><label>Variable order (comma-separated, must match {{1}},{{2}}… in WATI)</label>
+              <input type="text" data-rem-vars="${key}" value="${escapeAttr(varsCsv)}" placeholder="customer_name, invoice_number, total_amount, due_date" ${dis}></div>
+          </details>
+          <details class="channel-config">
+            <summary>Email template</summary>
+            <div class="field"><label>Subject</label>
+              <input type="text" data-field="${base}.email.subject" value="${escapeAttr(tmpl.email?.subject ?? '')}" ${dis}></div>
+            <div class="field"><label>Body</label>
+              <textarea class="mono" rows="8" data-field="${base}.email.body" ${dis}>${escapeHtml(tmpl.email?.body ?? '')}</textarea></div>
+          </details>
         </div>`;
+    }
+
+    function remindersSectionHtml() {
+      const r = state.form.settings.reminders || {};
+      const t = r.templates || {};
+      const dis = canEditMetadata() ? '' : 'disabled';
+      return `
+        <div class="card">
+          <div class="section-h">Invoice reminders</div>
+          <p class="card-sub">Automated reminders via WhatsApp and/or email. Configure providers in the <strong>Integrations</strong> tab first. Variables use {curly_braces}.</p>
+          <div class="field">
+            <label>Sender name</label>
+            <input type="text" data-field="settings.reminders.sender_name" value="${escapeAttr(r.sender_name ?? '')}" placeholder="DSLRSWALA Rentals" ${dis}>
+          </div>
+          ${reminderTemplateBlock('invoice_upcoming', 'Upcoming due reminder', t.invoice_upcoming || {}, dis, [['days_before_due', 'Days before due', 0, 30]])}
+          ${reminderTemplateBlock('invoice_overdue', 'Overdue reminder', t.invoice_overdue || {}, dis, [['days_after_due', 'Days after due', 0, 90], ['repeat_every_days', 'Repeat every N days', 1, 90]])}
+          <div class="template-variables" style="margin-top:10px;">
+            ${['customer_name','invoice_number','total_amount','due_date','days_overdue','order_number','rental_start','rental_end','workspace_name','workspace_email','workspace_phone'].map(v => `<span class="var-chip">${escapeHtml(v)}</span>`).join('')}
+          </div>
+        </div>`;
+    }
+
+    function ensureRemTemplate(key) {
+      const s = state.form.settings;
+      s.reminders = s.reminders || {};
+      s.reminders.templates = s.reminders.templates || {};
+      s.reminders.templates[key] = s.reminders.templates[key] || {};
+      return s.reminders.templates[key];
+    }
+    function wireRemindersExtras() {
+      document.querySelectorAll('[data-rem-chan]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const tmpl = ensureRemTemplate(cb.dataset.remChan);
+          const set = new Set(Array.isArray(tmpl.channels) ? tmpl.channels : []);
+          if (cb.checked) set.add(cb.value); else set.delete(cb.value);
+          tmpl.channels = ['whatsapp', 'email'].filter(x => set.has(x)); // preserve priority
+          renderTopbar();
+        });
+      });
+      document.querySelectorAll('[data-rem-vars]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const tmpl = ensureRemTemplate(inp.dataset.remVars);
+          tmpl.whatsapp = tmpl.whatsapp || {};
+          tmpl.whatsapp.variable_order = inp.value.split(',').map(x => x.trim()).filter(Boolean);
+          renderTopbar();
+        });
+      });
     }
 
     function wireWorkspaceTab() {
@@ -492,6 +595,7 @@
           renderTopbar();
         });
       });
+      wireRemindersExtras();
     }
 
     async function saveWorkspace() {

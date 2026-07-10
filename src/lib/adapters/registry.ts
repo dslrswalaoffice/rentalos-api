@@ -1,5 +1,7 @@
 import type { AdapterMetadata } from './types.js';
 import { noopPaymentAdapter, noopWhatsAppAdapter, noopEmailAdapter } from './noop.js';
+import { smtpEmailAdapter } from './smtp.js';
+import { watiWhatsAppAdapter } from './wati.js';
 
 // ============================================================================
 // src/lib/adapters/registry.ts  (Sub-turn 6a)
@@ -75,7 +77,7 @@ export const ADAPTER_METADATA: AdapterMetadata[] = [
       { key: 'base_url', label: 'Base URL', type: 'url', required: true, placeholder: 'https://live-server-XXXXX.wati.io' },
       { key: 'phone_number_id', label: 'WhatsApp Phone Number ID', type: 'text', required: false },
     ],
-    supportsTest: true, implemented: false,
+    supportsTest: false, implemented: true,
   },
   {
     provider: 'aisensy', displayName: 'AiSensy', category: 'whatsapp',
@@ -133,7 +135,7 @@ export const ADAPTER_METADATA: AdapterMetadata[] = [
       { key: 'from_email', label: 'From Email', type: 'email', required: true },
       { key: 'from_name', label: 'From Name', type: 'text', required: false },
     ],
-    supportsTest: true, implemented: false,
+    supportsTest: false, implemented: true,
   },
   {
     provider: 'sendgrid', displayName: 'SendGrid', category: 'email',
@@ -196,8 +198,8 @@ export const ADAPTER_METADATA: AdapterMetadata[] = [
 // Concrete adapter instances (only implemented ones).
 export const IMPLEMENTED_ADAPTERS: Record<string, Record<string, unknown>> = {
   payment: { noop: noopPaymentAdapter },
-  whatsapp: { noop: noopWhatsAppAdapter },
-  email: { noop: noopEmailAdapter },
+  whatsapp: { noop: noopWhatsAppAdapter, wati: watiWhatsAppAdapter },
+  email: { noop: noopEmailAdapter, smtp: smtpEmailAdapter },
 };
 
 export function findAdapter(category: string, provider: string): any {

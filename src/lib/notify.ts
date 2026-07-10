@@ -104,6 +104,10 @@ const TEMPLATES: Record<string, { title: string; body?: string }> = {
     title: 'Invoice {invoice_number} → {new_status}',
     body: 'Order #{order_number}',
   },
+  'invoice.reminder.sent': {
+    title: 'Reminder sent for Invoice {invoice_number}',
+    body: '{customer_name} · via {channel}',
+  },
   'people.communication.logged': {
     title: 'Communication logged for {customer_name}',
     body: '{channel} · {direction}',
