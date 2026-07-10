@@ -1052,6 +1052,7 @@
       picked: null,       // product picked in the add-item modal
       refundOf: null,     // payment being refunded (refund modal context)
       itemStatusForce: null, // { itemId, from, to, description } for the item-status force modal
+      multiLocation: false,  // Sub-turn 6i — only surface the location row when >1 exists
     };
     let pendingInvoicePulse = null; // { id, kind } applied on the next render
 
@@ -1143,6 +1144,13 @@
     }
     function contractsEnabled() {
       return state.ws?.settings?.features?.contract_signatures === true;
+    }
+    // Fetch once to decide whether to surface the pickup-location row (Sub-turn 6i).
+    async function loadLocationCount() {
+      try {
+        const { locations } = await api.get('/api/locations');
+        state.multiLocation = (locations || []).filter(l => l.is_active).length > 1;
+      } catch { state.multiLocation = false; }
     }
     function renderTemplate(text, ctx) {
       return String(text || '').replace(/\{(\w+)\}/g, (_, key) => (key in ctx ? ctx[key] : `{${key}}`));
@@ -1333,6 +1341,7 @@
                 <span class="meta-value">${o.dispatch_type === 'delivery' ? 'We deliver' : 'Customer pickup'} · <span class="channel-tag ${channelClass}">${escapeHtml((o.channel || '').replace('_', ' '))}</span></span>
               </div>
               ${o.delivery_address ? `<div class="meta-row"><span class="meta-label">Delivery to</span><span class="meta-value">${escapeHtml(o.delivery_address)}</span></div>` : ''}
+              ${state.multiLocation && o.pickup_location_name ? `<div class="meta-row"><span class="meta-label">Location</span><span class="meta-value">${escapeHtml(o.pickup_location_name)}</span></div>` : ''}
               <div class="meta-row">
                 <span class="meta-label">Customer</span>
                 <span class="meta-value">${escapeHtml(o.customer_name || '')}${o.customer_phone ? ` · ${escapeHtml(o.customer_phone)}` : ''}</span>
@@ -3692,6 +3701,7 @@
       try {
         await hydrateIdentity();
         await loadWorkspaceContract();
+        await loadLocationCount();
         await loadOrder();
         await loadPayments();
         await loadInvoices();

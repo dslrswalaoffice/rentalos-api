@@ -288,6 +288,7 @@
         <button class="tab" data-tab="features">Features</button>
         <button class="tab" data-tab="integrations">Integrations</button>
         <button class="tab" data-tab="custom-fields">Custom Fields</button>
+        <button class="tab" data-tab="locations">Locations</button>
         <button class="tab" data-tab="users">Users</button>
       </nav>
       <div class="content" id="content"><div class="loading">Loading settings…</div></div>
@@ -347,7 +348,7 @@
         resetForm();
         hydrateIdentity();
         const hash = (location.hash || '#workspace').slice(1);
-        state.tab = ['workspace', 'features', 'integrations', 'custom-fields', 'users'].includes(hash) ? hash : 'workspace';
+        state.tab = ['workspace', 'features', 'integrations', 'custom-fields', 'locations', 'users'].includes(hash) ? hash : 'workspace';
         render();
       } catch (err) {
         document.getElementById('content').innerHTML =
@@ -387,6 +388,7 @@
       else if (state.tab === 'features') { el.innerHTML = featuresTab(); wireFeaturesTab(); }
       else if (state.tab === 'integrations') { el.innerHTML = integrationsTab(); wireIntegrationsTab(); }
       else if (state.tab === 'custom-fields') { el.innerHTML = customFieldsTab(); wireCustomFieldsTab(); }
+      else if (state.tab === 'locations') { el.innerHTML = locationsTab(); wireLocationsTab(); }
       else { el.innerHTML = usersTab(); }
     }
 
@@ -830,6 +832,174 @@
       if (!window.confirm(`Remove "${d?.label || 'this field'}" from forms? Existing values are preserved in the database. Continue?`)) return;
       try { await api.del(`/api/custom-fields/definitions/${id}`); showToast('Custom field removed'); await loadCfDefs(); }
       catch (ex) { showToast('Could not remove: ' + (ex.body?.error || ex.message)); }
+    }
+
+    // ---------- locations tab (Sub-turn 6i) ----------
+    let locList = [];
+
+    function locationsTab() {
+      const owner = canEditMetadata();
+      const note = owner ? '' : `<div class="notice">Only owners and managers can manage locations.</div>`;
+      return `${note}
+        <div class="card">
+          <div class="cf-header">
+            <div>
+              <h3 class="cf-title">Locations</h3>
+              <p class="card-sub" style="margin:2px 0 0">Warehouses / branches gear is stored at. Orders pick up and return from one location (Phase 1).</p>
+            </div>
+            ${owner ? `<button class="btn primary" id="loc-add-btn">+ Add location</button>` : ''}
+          </div>
+          <div class="cf-rows" id="loc-rows"><div class="loading">Loading…</div></div>
+        </div>`;
+    }
+
+    function wireLocationsTab() {
+      const add = document.getElementById('loc-add-btn');
+      if (add) add.addEventListener('click', () => openLocModal(null));
+      loadLocations();
+    }
+
+    async function loadLocations() {
+      try {
+        const { locations } = await api.get('/api/locations');
+        locList = locations || [];
+      } catch { locList = []; }
+      renderLocRows();
+    }
+
+    function renderLocRows() {
+      const rows = document.getElementById('loc-rows');
+      if (!rows) return;
+      const owner = canEditMetadata();
+      if (!locList.length) {
+        rows.innerHTML = `<div class="cf-empty">No locations yet.</div>`;
+        return;
+      }
+      rows.innerHTML = locList.map(l => {
+        const addr = [l.city, l.state].filter(Boolean).join(', ');
+        return `
+        <div class="cf-row" data-id="${escapeAttr(l.id)}">
+          <div class="cf-info">
+            <div class="cf-label">${escapeHtml(l.name)}
+              ${l.is_default ? ' <span class="cf-req">Default</span>' : ''}
+              ${!l.is_active ? ' <span class="cf-type" style="color:var(--muted)">Inactive</span>' : ''}</div>
+            <div class="cf-meta">${addr ? escapeHtml(addr) + ' · ' : ''}${l.asset_count} asset${l.asset_count === 1 ? '' : 's'} · ${l.active_orders_count} active order${l.active_orders_count === 1 ? '' : 's'}</div>
+          </div>
+          ${owner ? `<div class="cf-actions">
+            ${!l.is_default && l.is_active ? `<button class="btn ghost tiny" data-loc-default="${escapeAttr(l.id)}">Set default</button>` : ''}
+            <button class="btn ghost tiny" data-loc-edit="${escapeAttr(l.id)}">Edit</button>
+            ${!l.is_default ? `<button class="btn ghost tiny" data-loc-del="${escapeAttr(l.id)}">Delete</button>` : ''}
+          </div>` : ''}
+        </div>`;
+      }).join('');
+      rows.querySelectorAll('[data-loc-edit]').forEach(b => b.addEventListener('click', () => openLocModal(b.dataset.locEdit)));
+      rows.querySelectorAll('[data-loc-del]').forEach(b => b.addEventListener('click', () => deleteLoc(b.dataset.locDel)));
+      rows.querySelectorAll('[data-loc-default]').forEach(b => b.addEventListener('click', () => setDefaultLoc(b.dataset.locDefault)));
+    }
+
+    function openLocModal(id) {
+      const editing = id ? locList.find(l => l.id === id) : null;
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal">
+          <div class="modal-head">
+            <h3>${editing ? 'Edit' : 'Add'} location</h3>
+          </div>
+          <div class="modal-body">
+            <div id="loc-err" class="form-error" style="display:none"></div>
+            <div class="field"><label>Name *</label>
+              <input type="text" id="loc-name" value="${escapeAttr(editing?.name ?? '')}" placeholder="e.g. Vadodara Main"></div>
+            <div class="field"><label>Address line 1 <span class="hint">optional</span></label>
+              <input type="text" id="loc-a1" value="${escapeAttr(editing?.address_line1 ?? '')}"></div>
+            <div class="field"><label>Address line 2 <span class="hint">optional</span></label>
+              <input type="text" id="loc-a2" value="${escapeAttr(editing?.address_line2 ?? '')}"></div>
+            <div class="field-row" style="display:flex;gap:12px">
+              <div class="field" style="flex:1"><label>City <span class="hint">optional</span></label>
+                <input type="text" id="loc-city" value="${escapeAttr(editing?.city ?? '')}"></div>
+              <div class="field" style="flex:1"><label>State <span class="hint">optional</span></label>
+                <select id="loc-state"><option value="">—</option>${INDIAN_STATES.map(s => `<option value="${escapeAttr(s)}" ${editing?.state === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}</select></div>
+            </div>
+            <div class="field-row" style="display:flex;gap:12px">
+              <div class="field" style="flex:1"><label>Postal code <span class="hint">optional</span></label>
+                <input type="text" id="loc-pin" value="${escapeAttr(editing?.postal_code ?? '')}"></div>
+              <div class="field" style="flex:1"><label>Phone <span class="hint">optional</span></label>
+                <input type="text" id="loc-phone" value="${escapeAttr(editing?.phone ?? '')}"></div>
+            </div>
+            <div class="field"><label>Email <span class="hint">optional</span></label>
+              <input type="text" id="loc-email" value="${escapeAttr(editing?.email ?? '')}"></div>
+            <label class="switch-inline"><input type="checkbox" id="loc-default" ${editing?.is_default ? 'checked' : ''} ${editing?.is_default ? 'disabled' : ''}> Default location for new orders</label>
+            ${editing && !editing.is_default ? `<label class="switch-inline"><input type="checkbox" id="loc-active" ${editing.is_active ? 'checked' : ''}> Active</label>` : ''}
+          </div>
+          <div class="modal-foot">
+            <button class="btn ghost" data-close>Cancel</button>
+            <button class="btn primary" id="loc-save">Save</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
+      overlay.querySelector('#loc-save').addEventListener('click', () => saveLoc(overlay, editing, close));
+      setTimeout(() => overlay.querySelector('#loc-name').focus(), 40);
+    }
+
+    async function saveLoc(overlay, editing, close) {
+      const err = overlay.querySelector('#loc-err');
+      err.style.display = 'none';
+      const val = sel => overlay.querySelector(sel).value.trim();
+      const name = val('#loc-name');
+      if (!name) { err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
+      const payload = {
+        name,
+        address_line1: val('#loc-a1') || null,
+        address_line2: val('#loc-a2') || null,
+        city: val('#loc-city') || null,
+        state: val('#loc-state') || null,
+        postal_code: val('#loc-pin') || null,
+        phone: val('#loc-phone') || null,
+        email: val('#loc-email') || null,
+      };
+      const defBox = overlay.querySelector('#loc-default');
+      if (defBox && !defBox.disabled) payload.is_default = defBox.checked;
+      const actBox = overlay.querySelector('#loc-active');
+      if (actBox) payload.is_active = actBox.checked;
+      const saveBtn = overlay.querySelector('#loc-save'); saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+      try {
+        if (editing) await api.patch(`/api/locations/${editing.id}`, payload);
+        else await api.post('/api/locations', payload);
+        close(); showToast('Location saved'); await loadLocations();
+      } catch (ex) {
+        saveBtn.disabled = false; saveBtn.textContent = 'Save';
+        const code = ex.body?.error;
+        err.textContent = code === 'must_have_default' ? 'A workspace must keep one default location.'
+          : code === 'cannot_deactivate_default' ? 'The default location cannot be deactivated.'
+          : code === 'insufficient_role' ? 'Only owners and managers can manage locations.'
+          : ('Could not save: ' + (code || ex.message));
+        err.style.display = 'block';
+      }
+    }
+
+    async function setDefaultLoc(id) {
+      try { await api.patch(`/api/locations/${id}`, { is_default: true }); showToast('Default location updated'); await loadLocations(); }
+      catch (ex) { showToast('Could not set default: ' + (ex.body?.error || ex.message)); }
+    }
+
+    async function deleteLoc(id) {
+      const l = locList.find(x => x.id === id);
+      const referenced = l && ((l.asset_count > 0) || (l.active_orders_count > 0));
+      const msg = referenced
+        ? `"${l?.name}" has assets or orders — it will be deactivated (hidden), not deleted. Continue?`
+        : `Delete "${l?.name || 'this location'}"? This cannot be undone.`;
+      if (!window.confirm(msg)) return;
+      try {
+        const res = await api.del(`/api/locations/${id}`);
+        showToast(res.soft_deleted ? 'Location deactivated' : 'Location deleted');
+        await loadLocations();
+      } catch (ex) {
+        const code = ex.body?.error;
+        showToast(code === 'cannot_delete_default' ? 'The default location cannot be deleted.' : ('Could not delete: ' + (code || ex.message)));
+      }
     }
 
     // ---------- users tab ----------

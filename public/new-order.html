@@ -360,6 +360,11 @@
               </div>
             </div>
 
+            <div class="field" id="location-field" style="display:none;">
+              <label for="pickup-location">Location <span class="hint">pickup &amp; return</span></label>
+              <select id="pickup-location"></select>
+            </div>
+
             <div class="field" id="delivery-addr-field" style="display:none;">
               <label for="delivery-address">Delivery address <span class="hint">where to deliver</span></label>
               <textarea id="delivery-address" placeholder="Building, street, area, city, pincode…"></textarea>
@@ -444,6 +449,7 @@
       dispatch_type: 'pickup',
       channel: 'planned',
       delivery_address: '',
+      pickup_location_id: null,   // Sub-turn 6i — null lets the API use the default
       items: [],               // [{ product_id, name, sku, quantity, daily_rate, available }]
       notes: '',
       internal_notes: '',
@@ -627,6 +633,32 @@
     const channel = document.getElementById('channel');
     const deliveryAddrField = document.getElementById('delivery-addr-field');
     const deliveryAddr = document.getElementById('delivery-address');
+    const locationField = document.getElementById('location-field');
+    const pickupLocation = document.getElementById('pickup-location');
+
+    // Load locations once (Sub-turn 6i). With a single active location the picker
+    // stays hidden and the order silently uses the default — nothing changes for
+    // single-location workspaces like DSLRSWALA.
+    let locationsLoaded = false;
+    async function loadLocationsPicker() {
+      if (locationsLoaded) return;
+      try {
+        const { locations } = await api.get('/api/locations');
+        const active = (locations || []).filter(l => l.is_active);
+        const def = active.find(l => l.is_default) || active[0];
+        state.pickup_location_id = def ? def.id : null;
+        if (active.length > 1) {
+          pickupLocation.innerHTML = active.map(l =>
+            `<option value="${escapeAttr(l.id)}" ${l.id === state.pickup_location_id ? 'selected' : ''}>${escapeHtml(l.name)}${l.is_default ? ' (default)' : ''}</option>`).join('');
+          locationField.style.display = 'block';
+        } else {
+          locationField.style.display = 'none';
+        }
+      } catch { locationField.style.display = 'none'; }
+      locationsLoaded = true;
+    }
+    loadLocationsPicker();
+    pickupLocation.addEventListener('change', () => { state.pickup_location_id = pickupLocation.value || null; });
     const datesSummary = document.getElementById('dates-summary');
 
     function seedDefaultDates() {
@@ -862,6 +894,10 @@
           <div class="review-label">Handover</div>
           <div class="review-value">${state.dispatch_type === 'pickup' ? 'Customer pickup' : 'We deliver'} · ${escapeHtml(state.channel.replace('_', ' '))}${state.delivery_address ? `<div class="sub">${escapeHtml(state.delivery_address)}</div>` : ''}</div>
         </div>
+        ${locationField.style.display !== 'none' && pickupLocation.selectedOptions[0] ? `<div class="review-row">
+          <div class="review-label">Location</div>
+          <div class="review-value">${escapeHtml(pickupLocation.selectedOptions[0].textContent)}</div>
+        </div>` : ''}
         <div class="review-row">
           <div class="review-label">Gear</div>
           <div class="review-value" style="text-align:left;">${itemsHtml || '<em style="color:var(--muted);">No items</em>'}</div>
@@ -898,6 +934,7 @@
           dispatch_type: state.dispatch_type,
           channel: state.channel,
           delivery_address: state.delivery_address || undefined,
+          pickup_location_id: state.pickup_location_id || undefined,
           notes: state.notes || undefined,
           internal_notes: state.internal_notes || undefined,
         });
@@ -955,6 +992,7 @@
             start,
             end,
             exclude_order_id: excludeOrderId || undefined,
+            location_id: state.pickup_location_id || undefined,
           }),
         });
         if (!res.ok) { console.warn('Availability check failed:', res.status); return null; }

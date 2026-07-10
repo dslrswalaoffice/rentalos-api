@@ -5,6 +5,7 @@ import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { put, del } from '@vercel/blob';
 import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
+import { getDefaultLocationId } from '../lib/availability.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -96,6 +97,7 @@ type ProductRow = {
   rented_units: number;
   in_repair_units: number;
   effective_capacity: number;
+  location_names?: string | null; // Sub-turn 6i — distinct asset locations (list view)
 };
 
 // ============================================================================
@@ -107,6 +109,7 @@ inventory.get('/products', async (c) => {
   const search = c.req.query('search')?.trim() || null;
   const category = c.req.query('category')?.trim() || null;
   const includeArchived = c.req.query('include_archived') === 'true';
+  const locationId = c.req.query('location_id')?.trim() || null; // Sub-turn 6i
   const searchPattern = search ? `%${search}%` : null;
 
   const products = await query<ProductRow>(sql`
@@ -123,16 +126,19 @@ inventory.get('/products', async (c) => {
       COALESCE(a.available, 0)::int AS available_units,
       COALESCE(a.rented,    0)::int AS rented_units,
       COALESCE(a.in_repair, 0)::int AS in_repair_units,
-      (CASE WHEN p.tracking_mode = 'bulk' THEN COALESCE(p.stock_quantity, 0) ELSE COALESCE(a.total, 0) END)::int AS effective_capacity
+      (CASE WHEN p.tracking_mode = 'bulk' THEN COALESCE(p.stock_quantity, 0) ELSE COALESCE(a.total, 0) END)::int AS effective_capacity,
+      a.location_names
     FROM products p
     LEFT JOIN LATERAL (
       SELECT
         COUNT(*)                                              AS total,
-        COUNT(*) FILTER (WHERE status = 'available')          AS available,
-        COUNT(*) FILTER (WHERE status = 'rented')             AS rented,
-        COUNT(*) FILTER (WHERE status = 'in_repair')          AS in_repair
-      FROM assets
-      WHERE product_id = p.id AND deleted_at IS NULL
+        COUNT(*) FILTER (WHERE ast.status = 'available')      AS available,
+        COUNT(*) FILTER (WHERE ast.status = 'rented')         AS rented,
+        COUNT(*) FILTER (WHERE ast.status = 'in_repair')      AS in_repair,
+        string_agg(DISTINCT loc.name, ', ' ORDER BY loc.name) AS location_names
+      FROM assets ast
+      LEFT JOIN locations loc ON loc.id = ast.location_id
+      WHERE ast.product_id = p.id AND ast.deleted_at IS NULL
     ) a ON true
     WHERE p.workspace_id = ${session.workspace.id}
       AND p.deleted_at IS NULL
@@ -141,6 +147,11 @@ inventory.get('/products', async (c) => {
            OR p.name ILIKE ${searchPattern}::text
            OR p.sku  ILIKE ${searchPattern}::text)
       AND (${category}::text IS NULL OR p.category = ${category}::text)
+      AND (${locationId}::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM assets af
+        WHERE af.product_id = p.id AND af.deleted_at IS NULL
+          AND af.location_id = ${locationId}::uuid
+      ))
     ORDER BY p.category ASC, p.name ASC
     LIMIT 200
   `);
@@ -196,8 +207,37 @@ inventory.get('/products/:id', async (c) => {
 
   const product = rows[0];
   if (!product) return c.json({ error: 'not_found' }, 404);
+
+  // Individual live assets + a per-location roll-up (Sub-turn 6i). Bulk products
+  // have no asset rows, so both come back empty.
+  const assets = await query<{
+    id: string; asset_code: string; status: string;
+    location_id: string; location_name: string | null;
+  }>(sql`
+    SELECT a.id, a.asset_code, a.status::text AS status,
+           a.location_id, l.name AS location_name
+    FROM assets a
+    LEFT JOIN locations l ON l.id = a.location_id
+    WHERE a.product_id = ${id}::uuid
+      AND a.workspace_id = ${session.workspace.id}::uuid
+      AND a.deleted_at IS NULL
+    ORDER BY a.asset_code ASC
+  `);
+  const assets_by_location = await query<{
+    location_id: string; location_name: string | null; count: number;
+  }>(sql`
+    SELECT a.location_id, l.name AS location_name, COUNT(*)::int AS count
+    FROM assets a
+    LEFT JOIN locations l ON l.id = a.location_id
+    WHERE a.product_id = ${id}::uuid
+      AND a.workspace_id = ${session.workspace.id}::uuid
+      AND a.deleted_at IS NULL
+    GROUP BY a.location_id, l.name
+    ORDER BY l.name ASC
+  `);
+
   const custom_fields = await loadCustomFieldValues(session.workspace.id, 'product', id);
-  return c.json({ product, custom_fields });
+  return c.json({ product, assets, assets_by_location, custom_fields });
 });
 
 // ============================================================================
@@ -240,6 +280,9 @@ const createSchema = z.object({
   // Tracking mode (Sub-turn 6h): 'tracked' (asset rows) or 'bulk' (stock_quantity).
   tracking_mode: z.enum(['tracked', 'bulk']).default('tracked'),
   stock_quantity: z.number().int().min(0).nullable().optional(),
+  // Sub-turn 6i — which location the initial tracked assets live at. Omitted →
+  // the workspace default location.
+  location_id: z.string().uuid().optional(),
 });
 
 inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
@@ -258,6 +301,25 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
     if (input.stock_quantity == null) return c.json({ error: 'stock_quantity_required' }, 400);
   } else if (input.stock_quantity != null) {
     return c.json({ error: 'stock_quantity_not_allowed_for_tracked' }, 400);
+  }
+
+  // Resolve the location the new tracked assets belong to (Sub-turn 6i). Bulk
+  // products have no asset rows, so location is irrelevant there.
+  let assetLocationId: string | null = null;
+  if (input.tracking_mode !== 'bulk') {
+    if (input.location_id) {
+      const locRows = await query<{ id: string; is_active: boolean }>(sql`
+        SELECT id, is_active FROM locations
+        WHERE id = ${input.location_id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+        LIMIT 1
+      `);
+      if (!locRows.length) return c.json({ error: 'location_not_found' }, 404);
+      if (!locRows[0]!.is_active) return c.json({ error: 'location_inactive' }, 400);
+      assetLocationId = locRows[0]!.id;
+    } else {
+      assetLocationId = await getDefaultLocationId(session.workspace.id);
+      if (!assetLocationId) return c.json({ error: 'no_default_location' }, 400);
+    }
   }
 
   const sku = (input.sku ?? generateSku(input.name)).toUpperCase();
@@ -302,13 +364,14 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
       RETURNING *
     ),
     new_assets AS (
-      INSERT INTO assets (workspace_id, product_id, asset_code, condition, status)
+      INSERT INTO assets (workspace_id, product_id, asset_code, condition, status, location_id)
       SELECT
         ${session.workspace.id},
         (SELECT id FROM new_product),
         code_val,
         'excellent'::asset_condition,
-        'available'::asset_status
+        'available'::asset_status,
+        ${assetLocationId}::uuid
       FROM jsonb_array_elements_text(${JSON.stringify(codes)}::jsonb) AS code_val
       RETURNING id
     )
@@ -536,6 +599,59 @@ inventory.delete('/products/:id', requireRole('owner', 'manager'), async (c) => 
     targetType: 'product',
     targetId: id,
     payload: { via: 'delete' },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ ok: true });
+});
+
+// ============================================================================
+// PATCH /api/inventory/assets/:id/location — relocate one asset (Sub-turn 6i)
+// ----------------------------------------------------------------------------
+// Moving an asset shifts which location reserves it for availability. Owner /
+// manager only. Target must be an active location in this workspace.
+// ============================================================================
+const relocateSchema = z.object({ location_id: z.string().uuid() });
+
+inventory.patch('/assets/:id/location', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const assetId = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = relocateSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const { location_id } = parsed.data;
+
+  const assetRows = await query<{ id: string; location_id: string | null; product_id: string }>(sql`
+    SELECT id, location_id, product_id FROM assets
+    WHERE id = ${assetId}::uuid AND workspace_id = ${session.workspace.id}::uuid
+      AND deleted_at IS NULL
+    LIMIT 1
+  `);
+  if (!assetRows.length) return c.json({ error: 'not_found' }, 404);
+  const from = assetRows[0]!;
+
+  const locRows = await query<{ id: string; is_active: boolean }>(sql`
+    SELECT id, is_active FROM locations
+    WHERE id = ${location_id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+    LIMIT 1
+  `);
+  if (!locRows.length) return c.json({ error: 'location_not_found' }, 404);
+  if (!locRows[0]!.is_active) return c.json({ error: 'location_inactive' }, 400);
+
+  await sql`
+    UPDATE assets SET location_id = ${location_id}::uuid, updated_at = now()
+    WHERE id = ${assetId}::uuid AND workspace_id = ${session.workspace.id}::uuid
+  `;
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'inventory.asset.relocated',
+    targetType: 'asset',
+    targetId: assetId,
+    payload: { from_location_id: from.location_id, to_location_id: location_id, product_id: from.product_id },
     ipAddress, userAgent,
   });
 

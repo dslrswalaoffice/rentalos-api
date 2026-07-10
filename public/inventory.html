@@ -366,6 +366,9 @@
           </div>
           <div class="category-chips" id="category-chips"></div>
         </div>
+        <div class="content-head" id="location-filter-row" style="display:none;padding-top:0;">
+          <div class="category-chips" id="location-chips"></div>
+        </div>
 
         <div id="list-wrap">
           <div class="loading">Loading your gear…</div>
@@ -597,6 +600,11 @@
             <h3 class="section-title">Custom fields</h3>
             <div id="cf-inputs"></div>
           </section>
+          <section class="modal-section" id="asset-loc-section" hidden>
+            <h3 class="section-title">Asset locations</h3>
+            <p class="field-hint" style="margin-top:0;">Move individual units between locations. Changing a unit's location updates per-location availability.</p>
+            <div id="asset-loc-list"></div>
+          </section>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn ghost" id="edit-cancel">Cancel</button>
@@ -644,6 +652,11 @@
     let categoryCounts = {};
     let activeCategory = null;
     let currentSearch = '';
+    // Sub-turn 6i — locations. The filter row + Location column only appear when
+    // the workspace has more than one active location (single-location: invisible).
+    let locationsList = [];
+    let activeLocation = null;
+    let multiLocation = false;
 
     // ---------- hydrate identity ----------
     async function hydrateIdentity() {
@@ -657,10 +670,39 @@
     }
 
     // ---------- fetch + render ----------
+    async function loadLocations() {
+      try {
+        const { locations } = await api.get('/api/locations');
+        locationsList = (locations || []).filter(l => l.is_active);
+        multiLocation = locationsList.length > 1;
+      } catch { locationsList = []; multiLocation = false; }
+      renderLocationChips();
+    }
+
+    function renderLocationChips() {
+      const row = document.getElementById('location-filter-row');
+      const wrap = document.getElementById('location-chips');
+      if (!row || !wrap) return;
+      if (!multiLocation) { row.style.display = 'none'; return; }
+      row.style.display = 'flex';
+      const all = `<button class="cat-chip ${activeLocation === null ? 'active' : ''}" data-loc="">All locations</button>`;
+      wrap.innerHTML = all + locationsList.map(l =>
+        `<button class="cat-chip ${activeLocation === l.id ? 'active' : ''}" data-loc="${escapeAttr(l.id)}">${escapeHtml(l.name)}${l.is_default ? ' <span class="n">default</span>' : ''}</button>`
+      ).join('');
+      wrap.querySelectorAll('.cat-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeLocation = btn.getAttribute('data-loc') || null;
+          loadProducts();
+          renderLocationChips();
+        });
+      });
+    }
+
     async function loadProducts() {
       const params = new URLSearchParams();
       if (currentSearch) params.set('search', currentSearch);
       if (activeCategory) params.set('category', activeCategory);
+      if (activeLocation) params.set('location_id', activeLocation);
       const url = '/api/inventory/products' + (params.toString() ? '?' + params : '');
       const { products, by_category } = await api.get(url);
       allProducts = products;
@@ -688,6 +730,7 @@
                 <th class="product-image-cell"></th>
                 <th>Product</th>
                 <th>Category</th>
+                ${multiLocation ? '<th>Location</th>' : ''}
                 <th>HSN</th>
                 <th style="text-align:right;">Daily rate</th>
                 <th>Units</th>
@@ -719,6 +762,7 @@
             <div class="product-sku">${escapeHtml(p.sku)}</div>
           </td>
           <td><span class="cat-tag">${escapeHtml(p.category)}</span></td>
+          ${multiLocation ? `<td>${p.tracking_mode === 'bulk' ? '<span style="color:var(--muted-soft);">—</span>' : (p.location_names ? escapeHtml(p.location_names) : '<span style="color:var(--muted-soft);">—</span>')}</td>` : ''}
           <td>${p.hsn_code ? `<span class="hsn-code">${escapeHtml(p.hsn_code)}</span>` : '<span style="color:var(--muted-soft);">—</span>'}</td>
           <td style="text-align:right;">
             <div class="rate">${formatINR(p.daily_rate)}</div>
@@ -979,9 +1023,53 @@
       document.getElementById('image-file-input').value = '';
       loadCategoriesDatalist();
       cfLoadAndRender(id);
+      assetLocLoadAndRender(id, mode);
       editModal.classList.add('open');
     }
     function closeEdit() { editModal.classList.remove('open'); editingId = null; }
+
+    // ---------- asset relocation (Sub-turn 6i) ----------
+    async function assetLocLoadAndRender(id, mode) {
+      const section = document.getElementById('asset-loc-section');
+      const list = document.getElementById('asset-loc-list');
+      section.hidden = true; list.innerHTML = '';
+      // Only for tracked products in a multi-location workspace.
+      if (!multiLocation || mode === 'bulk') return;
+      try {
+        const { assets } = await api.get(`/api/inventory/products/${encodeURIComponent(id)}`);
+        if (editingId !== id) return; // modal changed while loading
+        if (!assets || !assets.length) return;
+        section.hidden = false;
+        const opts = (sel) => locationsList.map(l =>
+          `<option value="${escapeAttr(l.id)}" ${l.id === sel ? 'selected' : ''}>${escapeHtml(l.name)}</option>`).join('');
+        list.innerHTML = assets.map(a => `
+          <div class="field-row" style="align-items:center;gap:10px;margin-bottom:8px;">
+            <div style="flex:1;font-family:var(--font-mono);font-size:12px;">${escapeHtml(a.asset_code)}
+              <span style="color:var(--muted-soft);">· ${escapeHtml(a.status)}</span></div>
+            <select data-asset-loc="${escapeAttr(a.id)}" data-current="${escapeAttr(a.location_id || '')}" style="flex:1;">${opts(a.location_id)}</select>
+          </div>`).join('');
+        list.querySelectorAll('[data-asset-loc]').forEach(sel => {
+          sel.addEventListener('change', () => relocateAsset(sel.dataset.assetLoc, sel.value, sel));
+        });
+      } catch { /* leave hidden */ }
+    }
+
+    async function relocateAsset(assetId, locationId, sel) {
+      const prev = sel.dataset.current;
+      if (locationId === prev) return;
+      sel.disabled = true;
+      try {
+        await api.patch(`/api/inventory/assets/${assetId}/location`, { location_id: locationId });
+        sel.dataset.current = locationId;
+        showToast('Asset moved');
+        loadProducts(); // refresh per-location counts / column
+      } catch (ex) {
+        sel.value = prev; // revert on failure
+        showToast('Could not move asset: ' + (ex.body?.error || ex.message));
+      } finally {
+        sel.disabled = false;
+      }
+    }
 
     // ---------- custom fields (Sub-turn 6g) ----------
     function cfInputHtml(f) {
@@ -1290,12 +1378,27 @@
     }
     function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#96;'); }
 
+    function showToast(msg) {
+      let t = document.getElementById('inv-toast');
+      if (!t) {
+        t = document.createElement('div');
+        t.id = 'inv-toast';
+        t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink,#111);color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2);';
+        document.body.appendChild(t);
+      }
+      t.textContent = msg;
+      t.style.opacity = '1';
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2800);
+    }
+
     // ---------- go ----------
     (async () => {
       try {
         const urlCat = new URLSearchParams(location.search).get('category');
         if (urlCat) activeCategory = urlCat;
         await hydrateIdentity();
+        await loadLocations();
         await loadProducts();
       } catch (err) {
         console.error('boot failed', err);
