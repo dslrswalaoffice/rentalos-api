@@ -5,45 +5,58 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#202058">
   <title>Dashboard · RentalOS</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Space Grotesk,Inter,sans-serif' font-weight='800' font-size='19' fill='%23202058'%3ER%3C/text%3E%3C/svg%3E">
+  <!-- Sub-turn 9b — preconnect to the API origin (perceived-speed). -->
+  <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23635bff'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <!-- Critical CSS: system font + off-white bg → instant paint, no FOIT. -->
   <style>
-    /* ========== design tokens (identical to auth pages) ========== */
+    :root { --bg-page:#f7f8fa; --text-primary:#1a1f36; --font-sys: system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif; }
+    html,body { margin:0; }
+    body { font-family: var(--font-sys); background: var(--bg-page); color: var(--text-primary); -webkit-font-smoothing: antialiased; }
+    @view-transition { navigation: auto; }
+    ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 200ms; }
+  </style>
+  <!-- Stripe design system (Sub-turn 9b rollout). Token layer + list-page
+       components; the page's retuned inline CSS stays authoritative. -->
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    /* Sub-turn 9b — legacy tokens remapped onto the Stripe design-system palette
+       (design-system.css). Re-skins the whole page via the vars every rule
+       already references — zero markup/JS changes. --head/--orange → violet
+       accent, --ink → warm near-black, fonts → system stack. */
     :root {
-      --ink:            #202058;
-      --text:           #464a52;
-      --head:           #26235a;
-      --muted:          #8b9199;
-      --muted-strong:   #5b616b;
-      --muted-soft:     #9aa1ad;
+      --ink:            #1a1f36;
+      --text:           #4f566b;
+      --head:           #635bff;
+      --muted:          #8792a2;
+      --muted-strong:   #4f566b;
+      --muted-soft:     #a3acb9;
       --card:           #ffffff;
-      --bg:             #f6f7f9;
-      --side:           #fcfcfd;
-      --chrome:         #f4f5f7;
-      --thead:          #fafbfc;
-      --border:         #e6e8ec;
-      --border-strong:  #d8dbe0;
-      --accent-soft:    #ecebf4;
-      --border-accent:  #d7dcf7;
-      --orange:         #e88020;
-      --orange-soft:    #fbe9d7;
-      --focus:          #b9c0ee;
+      --bg:             #f7f8fa;
+      --side:           #ffffff;
+      --chrome:         #f0f2f5;
+      --thead:          #f0f2f5;
+      --border:         #e3e8ee;
+      --border-strong:  #c1c9d2;
+      --accent-soft:    #eeecff;
+      --border-accent:  #d7d5ff;
+      --orange:         #635bff;
+      --orange-soft:    #eeecff;
+      --focus:          #b9b5ff;
 
-      --ok-solid:       #1f9d57;
-      --ok-soft:        #e8f6ee;
-      --ok-strong:      #177a45;
-      --warn-solid:     #b9791b;
-      --warn-soft:      #fbf2e2;
-      --warn-strong:    #8a5a12;
-      --bad-solid:      #cc3340;
-      --bad-soft:       #fbeaeb;
-      --bad-strong:     #a3272f;
+      --ok-solid:       #00875a;
+      --ok-soft:        #e3fcef;
+      --ok-strong:      #006644;
+      --warn-solid:     #b25e09;
+      --warn-soft:      #fef3c7;
+      --warn-strong:    #92400e;
+      --bad-solid:      #cd3d64;
+      --bad-soft:       #fce4ec;
+      --bad-strong:     #a01c40;
 
-      --font-display: 'Arzachel', 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      --font-body:    'Ponjoung', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+      --font-display: system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, 'Helvetica Neue', Arial, sans-serif;
+      --font-body:    system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, 'Helvetica Neue', Arial, sans-serif;
+      --font-mono:    ui-monospace, 'SF Mono', Monaco, Consolas, 'Liberation Mono', monospace;
 
       --sb-w: 232px;
     }
@@ -1068,7 +1081,13 @@
       <!-- ================ content ================ -->
       <div class="content">
         <div class="widget-grid" id="widget-grid">
-          <div class="widget"><div class="widget-body"><div class="widget-skel">Loading briefing…</div></div></div>
+          <!-- Skeleton state (Sub-turn 9b) — replaced by the JS render on load. -->
+          <div class="skeleton-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-text long"></div><div class="skeleton skeleton-text short"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-text long"></div><div class="skeleton skeleton-text short"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-text long"></div><div class="skeleton skeleton-text short"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-text long"></div><div class="skeleton skeleton-text short"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-text long"></div><div class="skeleton skeleton-text short"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-text long"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
       </div>
     </div>
