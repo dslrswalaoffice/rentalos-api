@@ -80,6 +80,9 @@ type ProductRow = {
   notes: string | null;
   image_url: string | null;
   hsn_code: string | null;
+  buffer_before_hours: number;
+  buffer_after_hours: number;
+  shortage_limit: number;
   is_active: boolean;
   is_kit: boolean;
   component_count: number;
@@ -106,7 +109,9 @@ inventory.get('/products', async (c) => {
     SELECT
       p.id, p.sku, p.name, p.category, p.description,
       p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
-      p.specifications, p.notes, p.image_url, p.hsn_code, p.is_active, p.is_kit,
+      p.specifications, p.notes, p.image_url, p.hsn_code,
+      p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
+      p.is_active, p.is_kit,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = p.id)::int AS component_count,
       p.created_at, p.updated_at,
       COALESCE(a.total,     0)::int AS total_units,
@@ -156,7 +161,9 @@ inventory.get('/products/:id', async (c) => {
     SELECT
       p.id, p.sku, p.name, p.category, p.description,
       p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
-      p.specifications, p.notes, p.image_url, p.hsn_code, p.is_active, p.is_kit,
+      p.specifications, p.notes, p.image_url, p.hsn_code,
+      p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
+      p.is_active, p.is_kit,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = p.id)::int AS component_count,
       p.created_at, p.updated_at,
       COALESCE(a.total,     0)::int AS total_units,
@@ -342,6 +349,9 @@ const updateSchema = z.object({
   notes: z.string().max(2000).optional(),
   image_url: z.string().max(2000).optional(),
   hsn_code: z.string().max(8).optional(),
+  buffer_before_hours: z.number().int().min(0).max(72).optional(),
+  buffer_after_hours: z.number().int().min(0).max(72).optional(),
+  shortage_limit: z.number().int().min(0).max(100).optional(),
   is_active: z.boolean().optional(),
   is_kit: z.boolean().optional(),
 });
@@ -394,15 +404,20 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
       replacement_value = COALESCE(${p.replacement_value ?? null}::integer, replacement_value),
       specifications    = COALESCE(${p.specifications ? JSON.stringify(p.specifications) : null}::jsonb, specifications),
       notes             = COALESCE(${p.notes             ?? null}::text,    notes),
-      image_url         = COALESCE(${p.image_url         ?? null}::text,    image_url),
-      hsn_code          = COALESCE(${p.hsn_code          ?? null}::text,    hsn_code),
-      is_active         = COALESCE(${p.is_active         ?? null}::boolean, is_active),
-      is_kit            = COALESCE(${p.is_kit            ?? null}::boolean, is_kit)
+      image_url           = COALESCE(${p.image_url           ?? null}::text,    image_url),
+      hsn_code            = COALESCE(${p.hsn_code            ?? null}::text,    hsn_code),
+      buffer_before_hours = COALESCE(${p.buffer_before_hours ?? null}::integer, buffer_before_hours),
+      buffer_after_hours  = COALESCE(${p.buffer_after_hours  ?? null}::integer, buffer_after_hours),
+      shortage_limit      = COALESCE(${p.shortage_limit      ?? null}::integer, shortage_limit),
+      is_active           = COALESCE(${p.is_active           ?? null}::boolean, is_active),
+      is_kit              = COALESCE(${p.is_kit              ?? null}::boolean, is_kit)
     WHERE id = ${id} AND workspace_id = ${session.workspace.id}
     RETURNING
       id, sku, name, category, description,
       daily_rate, weekly_rate, monthly_rate, deposit, replacement_value,
-      specifications, notes, image_url, hsn_code, is_active, is_kit, created_at, updated_at,
+      specifications, notes, image_url, hsn_code,
+      buffer_before_hours, buffer_after_hours, shortage_limit,
+      is_active, is_kit, created_at, updated_at,
       0::int AS total_units, 0::int AS available_units,
       0::int AS rented_units, 0::int AS in_repair_units,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = products.id)::int AS component_count
