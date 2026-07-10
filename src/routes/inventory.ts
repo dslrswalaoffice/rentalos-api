@@ -7,6 +7,13 @@ import { put, del } from '@vercel/blob';
 import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
 import { getDefaultLocationId } from '../lib/availability.js';
 import {
+  loadTagsForEntity,
+  loadTagsForEntities,
+  filterEntityIdsByTags,
+  parseTagIdsParam,
+  replaceEntityTags,
+} from '../lib/tags.js';
+import {
   sessionMiddleware,
   requireAuth,
   requireRole,
@@ -112,6 +119,18 @@ inventory.get('/products', async (c) => {
   const locationId = c.req.query('location_id')?.trim() || null; // Sub-turn 6i
   const searchPattern = search ? `%${search}%` : null;
 
+  // Tag filter (Sub-turn 8a) — AND semantics. Resolve matching product ids up
+  // front (the driver can't nest sql fragments), then constrain the main query.
+  const tagIds = parseTagIdsParam(c.req.queries('tag_ids'));
+  let tagMatchCsv: string | null = null;
+  if (tagIds.length) {
+    const ids = await filterEntityIdsByTags(session.workspace.id, 'product', tagIds);
+    if (ids.length === 0) {
+      return c.json({ products: [], total: 0, by_category: {} });
+    }
+    tagMatchCsv = ids.join(',');
+  }
+
   const products = await query<ProductRow>(sql`
     SELECT
       p.id, p.sku, p.name, p.category, p.description,
@@ -152,9 +171,17 @@ inventory.get('/products', async (c) => {
         WHERE af.product_id = p.id AND af.deleted_at IS NULL
           AND af.location_id = ${locationId}::uuid
       ))
+      AND (${tagMatchCsv}::text IS NULL
+           OR p.id = ANY(string_to_array(${tagMatchCsv}::text, ',')::uuid[]))
     ORDER BY p.category ASC, p.name ASC
     LIMIT 200
   `);
+
+  // Batch-load tags for this page (Sub-turn 8a) so each row carries its chips.
+  const tagMap = await loadTagsForEntities(
+    session.workspace.id, 'product', products.map((p) => p.id),
+  );
+  for (const p of products) (p as ProductRow & { tags: unknown }).tags = tagMap.get(p.id) ?? [];
 
   // Aggregate a category → count map for the sidebar/filter chips.
   const byCategory: Record<string, number> = {};
@@ -237,7 +264,21 @@ inventory.get('/products/:id', async (c) => {
   `);
 
   const custom_fields = await loadCustomFieldValues(session.workspace.id, 'product', id);
-  return c.json({ product, assets, assets_by_location, custom_fields });
+  const tags = await loadTagsForEntity(session.workspace.id, 'product', id);
+  // Upcoming/active downtimes (Sub-turn 8a) — windows that haven't ended yet.
+  const downtimes = await query<{
+    id: string; location_id: string | null; location_name: string | null;
+    start_at: string; end_at: string; reason: string;
+  }>(sql`
+    SELECT d.id, d.location_id, l.name AS location_name, d.start_at, d.end_at, d.reason
+    FROM product_downtimes d
+    LEFT JOIN locations l ON l.id = d.location_id
+    WHERE d.workspace_id = ${session.workspace.id}::uuid
+      AND d.product_id = ${id}::uuid
+      AND d.end_at > now()
+    ORDER BY d.start_at ASC
+  `);
+  return c.json({ product, assets, assets_by_location, custom_fields, tags, downtimes });
 });
 
 // ============================================================================
@@ -444,6 +485,7 @@ const updateSchema = z.object({
   is_active: z.boolean().optional(),
   is_kit: z.boolean().optional(),
   custom_fields: z.array(z.object({ definition_id: z.string().uuid(), value: z.string().nullable() })).optional(),
+  tag_ids: z.array(z.string().uuid()).optional(), // Sub-turn 8a — replace-all
 });
 
 inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
@@ -547,6 +589,11 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
       workspaceId: session.workspace.id, entityType: 'product', entityId: id,
       actorUserId: session.user.id, values: p.custom_fields,
     });
+  }
+
+  // Tag assignments (Sub-turn 8a) — replace-all when provided inline.
+  if (p.tag_ids) {
+    await replaceEntityTags(session.workspace.id, 'product', id, session.user.id, p.tag_ids);
   }
 
   return c.json({ product: updated[0] });

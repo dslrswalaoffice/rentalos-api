@@ -41,6 +41,10 @@ export class AvailabilityError extends Error {
 }
 
 export type AvailabilityConflict = {
+  // Discriminant (Sub-turn 8a). Absent/'booking' = a real order reservation;
+  // 'downtime' = a maintenance block. Booking fields carry sentinels on
+  // downtime rows so numeric consumers (dashboard sweep, calendar) don't break.
+  type: 'booking' | 'downtime';
   order_id: string;
   order_number: number;
   customer_name: string | null;
@@ -48,6 +52,10 @@ export type AvailabilityConflict = {
   start: string; // ISO
   end: string;   // ISO
   status: string;
+  // Downtime-only fields (Sub-turn 8a).
+  downtime_id?: string;
+  reason?: string;
+  location_scope?: 'location' | 'workspace';
 };
 
 export type KitComponentAvailability = {
@@ -75,6 +83,8 @@ export type AvailabilityResult = {
   applied_buffer_after_hours: number;
   inactive_product?: boolean;
   conflicts: AvailabilityConflict[];
+  // True when a maintenance downtime intersects the requested window (Sub-turn 8a).
+  has_downtime_conflict?: boolean;
   // Present only when the product is a kit (Sub-turn 5c-2).
   is_kit?: boolean;
   kit_components?: KitComponentAvailability[];
@@ -266,6 +276,7 @@ export async function checkAvailability(args: {
   `);
 
   const normalized: AvailabilityConflict[] = conflicts.map((cf) => ({
+    type: 'booking' as const,
     order_id: cf.order_id,
     order_number: Number(cf.order_number),
     customer_name: cf.customer_name ?? null,
@@ -276,6 +287,17 @@ export async function checkAvailability(args: {
   }));
 
   const currentlyBooked = normalized.reduce((sum, c) => sum + c.quantity, 0);
+
+  // Downtimes (Sub-turn 8a): a maintenance block reserves the FULL capacity for
+  // its window. Tracked products see workspace-wide (location_id NULL) plus
+  // this-location downtimes; bulk products (no location) see only workspace-wide
+  // ones. If ANY downtime intersects the requested window we treat the whole
+  // window as blocked (simple + safe; sub-day precision is a future refinement).
+  const downtimeConflicts = await loadDowntimeConflicts(
+    args.workspaceId, args.productId, isBulk ? null : effectiveLocationId,
+    args.start, args.end, capacity,
+  );
+  const hasDowntimeConflict = downtimeConflicts.length > 0;
 
   // Decision: available up to capacity + shortage_limit; shortage_used flags the
   // overbook-but-within-limit band.
@@ -294,6 +316,13 @@ export async function checkAvailability(args: {
     shortageUsed = false;
   }
 
+  // A downtime overrides the numeric verdict: the gear is offline, so it's not
+  // available regardless of headroom. Downtime rows are appended AFTER bookings.
+  if (hasDowntimeConflict) {
+    available = false;
+    shortageUsed = false;
+  }
+
   const result: AvailabilityResult = {
     available,
     requested: args.quantity,
@@ -305,10 +334,55 @@ export async function checkAvailability(args: {
     shortage_used: shortageUsed,
     applied_buffer_before_hours: bufferBefore,
     applied_buffer_after_hours: bufferAfter,
-    conflicts: normalized,
+    conflicts: [...normalized, ...downtimeConflicts],
+    has_downtime_conflict: hasDowntimeConflict,
   };
   if (!isActive) result.inactive_product = true;
   return result;
+}
+
+// ----------------------------------------------------------------------------
+// Downtime blocks (Sub-turn 8a). A downtime reserves the product's FULL capacity
+// for [start_at, end_at]. We surface each overlapping downtime as a conflict row
+// with type 'downtime' (booking fields carry sentinels so numeric consumers stay
+// happy). `locationId` is the tracked-product location to match location-scoped
+// downtimes against; pass null for bulk (only workspace-wide downtimes apply).
+// ----------------------------------------------------------------------------
+async function loadDowntimeConflicts(
+  workspaceId: string,
+  productId: string,
+  locationId: string | null,
+  windowStart: Date,
+  windowEnd: Date,
+  capacity: number,
+): Promise<AvailabilityConflict[]> {
+  const rows = await query<{
+    id: string; start_at: string; end_at: string; reason: string; location_id: string | null;
+  }>(sql`
+    SELECT id, start_at, end_at, reason, location_id
+    FROM product_downtimes
+    WHERE workspace_id = ${workspaceId}::uuid
+      AND product_id = ${productId}::uuid
+      AND (location_id IS NULL OR location_id = ${locationId}::uuid)
+      AND start_at < ${windowEnd.toISOString()}::timestamptz
+      AND end_at   > ${windowStart.toISOString()}::timestamptz
+    ORDER BY start_at ASC
+  `);
+  return rows.map((r) => ({
+    type: 'downtime' as const,
+    // Sentinels so dashboard/calendar numeric code keeps working. A downtime
+    // blocks the full capacity for its window.
+    order_id: '',
+    order_number: 0,
+    customer_name: r.reason,
+    quantity: Math.max(0, capacity),
+    start: new Date(r.start_at).toISOString(),
+    end: new Date(r.end_at).toISOString(),
+    status: 'downtime',
+    downtime_id: r.id,
+    reason: r.reason,
+    location_scope: r.location_id ? 'location' : 'workspace',
+  }));
 }
 
 // ----------------------------------------------------------------------------

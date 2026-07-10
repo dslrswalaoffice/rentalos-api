@@ -1048,7 +1048,9 @@
       const icon = isShortage ? '⚠' : '⛔';
 
       let title;
-      if (isShortage) {
+      if (check.has_downtime_conflict) {
+        title = 'Unavailable — this product is in a maintenance downtime for the selected window';
+      } else if (isShortage) {
         const overbook = check.requested + check.currently_booked - check.capacity;
         title = `Overbook allowed: ${overbook} unit${overbook !== 1 ? 's' : ''} above capacity (within shortage limit of ${check.shortage_limit})`;
       } else {
@@ -1056,12 +1058,22 @@
         title = `Overbook: ${check.requested} requested, ${available} available`;
       }
 
-      const conflicts = (check.conflicts || []).map(c => `
+      const conflicts = (check.conflicts || []).map(c => {
+        // Downtime rows (Sub-turn 8a) render distinctly — wrench + reason, no order link.
+        if (c.type === 'downtime') {
+          return `
+        <li>
+          🔧 <strong>Downtime</strong> — ${escapeHtml(c.reason || 'maintenance')}${c.location_scope === 'location' ? ' (this location)' : ''}
+          <div class="conflict-window">${escapeHtml(formatDateShort(c.start))} → ${escapeHtml(formatDateShort(c.end))}</div>
+        </li>`;
+        }
+        return `
         <li>
           <a href="/order.html?id=${escapeAttr(c.order_id)}" target="_blank">Order #${escapeHtml(String(c.order_number))}</a>
           (${escapeHtml(c.customer_name || 'Unknown')}) — ${escapeHtml(String(c.quantity))} unit(s) — ${renderStatusPill(c.status)}
           <div class="conflict-window">${escapeHtml(formatDateShort(c.start))} → ${escapeHtml(formatDateShort(c.end))}</div>
-        </li>`).join('');
+        </li>`;
+      }).join('');
       // Kit shortage: list which components are short (derived-capacity kits).
       let kitBlock = '';
       if (check.is_kit && Array.isArray(check.kit_components)) {

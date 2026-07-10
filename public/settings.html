@@ -223,6 +223,24 @@
     .notif-meta { font-size: 11px; color: var(--muted); opacity: 0.8; font-family: var(--font-mono); }
     .notif-empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 13px; }
 
+    /* ===== tags (Sub-turn 8a) ===== */
+    .tag-chip { display: inline-block; padding: 2px 9px; border-radius: 11px; font-size: 11px; font-weight: 600; margin-right: 4px; line-height: 1.5; }
+    .tag-chip.tag-red { background: #fee2e2; color: #991b1b; }
+    .tag-chip.tag-orange { background: #ffedd5; color: #9a3412; }
+    .tag-chip.tag-yellow { background: #fef3c7; color: #92400e; }
+    .tag-chip.tag-green { background: #d1fae5; color: #065f46; }
+    .tag-chip.tag-blue { background: #dbeafe; color: #1e40af; }
+    .tag-chip.tag-purple { background: #ede9fe; color: #5b21b6; }
+    .tag-chip.tag-pink { background: #fce7f3; color: #9d174d; }
+    .tag-chip.tag-gray { background: #e5e7eb; color: #374151; }
+    .tag-row { display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 9px; margin-bottom: 6px; }
+    .tag-row.dragging { opacity: 0.5; }
+    .tag-row .drag-handle { cursor: grab; color: var(--muted-soft); font-size: 14px; user-select: none; }
+    .tag-meta { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
+    .tag-actions { display: flex; gap: 6px; }
+    .color-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+    .color-swatch { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+    .color-swatch.selected { border-color: var(--head); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--head); }
   </style>
 </head>
 <body>
@@ -290,6 +308,7 @@
         <button class="tab" data-tab="integrations">Integrations</button>
         <button class="tab" data-tab="custom-fields">Custom Fields</button>
         <button class="tab" data-tab="locations">Locations</button>
+        <button class="tab" data-tab="tags">Tags</button>
         <button class="tab" data-tab="users">Users</button>
       </nav>
       <div class="content" id="content"><div class="loading">Loading settings…</div></div>
@@ -349,7 +368,7 @@
         resetForm();
         hydrateIdentity();
         const hash = (location.hash || '#workspace').slice(1);
-        state.tab = ['workspace', 'features', 'integrations', 'custom-fields', 'locations', 'users'].includes(hash) ? hash : 'workspace';
+        state.tab = ['workspace', 'features', 'integrations', 'custom-fields', 'locations', 'tags', 'users'].includes(hash) ? hash : 'workspace';
         render();
       } catch (err) {
         document.getElementById('content').innerHTML =
@@ -390,6 +409,7 @@
       else if (state.tab === 'integrations') { el.innerHTML = integrationsTab(); wireIntegrationsTab(); }
       else if (state.tab === 'custom-fields') { el.innerHTML = customFieldsTab(); wireCustomFieldsTab(); }
       else if (state.tab === 'locations') { el.innerHTML = locationsTab(); wireLocationsTab(); }
+      else if (state.tab === 'tags') { el.innerHTML = tagsTab(); wireTagsTab(); }
       else { el.innerHTML = usersTab(); }
     }
 
@@ -1001,6 +1021,153 @@
         const code = ex.body?.error;
         showToast(code === 'cannot_delete_default' ? 'The default location cannot be deleted.' : ('Could not delete: ' + (code || ex.message)));
       }
+    }
+
+    // ---------- tags tab (Sub-turn 8a) ----------
+    const TAG_COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray'];
+    const TAG_SWATCH = { red:'#ef4444', orange:'#f97316', yellow:'#eab308', green:'#22c55e', blue:'#3b82f6', purple:'#8b5cf6', pink:'#ec4899', gray:'#9ca3af' };
+    let tagList = [];
+
+    function tagsTab() {
+      const owner = canEditMetadata();
+      const note = owner ? '' : `<div class="notice">Only owners and managers can manage tags. Anyone can apply existing tags to products, people, and orders.</div>`;
+      return `${note}
+        <div class="card">
+          <div class="cf-header">
+            <div>
+              <h3 class="cf-title">Tags</h3>
+              <p class="card-sub" style="margin:2px 0 0">Flexible labels for organizing products, people, and orders. Filter any list by tag. Drag to reorder.</p>
+            </div>
+            ${owner ? `<button class="btn primary" id="tag-add-btn">+ Add tag</button>` : ''}
+          </div>
+          <div class="cf-rows" id="tag-rows"><div class="loading">Loading…</div></div>
+        </div>`;
+    }
+
+    function wireTagsTab() {
+      const add = document.getElementById('tag-add-btn');
+      if (add) add.addEventListener('click', () => openTagModal(null));
+      loadTags();
+    }
+
+    async function loadTags() {
+      try { const { tags } = await api.get('/api/tags'); tagList = tags || []; }
+      catch { tagList = []; }
+      renderTagRows();
+    }
+
+    function renderTagRows() {
+      const rows = document.getElementById('tag-rows');
+      if (!rows) return;
+      const owner = canEditMetadata();
+      if (!tagList.length) { rows.innerHTML = `<div class="cf-empty">No tags yet. Add one to start organizing.</div>`; return; }
+      rows.innerHTML = tagList.map(t => `
+        <div class="tag-row" data-id="${escapeAttr(t.id)}" ${owner ? 'draggable="true"' : ''}>
+          <div class="drag-handle" title="Drag to reorder">⋮⋮</div>
+          <div><span class="tag-chip tag-${escapeAttr(t.color)}">${escapeHtml(t.name)}</span></div>
+          <div class="tag-meta">${t.usage_count || 0} use${t.usage_count === 1 ? '' : 's'}</div>
+          ${owner ? `<div class="tag-actions">
+            <button class="btn ghost tiny" data-tag-edit="${escapeAttr(t.id)}">Edit</button>
+            <button class="btn ghost tiny" data-tag-del="${escapeAttr(t.id)}">Delete</button>
+          </div>` : '<div></div>'}
+        </div>`).join('');
+      rows.querySelectorAll('[data-tag-edit]').forEach(b => b.addEventListener('click', () => openTagModal(b.dataset.tagEdit)));
+      rows.querySelectorAll('[data-tag-del]').forEach(b => b.addEventListener('click', () => deleteTag(b.dataset.tagDel)));
+      if (owner) wireTagDrag(rows);
+    }
+
+    function wireTagDrag(container) {
+      let dragId = null;
+      container.querySelectorAll('.tag-row').forEach(row => {
+        row.addEventListener('dragstart', () => { dragId = row.dataset.id; row.classList.add('dragging'); });
+        row.addEventListener('dragend', () => { row.classList.remove('dragging'); });
+        row.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          const dragging = container.querySelector('.tag-row.dragging');
+          if (!dragging || dragging === row) return;
+          const rect = row.getBoundingClientRect();
+          const after = (e.clientY - rect.top) > rect.height / 2;
+          container.insertBefore(dragging, after ? row.nextSibling : row);
+        });
+        row.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          const orderedIds = [...container.querySelectorAll('.tag-row')].map(r => r.dataset.id);
+          // Reflect new order in local state, persist.
+          tagList.sort((a, b) => orderedIds.indexOf(a.id) - orderedIds.indexOf(b.id));
+          try { await api.post('/api/tags/reorder', { tag_ids: orderedIds }); showToast('Order saved'); }
+          catch { showToast('Could not save order'); await loadTags(); }
+        });
+      });
+    }
+
+    function openTagModal(id) {
+      const editing = id ? tagList.find(t => t.id === id) : null;
+      let selectedColor = editing?.color || 'gray';
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal">
+          <div class="modal-head"><h3>${editing ? 'Edit' : 'Add'} tag</h3></div>
+          <div class="modal-body">
+            <div id="tag-err" class="form-error" style="display:none"></div>
+            <div class="field"><label>Name *</label>
+              <input type="text" id="tag-name" maxlength="50" value="${escapeAttr(editing?.name ?? '')}" placeholder="e.g. Premium"></div>
+            <div class="field"><label>Color</label>
+              <div class="color-picker" id="tag-color-picker">
+                ${TAG_COLORS.map(c => `<div class="color-swatch ${c === selectedColor ? 'selected' : ''}" data-color="${c}" style="background:${TAG_SWATCH[c]}" title="${c}"></div>`).join('')}
+              </div>
+            </div>
+            <div class="field"><label>Preview</label><div id="tag-preview"><span class="tag-chip tag-${selectedColor}">${escapeHtml(editing?.name || 'Tag')}</span></div></div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn ghost" data-close>Cancel</button>
+            <button class="btn primary" id="tag-save">Save</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
+      const nameInp = overlay.querySelector('#tag-name');
+      const updatePreview = () => {
+        overlay.querySelector('#tag-preview').innerHTML = `<span class="tag-chip tag-${selectedColor}">${escapeHtml(nameInp.value || 'Tag')}</span>`;
+      };
+      overlay.querySelectorAll('.color-swatch').forEach(sw => sw.addEventListener('click', () => {
+        selectedColor = sw.dataset.color;
+        overlay.querySelectorAll('.color-swatch').forEach(s => s.classList.toggle('selected', s === sw));
+        updatePreview();
+      }));
+      nameInp.addEventListener('input', updatePreview);
+      overlay.querySelector('#tag-save').addEventListener('click', () => saveTag(overlay, editing, () => selectedColor, close));
+      setTimeout(() => nameInp.focus(), 40);
+    }
+
+    async function saveTag(overlay, editing, getColor, close) {
+      const err = overlay.querySelector('#tag-err');
+      err.style.display = 'none';
+      const name = overlay.querySelector('#tag-name').value.trim();
+      const color = getColor();
+      if (!name) { err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
+      const btn = overlay.querySelector('#tag-save'); btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        if (editing) await api.patch(`/api/tags/${editing.id}`, { name, color });
+        else await api.post('/api/tags', { name, color });
+        close(); showToast('Tag saved'); await loadTags();
+      } catch (ex) {
+        btn.disabled = false; btn.textContent = 'Save';
+        const code = ex.body?.error;
+        err.textContent = code === 'name_taken' ? 'A tag with that name already exists.'
+          : code === 'insufficient_role' ? 'Only owners and managers can manage tags.'
+          : ('Could not save: ' + (code || ex.message));
+        err.style.display = 'block';
+      }
+    }
+
+    async function deleteTag(id) {
+      const t = tagList.find(x => x.id === id);
+      if (!window.confirm(`Delete "${t?.name || 'this tag'}"? It will be removed from all lists. Existing assignments are kept in the database.`)) return;
+      try { await api.del(`/api/tags/${id}`); showToast('Tag deleted'); await loadTags(); }
+      catch (ex) { showToast('Could not delete: ' + (ex.body?.error || ex.message)); }
     }
 
     // ---------- users tab ----------

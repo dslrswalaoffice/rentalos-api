@@ -6,6 +6,13 @@ import { audit } from '../lib/audit.js';
 import { emitNotification } from '../lib/notify.js';
 import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
 import {
+  loadTagsForEntity,
+  loadTagsForEntities,
+  filterEntityIdsByTags,
+  parseTagIdsParam,
+  replaceEntityTags,
+} from '../lib/tags.js';
+import {
   sessionMiddleware,
   requireAuth,
   requireRole,
@@ -90,6 +97,17 @@ people.get('/', async (c) => {
   const includeArchived = c.req.query('include_archived') === 'true';
   const searchPattern = search ? `%${search}%` : null;
 
+  // Tag filter (Sub-turn 8a) — AND semantics, resolved to matching person ids.
+  const tagIds = parseTagIdsParam(c.req.queries('tag_ids'));
+  let tagMatchCsv: string | null = null;
+  if (tagIds.length) {
+    const ids = await filterEntityIdsByTags(session.workspace.id, 'person', tagIds);
+    if (ids.length === 0) {
+      return c.json({ people: [], total: 0, by_role: {} });
+    }
+    tagMatchCsv = ids.join(',');
+  }
+
   const rows = await query<PersonRow>(sql`
     SELECT
       p.id, p.display_name, p.phone, p.phone_verified_at, p.email,
@@ -117,9 +135,15 @@ people.get('/', async (c) => {
           AND pr.role = ${role}::person_role
           AND pr.is_active = true
       ))
+      AND (${tagMatchCsv}::text IS NULL
+           OR p.id = ANY(string_to_array(${tagMatchCsv}::text, ',')::uuid[]))
     ORDER BY p.display_name ASC
     LIMIT 500
   `);
+
+  // Batch-load tag chips for this page (Sub-turn 8a).
+  const tagMap = await loadTagsForEntities(session.workspace.id, 'person', rows.map((r) => r.id));
+  for (const r of rows) (r as PersonRow & { tags: unknown }).tags = tagMap.get(r.id) ?? [];
 
   // Aggregate counts per role for filter chips.
   const roleCounts = await query<{ role: string; n: number }>(sql`
@@ -216,8 +240,9 @@ people.get('/:id', async (c) => {
   `);
 
   const custom_fields = await loadCustomFieldValues(session.workspace.id, 'person', id);
+  const tags = await loadTagsForEntity(session.workspace.id, 'person', id);
 
-  return c.json({ person, orders, payments, communications, custom_fields });
+  return c.json({ person, orders, payments, communications, custom_fields, tags });
 });
 
 // ============================================================================
@@ -348,6 +373,7 @@ const updateSchema = z.object({
   billing_address: z.string().max(1000).optional(),
   shipping_address: z.string().max(1000).optional(),
   custom_fields: z.array(z.object({ definition_id: z.string().uuid(), value: z.string().nullable() })).optional(),
+  tag_ids: z.array(z.string().uuid()).optional(), // Sub-turn 8a — replace-all
 });
 
 people.patch('/:id', requireRole('owner', 'manager'), async (c) => {
@@ -429,6 +455,11 @@ people.patch('/:id', requireRole('owner', 'manager'), async (c) => {
       workspaceId: session.workspace.id, entityType: 'person', entityId: id,
       actorUserId: session.user.id, values: p.custom_fields,
     });
+  }
+
+  // Tag assignments (Sub-turn 8a) — replace-all when provided inline.
+  if (p.tag_ids) {
+    await replaceEntityTags(session.workspace.id, 'person', id, session.user.id, p.tag_ids);
   }
 
   return c.json({ person: updated[0] });

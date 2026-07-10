@@ -10,6 +10,13 @@ import { generateInvoice } from './invoices.js';
 import { applyDepositStatus } from './payments.js';
 import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
 import {
+  loadTagsForEntity,
+  loadTagsForEntities,
+  filterEntityIdsByTags,
+  parseTagIdsParam,
+  replaceEntityTags,
+} from '../lib/tags.js';
+import {
   sessionMiddleware,
   requireAuth,
   type SessionUser,
@@ -395,6 +402,21 @@ orders.get('/', async (c) => {
   const offset = (qp.page - 1) * limit;
   const sort = qp.sort;
 
+  // Tag filter (Sub-turn 8a) — AND semantics, resolved to matching order ids.
+  const tagIds = parseTagIdsParam(c.req.queries('tag_ids'));
+  let tagMatchCsv: string | null = null;
+  if (tagIds.length) {
+    const ids = await filterEntityIdsByTags(session.workspace.id, 'order', tagIds);
+    if (ids.length === 0) {
+      return c.json({
+        orders: [],
+        pagination: { page: qp.page, limit, total: 0, total_pages: 0 },
+        filters_applied: { q, status: statusArr, from: fromNorm, to: toNorm, sort, late_only: lateOnly, tag_ids: tagIds },
+      });
+    }
+    tagMatchCsv = ids.join(',');
+  }
+
   const rows = await query<OrderRow>(sql`
     SELECT
       o.id, o.workspace_id, o.order_number, o.customer_person_id, o.status,
@@ -432,6 +454,8 @@ orders.get('/', async (c) => {
             AND oi.status::text = 'dispatched'
         )
       ))
+      AND (${tagMatchCsv}::text IS NULL
+           OR o.id = ANY(string_to_array(${tagMatchCsv}::text, ',')::uuid[]))
     ORDER BY
       (CASE WHEN ${sort}::text = 'created_at_desc'   THEN o.created_at   END) DESC NULLS LAST,
       (CASE WHEN ${sort}::text = 'created_at_asc'    THEN o.created_at   END) ASC  NULLS LAST,
@@ -464,9 +488,15 @@ orders.get('/', async (c) => {
             AND oi.status::text = 'dispatched'
         )
       ))
+      AND (${tagMatchCsv}::text IS NULL
+           OR o.id = ANY(string_to_array(${tagMatchCsv}::text, ',')::uuid[]))
   `);
   const total = counted[0]?.total ?? 0;
   const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+
+  // Batch-load tag chips for this page (Sub-turn 8a).
+  const tagMap = await loadTagsForEntities(session.workspace.id, 'order', rows.map((r) => r.id));
+  for (const r of rows) (r as OrderRow & { tags: unknown }).tags = tagMap.get(r.id) ?? [];
 
   return c.json({
     orders: rows,
@@ -478,6 +508,7 @@ orders.get('/', async (c) => {
       to: toNorm,
       sort,
       late_only: lateOnly,
+      tag_ids: tagIds,
     },
   });
 });
@@ -492,14 +523,15 @@ orders.get('/:id', async (c) => {
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
 
-  const [items, events, customFields] = await Promise.all([
+  const [items, events, customFields, tags] = await Promise.all([
     loadItems(id),
     loadEvents(id),
     loadCustomFieldValues(session.workspace.id, 'order', id),
+    loadTagsForEntity(session.workspace.id, 'order', id),
   ]);
 
   const canFinalize = deriveCanFinalize(items);
-  return c.json({ order, items, events, can_finalize: canFinalize, custom_fields: customFields });
+  return c.json({ order, items, events, can_finalize: canFinalize, custom_fields: customFields, tags });
 });
 
 // ============================================================================
@@ -654,6 +686,7 @@ const updateSchema = z.object({
   internal_notes:     z.string().max(2000).optional(),
   pickup_location_id: z.string().uuid().optional(),
   custom_fields:      z.array(z.object({ definition_id: z.string().uuid(), value: z.string().nullable() })).optional(),
+  tag_ids:            z.array(z.string().uuid()).optional(), // Sub-turn 8a — replace-all
 });
 
 orders.patch('/:id', async (c) => {
@@ -758,6 +791,11 @@ orders.patch('/:id', async (c) => {
       workspaceId: session.workspace.id, entityType: 'order', entityId: id,
       actorUserId: session.user.id, values: p.custom_fields,
     });
+  }
+
+  // Tag assignments (Sub-turn 8a) — replace-all when provided inline.
+  if (p.tag_ids) {
+    await replaceEntityTags(session.workspace.id, 'order', id, session.user.id, p.tag_ids);
   }
 
   // Moving the rental window changes billable days -> recompute rental pricing.

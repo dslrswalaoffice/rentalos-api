@@ -534,6 +534,23 @@
     .notif-meta { font-size: 11px; color: var(--muted); opacity: 0.8; font-family: var(--font-mono); }
     .notif-empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 13px; }
 
+    /* ===== tags (Sub-turn 8a) ===== */
+    .tag-chip { display: inline-block; padding: 2px 9px; border-radius: 11px; font-size: 11px; font-weight: 600; margin-right: 4px; line-height: 1.5; }
+    .tag-chip.tag-red { background: #fee2e2; color: #991b1b; }
+    .tag-chip.tag-orange { background: #ffedd5; color: #9a3412; }
+    .tag-chip.tag-yellow { background: #fef3c7; color: #92400e; }
+    .tag-chip.tag-green { background: #d1fae5; color: #065f46; }
+    .tag-chip.tag-blue { background: #dbeafe; color: #1e40af; }
+    .tag-chip.tag-purple { background: #ede9fe; color: #5b21b6; }
+    .tag-chip.tag-pink { background: #fce7f3; color: #9d174d; }
+    .tag-chip.tag-gray { background: #e5e7eb; color: #374151; }
+    .tag-chip .tag-x { margin-left: 5px; cursor: pointer; opacity: 0.6; font-weight: 700; }
+    .tag-chip .tag-x:hover { opacity: 1; }
+    .entity-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+    .tag-picker-pop { position: absolute; z-index: 200; background: var(--card); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 12px 30px -10px rgba(16,24,40,0.35); padding: 8px; min-width: 200px; max-height: 260px; overflow-y: auto; }
+    .tag-pick-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 7px; cursor: pointer; font-size: 12.5px; }
+    .tag-pick-item:hover { background: var(--thead); }
+    .tag-pick-item.checked { background: var(--accent-soft); }
   </style>
 </head>
 <body>
@@ -1208,12 +1225,13 @@
     async function loadOrder() {
       if (!state.orderId) { renderNotFound(); return; }
       try {
-        const { order, items, events, can_finalize, custom_fields } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}`);
+        const { order, items, events, can_finalize, custom_fields, tags } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}`);
         state.order = order;
         state.items = items;
         state.events = events;
         state.canFinalize = can_finalize === true;
         state.customFields = custom_fields || [];
+        state.tags = tags || [];
         await loadContracts();
         render();
       } catch (err) {
@@ -1252,6 +1270,7 @@
         ${depositCardHtml()}
         ${contractsCardHtml()}
         ${customFieldsCardHtml()}
+        ${tagsCardHtml()}
         ${invoicesCardHtml()}
         ${timelineCardHtml()}
         ${actionsCardHtml()}
@@ -1263,6 +1282,7 @@
       wireDepositCard();
       wireContractsCard();
       wireCustomFieldsCard();
+      wireTagsCard();
       wireInvoicesCard();
       wireActionsCard();
       wireFinalizeBanner();
@@ -3446,6 +3466,70 @@
       });
     }
 
+    // ---------- tags (Sub-turn 8a) ----------
+    let orderWorkspaceTags = [];
+    async function loadOrderWorkspaceTags() {
+      try { const { tags } = await api.get('/api/tags'); orderWorkspaceTags = tags || []; }
+      catch { orderWorkspaceTags = []; }
+    }
+    function tagsCardHtml() {
+      const tags = state.tags || [];
+      const chips = tags.map(t =>
+        `<span class="tag-chip tag-${escapeAttr(t.color)}">${escapeHtml(t.name)}<span class="tag-x" data-untag="${escapeAttr(t.id)}">×</span></span>`).join('');
+      return `
+        <div class="card">
+          <div class="card-head"><h3>Tags</h3></div>
+          <div class="entity-tags" id="order-tags">
+            ${chips || '<span style="color:var(--muted);font-size:12.5px;">No tags yet.</span>'}
+            <button class="btn ghost tiny" id="order-add-tag">+ Tag</button>
+          </div>
+        </div>`;
+    }
+    function wireTagsCard() {
+      const wrap = document.getElementById('order-tags');
+      if (!wrap) return;
+      wrap.querySelectorAll('[data-untag]').forEach(x => x.addEventListener('click', () => toggleOrderTag(x.dataset.untag, false)));
+      const add = document.getElementById('order-add-tag');
+      if (add) add.addEventListener('click', (e) => openOrderTagPicker(e.currentTarget));
+    }
+    function openOrderTagPicker(anchor) {
+      document.querySelectorAll('.tag-picker-pop').forEach(p => p.remove());
+      if (!orderWorkspaceTags.length) { showToast('No tags yet — create some in Settings → Tags'); return; }
+      const assigned = new Set((state.tags || []).map(t => t.id));
+      const pop = document.createElement('div');
+      pop.className = 'tag-picker-pop';
+      pop.innerHTML = orderWorkspaceTags.map(t =>
+        `<div class="tag-pick-item ${assigned.has(t.id) ? 'checked' : ''}" data-pick="${escapeAttr(t.id)}">
+          <span class="tag-chip tag-${escapeAttr(t.color)}" style="pointer-events:none;">${escapeHtml(t.name)}</span>
+          ${assigned.has(t.id) ? '<span style="margin-left:auto;color:var(--ok-strong);">✓</span>' : ''}
+        </div>`).join('');
+      document.body.appendChild(pop);
+      const r = anchor.getBoundingClientRect();
+      pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
+      pop.style.left = (window.scrollX + r.left) + 'px';
+      pop.querySelectorAll('[data-pick]').forEach(item => item.addEventListener('click', () => {
+        const id = item.dataset.pick;
+        toggleOrderTag(id, !assigned.has(id));
+        pop.remove();
+      }));
+      const off = (e) => { if (!pop.contains(e.target) && e.target !== anchor) { pop.remove(); document.removeEventListener('mousedown', off); } };
+      setTimeout(() => document.addEventListener('mousedown', off), 0);
+    }
+    async function toggleOrderTag(tagId, assign) {
+      try {
+        if (assign) {
+          await api.post('/api/tags/assignments', { tag_id: tagId, entity_type: 'order', entity_id: state.orderId });
+        } else {
+          await fetch('/api/tags/assignments', {
+            method: 'DELETE', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag_id: tagId, entity_type: 'order', entity_id: state.orderId }),
+          });
+        }
+        await loadOrder();
+      } catch (ex) { showToast('Could not update tag: ' + (ex.body?.error || ex.message)); }
+    }
+
     function openPaymentMenu(btn, paymentId) {
       closeAllMenus();
       const menu = document.createElement('div');
@@ -3703,6 +3787,7 @@
         await hydrateIdentity();
         await loadWorkspaceContract();
         await loadLocationCount();
+        await loadOrderWorkspaceTags();
         await loadOrder();
         await loadPayments();
         await loadInvoices();
