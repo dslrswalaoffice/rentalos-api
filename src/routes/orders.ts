@@ -291,19 +291,85 @@ async function recordOrderEvent(input: {
 }
 
 // ============================================================================
-// GET /api/orders — list with filters
+// GET /api/orders — list with search, filters, sort, pagination
+// ----------------------------------------------------------------------------
+// Server-side everything so the list stays usable past a handful of orders.
+// Response shape: { orders, pagination, filters_applied }.
+//
+// SQL discipline (per CLAUDE.md + the Neon HTTP driver's quirks):
+//   * Predicates are null-guarded inline params — the driver can't nest sql
+//     fragments, so we keep one static template and toggle each clause on a
+//     param being NULL.
+//   * Multi-status uses string_to_array(<csv>, ',') → text[] built DB-side,
+//     compared as o.status::text = ANY(...). No JS-array→enum[] cast (banned).
+//   * Sort is a Zod-validated enum mapped to a CASE-per-key ORDER BY; only the
+//     matching key yields non-null values, the rest sort as all-NULL no-ops.
+//     created_at DESC is the final stable tiebreaker.
 // ============================================================================
+const LIST_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const listDateParam = z.string().refine(
+  (v) => LIST_DATE_ONLY.test(v) || !Number.isNaN(Date.parse(v)),
+  { message: 'must be YYYY-MM-DD or an ISO datetime' },
+);
+
+const listQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  status: z.string().max(200).optional(), // comma-separated
+  from: listDateParam.optional(),
+  to: listDateParam.optional(),
+  sort: z.enum([
+    'created_at_desc', 'created_at_asc',
+    'rental_start_asc', 'rental_start_desc',
+    'order_number_desc',
+    'total_paise_desc',
+  ]).default('created_at_desc'),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 orders.get('/', async (c) => {
   const session = c.get('session')!;
 
-  const status = c.req.query('status')?.trim() || null;
-  const q      = c.req.query('q')?.trim() || null;
-  const from   = c.req.query('from')?.trim() || null;
-  const to     = c.req.query('to')?.trim() || null;
-  const limit  = Math.min(Number(c.req.query('limit') || 50), 200);
-  const offset = Math.max(Number(c.req.query('offset') || 0), 0);
+  const parsed = listQuerySchema.safeParse({
+    q: c.req.query('q'),
+    status: c.req.query('status'),
+    from: c.req.query('from'),
+    to: c.req.query('to'),
+    sort: c.req.query('sort'),
+    page: c.req.query('page'),
+    limit: c.req.query('limit'),
+  });
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const qp = parsed.data;
 
+  // Status: comma-separated → validated array. Any unknown enum value is a 400.
+  let statusArr: string[] = [];
+  if (qp.status && qp.status.trim()) {
+    statusArr = qp.status.split(',').map((s) => s.trim()).filter(Boolean);
+    for (const s of statusArr) {
+      if (!(ORDER_STATUSES as readonly string[]).includes(s)) {
+        return c.json({ error: 'invalid_request', reason: 'unknown_status', value: s }, 400);
+      }
+    }
+  }
+  const statusCsv = statusArr.length ? statusArr.join(',') : null;
+
+  const q = qp.q?.trim() || null;
   const searchPattern = q ? `%${q}%` : null;
+
+  // Date-only inputs bracket the whole day so `to` stays inclusive.
+  const fromNorm = qp.from
+    ? (LIST_DATE_ONLY.test(qp.from) ? qp.from + 'T00:00:00.000Z' : qp.from)
+    : null;
+  const toNorm = qp.to
+    ? (LIST_DATE_ONLY.test(qp.to) ? qp.to + 'T23:59:59.999Z' : qp.to)
+    : null;
+
+  const limit = qp.limit;
+  const offset = (qp.page - 1) * limit;
+  const sort = qp.sort;
 
   const rows = await query<OrderRow>(sql`
     SELECT
@@ -320,34 +386,52 @@ orders.get('/', async (c) => {
     JOIN people p ON p.id = o.customer_person_id
     WHERE o.workspace_id = ${session.workspace.id}
       AND o.deleted_at IS NULL
-      AND (${status}::text IS NULL OR o.status::text = ${status}::text)
+      AND (${statusCsv}::text IS NULL
+           OR o.status::text = ANY(string_to_array(${statusCsv}::text, ',')))
       AND (${searchPattern}::text IS NULL
            OR p.display_name ILIKE ${searchPattern}::text
-           OR CAST(o.order_number AS text) = ${q}::text)
-      AND (${from}::timestamptz IS NULL OR o.rental_start >= ${from}::timestamptz)
-      AND (${to}::timestamptz   IS NULL OR o.rental_end   <= ${to}::timestamptz)
-    ORDER BY o.created_at DESC
+           OR CAST(o.order_number AS text) ILIKE ${searchPattern}::text)
+      AND (${fromNorm}::timestamptz IS NULL OR o.rental_start >= ${fromNorm}::timestamptz)
+      AND (${toNorm}::timestamptz   IS NULL OR o.rental_start <= ${toNorm}::timestamptz)
+    ORDER BY
+      (CASE WHEN ${sort}::text = 'created_at_desc'   THEN o.created_at   END) DESC NULLS LAST,
+      (CASE WHEN ${sort}::text = 'created_at_asc'    THEN o.created_at   END) ASC  NULLS LAST,
+      (CASE WHEN ${sort}::text = 'rental_start_asc'  THEN o.rental_start END) ASC  NULLS LAST,
+      (CASE WHEN ${sort}::text = 'rental_start_desc' THEN o.rental_start END) DESC NULLS LAST,
+      (CASE WHEN ${sort}::text = 'order_number_desc' THEN o.order_number END) DESC NULLS LAST,
+      (CASE WHEN ${sort}::text = 'total_paise_desc'  THEN o.total_paise  END) DESC NULLS LAST,
+      o.created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `);
 
-  const totals = await query<{
-    total: number; drafts: number; quoted: number; confirmed: number;
-    dispatched: number; returned: number; closed: number;
-  }>(sql`
-    SELECT
-      COUNT(*)::int                                        AS total,
-      COUNT(*) FILTER (WHERE status = 'draft')::int        AS drafts,
-      COUNT(*) FILTER (WHERE status = 'quoted')::int       AS quoted,
-      COUNT(*) FILTER (WHERE status = 'confirmed')::int    AS confirmed,
-      COUNT(*) FILTER (WHERE status = 'dispatched')::int   AS dispatched,
-      COUNT(*) FILTER (WHERE status = 'returned')::int     AS returned,
-      COUNT(*) FILTER (WHERE status = 'closed')::int       AS closed
-    FROM orders
-    WHERE workspace_id = ${session.workspace.id}
-      AND deleted_at IS NULL
+  const counted = await query<{ total: number }>(sql`
+    SELECT COUNT(*)::int AS total
+    FROM orders o
+    JOIN people p ON p.id = o.customer_person_id
+    WHERE o.workspace_id = ${session.workspace.id}
+      AND o.deleted_at IS NULL
+      AND (${statusCsv}::text IS NULL
+           OR o.status::text = ANY(string_to_array(${statusCsv}::text, ',')))
+      AND (${searchPattern}::text IS NULL
+           OR p.display_name ILIKE ${searchPattern}::text
+           OR CAST(o.order_number AS text) ILIKE ${searchPattern}::text)
+      AND (${fromNorm}::timestamptz IS NULL OR o.rental_start >= ${fromNorm}::timestamptz)
+      AND (${toNorm}::timestamptz   IS NULL OR o.rental_start <= ${toNorm}::timestamptz)
   `);
+  const total = counted[0]?.total ?? 0;
+  const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
-  return c.json({ orders: rows, counts: totals[0] });
+  return c.json({
+    orders: rows,
+    pagination: { page: qp.page, limit, total, total_pages: totalPages },
+    filters_applied: {
+      q,
+      status: statusArr,
+      from: fromNorm,
+      to: toNorm,
+      sort,
+    },
+  });
 });
 
 // ============================================================================
