@@ -109,6 +109,35 @@
     .soon-badge{display:inline-flex;align-items:center;padding:1px 7px;border-radius:5px;background:var(--warn-soft);color:var(--warn-strong);font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
     .live-badge{display:inline-flex;align-items:center;padding:1px 7px;border-radius:5px;background:var(--ok-soft);color:var(--ok-strong);font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 
+    /* integrations */
+    .adapter-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+    .adapter-card{border:1px solid var(--border);border-radius:12px;padding:14px 15px;background:var(--card);display:flex;flex-direction:column;gap:10px;transition:border-color .14s,box-shadow .14s}
+    .adapter-card.is-active{border-color:var(--border-accent);box-shadow:0 0 0 1px var(--border-accent)}
+    .adapter-card.is-soon{background:var(--thead);opacity:.75}
+    .adapter-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+    .adapter-name{font-weight:600;color:var(--ink);font-size:13.5px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+    .adapter-desc{font-size:11.5px;color:var(--muted);line-height:1.5;flex:1}
+    .adapter-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px}
+    .adapter-actions .btn{padding:6px 11px;font-size:11.5px}
+    .btn.danger{background:var(--card);color:var(--bad-strong);border-color:var(--border)}
+    .btn.danger:hover{background:var(--bad-soft);border-color:var(--bad-strong)}
+    .st-badge{display:inline-flex;align-items:center;padding:1px 7px;border-radius:5px;font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+    .st-active{background:var(--ok-soft);color:var(--ok-strong)}
+    .st-configured{background:var(--accent-soft);color:var(--head)}
+    .st-none{background:#eef0f3;color:var(--muted-strong)}
+    .st-test-ok{background:var(--ok-soft);color:var(--ok-strong)}
+    .st-test-fail{background:var(--bad-soft);color:var(--bad-strong)}
+    .adapter-meta{font-size:10.5px;color:var(--muted-soft);font-family:var(--font-mono)}
+    /* modal */
+    .modal-overlay{position:fixed;inset:0;background:rgba(16,20,40,.42);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px}
+    .modal{background:var(--card);border:1px solid var(--border-strong);border-radius:14px;width:100%;max-width:460px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px -20px rgba(16,24,40,.4)}
+    .modal-head{padding:18px 20px 12px;border-bottom:1px solid var(--border)}
+    .modal-head h3{margin:0;font-size:15px;color:var(--ink)}
+    .modal-head .card-sub{margin:4px 0 0;font-size:12px;color:var(--muted)}
+    .modal-body{padding:16px 20px}
+    .modal-foot{padding:12px 20px 18px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border)}
+    .modal .field{margin-bottom:12px}
+
     /* users table */
     table.users{width:100%;border-collapse:collapse}
     table.users th{text-align:left;padding:10px 12px;font-family:var(--font-mono);font-size:9px;font-weight:600;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--thead)}
@@ -225,6 +254,7 @@
       <nav class="tabbar" id="tabbar">
         <button class="tab active" data-tab="workspace">Workspace</button>
         <button class="tab" data-tab="features">Features</button>
+        <button class="tab" data-tab="integrations">Integrations</button>
         <button class="tab" data-tab="users">Users</button>
       </nav>
       <div class="content" id="content"><div class="loading">Loading settings…</div></div>
@@ -234,7 +264,14 @@
   <script type="module">
     import { api, ensureAuth } from '/_lib/api.js';
 
-    const state = { data: null, tab: 'workspace', form: null, baseline: null };
+    const state = { data: null, tab: 'workspace', form: null, baseline: null, integrations: null };
+
+    const CATEGORY_LABELS = {
+      payment: { title: 'Payment gateway', sub: 'Collect deposits and rental payments online. One active provider at a time.' },
+      whatsapp: { title: 'WhatsApp', sub: 'Send order confirmations, dispatch alerts, and reminders on WhatsApp.' },
+      email: { title: 'Email', sub: 'Deliver invoices and notifications by email.' },
+    };
+    const CATEGORY_ORDER = ['payment', 'whatsapp', 'email'];
 
     const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Andaman and Nicobar Islands','Chandigarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir','Ladakh','Lakshadweep','Puducherry'];
 
@@ -276,7 +313,7 @@
         resetForm();
         hydrateIdentity();
         const hash = (location.hash || '#workspace').slice(1);
-        state.tab = ['workspace', 'features', 'users'].includes(hash) ? hash : 'workspace';
+        state.tab = ['workspace', 'features', 'integrations', 'users'].includes(hash) ? hash : 'workspace';
         render();
       } catch (err) {
         document.getElementById('content').innerHTML =
@@ -312,6 +349,7 @@
       const el = document.getElementById('content');
       if (state.tab === 'workspace') { el.innerHTML = workspaceTab(); wireWorkspaceTab(); }
       else if (state.tab === 'features') { el.innerHTML = featuresTab(); wireFeaturesTab(); }
+      else if (state.tab === 'integrations') { el.innerHTML = integrationsTab(); wireIntegrationsTab(); }
       else { el.innerHTML = usersTab(); }
     }
 
@@ -523,6 +561,209 @@
             <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">No users.</td></tr>'}</tbody>
           </table>
         </div>`;
+    }
+
+    // ---------- integrations tab ----------
+    async function loadIntegrations() {
+      try {
+        const res = await api.get('/api/integrations');
+        state.integrations = res.adapters || [];
+      } catch (err) {
+        state.integrations = { error: err.body?.error || err.message || 'error' };
+      }
+      if (state.tab === 'integrations') render();
+    }
+
+    function adapterStatus(a) {
+      const cfg = a.configuration;
+      if (cfg?.is_active) return { label: 'Active', cls: 'st-active' };
+      if (cfg && (cfg.credentials_saved || Object.keys(cfg.config || {}).length)) return { label: 'Configured', cls: 'st-configured' };
+      return { label: 'Not configured', cls: 'st-none' };
+    }
+
+    function integrationsTab() {
+      if (state.integrations === null) { loadIntegrations(); return '<div class="loading">Loading integrations…</div>'; }
+      if (!Array.isArray(state.integrations)) {
+        return `<div class="card"><h3>Couldn't load integrations</h3><p class="card-sub">${escapeHtml(state.integrations?.error || 'error')}</p></div>`;
+      }
+      const canEdit = canEditMetadata();
+      const roleNote = canEdit ? '' : `<div class="notice">You have read-only access. Only owners and managers can configure integrations.</div>`;
+      const intro = `<div class="notice"><strong>How integrations work</strong>Pick one provider per category, save its credentials, then activate it. Credentials are encrypted and never shown again. Only the <em>Noop (testing)</em> adapters are functional today — real providers are coming soon.</div>`;
+      const sections = CATEGORY_ORDER.map(cat => {
+        const meta = CATEGORY_LABELS[cat];
+        const adapters = state.integrations.filter(a => a.category === cat);
+        const cards = adapters.map(a => adapterCard(a, canEdit)).join('');
+        return `<div class="card">
+          <div class="section-h">${escapeHtml(meta.title)}</div>
+          <p class="card-sub">${escapeHtml(meta.sub)}</p>
+          <div class="adapter-grid">${cards}</div>
+        </div>`;
+      }).join('');
+      return `${roleNote}${intro}${sections}`;
+    }
+
+    function adapterCard(a, canEdit) {
+      const cfg = a.configuration;
+      const st = adapterStatus(a);
+      const soon = !a.implemented;
+      const key = `${escapeAttr(a.category)}" data-provider="${escapeAttr(a.provider)}`;
+      const badges = [`<span class="st-badge ${st.cls}">${escapeHtml(st.label)}</span>`];
+      if (soon) badges.push('<span class="soon-badge">Coming soon</span>');
+      let testLine = '';
+      if (cfg?.last_test_status) {
+        const cls = cfg.last_test_status === 'success' ? 'st-test-ok' : 'st-test-fail';
+        testLine = `<div class="adapter-meta">Last test: <span class="st-badge ${cls}">${escapeHtml(cfg.last_test_status)}</span>${cfg.last_test_message ? ' · ' + escapeHtml(cfg.last_test_message) : ''}</div>`;
+      }
+      const actions = [];
+      if (canEdit) {
+        if (soon) {
+          actions.push(`<button class="btn ghost" disabled title="Not yet available">Configure</button>`);
+        } else {
+          actions.push(`<button class="btn ghost" data-act="configure" data-category="${key}">Configure</button>`);
+          if (cfg?.is_active) {
+            actions.push(`<button class="btn ghost" data-act="deactivate" data-category="${key}">Deactivate</button>`);
+          } else if (cfg) {
+            actions.push(`<button class="btn primary" data-act="activate" data-category="${key}">Activate</button>`);
+          }
+          if (a.supportsTest && cfg) actions.push(`<button class="btn ghost" data-act="test" data-category="${key}">Test</button>`);
+          if (cfg) actions.push(`<button class="btn danger" data-act="remove" data-category="${key}">Remove</button>`);
+        }
+      }
+      return `<div class="adapter-card ${cfg?.is_active ? 'is-active' : ''} ${soon ? 'is-soon' : ''}">
+        <div class="adapter-head">
+          <div class="adapter-name">${escapeHtml(a.displayName)}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${badges.join('')}</div>
+        <div class="adapter-desc">${escapeHtml(a.description)}</div>
+        ${testLine}
+        <div class="adapter-actions">${actions.join('')}</div>
+      </div>`;
+    }
+
+    function wireIntegrationsTab() {
+      document.querySelectorAll('[data-act]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const cat = btn.dataset.category, prov = btn.dataset.provider, act = btn.dataset.act;
+          if (act === 'configure') openConfigModal(cat, prov);
+          else if (act === 'activate') doIntegrationAction(cat, prov, 'activate');
+          else if (act === 'deactivate') doIntegrationAction(cat, prov, 'deactivate');
+          else if (act === 'test') doIntegrationAction(cat, prov, 'test');
+          else if (act === 'remove') removeIntegration(cat, prov);
+        });
+      });
+    }
+
+    function findAdapterMeta(cat, prov) {
+      return (state.integrations || []).find(a => a.category === cat && a.provider === prov);
+    }
+
+    async function doIntegrationAction(cat, prov, action) {
+      const a = findAdapterMeta(cat, prov);
+      try {
+        const res = await api.post(`/api/integrations/${cat}/${prov}/${action}`, {});
+        if (action === 'test') {
+          showToast(res.ok ? `Test passed: ${res.message}` : `Test failed: ${res.message}`);
+        } else {
+          showToast(`${a?.displayName || prov} ${action === 'activate' ? 'activated' : 'deactivated'}`);
+        }
+        await loadIntegrations();
+      } catch (err) {
+        showToast(`Could not ${action}: ` + (err.body?.error || err.message));
+      }
+    }
+
+    async function removeIntegration(cat, prov) {
+      const a = findAdapterMeta(cat, prov);
+      if (!window.confirm(`Remove ${a?.displayName || prov} configuration? Saved credentials will be deleted.`)) return;
+      try {
+        await api.del(`/api/integrations/${cat}/${prov}`);
+        showToast(`${a?.displayName || prov} removed`);
+        await loadIntegrations();
+      } catch (err) {
+        showToast('Could not remove: ' + (err.body?.error || err.message));
+      }
+    }
+
+    function fieldInput(f, savedConfig, credsSaved) {
+      const isSecret = f.type === 'password';
+      const cfgVal = savedConfig?.[f.key];
+      let control;
+      if (f.type === 'select') {
+        const opts = (f.options || []).map(o => `<option value="${escapeAttr(o)}" ${cfgVal === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('');
+        control = `<select data-key="${escapeAttr(f.key)}" data-kind="config">${opts}</select>`;
+      } else if (isSecret) {
+        const ph = credsSaved ? '(unchanged — leave blank to keep)' : (f.placeholder || '');
+        control = `<input type="password" data-key="${escapeAttr(f.key)}" data-kind="credential" placeholder="${escapeAttr(ph)}" autocomplete="new-password" value="">`;
+      } else {
+        const kind = 'config';
+        const val = cfgVal ?? '';
+        control = `<input type="${f.type === 'email' ? 'email' : (f.type === 'url' ? 'url' : 'text')}" data-key="${escapeAttr(f.key)}" data-kind="${kind}" placeholder="${escapeAttr(f.placeholder || '')}" value="${escapeAttr(val)}" autocomplete="off">`;
+      }
+      return `<div class="field">
+        <label>${escapeHtml(f.label)}${f.required ? '' : '<span class="hint">optional</span>'}</label>
+        ${control}
+        ${f.helpText ? `<p class="card-sub" style="margin:4px 0 0">${escapeHtml(f.helpText)}</p>` : ''}
+      </div>`;
+    }
+
+    function openConfigModal(cat, prov) {
+      const a = findAdapterMeta(cat, prov);
+      if (!a) return;
+      const cfg = a.configuration;
+      const savedConfig = cfg?.config || {};
+      const credsSaved = !!cfg?.credentials_saved;
+      const credFields = (a.credentialFields || []).map(f => fieldInput(f, savedConfig, credsSaved)).join('');
+      const confFields = (a.configFields || []).map(f => fieldInput(f, savedConfig, credsSaved)).join('');
+      const testModeChecked = cfg?.test_mode ? 'checked' : '';
+      const helpLink = a.helpUrl ? `<a href="${escapeAttr(a.helpUrl)}" target="_blank" rel="noopener" style="font-size:12px">Documentation ↗</a>` : '';
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal">
+          <div class="modal-head">
+            <h3>Configure ${escapeHtml(a.displayName)}</h3>
+            <p class="card-sub">${escapeHtml(a.description)} ${helpLink}</p>
+          </div>
+          <div class="modal-body">
+            ${credFields || confFields ? '' : '<p class="card-sub">This adapter needs no configuration.</p>'}
+            ${credFields}
+            ${confFields}
+            <div class="field" style="display:flex;align-items:center;gap:10px;margin-top:4px">
+              <label style="margin:0">Test mode</label>
+              <label class="switch"><input type="checkbox" data-testmode ${testModeChecked}><span class="track"></span></label>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn ghost" data-close>Cancel</button>
+            <button class="btn primary" data-save>Save</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      overlay.querySelector('[data-close]').addEventListener('click', close);
+      overlay.querySelector('[data-save]').addEventListener('click', async () => {
+        const saveBtn = overlay.querySelector('[data-save]');
+        saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+        const credentials = {}, config = {};
+        overlay.querySelectorAll('[data-key]').forEach(el => {
+          const k = el.dataset.key, kind = el.dataset.kind, v = el.value;
+          if (kind === 'credential') { if (v !== '') credentials[k] = v; }
+          else { if (v !== '') config[k] = v; }
+        });
+        const test_mode = overlay.querySelector('[data-testmode]').checked;
+        const payload = { config, test_mode };
+        if (Object.keys(credentials).length) payload.credentials = credentials;
+        try {
+          await api.put(`/api/integrations/${cat}/${prov}`, payload);
+          showToast(`${a.displayName} saved`);
+          close();
+          await loadIntegrations();
+        } catch (err) {
+          saveBtn.disabled = false; saveBtn.textContent = 'Save';
+          showToast('Save failed: ' + (err.body?.error || err.message));
+        }
+      });
     }
 
     // ---------- tab switching + unsaved guard ----------

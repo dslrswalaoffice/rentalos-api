@@ -63,7 +63,12 @@ export type AuditEventType =
   | 'orders.invoice.status.forced'
   | 'orders.dispatch.batch'
   | 'orders.return.batch'
-  | 'workspace.settings.updated';
+  | 'workspace.settings.updated'
+  | 'integration.configured'
+  | 'integration.activated'
+  | 'integration.deactivated'
+  | 'integration.removed'
+  | 'integration.test_run';
 
 export type AuditEventInput = {
   workspaceId?: string | null;

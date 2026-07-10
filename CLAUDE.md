@@ -429,6 +429,47 @@ Never hardcode business rules that a flag would gate. If you're writing an endpo
 
 ---
 
+## Integration Adapter Architecture (Sub-turn 6a)
+
+Third-party providers (payment gateways, WhatsApp APIs, email senders) are pluggable per workspace. Any workspace picks its preferred provider per category, saves credentials in Settings → Integrations, and activates one per category. This is the SaaS-multi-tenant story: DSLRSWALA might use Cashfree + WATI, another rental house might use Razorpay + Twilio.
+
+### Three categories
+
+`payment`, `whatsapp`, `email`. Exactly **one active adapter per category per workspace**, enforced by a partial unique index (`workspace_integrations_one_active_per_category ... WHERE is_active = true`). Activating a new provider deactivates the previous one (the route does deactivate-all-then-activate — Neon HTTP has no cross-statement transactions, so it's two sequential UPDATEs).
+
+### Files
+
+- `migrations/017_workspace_integrations.sql` — the `workspace_integrations` table (`category`, `provider`, `credentials_encrypted bytea`, `config jsonb`, `is_active`, `test_mode`, `last_tested_*`), `UNIQUE (workspace_id, category, provider)`.
+- `src/lib/crypto.ts` — AES-256-GCM. Credentials are encrypted at rest with `INTEGRATION_ENC_KEY` (64-char hex = 32 bytes). Key is read **lazily** via `getKey()`, so a missing key only breaks the integration endpoints, not the whole backend. Layout: `[IV(12) | authTag(16) | ciphertext]`.
+- `src/lib/adapters/types.ts` — `PaymentAdapter`, `WhatsAppAdapter`, `EmailAdapter` interfaces + `AdapterMetadata`, `CredentialField`.
+- `src/lib/adapters/registry.ts` — **hardcoded** `ADAPTER_METADATA` (every provider we advertise, implemented or not) + `IMPLEMENTED_ADAPTERS` (only functional ones). Add a provider = add metadata here (+ a concrete adapter when built). `findAdapter`, `findMetadata`, `listMetadata`.
+- `src/lib/adapters/noop.ts` — the only implemented adapters in 6a: log + return success. Everything else is `implemented: false` ("Coming soon").
+- `src/routes/integrations.ts` — mounted at `/api/integrations`.
+
+### Endpoints (all owner/manager for writes; reads for any member)
+
+- `GET /api/integrations` — every registry adapter + this workspace's saved `configuration` (or `null`). **Credentials are NEVER returned** — only `credentials_saved: boolean`.
+- `PUT /api/integrations/:category/:provider` — save credentials + config. Incoming credentials **merge over** existing decrypted ones (blank password field → existing value preserved), then re-encrypt. UPSERT on `(workspace_id, category, provider)`.
+- `POST .../activate` — requires `meta.implemented` (else `400 not_implemented`) + a saved row with credentials (noop needs none). Deactivates the category, then activates the target.
+- `POST .../deactivate`
+- `POST .../test` — calls `adapter.testConnection()` if present, records `last_test_*`.
+- `DELETE .../:category/:provider` — removes the row (credentials gone).
+
+### Rules
+
+- **Credentials never leave the backend.** The frontend only ever sees `credentials_saved`. Password fields in the config modal show `(unchanged)` when saved and are omitted from the PUT when left blank.
+- **`is_active` on the row is authoritative** for these three categories — not the old feature flags. The legacy flags (`cashfree_gateway`, `wati_notifications`) stay in `settings.features` for backward compat but are now informational only.
+- **Activation is gated on `implemented`.** A stub adapter can be listed and even have metadata, but can't be activated (it would route deliveries into a void).
+- Every integration mutation writes an `audit_events` row (`integration.configured` / `.activated` / `.deactivated` / `.removed` / `.test_run`).
+- **6a wires the pipe but does not send.** `src/lib/notify.ts` now looks up the active `whatsapp` + `email` adapters once per emit and records `notification_deliveries` rows — status `skipped` for a noop adapter, `pending` for a (future) real one. No active adapter → no external row. Nothing is actually dispatched; a sender worker is a later sub-turn. Still fail-open.
+- **PREREQUISITE:** `INTEGRATION_ENC_KEY` (any 32-byte / 64-char hex string) must be set in the Vercel project env vars before the integration endpoints work. Without it, `getKey()` throws.
+
+### What 6a deliberately does NOT do
+
+No concrete third-party adapters (only noop), no auto-send on business events, no inbound webhook endpoints, no changes to orders/payments/invoices logic. Those are future sub-turns.
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.
