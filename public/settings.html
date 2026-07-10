@@ -241,6 +241,17 @@
     .color-picker { display: flex; gap: 8px; flex-wrap: wrap; }
     .color-swatch { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
     .color-swatch.selected { border-color: var(--head); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--head); }
+
+    /* ===== coupons (Sub-turn 8b) ===== */
+    .coupon-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 8px; }
+    .coupon-row.inactive { opacity: 0.6; }
+    .coupon-code { font-family: var(--font-mono); background: var(--accent-soft); color: var(--head); padding: 3px 10px; border-radius: 5px; font-weight: 700; display: inline-block; margin-right: 10px; letter-spacing: 0.03em; }
+    .coupon-summary { color: var(--ink); font-size: 13px; }
+    .coupon-desc { color: var(--muted); font-size: 12px; }
+    .coupon-meta { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); margin-top: 5px; }
+    .coupon-status.active { color: var(--ok-strong); font-weight: 600; }
+    .coupon-status.inactive { color: var(--muted); }
+    .coupon-actions { display: flex; gap: 6px; }
   </style>
 </head>
 <body>
@@ -309,6 +320,7 @@
         <button class="tab" data-tab="custom-fields">Custom Fields</button>
         <button class="tab" data-tab="locations">Locations</button>
         <button class="tab" data-tab="tags">Tags</button>
+        <button class="tab" data-tab="coupons">Coupons</button>
         <button class="tab" data-tab="users">Users</button>
       </nav>
       <div class="content" id="content"><div class="loading">Loading settings…</div></div>
@@ -368,7 +380,7 @@
         resetForm();
         hydrateIdentity();
         const hash = (location.hash || '#workspace').slice(1);
-        state.tab = ['workspace', 'features', 'integrations', 'custom-fields', 'locations', 'tags', 'users'].includes(hash) ? hash : 'workspace';
+        state.tab = ['workspace', 'features', 'integrations', 'custom-fields', 'locations', 'tags', 'coupons', 'users'].includes(hash) ? hash : 'workspace';
         render();
       } catch (err) {
         document.getElementById('content').innerHTML =
@@ -410,6 +422,7 @@
       else if (state.tab === 'custom-fields') { el.innerHTML = customFieldsTab(); wireCustomFieldsTab(); }
       else if (state.tab === 'locations') { el.innerHTML = locationsTab(); wireLocationsTab(); }
       else if (state.tab === 'tags') { el.innerHTML = tagsTab(); wireTagsTab(); }
+      else if (state.tab === 'coupons') { el.innerHTML = couponsTab(); wireCouponsTab(); }
       else { el.innerHTML = usersTab(); }
     }
 
@@ -1168,6 +1181,195 @@
       if (!window.confirm(`Delete "${t?.name || 'this tag'}"? It will be removed from all lists. Existing assignments are kept in the database.`)) return;
       try { await api.del(`/api/tags/${id}`); showToast('Tag deleted'); await loadTags(); }
       catch (ex) { showToast('Could not delete: ' + (ex.body?.error || ex.message)); }
+    }
+
+    // ---------- coupons tab (Sub-turn 8b) ----------
+    let couponList = [];
+
+    function couponsTab() {
+      const owner = canEditMetadata();
+      const note = owner ? '' : `<div class="notice">Only owners and managers can manage coupons.</div>`;
+      return `${note}
+        <div class="card">
+          <div class="cf-header">
+            <div>
+              <h3 class="cf-title">Coupons</h3>
+              <p class="card-sub" style="margin:2px 0 0">Discount codes customers can redeem. Each order can use one active coupon; the operator applies it from the order page.</p>
+            </div>
+            ${owner ? `<button class="btn primary" id="coupon-add-btn">+ Add coupon</button>` : ''}
+          </div>
+          <div class="cf-rows" id="coupon-rows"><div class="loading">Loading…</div></div>
+        </div>`;
+    }
+
+    function wireCouponsTab() {
+      const add = document.getElementById('coupon-add-btn');
+      if (add) add.addEventListener('click', () => openCouponModal(null));
+      loadCoupons();
+    }
+
+    async function loadCoupons() {
+      try { const { coupons } = await api.get('/api/coupons'); couponList = coupons || []; }
+      catch { couponList = []; }
+      renderCouponRows();
+    }
+
+    function couponSummary(c) {
+      if (c.discount_type === 'fixed') return `${fmtRupees(c.discount_value)} off`;
+      const cap = c.max_discount_paise ? ` up to ${fmtRupees(c.max_discount_paise)}` : '';
+      return `${c.discount_value}% off${cap}`;
+    }
+    function fmtRupees(paise) { return '₹' + Math.round(Number(paise || 0) / 100).toLocaleString('en-IN'); }
+    function fmtCouponDate(v) { if (!v) return '—'; const d = new Date(v); return isNaN(d) ? '—' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+
+    function renderCouponRows() {
+      const rows = document.getElementById('coupon-rows');
+      if (!rows) return;
+      const owner = canEditMetadata();
+      if (!couponList.length) { rows.innerHTML = `<div class="cf-empty">No coupons yet. Add one to run a promo.</div>`; return; }
+      rows.innerHTML = couponList.map(c => {
+        const min = Number(c.min_order_paise) > 0 ? ` · min ${fmtRupees(c.min_order_paise)}` : '';
+        const uses = Number(c.active_uses || 0);
+        const cap = c.max_uses_total ? ` of ${c.max_uses_total}` : '';
+        const valid = `Valid ${fmtCouponDate(c.valid_from)} → ${fmtCouponDate(c.valid_until)}`;
+        return `
+        <div class="coupon-row ${c.is_active ? '' : 'inactive'}" data-id="${escapeAttr(c.id)}">
+          <div>
+            <div><span class="coupon-code">${escapeHtml(c.code)}</span><span class="coupon-summary">${escapeHtml(couponSummary(c))}${escapeHtml(min)}</span></div>
+            ${c.description ? `<div class="coupon-desc">${escapeHtml(c.description)}</div>` : ''}
+            <div class="coupon-meta">${escapeHtml(valid)} · ${uses}${escapeHtml(cap)} use${uses === 1 ? '' : 's'} · <span class="coupon-status ${c.is_active ? 'active' : 'inactive'}">${c.is_active ? 'Active' : 'Inactive'}</span></div>
+          </div>
+          ${owner ? `<div class="coupon-actions">
+            <button class="btn ghost tiny" data-coupon-edit="${escapeAttr(c.id)}">Edit</button>
+            ${c.is_active ? `<button class="btn ghost tiny" data-coupon-del="${escapeAttr(c.id)}">Deactivate</button>` : ''}
+          </div>` : ''}
+        </div>`;
+      }).join('');
+      rows.querySelectorAll('[data-coupon-edit]').forEach(b => b.addEventListener('click', () => openCouponModal(b.dataset.couponEdit)));
+      rows.querySelectorAll('[data-coupon-del]').forEach(b => b.addEventListener('click', () => deactivateCoupon(b.dataset.couponDel)));
+    }
+
+    function toLocalDt(v) { if (!v) return ''; const d = new Date(v); if (isNaN(d)) return ''; const pad = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+
+    function openCouponModal(id) {
+      const editing = id ? couponList.find(c => c.id === id) : null;
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal">
+          <div class="modal-head"><h3>${editing ? 'Edit' : 'Add'} coupon</h3></div>
+          <div class="modal-body">
+            <div id="coupon-err" class="form-error" style="display:none"></div>
+            <div class="field"><label>Code *</label>
+              <input type="text" id="c-code" maxlength="30" value="${escapeAttr(editing?.code ?? '')}" placeholder="DIWALI500" style="font-family:var(--font-mono);text-transform:uppercase;" ${editing ? 'disabled' : ''}>
+              ${editing ? '<p class="card-sub" style="margin:4px 0 0">Code is immutable after creation.</p>' : ''}</div>
+            <div class="field"><label>Description <span class="hint">internal note</span></label>
+              <input type="text" id="c-desc" maxlength="500" value="${escapeAttr(editing?.description ?? '')}" placeholder="Diwali 2026 promo"></div>
+            <div class="field-row" style="display:flex;gap:12px">
+              <div class="field" style="flex:1"><label>Type *</label>
+                <select id="c-type">
+                  <option value="percentage" ${editing?.discount_type === 'percentage' ? 'selected' : ''}>Percentage</option>
+                  <option value="fixed" ${editing?.discount_type === 'fixed' ? 'selected' : ''}>Fixed (₹)</option>
+                </select></div>
+              <div class="field" style="flex:1"><label id="c-value-label">Value *</label>
+                <input type="number" id="c-value" min="1" step="1" value="${editing ? (editing.discount_type === 'fixed' ? Math.round(editing.discount_value/100) : editing.discount_value) : ''}"></div>
+            </div>
+            <div class="field" id="c-cap-field"><label>Max discount <span class="hint">cap for %, ₹</span></label>
+              <input type="number" id="c-cap" min="1" step="1" value="${editing?.max_discount_paise ? Math.round(editing.max_discount_paise/100) : ''}" placeholder="e.g. 5000"></div>
+            <div class="field"><label>Minimum order <span class="hint">₹, optional</span></label>
+              <input type="number" id="c-min" min="0" step="1" value="${editing?.min_order_paise ? Math.round(editing.min_order_paise/100) : ''}" placeholder="0"></div>
+            <div class="field-row" style="display:flex;gap:12px">
+              <div class="field" style="flex:1"><label>Valid from <span class="hint">optional</span></label>
+                <input type="datetime-local" id="c-from" value="${escapeAttr(toLocalDt(editing?.valid_from))}"></div>
+              <div class="field" style="flex:1"><label>Valid until <span class="hint">optional</span></label>
+                <input type="datetime-local" id="c-until" value="${escapeAttr(toLocalDt(editing?.valid_until))}"></div>
+            </div>
+            <div class="field-row" style="display:flex;gap:12px">
+              <div class="field" style="flex:1"><label>Max total uses <span class="hint">optional</span></label>
+                <input type="number" id="c-max-total" min="1" step="1" value="${editing?.max_uses_total ?? ''}" placeholder="∞"></div>
+              <div class="field" style="flex:1"><label>Max per customer <span class="hint">optional</span></label>
+                <input type="number" id="c-max-cust" min="1" step="1" value="${editing?.max_uses_per_customer ?? ''}" placeholder="∞"></div>
+            </div>
+            ${editing ? `<label class="switch-inline"><input type="checkbox" id="c-active" ${editing.is_active ? 'checked' : ''}> Active</label>` : ''}
+          </div>
+          <div class="modal-foot">
+            <button class="btn ghost" data-close>Cancel</button>
+            <button class="btn primary" id="coupon-save">Save</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
+      const typeSel = overlay.querySelector('#c-type');
+      const syncType = () => {
+        const isPct = typeSel.value === 'percentage';
+        overlay.querySelector('#c-cap-field').style.display = isPct ? 'block' : 'none';
+        overlay.querySelector('#c-value-label').textContent = isPct ? 'Percentage (1-100) *' : 'Amount (₹) *';
+      };
+      typeSel.addEventListener('change', syncType); syncType();
+      overlay.querySelector('#coupon-save').addEventListener('click', () => saveCoupon(overlay, editing, close));
+      setTimeout(() => overlay.querySelector(editing ? '#c-desc' : '#c-code').focus(), 40);
+    }
+
+    async function saveCoupon(overlay, editing, close) {
+      const err = overlay.querySelector('#coupon-err');
+      err.style.display = 'none';
+      const type = overlay.querySelector('#c-type').value;
+      const valueRaw = Number(overlay.querySelector('#c-value').value);
+      const capRaw = overlay.querySelector('#c-cap').value.trim();
+      const minRaw = overlay.querySelector('#c-min').value.trim();
+      const fromV = overlay.querySelector('#c-from').value;
+      const untilV = overlay.querySelector('#c-until').value;
+      const maxTotal = overlay.querySelector('#c-max-total').value.trim();
+      const maxCust = overlay.querySelector('#c-max-cust').value.trim();
+      const fail = (m) => { err.textContent = m; err.style.display = 'block'; };
+      if (!valueRaw || valueRaw <= 0) return fail('Discount value is required.');
+      if (type === 'percentage' && valueRaw > 100) return fail('Percentage cannot exceed 100.');
+
+      // Paise conversions: percentage value stays as-is; fixed + cap + min are ₹→paise.
+      const payload = {
+        discount_type: type,
+        discount_value: type === 'percentage' ? Math.round(valueRaw) : Math.round(valueRaw * 100),
+        description: overlay.querySelector('#c-desc').value.trim() || null,
+        max_discount_paise: (type === 'percentage' && capRaw) ? Math.round(Number(capRaw) * 100) : null,
+        min_order_paise: minRaw ? Math.round(Number(minRaw) * 100) : 0,
+        valid_from: fromV ? new Date(fromV).toISOString() : null,
+        valid_until: untilV ? new Date(untilV).toISOString() : null,
+        max_uses_total: maxTotal ? Math.round(Number(maxTotal)) : null,
+        max_uses_per_customer: maxCust ? Math.round(Number(maxCust)) : null,
+      };
+      if (payload.valid_from && payload.valid_until && new Date(payload.valid_from) >= new Date(payload.valid_until)) {
+        return fail('Valid-from must be before valid-until.');
+      }
+
+      const btn = overlay.querySelector('#coupon-save'); btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        if (editing) {
+          payload.is_active = overlay.querySelector('#c-active').checked;
+          await api.patch(`/api/coupons/${editing.id}`, payload);
+        } else {
+          payload.code = overlay.querySelector('#c-code').value.trim().toUpperCase();
+          if (payload.code.length < 2) { btn.disabled = false; btn.textContent = 'Save'; return fail('Code must be at least 2 characters.'); }
+          await api.post('/api/coupons', payload);
+        }
+        close(); showToast('Coupon saved'); await loadCoupons();
+      } catch (ex) {
+        btn.disabled = false; btn.textContent = 'Save';
+        const code = ex.body?.error;
+        fail(code === 'code_taken' ? 'That code is already in use.'
+          : code === 'percentage_too_high' ? 'Percentage cannot exceed 100.'
+          : code === 'invalid_date_range' ? 'Valid-from must be before valid-until.'
+          : code === 'insufficient_role' ? 'Only owners and managers can manage coupons.'
+          : ('Could not save: ' + (code || ex.message)));
+      }
+    }
+
+    async function deactivateCoupon(id) {
+      const c = couponList.find(x => x.id === id);
+      if (!window.confirm(`Deactivate "${c?.code || 'this coupon'}"? It can no longer be applied. Existing redemptions are kept.`)) return;
+      try { await api.del(`/api/coupons/${id}`); showToast('Coupon deactivated'); await loadCoupons(); }
+      catch (ex) { showToast('Could not deactivate: ' + (ex.body?.error || ex.message)); }
     }
 
     // ---------- users tab ----------

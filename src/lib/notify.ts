@@ -112,6 +112,10 @@ const TEMPLATES: Record<string, { title: string; body?: string }> = {
     title: 'Communication logged for {customer_name}',
     body: '{channel} · {direction}',
   },
+  'order.coupon.applied': {
+    title: 'Coupon {code} applied to Order #{order_number}',
+    body: '{customer_name} · ₹{discount} off',
+  },
 };
 
 function renderTemplate(

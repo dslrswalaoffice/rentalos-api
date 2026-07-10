@@ -115,6 +115,50 @@ const SUBTOTAL_TYPES = new Set(['rental', 'delivery_fee', 'late_fee', 'damage', 
 
 // Sentinel sort order so the auto GST line always renders last.
 const AUTO_TAX_SORT_ORDER = 9999;
+// Discount line renders after real items but before the tax line (Sub-turn 8b).
+const DISCOUNT_SORT_ORDER = 9000;
+
+// ----------------------------------------------------------------------------
+// Coupon discount (Sub-turn 8b)
+// ----------------------------------------------------------------------------
+// The active coupon redemption on an order (if any) drives a single 'discount'
+// line, recomputed against the CURRENT subtotal on every recompute — so a
+// percentage coupon stays correct after the rental window or items change.
+// Returns 0 when there's no active redemption (or the coupon was deactivated).
+async function resolveCouponDiscount(
+  workspaceId: string,
+  orderId: string,
+  subtotalPaise: number,
+): Promise<{ discountPaise: number; couponLabel: string }> {
+  const rows = await query<{
+    code: string; description: string | null; discount_type: string;
+    discount_value: string | number; max_discount_paise: string | number | null;
+  }>(sql`
+    SELECT c.code, c.description, c.discount_type, c.discount_value, c.max_discount_paise
+    FROM coupon_redemptions cr
+    JOIN coupons c ON c.id = cr.coupon_id
+    WHERE cr.order_id = ${orderId}::uuid
+      AND cr.workspace_id = ${workspaceId}::uuid
+      AND cr.removed_at IS NULL
+      AND c.is_active = true
+    LIMIT 1
+  `);
+  if (!rows.length) return { discountPaise: 0, couponLabel: '' };
+  const c = rows[0]!;
+  let discount = 0;
+  if (c.discount_type === 'fixed') {
+    discount = Number(c.discount_value);
+  } else {
+    discount = Math.floor((subtotalPaise * Number(c.discount_value)) / 100);
+    if (c.max_discount_paise != null && discount > Number(c.max_discount_paise)) {
+      discount = Number(c.max_discount_paise);
+    }
+  }
+  // Never discount below zero or beyond the subtotal.
+  discount = Math.max(0, Math.min(discount, subtotalPaise));
+  const label = `Coupon ${c.code}${c.description ? ' — ' + c.description : ''}`;
+  return { discountPaise: discount, couponLabel: label };
+}
 
 // ----------------------------------------------------------------------------
 // computeBillableDays — 24_hour_windows with grace, rounded up, minimum enforced
@@ -283,11 +327,13 @@ export async function recomputeOrderTotals(
 
   let changed = false;
 
-  // --- Per-line recompute (everything except the auto GST line) ---------------
+  // --- Per-line recompute (everything except the auto GST + discount lines) ---
   let subtotalPaise = 0;
-  let discountRaw = 0;
   let manualTaxSum = 0;
   let lineTaxSum = 0; // sum of per-line cgst+sgst+igst (used when GST split is on)
+  // The single coupon-managed discount line is reconciled AFTER the loop (its
+  // amount depends on the subtotal computed here).
+  let existingDiscountItem: OrderItemRow | null = null;
 
   for (const item of items) {
     const qty = Number(item.quantity);
@@ -296,6 +342,11 @@ export async function recomputeOrderTotals(
 
     // The auto-managed GST line is handled entirely in the tax step below.
     if (item.item_type === 'tax' && !item.manual_price) {
+      continue;
+    }
+    // The discount line is coupon-driven — reconciled post-loop (Sub-turn 8b).
+    if (item.item_type === 'discount') {
+      existingDiscountItem = item;
       continue;
     }
 
@@ -363,8 +414,6 @@ export async function recomputeOrderTotals(
     // Roll the fresh (desired) value into the aggregates.
     if (SUBTOTAL_TYPES.has(item.item_type)) {
       subtotalPaise += desiredTotal;
-    } else if (item.item_type === 'discount') {
-      discountRaw += desiredTotal;
     } else if (item.item_type === 'tax') {
       // Only manual tax rows reach here; auto rows were skipped above.
       manualTaxSum += desiredTotal;
@@ -372,7 +421,86 @@ export async function recomputeOrderTotals(
     // 'deposit' lines are computed but excluded from subtotal/tax/total.
   }
 
-  const discountPaise = Math.abs(discountRaw);
+  // --- Coupon-managed discount line (Sub-turn 8b) -----------------------------
+  // Compute the discount from the active coupon redemption against the just-
+  // summed subtotal, then reconcile the single 'discount' order_items row. In
+  // GST-split mode the discount line carries a NEGATIVE per-line tax so the
+  // order tax lands on the discounted base (subtotal − discount); the legacy
+  // single-tax model already nets the discount via `taxableBase`, so its
+  // discount line stays tax-free.
+  const { discountPaise, couponLabel } = await resolveCouponDiscount(
+    workspaceId,
+    orderId,
+    subtotalPaise,
+  );
+
+  if (discountPaise <= 0) {
+    if (existingDiscountItem) {
+      await sql`
+        DELETE FROM order_items
+        WHERE id = ${existingDiscountItem.id}::uuid AND workspace_id = ${workspaceId}::uuid
+      `;
+      changed = true;
+    }
+  } else {
+    const dTax = gstSplitOn
+      ? computeLineTax({
+          chargeablePaise: discountPaise,
+          itemType: 'rental', // force a taxable computation; we negate it below
+          isIntraState,
+          taxPct: tax.default_gst_percent,
+          featureFlagOn: true,
+        })
+      : { cgst_paise: 0, sgst_paise: 0, igst_paise: 0 };
+    const negCgst = -dTax.cgst_paise;
+    const negSgst = -dTax.sgst_paise;
+    const negIgst = -dTax.igst_paise;
+    const negTotal = -discountPaise;
+
+    if (existingDiscountItem) {
+      const needs =
+        Number(existingDiscountItem.total_amount_paise) !== negTotal ||
+        Number(existingDiscountItem.unit_amount_paise) !== negTotal ||
+        Number(existingDiscountItem.chargeable_paise) !== negTotal ||
+        Number(existingDiscountItem.cgst_paise) !== negCgst ||
+        Number(existingDiscountItem.sgst_paise) !== negSgst ||
+        Number(existingDiscountItem.igst_paise) !== negIgst ||
+        existingDiscountItem.description !== couponLabel;
+      if (needs) {
+        await sql`
+          UPDATE order_items SET
+            description        = ${couponLabel}::text,
+            quantity           = 1,
+            unit_amount_paise  = ${negTotal}::bigint,
+            total_amount_paise = ${negTotal}::bigint,
+            chargeable_paise   = ${negTotal}::bigint,
+            cgst_paise         = ${negCgst}::bigint,
+            sgst_paise         = ${negSgst}::bigint,
+            igst_paise         = ${negIgst}::bigint,
+            updated_at         = now()
+          WHERE id = ${existingDiscountItem.id}::uuid AND workspace_id = ${workspaceId}::uuid
+        `;
+        changed = true;
+      }
+    } else {
+      await sql`
+        INSERT INTO order_items (
+          workspace_id, order_id, item_type, description, quantity,
+          daily_rate_paise, billable_days, unit_amount_paise, total_amount_paise,
+          chargeable_paise, cgst_paise, sgst_paise, igst_paise, manual_price, sort_order
+        ) VALUES (
+          ${workspaceId}::uuid, ${orderId}::uuid, 'discount'::order_item_type,
+          ${couponLabel}::text, 1, NULL, NULL,
+          ${negTotal}::bigint, ${negTotal}::bigint, ${negTotal}::bigint,
+          ${negCgst}::bigint, ${negSgst}::bigint, ${negIgst}::bigint,
+          false, ${DISCOUNT_SORT_ORDER}
+        )
+      `;
+      changed = true;
+    }
+    lineTaxSum += negCgst + negSgst + negIgst;
+  }
+
   const taxableBase = subtotalPaise - discountPaise;
 
   // --- Tax --------------------------------------------------------------------
