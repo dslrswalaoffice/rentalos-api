@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { sql, query } from '../db.js';
+import { checkAvailability, AvailabilityError } from '../lib/availability.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -230,4 +231,61 @@ availability.get('/:product_id', async (c) => {
     },
     blocked_by_orders: blockingRows,
   });
+});
+
+// ============================================================================
+// POST /api/availability/check  (Sub-turn 4d-1)
+// ----------------------------------------------------------------------------
+// Point-check one product + quantity against a specific window using the shared
+// availability engine (src/lib/availability.ts). Warn, don't block — this never
+// rejects a booking, it just reports conflicts. `exclude_order_id` drops an
+// order's own bookings so editing an existing order doesn't conflict with self.
+// Read-only; no audit event.
+// ============================================================================
+const MAX_CHECK_RANGE_DAYS = 90;
+const CHECK_MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+const checkSchema = z.object({
+  product_id: z.string().uuid(),
+  quantity: z.number().int().positive(),
+  start: z.string().datetime(),
+  end: z.string().datetime(),
+  exclude_order_id: z.string().uuid().optional(),
+});
+
+availability.post('/check', async (c) => {
+  const session = c.get('session')!;
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = checkSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  }
+  const input = parsed.data;
+
+  const start = new Date(input.start);
+  const end = new Date(input.end);
+  if (end.getTime() <= start.getTime()) {
+    return c.json({ error: 'invalid_range', reason: 'end_must_be_after_start' }, 400);
+  }
+  if (end.getTime() - start.getTime() > MAX_CHECK_RANGE_DAYS * CHECK_MS_PER_DAY) {
+    return c.json({ error: 'range_too_large', max_days: MAX_CHECK_RANGE_DAYS }, 400);
+  }
+
+  try {
+    const check = await checkAvailability({
+      workspaceId: session.workspace.id,
+      productId: input.product_id,
+      quantity: input.quantity,
+      start,
+      end,
+      excludeOrderId: input.exclude_order_id,
+    });
+    return c.json({ check });
+  } catch (err) {
+    if (err instanceof AvailabilityError && err.code === 'product_not_found') {
+      return c.json({ error: 'product_not_found' }, 404);
+    }
+    throw err;
+  }
 });
