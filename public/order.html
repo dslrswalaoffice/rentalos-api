@@ -241,6 +241,25 @@
     .modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--thead); }
     .form-error { padding: 10px 12px; margin: 0 0 14px; background: var(--bad-soft); color: var(--bad-strong); border-radius: 8px; font-size: 12.5px; font-weight: 500; border-left: 3px solid var(--bad-solid); }
     .modal-warn { padding: 10px 12px; margin: 0 0 14px; background: var(--warn-soft); color: var(--warn-strong); border-radius: 8px; font-size: 12.5px; font-weight: 500; border-left: 3px solid var(--warn-solid); }
+
+    /* availability overbook warning (Sub-turn 4d-2) */
+    .btn.primary.warn { background: var(--warn-solid); border-color: var(--warn-solid); }
+    .btn.primary.warn:hover { background: #a56814; }
+    .availability-warning { background: var(--warn-soft); border: 1px solid var(--warn-strong); border-radius: 6px; padding: 12px 14px; margin: 12px 0 0; font-size: 13px; color: var(--warn-strong); }
+    .availability-warning-head { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 8px; }
+    .availability-warning-icon { font-size: 16px; }
+    .availability-warning-title { flex: 1; }
+    .availability-warning-subtitle { font-size: 12px; font-weight: 500; margin-bottom: 6px; color: var(--warn-strong); opacity: .85; }
+    .availability-conflicts { list-style: none; padding: 0; margin: 0; }
+    .availability-conflicts li { padding: 6px 0; border-top: 1px solid rgba(0,0,0,.05); }
+    .availability-conflicts li:first-child { border-top: none; }
+    .availability-conflicts a { font-weight: 500; color: var(--warn-strong); text-decoration: underline; }
+    .conflict-window { font-size: 11px; opacity: .75; margin-top: 2px; }
+    .cf-status { display: inline-block; padding: 1px 7px; border-radius: 999px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .cf-status.confirmed { background: var(--accent-soft); color: var(--head); }
+    .cf-status.dispatched, .cf-status.active { background: var(--orange-soft); color: var(--warn-strong); }
+    .cf-status.returned, .cf-status.closed { background: #e8f6ee; color: #177a45; }
+    .cf-status.quoted, .cf-status.draft { background: #eef0f3; color: var(--muted-strong); }
     .total-preview { background: var(--thead); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; margin-bottom: 4px; }
     .total-preview .tp-label { color: var(--muted-strong); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
     .total-preview .tp-value { font-family: var(--font-mono); font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -556,6 +575,8 @@
             <span class="tp-label" id="fi-preview-label">Line total</span>
             <span class="tp-value" id="fi-preview">₹0</span>
           </div>
+
+          <div id="fi-availability"></div>
         </div>
 
         <div class="modal-foot">
@@ -1587,6 +1608,95 @@
     let productCache = [];
     let productSearchTimer;
 
+    // ---------- availability check (Sub-turn 4d-2) ----------
+    let modalAvailabilityCheck = null;
+    let modalCheckTimer;
+
+    // Fail-open: any failure returns null → treated as "no warning".
+    async function availCheckApi(productId, quantity, start, end, excludeOrderId) {
+      if (!productId || !quantity || quantity <= 0 || !start || !end) return null;
+      try {
+        const res = await fetch('/api/availability/check', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_id: productId, quantity, start, end, exclude_order_id: excludeOrderId || undefined }),
+        });
+        if (!res.ok) { console.warn('Availability check failed:', res.status); return null; }
+        const data = await res.json();
+        return data.check;
+      } catch (err) { console.warn('Availability check error:', err); return null; }
+    }
+
+    function availFmtDate(iso) {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+    function availStatusPill(status) {
+      const s = String(status || '').toLowerCase();
+      const label = s.charAt(0).toUpperCase() + s.slice(1);
+      return `<span class="cf-status ${escapeAttr(s)}">${escapeHtml(label)}</span>`;
+    }
+    function renderAvailabilityWarning(check) {
+      if (!check || check.available) return '';
+      const conflicts = (check.conflicts || []).map(c => `
+        <li>
+          <a href="/order.html?id=${escapeAttr(c.order_id)}" target="_blank">Order #${escapeHtml(String(c.order_number))}</a>
+          (${escapeHtml(c.customer_name || 'Unknown')}) — ${escapeHtml(String(c.quantity))} unit(s) — ${availStatusPill(c.status)}
+          <div class="conflict-window">${escapeHtml(availFmtDate(c.start))} → ${escapeHtml(availFmtDate(c.end))}</div>
+        </li>`).join('');
+      const available = Math.max(0, check.capacity - check.currently_booked);
+      return `
+        <div class="availability-warning">
+          <div class="availability-warning-head">
+            <span class="availability-warning-icon">⚠</span>
+            <span class="availability-warning-title">Overbook: ${check.requested} requested, ${available} available</span>
+          </div>
+          <div class="availability-warning-body">
+            <div class="availability-warning-subtitle">Conflicts with:</div>
+            <ul class="availability-conflicts">${conflicts}</ul>
+          </div>
+        </div>`;
+    }
+
+    function renderModalAvailability() {
+      document.getElementById('fi-availability').innerHTML = renderAvailabilityWarning(modalAvailabilityCheck);
+      const submit = document.getElementById('fi-submit');
+      const overbook = !!(modalAvailabilityCheck && !modalAvailabilityCheck.available);
+      submit.textContent = overbook ? 'Add with override' : 'Add line item';
+      submit.classList.toggle('warn', overbook);
+    }
+
+    function clearModalAvailability() {
+      clearTimeout(modalCheckTimer);
+      modalAvailabilityCheck = null;
+      renderModalAvailability();
+    }
+
+    // Only rental lines with a picked product get checked. 500ms debounce unless immediate.
+    function scheduleModalCheck(immediate = false) {
+      clearTimeout(modalCheckTimer);
+      if (fiType.value !== 'rental' || !state.picked) {
+        modalAvailabilityCheck = null;
+        renderModalAvailability();
+        return;
+      }
+      const qty = Math.max(1, parseInt(document.getElementById('fi-qty').value || '1', 10));
+      const start = state.order?.rental_start ? new Date(state.order.rental_start).toISOString() : null;
+      const end   = state.order?.rental_end   ? new Date(state.order.rental_end).toISOString()   : null;
+      const productId = state.picked.id;
+      const run = async () => {
+        const check = await availCheckApi(productId, qty, start, end, state.orderId);
+        // Drop a stale result if the picked product / type changed meanwhile.
+        if (!state.picked || state.picked.id !== productId || fiType.value !== 'rental') return;
+        modalAvailabilityCheck = check;
+        renderModalAvailability();
+      };
+      if (immediate) run();
+      else modalCheckTimer = setTimeout(run, 500);
+    }
+
     function openItemModal() {
       state.picked = null;
       document.getElementById('item-form-error').style.display = 'none';
@@ -1598,11 +1708,12 @@
       document.getElementById('fi-amount').value = '';
       syncItemTypeFields();
       updateItemPreview();
+      clearModalAvailability();
       itemModal.classList.add('open');
       loadProducts('');
       setTimeout(() => fiProductInput.focus(), 40);
     }
-    function closeItemModal() { itemModal.classList.remove('open'); fiProductResults.classList.remove('open'); }
+    function closeItemModal() { itemModal.classList.remove('open'); fiProductResults.classList.remove('open'); clearModalAvailability(); }
     document.getElementById('item-modal-close').addEventListener('click', closeItemModal);
     document.getElementById('fi-cancel').addEventListener('click', closeItemModal);
     itemModal.addEventListener('click', (e) => { if (e.target === itemModal) closeItemModal(); });
@@ -1617,8 +1728,8 @@
       else if (forceModal.classList.contains('open')) closeForceModal();
     });
 
-    fiType.addEventListener('change', () => { syncItemTypeFields(); updateItemPreview(); });
-    document.getElementById('fi-qty').addEventListener('input', updateItemPreview);
+    fiType.addEventListener('change', () => { syncItemTypeFields(); updateItemPreview(); scheduleModalCheck(true); });
+    document.getElementById('fi-qty').addEventListener('input', () => { updateItemPreview(); scheduleModalCheck(); });
     document.getElementById('fi-amount').addEventListener('input', updateItemPreview);
 
     function syncItemTypeFields() {
@@ -1662,6 +1773,7 @@
       document.getElementById('fi-rate').value = paiseToRupees(p.daily_rate);
       fiProductResults.classList.remove('open');
       updateItemPreview();
+      scheduleModalCheck(true);
     }
     fiProductInput.addEventListener('focus', () => { if (productCache.length) fiProductResults.classList.add('open'); });
     fiProductInput.addEventListener('input', () => {
@@ -1670,6 +1782,7 @@
       clearTimeout(productSearchTimer);
       productSearchTimer = setTimeout(() => loadProducts(fiProductInput.value.trim()), 180);
       updateItemPreview();
+      clearModalAvailability();
     });
     document.addEventListener('click', (e) => {
       if (!e.target.closest('#fi-product-field')) fiProductResults.classList.remove('open');
@@ -1735,7 +1848,7 @@
           errBox.textContent = 'Could not add line: ' + (err.body?.error || err.message);
         }
       } finally {
-        submit.disabled = false; submit.textContent = 'Add line item';
+        submit.disabled = false; renderModalAvailability();
       }
     });
 
