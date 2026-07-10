@@ -5,6 +5,7 @@ import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { recomputeOrderTotals, resolveGstState } from '../lib/pricing.js';
 import { loadKitComponents } from '../lib/availability.js';
+import { emitNotification } from '../lib/notify.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -489,6 +490,18 @@ invoices.post('/:orderId', async (c) => {
     ipAddress, userAgent,
   });
 
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'invoice.generated',
+    targetType: 'invoice', targetId: invoice.id as string,
+    linkUrl: `/order.html?id=${orderId}`,
+    metadata: {
+      invoice_number: invoiceNumber, order_number: order.order_number,
+      amount: (Number(order.total_paise) / 100).toLocaleString('en-IN'),
+    },
+  }).catch(() => {});
+
   return c.json({ invoice, order: orderLite(order), superseded }, 201);
 });
 
@@ -533,12 +546,13 @@ invoices.post('/:orderId/:invoiceId/transitions', async (c) => {
   }
   const { to, reason, force } = parsed.data;
 
-  const invRows = await query<{ id: string; status: string; total_paise: number }>(sql`
-    SELECT id, status::text AS status, total_paise
-    FROM invoices
-    WHERE id = ${invoiceId}::uuid
-      AND order_id = ${orderId}::uuid
-      AND workspace_id = ${session.workspace.id}::uuid
+  const invRows = await query<{ id: string; status: string; total_paise: number; invoice_number: string; order_number: number }>(sql`
+    SELECT i.id, i.status::text AS status, i.total_paise, i.invoice_number, o.order_number
+    FROM invoices i
+    JOIN orders o ON o.id = i.order_id
+    WHERE i.id = ${invoiceId}::uuid
+      AND i.order_id = ${orderId}::uuid
+      AND i.workspace_id = ${session.workspace.id}::uuid
     LIMIT 1
   `);
   if (invRows.length === 0) return c.json({ error: 'not_found' }, 404);
@@ -585,6 +599,15 @@ invoices.post('/:orderId/:invoiceId/transitions', async (c) => {
     payload: { order_id: orderId, invoice_id: invoiceId, from, to, canonical, reason: reason ?? null },
     ipAddress, userAgent,
   });
+
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'invoice.status.changed',
+    targetType: 'invoice', targetId: invoiceId,
+    linkUrl: `/order.html?id=${orderId}`,
+    metadata: { invoice_number: inv.invoice_number, new_status: to, order_number: inv.order_number },
+  }).catch(() => {});
 
   return c.json({ invoice: updated[0], canonical });
 });

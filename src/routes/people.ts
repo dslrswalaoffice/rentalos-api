@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
+import { emitNotification } from '../lib/notify.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -664,8 +665,8 @@ people.post('/:id/communications', requireRole('owner', 'manager'), async (c) =>
   }
   const input = parsed.data;
 
-  const person = await query<{ id: string }>(sql`
-    SELECT id FROM people
+  const person = await query<{ id: string; display_name: string }>(sql`
+    SELECT id, display_name FROM people
     WHERE id = ${id} AND workspace_id = ${session.workspace.id} AND deleted_at IS NULL
     LIMIT 1
   `);
@@ -695,6 +696,15 @@ people.post('/:id/communications', requireRole('owner', 'manager'), async (c) =>
     payload: { communication_id: created[0]!.id, channel: input.channel, direction: input.direction },
     ipAddress, userAgent,
   });
+
+  emitNotification({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'people.communication.logged',
+    targetType: 'person', targetId: id,
+    linkUrl: `/person.html?id=${id}`,
+    metadata: { customer_name: person[0]!.display_name, channel: input.channel, direction: input.direction },
+  }).catch(() => {});
 
   return c.json({
     communication: { ...created[0], logged_by_name: session.user.displayName },
