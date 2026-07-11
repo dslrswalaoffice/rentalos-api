@@ -79,14 +79,18 @@ export const paiseToRupees = (paise)  => Number(paise) / 100;
  * formatINR(0)      → "₹0"
  * Accepts amount in PAISE. Pass options.rupees=true if you already have rupees.
  */
+// Two cached formatters — `toLocaleString(opts)` builds a fresh Intl formatter
+// on every call, which adds up when formatINR runs per row across a list. The
+// split preserves exact behaviour: whole amounts print no decimals (min 0),
+// fractional amounts always print two (min 2). Both cap at 2 (max 2).
+const _inrWhole = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const _inrFrac  = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export function formatINR(paise, opts = {}) {
   const rupees = opts.rupees ? Number(paise) : paiseToRupees(paise);
   if (!Number.isFinite(rupees)) return '—';
   const isWhole = Math.abs(rupees % 1) < 0.005;
-  return '₹' + rupees.toLocaleString('en-IN', {
-    minimumFractionDigits: isWhole ? 0 : 2,
-    maximumFractionDigits: 2,
-  });
+  return '₹' + (isWhole ? _inrWhole : _inrFrac).format(rupees);
 }
 
 /**
