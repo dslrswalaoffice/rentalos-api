@@ -1981,7 +1981,20 @@ select {
 }
 
 /* --------------------------------------------------------------------------
-   21. View Transitions (progressive; silently ignored where unsupported)
+   21. Utilities (Sub-turn perf) — content-visibility: skip layout + paint for
+       off-screen items in long block-level lists (timelines, activity feeds).
+       `contain-intrinsic-size` reserves an estimated height so the scrollbar
+       stays stable; the real size replaces it once an item scrolls into view.
+       NOTE: no effect on table rows (internal table elements ignore size
+       containment) — use it on block/flex list items only.
+   -------------------------------------------------------------------------- */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 48px;
+}
+
+/* --------------------------------------------------------------------------
+   22. View Transitions (progressive; silently ignored where unsupported)
    -------------------------------------------------------------------------- */
 @view-transition { navigation: auto; }
 

@@ -511,7 +511,7 @@
     function thumbHtml(p) {
       const url = productImages[p.id];
       return url
-        ? `<img src="${escapeAttr(url)}" alt="" class="product-thumb" onerror="this.style.display='none'">`
+        ? `<img src="${escapeAttr(url)}" alt="" class="product-thumb" width="40" height="40" loading="lazy" decoding="async" onerror="this.style.display='none'">`
         : `<div class="product-thumb-placeholder">${escapeHtml((p.name || '?').charAt(0).toUpperCase())}</div>`;
     }
 

@@ -101,3 +101,29 @@ export function greetingFor(name) {
   if (h < 22) return `Good evening, ${first}`;
   return `Working late, ${first}`;
 }
+
+// ============================================================================
+// Prefetch-on-hover. Warms the browser cache for a detail page when the user
+// hovers/focuses a list row, so the click feels instant. One delegated listener
+// on `document` (call once per page — survives list re-renders via delegation).
+// `resolveHref(el)` maps a hovered [data-id]/[data-href] element to a URL (or
+// null to skip). Each destination is prefetched at most once. Silently degrades
+// where <link rel="prefetch"> is unsupported.
+// ============================================================================
+export function installPrefetch(resolveHref) {
+  const seen = new Set();
+  const arm = (e) => {
+    const el = e.target?.closest?.('[data-id],[data-href]');
+    if (!el) return;
+    let href = null;
+    try { href = resolveHref(el); } catch { href = null; }
+    if (!href || seen.has(href)) return;
+    seen.add(href);
+    const link = document.createElement('link');
+    link.rel = 'prefetch';
+    link.href = href;
+    document.head.appendChild(link);
+  };
+  document.addEventListener('pointerover', arm, { passive: true });
+  document.addEventListener('focusin', arm);
+}

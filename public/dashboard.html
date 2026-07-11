@@ -1094,7 +1094,10 @@
   </div>
 
   <script type="module">
-    import { ensureAuth, formatINR } from '/_lib/api.js';
+    import { ensureAuth, formatINR, installPrefetch } from '/_lib/api.js';
+
+    // Prefetch a linked order's detail page when a widget row is hovered (PR4).
+    installPrefetch(el => el.dataset.href || null);
 
     const STATUS_LABELS = { draft:'Draft', quoted:'Quoted', confirmed:'Confirmed', dispatched:'Dispatched', active:'Active', returned:'Returned', closed:'Closed', cancelled:'Cancelled' };
     const MAX_ROWS = 10;
