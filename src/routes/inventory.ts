@@ -108,6 +108,11 @@ type ProductRow = {
   location_names?: string | null; // Sub-turn 6i — distinct asset locations (list view)
 };
 
+// Max rows returned by the products list. Kept in sync with the `LIMIT` in the
+// query below. When the filtered set exceeds this, the response reports the true
+// total so the client can flag truncation (full pagination is a later item).
+const LIST_LIMIT = 200;
+
 // ============================================================================
 // GET /api/inventory/products — list products for current workspace
 // Query params: ?search=fx3 &category=Camera%20Body &include_archived=true
@@ -127,7 +132,7 @@ inventory.get('/products', async (c) => {
   if (tagIds.length) {
     const ids = await filterEntityIdsByTags(session.workspace.id, 'product', tagIds);
     if (ids.length === 0) {
-      return c.json({ products: [], total: 0, by_category: {} });
+      return c.json({ products: [], total: 0, returned: 0, limit: LIST_LIMIT, by_category: {} });
     }
     tagMatchCsv = ids.join(',');
   }
@@ -147,7 +152,8 @@ inventory.get('/products', async (c) => {
       COALESCE(a.rented,    0)::int AS rented_units,
       COALESCE(a.in_repair, 0)::int AS in_repair_units,
       (CASE WHEN p.tracking_mode = 'bulk' THEN COALESCE(p.stock_quantity, 0) ELSE COALESCE(a.total, 0) END)::int AS effective_capacity,
-      a.location_names
+      a.location_names,
+      COUNT(*) OVER()::int AS full_total
     FROM products p
     LEFT JOIN LATERAL (
       SELECT
@@ -188,9 +194,22 @@ inventory.get('/products', async (c) => {
   const byCategory: Record<string, number> = {};
   for (const p of products) byCategory[p.category] = (byCategory[p.category] || 0) + 1;
 
+  // True count of the filtered set. COUNT(*) OVER() is evaluated before LIMIT,
+  // so `full_total` is the real match count even though we only return up to
+  // LIST_LIMIT rows. When total > returned, the client surfaces a truncation
+  // notice so products past the cap aren't SILENTLY invisible (the pre-existing
+  // behaviour). Full pagination is a deferred follow-up. `full_total` is a
+  // per-row artefact of the window function — strip it from the payload.
+  const fullTotal = products.length
+    ? Number((products[0] as unknown as { full_total: number }).full_total)
+    : 0;
+  for (const p of products) delete (p as Partial<{ full_total: number }>).full_total;
+
   return c.json({
     products,
-    total: products.length,
+    total: fullTotal,
+    returned: products.length,
+    limit: LIST_LIMIT,
     by_category: byCategory,
   });
 });
