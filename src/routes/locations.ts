@@ -77,6 +77,10 @@ locations.get('/', async (c) => {
     WHERE l.workspace_id = ${session.workspace.id}::uuid
     ORDER BY l.is_default DESC, l.is_active DESC, l.name ASC
   `);
+  // Locations rarely change; cache per navigation. `private` — workspace-scoped.
+  // The only CRUD surface (settings.html) cache-busts its post-mutation reloads
+  // so a just-saved location shows immediately.
+  c.header('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
   return c.json({ locations: rows });
 });
 

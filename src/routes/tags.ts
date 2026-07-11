@@ -64,6 +64,10 @@ tags.get('/', async (c) => {
       AND t.is_active = true
     ORDER BY t.sort_order ASC, t.name ASC
   `);
+  // Tags rarely change; cache per navigation. `private` — workspace-scoped.
+  // The only CRUD surface (settings.html) cache-busts its post-mutation reloads
+  // so a just-saved tag shows immediately.
+  c.header('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
   return c.json({ tags: rows });
 });
 

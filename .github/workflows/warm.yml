@@ -1,0 +1,28 @@
+name: Warm serverless function
+
+# Pings the public health endpoint every 5 minutes during business hours
+# (~09:00–21:00 IST, Mon–Sat) to keep a Vercel function instance warm, cutting
+# cold-start latency on the first user request. /api/health is public, cheap and
+# side-effect-free (no secret required). This REDUCES cold starts during
+# business hours; it does not eliminate them under concurrency — it's a
+# mitigation, not a cure. Cron is UTC; 03:00–15:00 UTC ≈ 08:30–20:30 IST.
+on:
+  schedule:
+    - cron: '*/5 3-15 * * 1-6'
+  workflow_dispatch:
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          RESPONSE=$(curl -s -o /tmp/health.json -w "%{http_code}" \
+            https://rentalos-api.vercel.app/api/health)
+          echo "HTTP $RESPONSE"
+          cat /tmp/health.json || true
+          echo
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Health ping failed with HTTP $RESPONSE"
+            exit 1
+          fi

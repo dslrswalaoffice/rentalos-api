@@ -181,6 +181,12 @@ workspace.get('/', async (c) => {
   const session = c.get('session')!;
   const state = await buildState(session);
   if (!state) return c.json({ error: 'not_found' }, 404);
+  // Workspace config/settings change rarely; let the browser cache it per
+  // navigation. `private` is mandatory — this is workspace-scoped (multi-tenant)
+  // data that must never land in a shared cache. Settings/feature mutations
+  // update the client from the PATCH response (never re-GET), so there's no
+  // read-after-write staleness.
+  c.header('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
   return c.json(state);
 });
 
