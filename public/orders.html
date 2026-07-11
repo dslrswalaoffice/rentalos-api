@@ -805,10 +805,11 @@
     (async () => {
       try {
         parseUrl();
-        await hydrateIdentity();
         syncInputs();
         loadWorkspaceTags();
-        await load();
+        // load() reads state.filters (from parseUrl) and is independent of the
+        // identity fetch — run the list query concurrently with identity.
+        await Promise.all([hydrateIdentity(), load()]);
       } catch (err) {
         console.error('boot failed', err);
       }

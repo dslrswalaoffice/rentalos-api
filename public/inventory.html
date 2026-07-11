@@ -1849,9 +1849,11 @@
         const urlCat = new URLSearchParams(location.search).get('category');
         if (urlCat) activeCategory = urlCat;
         await hydrateIdentity();
+        // loadProducts' row render reads `multiLocation` (set here), so locations
+        // must resolve first. The tag filter row is independent, so it runs
+        // concurrently with the heavier products query.
         await loadLocations();
-        await loadWorkspaceTags();
-        await loadProducts();
+        await Promise.all([loadWorkspaceTags(), loadProducts()]);
       } catch (err) {
         console.error('boot failed', err);
       }

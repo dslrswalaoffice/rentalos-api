@@ -710,8 +710,9 @@
     (async () => {
       try {
         readUrl();
-        await hydrateIdentity();
-        await loadCalendar();
+        // loadCalendar reads the range from readUrl() (already run) and is
+        // independent of the identity fetch — run the two concurrently.
+        await Promise.all([hydrateIdentity(), loadCalendar()]);
       } catch (err) {
         console.error('boot failed', err);
         showToast('Could not load the calendar.', true);

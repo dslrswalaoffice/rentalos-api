@@ -806,8 +806,10 @@
     (async () => {
       try {
         await hydrateIdentity();
-        await loadFeatures();
+        // The tag filter row is independent; start it concurrently with the
+        // feature-flag fetch that loadPeople's tier column depends on.
         loadWorkspaceTags();
+        await loadFeatures();
         await loadPeople();
       } catch (err) {
         console.error("boot failed", err);
