@@ -866,7 +866,7 @@
       const availClass = p.available_units === 0 ? 'style="color:var(--bad-strong);"' : '';
       const weekly = p.weekly_rate ? `<div class="rate-sub">${formatINR(p.weekly_rate)}/wk</div>` : '';
       const thumb = p.image_url
-        ? `<img src="${escapeAttr(p.image_url)}" alt="" class="product-thumb" onerror="this.style.display='none'">`
+        ? `<img src="${escapeAttr(p.image_url)}" alt="" class="product-thumb" width="40" height="40" loading="lazy" decoding="async" onerror="this.style.display='none'">`
         : `<div class="product-thumb-placeholder">${escapeHtml((p.name || '?').charAt(0).toUpperCase())}</div>`;
       return `
         <tr data-id="${p.id}">

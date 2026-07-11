@@ -466,7 +466,12 @@
   </div>
 
   <script type="module">
-    import { api, ensureAuth } from "/_lib/api.js";
+    import { api, ensureAuth, installPrefetch } from "/_lib/api.js";
+
+    // Prefetch a person's detail page when its row is hovered (PR4 — perceived
+    // speed). Scoped to table rows so notification items (also [data-id]) don't
+    // get prefetched as person URLs.
+    installPrefetch(el => el.matches('tr[data-id]') ? '/person.html?id=' + encodeURIComponent(el.dataset.id) : null);
 
     // ---------- state ----------
     let allPeople = [];

@@ -399,7 +399,12 @@
   </div>
 
   <script type="module">
-    import { api, ensureAuth, formatINR } from '/_lib/api.js';
+    import { api, ensureAuth, formatINR, installPrefetch } from '/_lib/api.js';
+
+    // Prefetch an order's detail page when its row is hovered (PR4 — perceived
+    // speed). Scoped to table rows so notification items (also [data-id]) don't
+    // get prefetched as order URLs.
+    installPrefetch(el => el.matches('tr[data-id]') ? '/order.html?id=' + encodeURIComponent(el.dataset.id) : null);
 
     const STATUS_LABELS = {
       draft: 'Draft', quoted: 'Quoted', confirmed: 'Confirmed',
