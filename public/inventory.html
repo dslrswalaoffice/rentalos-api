@@ -123,6 +123,7 @@
     .content-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
     .content-head h3 { font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: -0.005em; color: var(--ink); margin: 0; }
     .content-head .sub { font-size: 12px; color: var(--muted); margin-left: 10px; }
+    .trunc-note { color: var(--warn-strong); font-weight: 600; }
     .category-chips { display: flex; gap: 6px; flex-wrap: wrap; }
     .cat-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--muted-strong); cursor: pointer; text-transform: uppercase; }
     .cat-chip:hover { border-color: var(--border-strong); background: var(--thead); }
@@ -734,6 +735,11 @@
 
     // ---------- state ----------
     let allProducts = [];
+    // Truthful list totals (the server caps rows at `listLimit`; when the true
+    // filtered `listTotal` exceeds what was returned, the summary flags it so
+    // products past the cap aren't silently invisible).
+    let listTotal = 0;
+    let listLimit = 200;
     let categoryCounts = {};
     let activeCategory = null;
     let currentSearch = '';
@@ -818,8 +824,10 @@
       if (activeLocation) params.set('location_id', activeLocation);
       for (const id of activeTagFilter) params.append('tag_ids', id);
       const url = '/api/inventory/products' + (params.toString() ? '?' + params : '');
-      const { products, by_category } = await api.get(url);
+      const { products, by_category, total, limit } = await api.get(url);
       allProducts = products;
+      listTotal = Number.isFinite(total) ? total : products.length;
+      listLimit = Number.isFinite(limit) ? limit : listLimit;
       // Only refresh chips when there's no active filter (so chip counts stay stable while filtering)
       if (!activeCategory && !currentSearch) categoryCounts = by_category || {};
       renderList();
@@ -928,10 +936,17 @@
 
     function renderSummary() {
       const el = document.getElementById('catalog-summary');
-      const total = allProducts.reduce((n, p) => n + p.total_units, 0);
+      const units = allProducts.reduce((n, p) => n + p.total_units, 0);
       const avail = allProducts.reduce((n, p) => n + p.available_units, 0);
       if (allProducts.length === 0) { el.textContent = ''; return; }
-      el.textContent = `${allProducts.length} SKU${allProducts.length === 1 ? '' : 's'} · ${total} unit${total === 1 ? '' : 's'} · ${avail} available`;
+      const base = `${allProducts.length} SKU${allProducts.length === 1 ? '' : 's'} · ${units} unit${units === 1 ? '' : 's'} · ${avail} available`;
+      // When the server capped the list, say so explicitly — the rest aren't
+      // lost, just hidden behind the cap until the operator narrows the filter.
+      if (listTotal > allProducts.length) {
+        el.innerHTML = `${base} <span class="trunc-note">· showing first ${allProducts.length} of ${listTotal} — narrow the search or category to see the rest</span>`;
+      } else {
+        el.textContent = base;
+      }
     }
 
     function renderEmptyCatalog() {
