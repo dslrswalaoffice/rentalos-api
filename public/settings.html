@@ -927,9 +927,11 @@
       loadLocations();
     }
 
-    async function loadLocations() {
+    async function loadLocations(fresh = false) {
       try {
-        const { locations } = await api.get('/api/locations');
+        // `fresh` cache-busts the short-lived server cache after a mutation so a
+        // just-saved location shows immediately (see PR2 Cache-Control headers).
+        const { locations } = await api.get('/api/locations' + (fresh ? `?_=${Date.now()}` : ''));
         locList = locations || [];
       } catch { locList = []; }
       renderLocRows();
@@ -1036,7 +1038,7 @@
       try {
         if (editing) await api.patch(`/api/locations/${editing.id}`, payload);
         else await api.post('/api/locations', payload);
-        close(); showToast('Location saved'); await loadLocations();
+        close(); showToast('Location saved'); await loadLocations(true);
       } catch (ex) {
         saveBtn.disabled = false; saveBtn.textContent = 'Save';
         const code = ex.body?.error;
@@ -1049,7 +1051,7 @@
     }
 
     async function setDefaultLoc(id) {
-      try { await api.patch(`/api/locations/${id}`, { is_default: true }); showToast('Default location updated'); await loadLocations(); }
+      try { await api.patch(`/api/locations/${id}`, { is_default: true }); showToast('Default location updated'); await loadLocations(true); }
       catch (ex) { showToast('Could not set default: ' + (ex.body?.error || ex.message)); }
     }
 
@@ -1063,7 +1065,7 @@
       try {
         const res = await api.del(`/api/locations/${id}`);
         showToast(res.soft_deleted ? 'Location deactivated' : 'Location deleted');
-        await loadLocations();
+        await loadLocations(true);
       } catch (ex) {
         const code = ex.body?.error;
         showToast(code === 'cannot_delete_default' ? 'The default location cannot be deleted.' : ('Could not delete: ' + (code || ex.message)));
@@ -1097,8 +1099,10 @@
       loadTags();
     }
 
-    async function loadTags() {
-      try { const { tags } = await api.get('/api/tags'); tagList = tags || []; }
+    async function loadTags(fresh = false) {
+      // `fresh` cache-busts the short-lived server cache after a mutation so a
+      // just-saved tag shows immediately (see PR2 Cache-Control headers).
+      try { const { tags } = await api.get('/api/tags' + (fresh ? `?_=${Date.now()}` : '')); tagList = tags || []; }
       catch { tagList = []; }
       renderTagRows();
     }
@@ -1142,7 +1146,7 @@
           // Reflect new order in local state, persist.
           tagList.sort((a, b) => orderedIds.indexOf(a.id) - orderedIds.indexOf(b.id));
           try { await api.post('/api/tags/reorder', { tag_ids: orderedIds }); showToast('Order saved'); }
-          catch { showToast('Could not save order'); await loadTags(); }
+          catch { showToast('Could not save order'); await loadTags(true); }
         });
       });
     }
@@ -1199,7 +1203,7 @@
       try {
         if (editing) await api.patch(`/api/tags/${editing.id}`, { name, color });
         else await api.post('/api/tags', { name, color });
-        close(); showToast('Tag saved'); await loadTags();
+        close(); showToast('Tag saved'); await loadTags(true);
       } catch (ex) {
         btn.disabled = false; btn.textContent = 'Save';
         const code = ex.body?.error;
@@ -1213,7 +1217,7 @@
     async function deleteTag(id) {
       const t = tagList.find(x => x.id === id);
       if (!window.confirm(`Delete "${t?.name || 'this tag'}"? It will be removed from all lists. Existing assignments are kept in the database.`)) return;
-      try { await api.del(`/api/tags/${id}`); showToast('Tag deleted'); await loadTags(); }
+      try { await api.del(`/api/tags/${id}`); showToast('Tag deleted'); await loadTags(true); }
       catch (ex) { showToast('Could not delete: ' + (ex.body?.error || ex.message)); }
     }
 
