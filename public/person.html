@@ -919,8 +919,9 @@
     (async () => {
       try {
         await hydrate();
-        await loadPersonWorkspaceTags();
-        await load();
+        // personWorkspaceTags is only read by the tag-picker click handler,
+        // not by load()'s render — so fetch it alongside the person detail.
+        await Promise.all([loadPersonWorkspaceTags(), load()]);
       } catch (err) {
         console.error('boot failed', err);
       }

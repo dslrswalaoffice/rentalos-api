@@ -1242,6 +1242,10 @@
 
     // ---------- identity hydration + greeting, then load ----------
     (async () => {
+      // Kick off the dashboard data immediately so it loads in parallel with
+      // identity hydration. loadDashboard is self-contained and handles its
+      // own 401 redirect, so it's safe to start before ensureAuth resolves.
+      loadDashboard();
       let firstName = 'Aamir';
       try {
         const { user, workspace } = await ensureAuth();
@@ -1262,7 +1266,6 @@
       else if (h < 22) g = `Good evening, ${firstName}`;
       else g = `Working late, ${firstName}`;
       document.getElementById('greeting').textContent = g;
-      loadDashboard();
     })();
 
     // ---------- keyboard shortcut: / or ⌘K to focus search ----------

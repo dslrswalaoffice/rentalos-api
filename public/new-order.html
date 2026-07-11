@@ -1212,8 +1212,9 @@
     // ---------- go ----------
     (async () => {
       try {
-        await hydrateIdentity();
-        await loadInitialCustomers();
+        // loadInitialCustomers fetches the customer list (cookie-scoped) and is
+        // independent of identity — run the two concurrently.
+        await Promise.all([hydrateIdentity(), loadInitialCustomers()]);
       } catch (err) {
         console.error('boot failed', err);
       }

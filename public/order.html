@@ -3946,12 +3946,13 @@
     (async () => {
       try {
         await hydrateIdentity();
-        await loadWorkspaceContract();
-        await loadLocationCount();
-        await loadOrderWorkspaceTags();
+        // Context loadOrder's render depends on (state.ws, state.multiLocation)
+        // plus the independent tag list — fetched concurrently in one wave.
+        await Promise.all([loadWorkspaceContract(), loadLocationCount(), loadOrderWorkspaceTags()]);
+        // loadOrder populates state.order; payments/invoices hard-guard on it,
+        // so they run after — but concurrently with each other.
         await loadOrder();
-        await loadPayments();
-        await loadInvoices();
+        await Promise.all([loadPayments(), loadInvoices()]);
       } catch (err) {
         console.error('boot failed', err);
       }
