@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { sql, query } from '../db.js';
-import { checkAvailability } from '../lib/availability.js';
+import { checkAvailability, getDefaultLocationId, RESERVING_STATUSES } from '../lib/availability.js';
 import {
   sessionMiddleware,
   requireAuth,
@@ -92,17 +92,98 @@ type Warning = {
 // availability engine (single source of truth for reserving statuses + buffer).
 // ----------------------------------------------------------------------------
 async function overbookWarnings(workspaceId: string, from: Date, to: Date): Promise<Warning[]> {
-  const products = await query<{ id: string; name: string }>(sql`
-    SELECT id, name
-    FROM products
-    WHERE workspace_id = ${workspaceId}::uuid
-      AND is_active = true
-      AND deleted_at IS NULL
-    ORDER BY name ASC
-  `);
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
 
-  const results = await Promise.all(
-    products.map((p) =>
+  // Batched sweep (perf audit F2). The old version invoked checkAvailability
+  // per product — ~4 sequential queries each, so 2 + 4×P total per dashboard
+  // load. This fetches capacities, buffered booking overlaps, and downtimes
+  // for the WHOLE workspace in one parallel wave (3 statements) and runs the
+  // same sweep in JS. Semantics mirror src/lib/availability.ts exactly; kits
+  // keep the engine path below (derived MIN-across-components capacity).
+  const defaultLocationId = await getDefaultLocationId(workspaceId);
+
+  const [products, bookings, downtimes] = await Promise.all([
+    // Capacity per product — engine rule: bulk → stock_quantity (workspace-
+    // global), tracked → live assets at the default location (the sweep passes
+    // no locationId, so the engine would resolve the default too).
+    query<{ id: string; name: string; is_kit: boolean; tracking_mode: string; capacity: number }>(sql`
+      SELECT p.id, p.name, p.is_kit, p.tracking_mode,
+             (CASE WHEN p.tracking_mode = 'bulk'
+                   THEN COALESCE(p.stock_quantity, 0)
+                   ELSE COALESCE(a.total, 0) END)::int AS capacity
+      FROM products p
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS total
+        FROM assets
+        WHERE product_id = p.id
+          AND workspace_id = p.workspace_id
+          AND deleted_at IS NULL
+          AND (${defaultLocationId}::uuid IS NULL OR location_id = ${defaultLocationId}::uuid)
+      ) a ON true
+      WHERE p.workspace_id = ${workspaceId}::uuid
+        AND p.is_active = true
+        AND p.deleted_at IS NULL
+      ORDER BY p.name ASC
+    `),
+
+    // Overlapping reserving-status rental lines for ALL products at once.
+    // Same predicates as checkAvailability's conflict query: each EXISTING
+    // booking's window is expanded by ITS product's buffers for the overlap
+    // test (raw times are returned — the sweep counts real overlap); tracked
+    // products reserve per pickup location, bulk reserve workspace-globally.
+    query<{ product_id: string; quantity: number; start: string; end: string }>(sql`
+      SELECT oi.product_id, oi.quantity, o.rental_start AS start, o.rental_end AS end
+      FROM order_items oi
+      JOIN orders o   ON o.id = oi.order_id
+      JOIN products p ON p.id = oi.product_id
+      WHERE oi.workspace_id = ${workspaceId}::uuid
+        AND o.workspace_id = ${workspaceId}::uuid
+        AND oi.item_type = 'rental'
+        AND o.deleted_at IS NULL
+        AND o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
+        AND (p.tracking_mode = 'bulk' OR ${defaultLocationId}::uuid IS NULL
+             OR o.pickup_location_id = ${defaultLocationId}::uuid)
+        AND o.rental_start - make_interval(hours => p.buffer_before_hours) < ${toIso}::timestamptz
+        AND o.rental_end   + make_interval(hours => p.buffer_after_hours)  > ${fromIso}::timestamptz
+    `),
+
+    // Downtimes overlapping the window, workspace-wide in one pass. Location
+    // rule mirrors loadDowntimeConflicts: workspace-wide (NULL) rows apply to
+    // every product; location-scoped rows apply only to tracked products at
+    // the checked (default) location — bulk sees workspace-wide rows only.
+    query<{ product_id: string; start_at: string; end_at: string }>(sql`
+      SELECT pd.product_id, pd.start_at, pd.end_at
+      FROM product_downtimes pd
+      JOIN products p ON p.id = pd.product_id
+      WHERE pd.workspace_id = ${workspaceId}::uuid
+        AND (pd.location_id IS NULL
+             OR (p.tracking_mode != 'bulk' AND pd.location_id = ${defaultLocationId}::uuid))
+        AND pd.start_at < ${toIso}::timestamptz
+        AND pd.end_at   > ${fromIso}::timestamptz
+    `),
+  ]);
+
+  const bookingsByProduct = new Map<string, { quantity: number; start: string; end: string }[]>();
+  for (const b of bookings) {
+    const list = bookingsByProduct.get(b.product_id) ?? [];
+    list.push(b);
+    bookingsByProduct.set(b.product_id, list);
+  }
+  const downtimesByProduct = new Map<string, { start_at: string; end_at: string }[]>();
+  for (const d of downtimes) {
+    const list = downtimesByProduct.get(d.product_id) ?? [];
+    list.push(d);
+    downtimesByProduct.set(d.product_id, list);
+  }
+
+  // Kits keep the engine path: their capacity is derived (MIN over components
+  // of floor(component capacity / per-kit qty)) and their conflicts are the
+  // components' — replicating that in SQL would fork the single source of
+  // truth. Kits are few, so the per-kit cost is bounded.
+  const kits = products.filter((p) => p.is_kit);
+  const kitResults = await Promise.all(
+    kits.map((p) =>
       checkAvailability({
         workspaceId,
         productId: p.id,
@@ -112,22 +193,42 @@ async function overbookWarnings(workspaceId: string, from: Date, to: Date): Prom
       }).catch(() => null),
     ),
   );
+  const kitById = new Map(kits.map((p, i) => [p.id, kitResults[i]]));
 
   const warnings: Warning[] = [];
-  products.forEach((p, i) => {
-    const res = results[i];
-    if (!res) return;
+  for (const p of products) {
+    let capacity: number;
+    let conflicts: { quantity: number; start: string; end: string }[];
+
+    if (p.is_kit) {
+      const res = kitById.get(p.id);
+      if (!res) continue;
+      capacity = res.capacity;
+      conflicts = res.conflicts;
+    } else {
+      capacity = p.capacity;
+      const booked = bookingsByProduct.get(p.id) ?? [];
+      // Downtime sentinel — blocks the FULL capacity for its window (same
+      // quantity sentinel as loadDowntimeConflicts).
+      const down = (downtimesByProduct.get(p.id) ?? []).map((d) => ({
+        quantity: Math.max(0, capacity),
+        start: d.start_at,
+        end: d.end_at,
+      }));
+      conflicts = [...booked, ...down];
+    }
+
     const events: { t: number; d: number }[] = [];
-    for (const c of res.conflicts) {
-      events.push({ t: new Date(c.start).getTime(), d: c.quantity });
-      events.push({ t: new Date(c.end).getTime(), d: -c.quantity });
+    for (const cf of conflicts) {
+      events.push({ t: new Date(cf.start).getTime(), d: Number(cf.quantity) });
+      events.push({ t: new Date(cf.end).getTime(), d: -Number(cf.quantity) });
     }
     events.sort((a, b) => a.t - b.t || a.d - b.d); // releases before reservations at a tie
     let running = 0;
     let open: { start: number; peak: number } | null = null;
     for (const e of events) {
       running += e.d;
-      if (running > res.capacity) {
+      if (running > capacity) {
         if (!open) open = { start: e.t, peak: running };
         else open.peak = Math.max(open.peak, running);
       } else if (open) {
@@ -136,13 +237,13 @@ async function overbookWarnings(workspaceId: string, from: Date, to: Date): Prom
           product_name: p.name,
           conflict_start: new Date(open.start).toISOString(),
           conflict_end: new Date(e.t).toISOString(),
-          total_units: res.capacity,
+          total_units: capacity,
           requested_units: open.peak,
         });
         open = null;
       }
     }
-  });
+  }
   return warnings;
 }
 
