@@ -434,7 +434,8 @@ orders.get('/', async (c) => {
         WHERE oi.order_id = o.id
           AND oi.workspace_id = o.workspace_id
           AND oi.status::text = 'dispatched'
-      )) AS is_late
+      )) AS is_late,
+      COUNT(*) OVER()::int AS full_total
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
     WHERE o.workspace_id = ${session.workspace.id}
@@ -467,31 +468,46 @@ orders.get('/', async (c) => {
     LIMIT ${limit} OFFSET ${offset}
   `);
 
-  const counted = await query<{ total: number }>(sql`
-    SELECT COUNT(*)::int AS total
-    FROM orders o
-    JOIN people p ON p.id = o.customer_person_id
-    WHERE o.workspace_id = ${session.workspace.id}
-      AND o.deleted_at IS NULL
-      AND (${statusCsv}::text IS NULL
-           OR o.status::text = ANY(string_to_array(${statusCsv}::text, ',')))
-      AND (${searchPattern}::text IS NULL
-           OR p.display_name ILIKE ${searchPattern}::text
-           OR CAST(o.order_number AS text) ILIKE ${searchPattern}::text)
-      AND (${fromNorm}::timestamptz IS NULL OR o.rental_start >= ${fromNorm}::timestamptz)
-      AND (${toNorm}::timestamptz   IS NULL OR o.rental_start <= ${toNorm}::timestamptz)
-      AND (${lateOnly}::boolean = false OR (
-        o.rental_end < now() AND EXISTS (
-          SELECT 1 FROM order_items oi
-          WHERE oi.order_id = o.id
-            AND oi.workspace_id = o.workspace_id
-            AND oi.status::text = 'dispatched'
-        )
-      ))
-      AND (${tagMatchCsv}::text IS NULL
-           OR o.id = ANY(string_to_array(${tagMatchCsv}::text, ',')::uuid[]))
-  `);
-  const total = counted[0]?.total ?? 0;
+  // Total comes from the COUNT(*) OVER() window in the rows query (evaluated
+  // before LIMIT/OFFSET), collapsing the old separate count round trip — and
+  // removing the drift hazard of maintaining the WHERE block twice (perf audit
+  // F3). Sole gap: a page beyond the end returns zero rows, so the window
+  // value is unavailable — fall back to a real count on that rare path so the
+  // frontend's pagination totals stay exact.
+  let total: number;
+  if (rows.length > 0) {
+    total = Number((rows[0] as unknown as { full_total: number }).full_total);
+  } else if (offset > 0) {
+    const counted = await query<{ total: number }>(sql`
+      SELECT COUNT(*)::int AS total
+      FROM orders o
+      JOIN people p ON p.id = o.customer_person_id
+      WHERE o.workspace_id = ${session.workspace.id}
+        AND o.deleted_at IS NULL
+        AND (${statusCsv}::text IS NULL
+             OR o.status::text = ANY(string_to_array(${statusCsv}::text, ',')))
+        AND (${searchPattern}::text IS NULL
+             OR p.display_name ILIKE ${searchPattern}::text
+             OR CAST(o.order_number AS text) ILIKE ${searchPattern}::text)
+        AND (${fromNorm}::timestamptz IS NULL OR o.rental_start >= ${fromNorm}::timestamptz)
+        AND (${toNorm}::timestamptz   IS NULL OR o.rental_start <= ${toNorm}::timestamptz)
+        AND (${lateOnly}::boolean = false OR (
+          o.rental_end < now() AND EXISTS (
+            SELECT 1 FROM order_items oi
+            WHERE oi.order_id = o.id
+              AND oi.workspace_id = o.workspace_id
+              AND oi.status::text = 'dispatched'
+          )
+        ))
+        AND (${tagMatchCsv}::text IS NULL
+             OR o.id = ANY(string_to_array(${tagMatchCsv}::text, ',')::uuid[]))
+    `);
+    total = counted[0]?.total ?? 0;
+  } else {
+    total = 0;
+  }
+  // The window count is a per-row artefact — strip it from the payload.
+  for (const r of rows) delete (r as Partial<{ full_total: number }>).full_total;
   const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
   // Batch-load tag chips for this page (Sub-turn 8a).
