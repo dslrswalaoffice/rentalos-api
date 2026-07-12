@@ -21,6 +21,7 @@ import { tags } from './routes/tags.js';
 import { coupons } from './routes/coupons.js';
 import { recommendations } from './routes/recommendations.js';
 import { config } from './lib/config.js';
+import { sql } from './db.js';
 export const app = new Hono();
 // Request logging in dev only. Prod: rely on Vercel logs.
 if (config.isDev) {
@@ -33,8 +34,20 @@ app.use('*', async (c, next) => {
   c.header('X-Frame-Options', 'DENY');
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
 });
-// Health check — Neon/Vercel probes hit this.
-app.get('/api/health', (c) => c.json({ ok: true, ts: new Date().toISOString() }));
+// Health check — Neon/Vercel probes + the keep-warm cron hit this. No auth
+// (registered before any session middleware). The SELECT 1 exercises the Neon
+// HTTP driver so an external pinger keeps the DATABASE compute awake too, not
+// just the Vercel function — an autosuspended Neon compute wakes on this query.
+// A DB failure returns 503 (ok:false) so the pinger/monitoring can see it
+// instead of a health check that lies about a dead database.
+app.get('/api/health', async (c) => {
+  try {
+    await sql`SELECT 1`;
+    return c.json({ ok: true, ts: new Date().toISOString() });
+  } catch {
+    return c.json({ ok: false, ts: new Date().toISOString(), error: 'db_unreachable' }, 503);
+  }
+});
 // Modules
 app.route('/api/auth', auth);
 app.route('/api/inventory', inventory);
