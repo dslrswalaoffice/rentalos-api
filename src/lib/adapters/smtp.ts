@@ -1,4 +1,3 @@
-import nodemailer from 'nodemailer';
 import type { EmailAdapter, AdapterMetadata } from './types.js';
 
 // ============================================================================
@@ -7,6 +6,12 @@ import type { EmailAdapter, AdapterMetadata } from './types.js';
 // Concrete email adapter over nodemailer. Works with any SMTP server (Gmail
 // app-password, custom relay, etc.). Credentials/config come from the active
 // `email` workspace_integration.
+//
+// nodemailer is loaded LAZILY inside send() (perf audit F5): this module is
+// reachable from api/index.ts via the adapter registry's top-level imports, so
+// a static import would evaluate nodemailer on EVERY cold start even though it
+// is only needed when a reminder email actually sends. The dynamic import is
+// cached by the module loader after the first call, so warm sends pay nothing.
 // ============================================================================
 
 const metadata: AdapterMetadata = {
@@ -33,6 +38,7 @@ export const smtpEmailAdapter: EmailAdapter = {
   metadata,
   async send(args) {
     try {
+      const { default: nodemailer } = await import('nodemailer');
       const port = Number(args.config.port) || 587;
       const transporter = nodemailer.createTransport({
         host: String(args.config.host),

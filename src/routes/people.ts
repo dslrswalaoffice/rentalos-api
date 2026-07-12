@@ -108,53 +108,59 @@ people.get('/', async (c) => {
     tagMatchCsv = ids.join(',');
   }
 
-  const rows = await query<PersonRow>(sql`
-    SELECT
-      p.id, p.display_name, p.phone, p.phone_verified_at, p.email,
-      p.id_proof_type, p.id_proof_number,
-      p.address_line, p.city, p.state, p.postal_code, p.country_code,
-      p.company_name, p.gstin, p.notes, p.tier,
-      p.created_at, p.updated_at,
-      COALESCE(
-        (SELECT json_agg(pr.role ORDER BY pr.role)
-         FROM person_roles pr
-         WHERE pr.person_id = p.id AND pr.is_active = true),
-        '[]'::json
-      ) AS roles
-    FROM people p
-    WHERE p.workspace_id = ${session.workspace.id}
-      AND (${includeArchived}::boolean OR p.deleted_at IS NULL)
-      AND (${searchPattern}::text IS NULL
-           OR p.display_name ILIKE ${searchPattern}::text
-           OR p.phone        ILIKE ${searchPattern}::text
-           OR p.email        ILIKE ${searchPattern}::text
-           OR p.company_name ILIKE ${searchPattern}::text)
-      AND (${role}::text IS NULL OR EXISTS (
-        SELECT 1 FROM person_roles pr
-        WHERE pr.person_id = p.id
-          AND pr.role = ${role}::person_role
-          AND pr.is_active = true
-      ))
-      AND (${tagMatchCsv}::text IS NULL
-           OR p.id = ANY(string_to_array(${tagMatchCsv}::text, ',')::uuid[]))
-    ORDER BY p.display_name ASC
-    LIMIT 500
-  `);
+  // The role-count aggregate is workspace-wide — independent of the filtered
+  // rows — so it runs in the same wave as the list query instead of a third
+  // sequential round trip (perf audit F3). Only the tag batch (needs row ids)
+  // stays sequential.
+  const [rows, roleCounts] = await Promise.all([
+    query<PersonRow>(sql`
+      SELECT
+        p.id, p.display_name, p.phone, p.phone_verified_at, p.email,
+        p.id_proof_type, p.id_proof_number,
+        p.address_line, p.city, p.state, p.postal_code, p.country_code,
+        p.company_name, p.gstin, p.notes, p.tier,
+        p.created_at, p.updated_at,
+        COALESCE(
+          (SELECT json_agg(pr.role ORDER BY pr.role)
+           FROM person_roles pr
+           WHERE pr.person_id = p.id AND pr.is_active = true),
+          '[]'::json
+        ) AS roles
+      FROM people p
+      WHERE p.workspace_id = ${session.workspace.id}
+        AND (${includeArchived}::boolean OR p.deleted_at IS NULL)
+        AND (${searchPattern}::text IS NULL
+             OR p.display_name ILIKE ${searchPattern}::text
+             OR p.phone        ILIKE ${searchPattern}::text
+             OR p.email        ILIKE ${searchPattern}::text
+             OR p.company_name ILIKE ${searchPattern}::text)
+        AND (${role}::text IS NULL OR EXISTS (
+          SELECT 1 FROM person_roles pr
+          WHERE pr.person_id = p.id
+            AND pr.role = ${role}::person_role
+            AND pr.is_active = true
+        ))
+        AND (${tagMatchCsv}::text IS NULL
+             OR p.id = ANY(string_to_array(${tagMatchCsv}::text, ',')::uuid[]))
+      ORDER BY p.display_name ASC
+      LIMIT 500
+    `),
+    // Aggregate counts per role for filter chips.
+    query<{ role: string; n: number }>(sql`
+      SELECT pr.role::text AS role, COUNT(DISTINCT pr.person_id)::int AS n
+      FROM person_roles pr
+      JOIN people p ON p.id = pr.person_id
+      WHERE pr.workspace_id = ${session.workspace.id}
+        AND pr.is_active = true
+        AND p.deleted_at IS NULL
+      GROUP BY pr.role
+    `),
+  ]);
 
   // Batch-load tag chips for this page (Sub-turn 8a).
   const tagMap = await loadTagsForEntities(session.workspace.id, 'person', rows.map((r) => r.id));
   for (const r of rows) (r as PersonRow & { tags: unknown }).tags = tagMap.get(r.id) ?? [];
 
-  // Aggregate counts per role for filter chips.
-  const roleCounts = await query<{ role: string; n: number }>(sql`
-    SELECT pr.role::text AS role, COUNT(DISTINCT pr.person_id)::int AS n
-    FROM person_roles pr
-    JOIN people p ON p.id = pr.person_id
-    WHERE pr.workspace_id = ${session.workspace.id}
-      AND pr.is_active = true
-      AND p.deleted_at IS NULL
-    GROUP BY pr.role
-  `);
   const byRole: Record<string, number> = {};
   for (const r of roleCounts) byRole[r.role] = r.n;
 
