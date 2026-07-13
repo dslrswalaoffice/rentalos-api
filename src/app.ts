@@ -24,11 +24,14 @@ import { invitations } from './routes/invitations.js';
 import { members } from './routes/members.js';
 import { config } from './lib/config.js';
 import { sql } from './db.js';
+import { analyticsMiddleware } from './middleware/analytics.js';
 export const app = new Hono();
 // Request logging in dev only. Prod: rely on Vercel logs.
 if (config.isDev) {
   app.use('*', logger());
 }
+// Vercel Web Analytics middleware to track API requests
+app.use('*', analyticsMiddleware);
 // Global security headers. Keep this small; add more as we know we need them.
 app.use('*', async (c, next) => {
   await next();
