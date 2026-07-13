@@ -538,6 +538,17 @@ invoices.post('/:orderId', requirePermission('invoices.manage'), async (c) => {
     return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   }
 
+  // Sub-turn 13: block-with-confirm when the customer's GST state was ASSUMED.
+  // A wrong CGST/SGST-vs-IGST split breaks the customer's return too, so freezing
+  // an invoice on a guess needs an explicit human confirm ({ confirm_state: true }).
+  const ordRows = await query<{ state_assumed: boolean }>(sql`
+    SELECT state_assumed FROM orders
+    WHERE id = ${orderId}::uuid AND workspace_id = ${session.workspace.id}::uuid LIMIT 1
+  `);
+  if (ordRows[0]?.state_assumed && (body as Record<string, unknown>)?.confirm_state !== true) {
+    return c.json({ error: 'state_assumed', reason: 'customer_gst_state_assumed_confirm_required' }, 409);
+  }
+
   const result = await generateInvoice({
     workspaceId: session.workspace.id,
     userId: session.user.id,

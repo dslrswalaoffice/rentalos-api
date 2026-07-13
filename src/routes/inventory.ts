@@ -96,6 +96,15 @@ type ProductRow = {
   tracking_mode: string;
   stock_quantity: number | null;
   default_purchase_cost_paise: number | null; // Sub-turn 11 — fallback unit cost
+  nature: string;                    // Sub-turn 13
+  tracking_method: string | null;
+  pricing_method: string;
+  base_price_paise: number | null;
+  charge_period: string | null;
+  gst_rate_bps: number | null;
+  is_taxable: boolean;
+  security_deposit_value_paise: number | null;
+  gst_rate_missing: boolean;
   is_active: boolean;
   is_kit: boolean;
   component_count: number;
@@ -145,6 +154,13 @@ inventory.get('/products', async (c) => {
       p.specifications, p.notes, p.image_url, p.hsn_code,
       p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
       p.tracking_mode, p.stock_quantity, p.default_purchase_cost_paise,
+      -- Sub-turn 13: product model + per-product GST. gst_rate_missing warns the
+      -- UI that a taxable product has no rate (it's billed at the workspace
+      -- default until set — never 0%, which would be a compliance violation).
+      p.nature::text AS nature, p.tracking_method::text AS tracking_method,
+      p.pricing_method::text AS pricing_method, p.base_price_paise, p.charge_period::text AS charge_period,
+      p.gst_rate_bps, p.is_taxable, p.security_deposit_value_paise,
+      (p.is_taxable AND p.gst_rate_bps IS NULL) AS gst_rate_missing,
       p.is_active, p.is_kit,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = p.id)::int AS component_count,
       p.created_at, p.updated_at,
@@ -242,6 +258,13 @@ inventory.get('/products/:id', async (c) => {
       p.specifications, p.notes, p.image_url, p.hsn_code,
       p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
       p.tracking_mode, p.stock_quantity, p.default_purchase_cost_paise,
+      -- Sub-turn 13: product model + per-product GST. gst_rate_missing warns the
+      -- UI that a taxable product has no rate (it's billed at the workspace
+      -- default until set — never 0%, which would be a compliance violation).
+      p.nature::text AS nature, p.tracking_method::text AS tracking_method,
+      p.pricing_method::text AS pricing_method, p.base_price_paise, p.charge_period::text AS charge_period,
+      p.gst_rate_bps, p.is_taxable, p.security_deposit_value_paise,
+      (p.is_taxable AND p.gst_rate_bps IS NULL) AS gst_rate_missing,
       p.is_active, p.is_kit,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = p.id)::int AS component_count,
       p.created_at, p.updated_at,

@@ -54,6 +54,8 @@ export type OrderRow = {
   paid_paise: number;
   balance_paise: number;
   gst_state: string | null;
+  gst_state_code?: string | null;
+  state_assumed?: boolean;
   notes: string | null;
   internal_notes: string | null;
   created_by: string | null;
@@ -64,6 +66,9 @@ export type OrderRow = {
   customer_phone?: string;
   customer_email?: string | null;
   person_default_gst_state?: string | null;
+  person_gstin?: string | null;
+  person_state_code?: string | null;
+  person_state_name?: string | null;
 };
 
 export type OrderItemType =
@@ -122,6 +127,7 @@ import {
   type PricingRuleset,
   type PriceResult,
 } from './pricing_engine.js';
+import { resolveGst, stateNameToCode, splitGstBps } from './gst.js';
 
 // Line types that make up the pre-tax subtotal.
 const SUBTOTAL_TYPES = new Set(['rental', 'delivery_fee', 'late_fee', 'damage', 'other']);
@@ -138,6 +144,8 @@ type LinePricingConfig = {
   chargePeriod: ChargePeriod;
   structure: PricingStructure | null;
   ruleset: PricingRuleset | null;
+  gstRateBps: number | null;   // Sub-turn 13 — per-product GST rate (bps)
+  isTaxable: boolean;
 };
 
 async function loadPricingConfigs(
@@ -151,9 +159,10 @@ async function loadPricingConfigs(
   const prods = await query<{
     id: string; pricing_method: string; charge_period: string | null;
     pricing_structure_id: string | null; pricing_ruleset_id: string | null;
+    gst_rate_bps: number | null; is_taxable: boolean;
   }>(sql`
     SELECT id, pricing_method::text AS pricing_method, charge_period::text AS charge_period,
-           pricing_structure_id, pricing_ruleset_id
+           pricing_structure_id, pricing_ruleset_id, gst_rate_bps, is_taxable
     FROM products
     WHERE workspace_id = ${workspaceId}::uuid
       AND id::text = ANY(string_to_array(${ids.join(',')}::text, ','))
@@ -219,6 +228,8 @@ async function loadPricingConfigs(
     chargePeriod: (p.charge_period as ChargePeriod) ?? 'day',
     structure: p.pricing_structure_id ? structures.get(p.pricing_structure_id) ?? null : null,
     ruleset: p.pricing_ruleset_id ? rulesets.get(p.pricing_ruleset_id) ?? null : null,
+    gstRateBps: p.gst_rate_bps != null ? Number(p.gst_rate_bps) : null,
+    isTaxable: p.is_taxable !== false,
   });
   return out;
 }
@@ -367,7 +378,10 @@ async function loadOrderRaw(orderId: string, workspaceId: string): Promise<Order
       p.display_name       AS customer_name,
       p.phone              AS customer_phone,
       p.email              AS customer_email,
-      p.default_gst_state  AS person_default_gst_state
+      p.default_gst_state  AS person_default_gst_state,
+      p.gstin              AS person_gstin,
+      p.state_code         AS person_state_code,
+      p.state              AS person_state_name
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
     WHERE o.id = ${orderId}::uuid
@@ -414,24 +428,29 @@ export async function recomputeOrderTotals(
   }
 
   // Load workspace billing + tax settings (with fallbacks) + GST context.
-  const wsRows = await query<{ settings: unknown; place_of_supply: string | null }>(sql`
-    SELECT settings, place_of_supply FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
+  const wsRows = await query<{ settings: unknown; place_of_supply: string | null; state_code: string | null }>(sql`
+    SELECT settings, place_of_supply, state_code FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
   `);
   const billing = readBilling(wsRows[0]?.settings);
   const tax = readTax(wsRows[0]?.settings);
-  const workspacePlaceOfSupply = wsRows[0]?.place_of_supply ?? null;
   const features = (wsRows[0]?.settings as Record<string, unknown> | null)?.['features'] as
     | Record<string, unknown>
     | undefined;
   const gstSplitOn = features?.['gst_split_cgst_sgst_igst'] === true;
 
-  // GST state resolution (order override → person default → workspace place).
-  const resolvedState = resolveGstState({
-    orderState: order.gst_state,
-    personDefaultState: order.person_default_gst_state ?? null,
-    workspacePlaceOfSupply,
+  // Sub-turn 13 — code-based GST split. Workspace code falls back to its
+  // place-of-supply NAME if unset; customer code is derived from GSTIN → explicit
+  // code → address, else assumed (workspace state) with state_assumed = true.
+  const workspaceCode = wsRows[0]?.state_code ?? stateNameToCode(wsRows[0]?.place_of_supply ?? null);
+  const gst = resolveGst({
+    gstin: order.person_gstin ?? null,
+    customerStateCode: order.person_state_code ?? null,
+    // an explicit per-order override name wins over the customer default.
+    customerStateName: order.gst_state ?? order.person_state_name ?? order.person_default_gst_state ?? null,
+    workspaceStateCode: workspaceCode,
   });
-  const isIntraState = resolvedState !== null && resolvedState === workspacePlaceOfSupply;
+  const isIntraState = gst.isIntraState;
+  const workspaceDefaultBps = Math.round((tax.default_gst_percent ?? 0) * 100);
 
   // Billable days — null when the rental window is incomplete (skip rental recompute).
   let billableDays: number | null = null;
@@ -535,14 +554,19 @@ export async function recomputeOrderTotals(
         ? 0
         : desiredTotal;
 
-    // Per-line GST breakdown (all zeros unless the split feature is on).
-    const { cgst_paise, sgst_paise, igst_paise } = computeLineTax({
-      chargeablePaise: chargeable,
-      itemType: item.item_type,
-      isIntraState,
-      taxPct: tax.default_gst_percent,
-      featureFlagOn: gstSplitOn,
-    });
+    // Per-line GST breakdown (Sub-turn 13): rate comes from the PRODUCT
+    // (gst_rate_bps), falling back to the workspace default when unset — a
+    // taxable product with no rate is invoiced at the default (never 0%, which
+    // would be a compliance violation) and flagged for the UI warning. The
+    // split (CGST+SGST vs IGST) is decided by state code.
+    const lineCfg = item.product_id ? pricingConfigs.get(item.product_id) : undefined;
+    const lineTaxable = gstSplitOn
+      && TAXABLE_ITEM_TYPES.has(item.item_type)
+      && (lineCfg ? lineCfg.isTaxable : true);
+    const lineRateBps = lineCfg?.gstRateBps ?? workspaceDefaultBps;
+    const { cgst_paise, sgst_paise, igst_paise } = lineTaxable
+      ? splitGstBps(chargeable, lineRateBps, isIntraState)
+      : { cgst_paise: 0, sgst_paise: 0, igst_paise: 0 };
 
     // Persist the line only if something actually moved.
     const billableChanged = (desiredBillableDays ?? null) !== (item.billable_days ?? null);
@@ -621,14 +645,10 @@ export async function recomputeOrderTotals(
       changed = true;
     }
   } else {
+    // The discount reduces the taxable base uniformly, so it nets tax at the
+    // workspace default rate (it isn't tied to one product). Negated below.
     const dTax = gstSplitOn
-      ? computeLineTax({
-          chargeablePaise: discountPaise,
-          itemType: 'rental', // force a taxable computation; we negate it below
-          isIntraState,
-          taxPct: tax.default_gst_percent,
-          featureFlagOn: true,
-        })
+      ? splitGstBps(discountPaise, workspaceDefaultBps, isIntraState)
       : { cgst_paise: 0, sgst_paise: 0, igst_paise: 0 };
     const negCgst = -dTax.cgst_paise;
     const negSgst = -dTax.sgst_paise;
@@ -780,6 +800,19 @@ export async function recomputeOrderTotals(
     total_paise: totalPaise,
     balance_paise: balancePaise,
   };
+
+  // Persist the GST resolution snapshot (Sub-turn 13) when it moved. state_assumed
+  // drives the block-with-confirm at invoice finalisation.
+  if ((order.gst_state_code ?? null) !== (gst.customerCode ?? null)
+      || (order.state_assumed ?? false) !== gst.stateAssumed) {
+    await sql`
+      UPDATE orders SET gst_state_code = ${gst.customerCode}::text,
+                        state_assumed = ${gst.stateAssumed}::boolean,
+                        updated_at = now()
+      WHERE id = ${orderId}::uuid AND workspace_id = ${workspaceId}::uuid
+    `;
+    changed = true;
+  }
 
   const totalsChanged =
     oldTotals.subtotal_paise !== newTotals.subtotal_paise ||
