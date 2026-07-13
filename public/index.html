@@ -11,39 +11,16 @@
        sign-in text paints instantly with no FOIT. -->
   <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
-  <!-- Stripe-inspired design system (Sub-turn 9d completes the rollout). Loaded
+  <!-- Design system (Sub-turn 9d completes the rollout). Loaded
        before the page's own styles so this bespoke split-screen sign-in stays
        authoritative for its layout while adopting the shared token palette via
-       the :root remap below. @view-transition ships from design-system.css. -->
+       the design-system.css tokens. @view-transition ships from design-system.css. -->
   <link rel="stylesheet" href="/design-system.css">
   <style>
-    /* -------- Sub-turn 9d: legacy tokens remapped onto the Stripe design-system
+    /* -------- Sub-turn 9d: legacy tokens remapped onto the prototype design-system
        palette. Every rule below references these vars, so the whole split-screen
        sign-in re-skins with zero markup/JS changes — the layout mechanics and
        all element IDs are byte-identical. Fonts drop to the system stack. -------- */
-    :root {
-      --ink:            #202058;   /* warm near-black — primary text */
-      --text:           #3f4350;
-      --head:           #26235a;   /* violet accent — headings / links */
-      --muted:          #6b7280;
-      --muted-strong:   #3f4350;
-      --card:           #ffffff;   /* elevated surface */
-      --bg:             #eef0f3;   /* warm off-white page bg */
-      --side:           #fcfcfd;   /* input bg */
-      --border:         #e3e6ea;
-      --border-strong:  #d8dbe0;
-      --accent-soft:    #fbe9d7;   /* violet soft */
-      --orange:         #e88020;   /* brand mark — remapped to the violet accent */
-      --focus:          #b9c0ee;   /* violet focus ring */
-
-      /* system font stack — instant paint, no FOIT (Google Fonts dropped) */
-      --font-display: 'Space Grotesk', 'Arzachel', system-ui, -apple-system, sans-serif;
-      --font-body:    'Manrope', 'Ponjoung', system-ui, -apple-system, sans-serif;
-      --font-mono:    'JetBrains Mono', ui-monospace, monospace;
-
-      --shadow-card:    0 20px 48px -24px rgba(16, 24, 40, 0.28);
-      --shadow-btn:     0 6px 16px -6px rgba(32, 32, 88, 0.50);
-    }
 
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; height: 100%; }
@@ -183,7 +160,7 @@
       box-shadow: 0 0 0 4px rgba(185, 192, 238, 0.24);
     }
     .field.error {
-      border-color: #cc3340;
+      border-color: var(--danger);
       background: #fbeaeb;
     }
     .field.error:focus-within {
@@ -201,7 +178,7 @@
       padding: 13px 0;
       min-width: 0;
     }
-    .field input::placeholder { color: #b0b6bf; }
+    .field input::placeholder { color: var(--dim); }
     .field input:-webkit-autofill {
       -webkit-box-shadow: 0 0 0 30px var(--side) inset;
       -webkit-text-fill-color: var(--ink);
@@ -244,20 +221,20 @@
       font-size: 10px;
       font-weight: 600;
       letter-spacing: 0.08em;
-      color: #8a5a12;
-      background: #fbf2e2;
+      color: var(--warning-fg);
+      background: var(--warning-bg);
       padding: 4px 8px;
       border-radius: 6px;
       text-transform: uppercase;
     }
     .caps-hint.on { display: inline-flex; }
 
-    /* primary submit — the deep indigo #202058 button from prototype line 417 */
+    /* primary submit — the deep indigo var(--ink) button from prototype line 417 */
     .btn-submit {
       font-family: var(--font-body);
       font-weight: 600;
       font-size: 14.5px;
-      color: #fff;
+      color: var(--card);
       background: var(--ink);
       border: none;
       padding: 14px;
@@ -281,7 +258,7 @@
       width: 15px;
       height: 15px;
       border: 2px solid rgba(255, 255, 255, 0.35);
-      border-top-color: #fff;
+      border-top-color: var(--card);
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
       display: none;
@@ -440,7 +417,7 @@
     .proof-foot .dot {
       width: 5px; height: 5px;
       border-radius: 50%;
-      background: #1f9d57;
+      background: var(--success);
       display: inline-block;
       transform: translateY(-1px);
     }
