@@ -107,7 +107,14 @@ export type AuditEventType =
   | 'team.member.permission_changed'
   | 'team.member.status_changed'
   | 'team.member.role_changed'
-  | 'team.member.made_owner';
+  | 'team.member.made_owner'
+  | 'pricing.structure.created'
+  | 'pricing.structure.updated'
+  | 'pricing.structure.deleted'
+  | 'pricing.ruleset.created'
+  | 'pricing.ruleset.updated'
+  | 'pricing.ruleset.deleted'
+  | 'inventory.stock.updated';
 
 export type AuditEventInput = {
   workspaceId?: string | null;
