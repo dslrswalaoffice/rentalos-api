@@ -1497,10 +1497,17 @@ orders.post('/:id/recompute', requirePermission('orders.edit'), async (c) => {
     return c.json({ error: 'order_locked' }, 409);
   }
 
+  // This endpoint IS the explicit "Recalculate prices" action, so it re-prices
+  // every rental line against the CURRENT config by default. Pass
+  // { reprice: false } to only true-up totals without repricing frozen lines.
+  const body = await c.req.json().catch(() => null);
+  const reprice = body?.reprice !== false;
+
   const { order: fresh, items, changed } = await recomputeOrderTotals(
     id,
     session.workspace.id,
     session.user.id,
+    { reprice },
   );
 
   await audit({

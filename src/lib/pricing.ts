@@ -95,6 +95,10 @@ export type OrderItemRow = {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  // Sub-turn 13: the resolved-price snapshot. priced_inputs inside it is the
+  // signature (dates + quantity) that produced the total; recompute keeps the
+  // line untouched while the signature is unchanged.
+  price_breakdown?: { priced_inputs?: { start: string; end: string; quantity: number } } | null;
   product_name?: string | null;
   product_sku?: string | null;
 };
@@ -394,7 +398,13 @@ export async function recomputeOrderTotals(
   orderId: string,
   workspaceId: string,
   actorUserId: string,
+  opts?: { reprice?: boolean },
 ): Promise<{ order: OrderRow; items: OrderItemRow[]; changed: boolean }> {
+  // reprice=true is the explicit "Recalculate prices" action — it re-runs the
+  // engine for every rental line against the CURRENT config. Default false:
+  // a line is only re-priced when its OWN inputs (dates/quantity) changed, so an
+  // external structure/ruleset edit never rewrites an existing order's totals.
+  const reprice = opts?.reprice === true;
   const order = await loadOrderRaw(orderId, workspaceId);
   if (!order || order.deleted_at) {
     throw new Error('not_found');
@@ -437,8 +447,8 @@ export async function recomputeOrderTotals(
     .filter((it) => it.item_type === 'rental' && it.product_id)
     .map((it) => it.product_id as string);
   const pricingConfigs = await loadPricingConfigs(workspaceId, rentalProductIds);
-  // Per-line engine snapshot to persist (method/period/tier/explain).
-  const pricedSnapshots = new Map<string, PriceResult>();
+  // Per-line engine snapshot to persist (only for lines actually re-priced).
+  const pricedSnapshots = new Map<string, { priced: PriceResult; sig: { start: string; end: string; quantity: number } }>();
 
   let changed = false;
 
@@ -473,25 +483,42 @@ export async function recomputeOrderTotals(
         // Incomplete rental window — leave the line's total untouched.
         desiredTotal = storedTotal;
       } else {
-        // Sub-turn 13: price through the engine. Base rate is the line's
-        // snapshot (immutable); method/period/structure/ruleset come from the
-        // product's current config.
-        const cfg = item.product_id ? pricingConfigs.get(item.product_id) : undefined;
-        const priced = computeLinePrice({
-          method: cfg?.method ?? 'fixed_fee',
-          basePaise: Number(item.daily_rate_paise ?? 0),
-          chargePeriod: cfg?.chargePeriod ?? 'day',
+        // Sub-turn 13: re-price ONLY when THIS line's own inputs (the order
+        // window + this line's quantity) changed, or on an explicit reprice.
+        // Otherwise keep the snapshot — an external structure/ruleset edit must
+        // not rewrite an existing order (Booqable's guarantee).
+        const curSig = {
+          start: new Date(order.rental_start).toISOString(),
+          end: new Date(order.rental_end).toISOString(),
           quantity: qty,
-          start: new Date(order.rental_start),
-          end: new Date(order.rental_end),
-          structure: cfg?.structure ?? null,
-          ruleset: cfg?.ruleset ?? null,
-          graceHours: billing.grace_period_hours,
-          minimumPeriods: billing.minimum_days,
-        });
-        desiredTotal = priced.lineTotalPaise;
-        desiredBillableDays = priced.periodsCharged;
-        pricedSnapshots.set(item.id, priced);
+        };
+        const prevSig = item.price_breakdown?.priced_inputs ?? null;
+        const inputsUnchanged =
+          !!prevSig && prevSig.start === curSig.start && prevSig.end === curSig.end
+          && Number(prevSig.quantity) === qty;
+
+        if (!reprice && inputsUnchanged) {
+          // Frozen snapshot.
+          desiredTotal = storedTotal;
+          desiredBillableDays = item.billable_days;
+        } else {
+          const cfg = item.product_id ? pricingConfigs.get(item.product_id) : undefined;
+          const priced = computeLinePrice({
+            method: cfg?.method ?? 'fixed_fee',
+            basePaise: Number(item.daily_rate_paise ?? 0),
+            chargePeriod: cfg?.chargePeriod ?? 'day',
+            quantity: qty,
+            start: new Date(order.rental_start),
+            end: new Date(order.rental_end),
+            structure: cfg?.structure ?? null,
+            ruleset: cfg?.ruleset ?? null,
+            graceHours: billing.grace_period_hours,
+            minimumPeriods: billing.minimum_days,
+          });
+          desiredTotal = priced.lineTotalPaise;
+          desiredBillableDays = priced.periodsCharged;
+          pricedSnapshots.set(item.id, { priced, sig: curSig });
+        }
       }
     } else if (item.item_type === 'tax' && item.manual_price) {
       // Operator-entered tax line — leave exactly as-is.
@@ -524,10 +551,23 @@ export async function recomputeOrderTotals(
       cgst_paise !== Number(item.cgst_paise) ||
       sgst_paise !== Number(item.sgst_paise) ||
       igst_paise !== Number(item.igst_paise);
-    // Engine snapshot (Sub-turn 13) — how this rental line was priced, so the
-    // number is explainable months later. Null for non-engine lines.
+    // Engine snapshot (Sub-turn 13). Present ONLY for lines actually re-priced
+    // this pass — a frozen line's price_breakdown/priced_* are PRESERVED (the
+    // CASE keeps the existing values), so a tax-only or unrelated recompute never
+    // wipes the snapshot. hasSnap drives whether we set or keep the priced cols.
     const snap = pricedSnapshots.get(item.id) ?? null;
-    if (desiredTotal !== storedTotal || billableChanged || chargeableChanged || taxChanged || snap) {
+    const hasSnap = snap !== null;
+    const breakdownJson = snap
+      ? JSON.stringify({
+          method: snap.priced.method,
+          charge_period: snap.priced.periodUnit,
+          periods_charged: snap.priced.periodsCharged,
+          tier: (snap.priced.explain as Record<string, unknown>).tier ?? null,
+          rules_applied: snap.priced.rulesApplied,
+          priced_inputs: snap.sig,
+        })
+      : null;
+    if (desiredTotal !== storedTotal || billableChanged || chargeableChanged || taxChanged || hasSnap) {
       await sql`
         UPDATE order_items SET
           total_amount_paise   = ${desiredTotal}::bigint,
@@ -536,10 +576,10 @@ export async function recomputeOrderTotals(
           cgst_paise           = ${cgst_paise}::bigint,
           sgst_paise           = ${sgst_paise}::bigint,
           igst_paise           = ${igst_paise}::bigint,
-          priced_method        = ${snap ? snap.method : null}::pricing_method,
-          priced_charge_period = ${snap ? snap.periodUnit : null}::charge_period,
-          priced_tier_id       = ${snap ? snap.tierId : null}::uuid,
-          price_explain        = ${snap ? JSON.stringify({ ...snap.explain, rules_applied: snap.rulesApplied, periods_charged: snap.periodsCharged }) : null}::jsonb,
+          priced_method        = CASE WHEN ${hasSnap}::boolean THEN ${snap ? snap.priced.method : null}::pricing_method ELSE priced_method END,
+          priced_charge_period = CASE WHEN ${hasSnap}::boolean THEN ${snap ? snap.priced.periodUnit : null}::charge_period ELSE priced_charge_period END,
+          priced_tier_id       = CASE WHEN ${hasSnap}::boolean THEN ${snap ? snap.priced.tierId : null}::uuid ELSE priced_tier_id END,
+          price_breakdown      = CASE WHEN ${hasSnap}::boolean THEN ${breakdownJson}::jsonb ELSE price_breakdown END,
           updated_at           = now()
         WHERE id = ${item.id}::uuid
           AND workspace_id = ${workspaceId}::uuid
