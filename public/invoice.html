@@ -9,30 +9,17 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
   <!-- Critical CSS: system font → instant paint, no FOIT. (Print bg handled in @media print.) -->
   <style>
-    :root { --text-primary:#1a1f36; --font-sys: system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif; }
     html,body { margin:0; }
     body { font-family: var(--font-sys); color: var(--text-primary); -webkit-font-smoothing: antialiased; }
     @view-transition { navigation: auto; }
     ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 200ms; }
   </style>
-  <!-- Stripe design system (Sub-turn 9c rollout). -->
+  <!-- Design system (Sub-turn 9c rollout). -->
   <link rel="stylesheet" href="/design-system.css">
   <style>
-    /* Sub-turn 9c — legacy tokens remapped onto the Stripe design-system palette.
+    /* Sub-turn 9c — legacy tokens remapped onto the prototype palette.
        The page bg stays a touch grey so the white invoice document pops; print
        styles below force white. */
-    :root {
-      --ink:#202058; --text:#3f4350; --head:#26235a; --muted:#6b7280; --muted-strong:#3f4350; --muted-soft:#9aa1ad;
-      --card:#ffffff; --bg:#eef0f3; --border:#e3e6ea; --border-strong:#d8dbe0; --line:#c1c9d2;
-      --accent-soft:#fbe9d7; --orange:#e88020; --orange-soft:#fbeee0;
-      --focus:#b9c0ee;
-      --ok-solid:#177a45; --ok-soft:#e8f6ee; --ok-strong:#177a45;
-      --warn-soft:#fbf2e2; --warn-strong:#8a5a12;
-      --bad-solid:#b42318; --bad-soft:#fdecec; --bad-strong:#b42318;
-      --font-display:'Space Grotesk', 'Arzachel', system-ui, -apple-system, sans-serif;
-      --font-body:'Manrope', 'Ponjoung', system-ui, -apple-system, sans-serif;
-      --font-mono:'JetBrains Mono', ui-monospace, monospace;
-    }
     *,*::before,*::after{box-sizing:border-box}
     html,body{margin:0;padding:0}
     body{font-family:var(--font-body);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;padding:0 0 60px}
@@ -45,20 +32,20 @@
     .ab-spacer{margin-left:auto}
     .ab-status{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
     .ab-status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
-    .st-draft{background:#eef0f3;color:var(--muted-strong)} .st-sent{background:var(--orange-soft);color:var(--warn-strong)}
+    .st-draft{background:var(--canvas);color:var(--muted-strong)} .st-sent{background:var(--orange-soft);color:var(--warn-strong)}
     .st-paid{background:var(--ok-soft);color:var(--ok-strong)} .st-cancelled{background:var(--bad-soft);color:var(--bad-strong)}
-    .st-revised{background:#eef0f3;color:var(--muted)}
+    .st-revised{background:var(--canvas);color:var(--muted)}
     .btn{padding:8px 14px;border-radius:9px;font-family:var(--font-body);font-weight:600;font-size:12.5px;cursor:pointer;border:1px solid transparent;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
     .btn.ghost{background:var(--card);color:var(--muted-strong);border-color:var(--border)}
     .btn.ghost:hover{background:var(--bg);border-color:var(--border-strong);color:var(--ink)}
-    .btn.primary{background:var(--head);color:#fff;border-color:var(--head)} .btn.primary:hover{background:#1a1749}
-    .btn.orange{background:var(--orange);color:#fff;border-color:var(--orange)} .btn.orange:hover{background:#d97517}
-    .btn.ok{background:var(--ok-solid);color:#fff;border-color:var(--ok-solid)} .btn.ok:hover{background:var(--ok-strong)}
+    .btn.primary{background:var(--head);color:var(--card);border-color:var(--head)} .btn.primary:hover{background:#1a1749}
+    .btn.orange{background:var(--orange);color:var(--card);border-color:var(--orange)} .btn.orange:hover{background:#d97517}
+    .btn.ok{background:var(--ok-solid);color:var(--card);border-color:var(--ok-solid)} .btn.ok:hover{background:var(--ok-strong)}
     .btn.danger{background:var(--card);color:var(--bad-strong);border-color:var(--bad-soft)} .btn.danger:hover{background:var(--bad-soft);border-color:var(--bad-solid)}
     .btn:disabled{opacity:.5;cursor:not-allowed}
 
     /* invoice document — A4 */
-    .invoice-document{background:#fff;color:#1a1a1a;max-width:210mm;margin:22px auto;padding:18mm 16mm;box-shadow:0 4px 24px -8px rgba(16,24,40,.22);font-size:12px;line-height:1.5}
+    .invoice-document{background:var(--card);color:#1a1a1a;max-width:210mm;margin:22px auto;padding:18mm 16mm;box-shadow:0 4px 24px -8px rgba(16,24,40,.22);font-size:12px;line-height:1.5}
     .inv-top{display:flex;justify-content:space-between;gap:24px;border-bottom:2px solid #222;padding-bottom:14px}
     .inv-brand .name{font-family:var(--font-display);font-weight:700;font-size:24px;letter-spacing:-.01em;color:#111}
     .inv-brand .meta{font-size:11px;color:#444;margin-top:6px;white-space:pre-line}
@@ -82,9 +69,9 @@
     table.li td.desc{text-align:left}
     table.li .li-sub{font-size:9.5px;color:#777;margin-top:2px;font-family:var(--font-mono)}
     table.li .li-kit-includes{font-size:9.5px;color:#777;margin-top:2px;font-style:italic}
-    table.li .waived{color:#8a5a12;font-size:9px;font-weight:600}
+    table.li .waived{color:var(--warning-fg);font-size:9px;font-weight:600}
     /* Discount line (Sub-turn 8b) — tinted row, green negative amounts. */
-    table.li tr.discount td{background:#e8f6ee;color:#177a45;font-weight:600}
+    table.li tr.discount td{background:var(--success-bg);color:var(--success-fg);font-weight:600}
     .muted-dash{color:#aaa}
 
     .totals-wrap{display:flex;justify-content:flex-end;margin-top:14px}
@@ -112,7 +99,7 @@
     .sig .for{margin-bottom:44px;font-weight:600;color:#111}
     .sig .line{border-top:1px solid #333;padding-top:5px;min-width:180px}
 
-    .empty{max-width:520px;margin:60px auto;background:#fff;border:1px dashed var(--border-strong);border-radius:14px;padding:48px 24px;text-align:center}
+    .empty{max-width:520px;margin:60px auto;background:var(--card);border:1px dashed var(--border-strong);border-radius:14px;padding:48px 24px;text-align:center}
     .empty h4{font-family:var(--font-display);font-weight:600;font-size:18px;margin:0 0 8px}
     .empty p{color:var(--muted);font-size:13px;margin:0 0 20px}
     .loading{text-align:center;color:var(--muted);padding:60px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.06em;font-size:12px}
@@ -126,14 +113,14 @@
     .modal-close{background:transparent;border:none;padding:6px;border-radius:6px;cursor:pointer;color:var(--muted)}
     .modal-close:hover{background:var(--bg);color:var(--ink)}
     .modal-body{padding:20px 22px 8px;overflow-y:auto;min-height:0;flex:1}
-    .modal-warn{padding:10px 12px;margin:0 0 14px;background:var(--warn-soft);color:var(--warn-strong);border-radius:8px;font-size:12.5px;font-weight:500;border-left:3px solid #b9791b}
+    .modal-warn{padding:10px 12px;margin:0 0 14px;background:var(--warn-soft);color:var(--warn-strong);border-radius:8px;font-size:12.5px;font-weight:500;border-left:3px solid var(--warning)}
     .field{margin-bottom:16px}
     .field label{display:block;font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--muted-strong);text-transform:uppercase;margin-bottom:6px}
     .field label .req{color:var(--bad-strong);margin-left:3px}
     .field textarea{width:100%;padding:10px 12px;font-family:var(--font-body);font-size:13.5px;color:var(--ink);background:var(--card);border:1px solid var(--border);border-radius:9px;outline:none;min-height:72px;resize:vertical}
     .field textarea:focus{border-color:var(--focus);box-shadow:0 0 0 4px rgba(185,192,238,.24)}
     .form-error{padding:10px 12px;margin:0 0 14px;background:var(--bad-soft);color:var(--bad-strong);border-radius:8px;font-size:12.5px;font-weight:500;border-left:3px solid var(--bad-solid)}
-    .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--border);background:#fafbfc;flex-shrink:0}
+    .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--border);background:var(--hover);flex-shrink:0}
     .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--card);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 14px 30px -12px rgba(16,24,40,.32);padding:11px 18px;font-size:13px;color:var(--ink);z-index:200;max-width:90vw}
     /* 6f: reminders card */
     .reminders-wrap{max-width:820px;margin:0 auto 24px;padding:0 12px}
@@ -158,7 +145,7 @@
     .rem-status.ok{background:#d1fae5;color:#065f46}
     .rem-status.bad{background:#fee2e2;color:#991b1b}
     .rem-status.warn{background:#fef3c7;color:#92400e}
-    .rem-status.muted{background:#eef0f3;color:var(--muted-strong)}
+    .rem-status.muted{background:var(--canvas);color:var(--muted-strong)}
     .rem-skip{font-size:10.5px;color:var(--muted);font-style:italic}
 
     @media (max-width:640px){ .invoice-document{padding:12mm 8mm;margin:12px} .inv-top,.inv-parties{flex-direction:column;gap:12px} .inv-title{text-align:left} }
@@ -166,8 +153,8 @@
     @media print {
       body > *:not(.invoice-document){display:none !important}
       .no-print{display:none !important}
-      body{background:#fff;padding:0}
-      .invoice-document{box-shadow:none !important;margin:0 !important;padding:20mm !important;max-width:none !important;background:#fff !important;color:#000 !important}
+      body{background:var(--card);padding:0}
+      .invoice-document{box-shadow:none !important;margin:0 !important;padding:20mm !important;max-width:none !important;background:var(--card) !important;color:#000 !important}
       @page{size:A4;margin:0}
       .inv-top,.totals-wrap,.signature-block{page-break-inside:avoid}
       table.li tr{page-break-inside:avoid}
@@ -178,7 +165,7 @@
     .notif-bell-wrap { position: relative; }
     .notif-bell { background: none; border: none; padding: 8px; cursor: pointer; color: var(--head); position: relative; display: flex; align-items: center; }
     .notif-bell:hover { background: var(--thead); border-radius: 6px; }
-    .notif-badge { position: absolute; top: 4px; right: 4px; background: var(--bad-strong); color: #fff; border-radius: 10px; font-size: 10px; font-weight: 600; padding: 2px 5px; min-width: 16px; text-align: center; line-height: 1.2; }
+    .notif-badge { position: absolute; top: 4px; right: 4px; background: var(--bad-strong); color: var(--card); border-radius: 10px; font-size: 10px; font-weight: 600; padding: 2px 5px; min-width: 16px; text-align: center; line-height: 1.2; }
     .notif-badge[hidden] { display: none; }
     .notif-drawer { position: absolute; top: 100%; right: 0; margin-top: 8px; width: 360px; max-height: 480px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(16,24,40,0.14); z-index: 60; display: flex; flex-direction: column; }
     .notif-drawer[hidden] { display: none; }
