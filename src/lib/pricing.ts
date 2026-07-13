@@ -69,6 +69,11 @@ export type OrderRow = {
   person_gstin?: string | null;
   person_state_code?: string | null;
   person_state_name?: string | null;
+  person_deposit_method_override?: string | null;
+  person_deposit_value_paise?: number | null;
+  person_deposit_percentage_bps?: number | null;
+  deposit_required_paise?: number;
+  deposit_method_used?: string | null;
 };
 
 export type OrderItemType =
@@ -97,6 +102,7 @@ export type OrderItemRow = {
   cgst_paise: number;
   sgst_paise: number;
   igst_paise: number;
+  is_custom_line?: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -146,6 +152,8 @@ type LinePricingConfig = {
   ruleset: PricingRuleset | null;
   gstRateBps: number | null;   // Sub-turn 13 — per-product GST rate (bps)
   isTaxable: boolean;
+  nature: string;              // rental | service | sale (deposit base = rental only)
+  securityDepositPaise: number | null;
 };
 
 async function loadPricingConfigs(
@@ -160,9 +168,11 @@ async function loadPricingConfigs(
     id: string; pricing_method: string; charge_period: string | null;
     pricing_structure_id: string | null; pricing_ruleset_id: string | null;
     gst_rate_bps: number | null; is_taxable: boolean;
+    nature: string; security_deposit_value_paise: number | null;
   }>(sql`
     SELECT id, pricing_method::text AS pricing_method, charge_period::text AS charge_period,
-           pricing_structure_id, pricing_ruleset_id, gst_rate_bps, is_taxable
+           pricing_structure_id, pricing_ruleset_id, gst_rate_bps, is_taxable,
+           nature::text AS nature, security_deposit_value_paise
     FROM products
     WHERE workspace_id = ${workspaceId}::uuid
       AND id::text = ANY(string_to_array(${ids.join(',')}::text, ','))
@@ -230,6 +240,8 @@ async function loadPricingConfigs(
     ruleset: p.pricing_ruleset_id ? rulesets.get(p.pricing_ruleset_id) ?? null : null,
     gstRateBps: p.gst_rate_bps != null ? Number(p.gst_rate_bps) : null,
     isTaxable: p.is_taxable !== false,
+    nature: p.nature ?? 'rental',
+    securityDepositPaise: p.security_deposit_value_paise != null ? Number(p.security_deposit_value_paise) : null,
   });
   return out;
 }
@@ -345,6 +357,17 @@ export function computeLineTax(args: {
 // ----------------------------------------------------------------------------
 // Settings helpers
 // ----------------------------------------------------------------------------
+type DepositSettings = { method: string; percentage_bps: number; value_paise: number };
+function readDeposit(settings: unknown): DepositSettings {
+  const d = (settings as Record<string, unknown> | null)?.['deposit'] as Record<string, unknown> | undefined;
+  const pctFromLegacy = typeof d?.['default_percent'] === 'number' ? (d!['default_percent'] as number) * 100 : 0;
+  return {
+    method: typeof d?.['method'] === 'string' ? (d!['method'] as string) : 'none',
+    percentage_bps: typeof d?.['percentage_bps'] === 'number' ? (d!['percentage_bps'] as number) : pctFromLegacy,
+    value_paise: typeof d?.['value_paise'] === 'number' ? (d!['value_paise'] as number) : 0,
+  };
+}
+
 function readBilling(settings: unknown): BillingSettings {
   const b = (settings as Record<string, unknown> | null)?.['billing'] as
     | Partial<BillingSettings>
@@ -381,7 +404,10 @@ async function loadOrderRaw(orderId: string, workspaceId: string): Promise<Order
       p.default_gst_state  AS person_default_gst_state,
       p.gstin              AS person_gstin,
       p.state_code         AS person_state_code,
-      p.state              AS person_state_name
+      p.state              AS person_state_name,
+      p.deposit_method_override AS person_deposit_method_override,
+      p.deposit_value_paise     AS person_deposit_value_paise,
+      p.deposit_percentage_bps  AS person_deposit_percentage_bps
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
     WHERE o.id = ${orderId}::uuid
@@ -475,6 +501,11 @@ export async function recomputeOrderTotals(
   let subtotalPaise = 0;
   let manualTaxSum = 0;
   let lineTaxSum = 0; // sum of per-line cgst+sgst+igst (used when GST split is on)
+  // Deposit base (Sub-turn 13): ONLY rental-nature lines count. Services, sale
+  // items, custom lines, delivery/fees are excluded so a ₹1,200 delivery charge
+  // never silently raises the deposit.
+  let depositBasePaise = 0;      // rental-nature line totals (for order_percentage)
+  let depositProductSum = 0;     // Σ product security_deposit × qty (for product_value)
   // The single coupon-managed discount line is reconciled AFTER the loop (its
   // amount depends on the subtotal computed here).
   let existingDiscountItem: OrderItemRow | null = null;
@@ -621,6 +652,14 @@ export async function recomputeOrderTotals(
       manualTaxSum += desiredTotal;
     }
     // 'deposit' lines are computed but excluded from subtotal/tax/total.
+
+    // Deposit base — rental-NATURE product lines only (Sub-turn 13).
+    if (!item.is_custom_line && item.item_type === 'rental' && lineCfg?.nature === 'rental') {
+      depositBasePaise += desiredTotal;
+      if (lineCfg.securityDepositPaise != null) {
+        depositProductSum += lineCfg.securityDepositPaise * Number(item.quantity);
+      }
+    }
   }
 
   // --- Coupon-managed discount line (Sub-turn 8b) -----------------------------
@@ -800,6 +839,34 @@ export async function recomputeOrderTotals(
     total_paise: totalPaise,
     balance_paise: balancePaise,
   };
+
+  // Deposit auto-calc (Sub-turn 13). Method: customer override → workspace
+  // default. order_percentage bills the RENTAL-nature base only; product_value
+  // sums per-product deposit values; fixed uses the customer/workspace amount.
+  // Method 'none' leaves any manually-set deposit alone (the 6d manual flow owns
+  // it), so we only compute/store when a real method is configured.
+  const depositSettings = readDeposit(wsRows[0]?.settings);
+  const depMethod = (order.person_deposit_method_override as string | null) ?? depositSettings.method ?? 'none';
+  if (depMethod !== 'none') {
+    let depositRequired = 0;
+    if (depMethod === 'order_percentage') {
+      const pct = Number(order.person_deposit_percentage_bps ?? depositSettings.percentage_bps ?? 0);
+      depositRequired = Math.floor((depositBasePaise * pct) / 10000);
+    } else if (depMethod === 'product_value') {
+      depositRequired = depositProductSum;
+    } else if (depMethod === 'fixed') {
+      depositRequired = Number(order.person_deposit_value_paise ?? depositSettings.value_paise ?? 0);
+    }
+    if (Number(order.deposit_required_paise ?? 0) !== depositRequired
+        || (order.deposit_method_used ?? null) !== depMethod) {
+      await sql`
+        UPDATE orders SET deposit_required_paise = ${depositRequired}::bigint,
+                          deposit_method_used = ${depMethod}::deposit_method, updated_at = now()
+        WHERE id = ${orderId}::uuid AND workspace_id = ${workspaceId}::uuid
+      `;
+      changed = true;
+    }
+  }
 
   // Persist the GST resolution snapshot (Sub-turn 13) when it moved. state_assumed
   // drives the block-with-confirm at invoice finalisation.
