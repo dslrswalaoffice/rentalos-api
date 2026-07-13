@@ -318,12 +318,64 @@ async function pinAssetsForItem(args: {
   pickupLocationId: string | null;
   explicitAssetIds?: string[];
 }): Promise<AssignedAsset[]> {
-  const prodRows = await query<{ tracking_mode: string }>(sql`
-    SELECT tracking_mode FROM products
+  const prodRows = await query<{ tracking_mode: string; tracking_method: string | null; nature: string }>(sql`
+    SELECT tracking_mode, tracking_method::text AS tracking_method, nature::text AS nature FROM products
     WHERE id = ${args.productId}::uuid AND workspace_id = ${args.workspaceId}::uuid
     LIMIT 1
   `);
-  if (!prodRows.length || prodRows[0]!.tracking_mode === 'bulk') return [];
+  if (!prodRows.length) return [];
+  const nature = prodRows[0]!.nature;
+  const isBulk = (prodRows[0]!.tracking_method ?? prodRows[0]!.tracking_mode) === 'bulk';
+
+  // SERVICE: nothing physical to dispatch.
+  if (nature === 'service') return [];
+
+  // SALE — dispatch PERMANENTLY removes stock (Sub-turn 13). This is the ONLY
+  // place the sale/rental behaviours diverge: a rental reserves and comes back;
+  // a sale is decremented/retired and never returns.
+  if (nature === 'sale') {
+    if (isBulk) {
+      // Decrement on-hand at the pickup location. Clamped at 0 (never negative).
+      await sql`
+        UPDATE stock_levels
+           SET quantity = GREATEST(0, quantity - ${args.quantity}::int)
+         WHERE product_id = ${args.productId}::uuid
+           AND location_id = ${args.pickupLocationId}::uuid
+      `;
+      return [];
+    }
+    // Serialized sale: retire the units sold (status='retired' + soft-delete),
+    // recording which units on order_assets. They never rejoin availability.
+    const sold = await query<{ id: string; asset_code: string }>(sql`
+      SELECT id, asset_code FROM assets
+      WHERE workspace_id = ${args.workspaceId}::uuid
+        AND product_id = ${args.productId}::uuid
+        AND deleted_at IS NULL
+        AND status = 'available'::asset_status
+        AND (${args.pickupLocationId}::uuid IS NULL OR location_id = ${args.pickupLocationId}::uuid)
+      ORDER BY asset_code ASC
+      LIMIT ${args.quantity}::int
+    `);
+    const soldOut: AssignedAsset[] = [];
+    for (const a of sold) {
+      await sql`
+        INSERT INTO order_assets (workspace_id, order_id, order_item_id, asset_id, status, dispatched_at)
+        VALUES (${args.workspaceId}::uuid, ${args.orderId}::uuid, ${args.itemId}::uuid,
+                ${a.id}::uuid, 'dispatched'::order_asset_status, now())
+        ON CONFLICT (order_id, asset_id) DO NOTHING
+      `;
+      await sql`
+        UPDATE assets SET status = 'retired'::asset_status, deleted_at = now(), updated_at = now()
+        WHERE id = ${a.id}::uuid AND workspace_id = ${args.workspaceId}::uuid
+          AND status = 'available'::asset_status
+      `;
+      soldOut.push({ asset_id: a.id, asset_code: a.asset_code, item_id: args.itemId });
+    }
+    return soldOut;
+  }
+
+  // RENTAL: bulk has no serialized units to pin (the reservation blocks it).
+  if (isBulk) return [];
 
   let chosen: { id: string; asset_code: string }[] = [];
   if (args.explicitAssetIds && args.explicitAssetIds.length) {
@@ -1497,10 +1549,17 @@ orders.post('/:id/recompute', requirePermission('orders.edit'), async (c) => {
     return c.json({ error: 'order_locked' }, 409);
   }
 
+  // This endpoint IS the explicit "Recalculate prices" action, so it re-prices
+  // every rental line against the CURRENT config by default. Pass
+  // { reprice: false } to only true-up totals without repricing frozen lines.
+  const body = await c.req.json().catch(() => null);
+  const reprice = body?.reprice !== false;
+
   const { order: fresh, items, changed } = await recomputeOrderTotals(
     id,
     session.workspace.id,
     session.user.id,
+    { reprice },
   );
 
   await audit({
@@ -2328,6 +2387,26 @@ orders.post('/:id/return', requirePermission('returns.execute'), async (c) => {
       error: 'items_not_dispatched',
       items: notDispatched.map((r) => ({ id: r.item_id, status: byId.get(r.item_id)!.status })),
     }, 409);
+  }
+
+  // Sub-turn 13: SALE lines never return — dispatch already permanently removed
+  // the stock. Reject any attempt so sold gear can't be resurrected (verify #4).
+  const returnedProductIds = [...new Set(reqItems.map((r) => byId.get(r.item_id)!.product_id).filter(Boolean) as string[])];
+  if (returnedProductIds.length) {
+    const saleRows = await query<{ id: string }>(sql`
+      SELECT id FROM products
+      WHERE workspace_id = ${session.workspace.id}::uuid
+        AND nature = 'sale'::product_nature
+        AND id::text = ANY(string_to_array(${returnedProductIds.join(',')}::text, ','))
+    `);
+    const saleSet = new Set(saleRows.map((s) => s.id));
+    const saleItems = reqItems.filter((r) => {
+      const pid = byId.get(r.item_id)!.product_id;
+      return pid && saleSet.has(pid);
+    });
+    if (saleItems.length) {
+      return c.json({ error: 'sale_not_returnable', item_ids: saleItems.map((r) => r.item_id) }, 409);
+    }
   }
 
   const notesMissing = reqItems.filter(

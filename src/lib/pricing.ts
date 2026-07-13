@@ -54,6 +54,8 @@ export type OrderRow = {
   paid_paise: number;
   balance_paise: number;
   gst_state: string | null;
+  gst_state_code?: string | null;
+  state_assumed?: boolean;
   notes: string | null;
   internal_notes: string | null;
   created_by: string | null;
@@ -64,6 +66,14 @@ export type OrderRow = {
   customer_phone?: string;
   customer_email?: string | null;
   person_default_gst_state?: string | null;
+  person_gstin?: string | null;
+  person_state_code?: string | null;
+  person_state_name?: string | null;
+  person_deposit_method_override?: string | null;
+  person_deposit_value_paise?: number | null;
+  person_deposit_percentage_bps?: number | null;
+  deposit_required_paise?: number;
+  deposit_method_used?: string | null;
 };
 
 export type OrderItemType =
@@ -92,9 +102,14 @@ export type OrderItemRow = {
   cgst_paise: number;
   sgst_paise: number;
   igst_paise: number;
+  is_custom_line?: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;
+  // Sub-turn 13: the resolved-price snapshot. priced_inputs inside it is the
+  // signature (dates + quantity) that produced the total; recompute keeps the
+  // line untouched while the signature is unchanged.
+  price_breakdown?: { priced_inputs?: { start: string; end: string; quantity: number } } | null;
   product_name?: string | null;
   product_sku?: string | null;
 };
@@ -118,6 +133,7 @@ import {
   type PricingRuleset,
   type PriceResult,
 } from './pricing_engine.js';
+import { resolveGst, stateNameToCode, splitGstBps } from './gst.js';
 
 // Line types that make up the pre-tax subtotal.
 const SUBTOTAL_TYPES = new Set(['rental', 'delivery_fee', 'late_fee', 'damage', 'other']);
@@ -134,6 +150,10 @@ type LinePricingConfig = {
   chargePeriod: ChargePeriod;
   structure: PricingStructure | null;
   ruleset: PricingRuleset | null;
+  gstRateBps: number | null;   // Sub-turn 13 — per-product GST rate (bps)
+  isTaxable: boolean;
+  nature: string;              // rental | service | sale (deposit base = rental only)
+  securityDepositPaise: number | null;
 };
 
 async function loadPricingConfigs(
@@ -147,9 +167,12 @@ async function loadPricingConfigs(
   const prods = await query<{
     id: string; pricing_method: string; charge_period: string | null;
     pricing_structure_id: string | null; pricing_ruleset_id: string | null;
+    gst_rate_bps: number | null; is_taxable: boolean;
+    nature: string; security_deposit_value_paise: number | null;
   }>(sql`
     SELECT id, pricing_method::text AS pricing_method, charge_period::text AS charge_period,
-           pricing_structure_id, pricing_ruleset_id
+           pricing_structure_id, pricing_ruleset_id, gst_rate_bps, is_taxable,
+           nature::text AS nature, security_deposit_value_paise
     FROM products
     WHERE workspace_id = ${workspaceId}::uuid
       AND id::text = ANY(string_to_array(${ids.join(',')}::text, ','))
@@ -215,6 +238,10 @@ async function loadPricingConfigs(
     chargePeriod: (p.charge_period as ChargePeriod) ?? 'day',
     structure: p.pricing_structure_id ? structures.get(p.pricing_structure_id) ?? null : null,
     ruleset: p.pricing_ruleset_id ? rulesets.get(p.pricing_ruleset_id) ?? null : null,
+    gstRateBps: p.gst_rate_bps != null ? Number(p.gst_rate_bps) : null,
+    isTaxable: p.is_taxable !== false,
+    nature: p.nature ?? 'rental',
+    securityDepositPaise: p.security_deposit_value_paise != null ? Number(p.security_deposit_value_paise) : null,
   });
   return out;
 }
@@ -330,6 +357,17 @@ export function computeLineTax(args: {
 // ----------------------------------------------------------------------------
 // Settings helpers
 // ----------------------------------------------------------------------------
+type DepositSettings = { method: string; percentage_bps: number; value_paise: number };
+function readDeposit(settings: unknown): DepositSettings {
+  const d = (settings as Record<string, unknown> | null)?.['deposit'] as Record<string, unknown> | undefined;
+  const pctFromLegacy = typeof d?.['default_percent'] === 'number' ? (d!['default_percent'] as number) * 100 : 0;
+  return {
+    method: typeof d?.['method'] === 'string' ? (d!['method'] as string) : 'none',
+    percentage_bps: typeof d?.['percentage_bps'] === 'number' ? (d!['percentage_bps'] as number) : pctFromLegacy,
+    value_paise: typeof d?.['value_paise'] === 'number' ? (d!['value_paise'] as number) : 0,
+  };
+}
+
 function readBilling(settings: unknown): BillingSettings {
   const b = (settings as Record<string, unknown> | null)?.['billing'] as
     | Partial<BillingSettings>
@@ -363,7 +401,13 @@ async function loadOrderRaw(orderId: string, workspaceId: string): Promise<Order
       p.display_name       AS customer_name,
       p.phone              AS customer_phone,
       p.email              AS customer_email,
-      p.default_gst_state  AS person_default_gst_state
+      p.default_gst_state  AS person_default_gst_state,
+      p.gstin              AS person_gstin,
+      p.state_code         AS person_state_code,
+      p.state              AS person_state_name,
+      p.deposit_method_override AS person_deposit_method_override,
+      p.deposit_value_paise     AS person_deposit_value_paise,
+      p.deposit_percentage_bps  AS person_deposit_percentage_bps
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
     WHERE o.id = ${orderId}::uuid
@@ -394,7 +438,13 @@ export async function recomputeOrderTotals(
   orderId: string,
   workspaceId: string,
   actorUserId: string,
+  opts?: { reprice?: boolean },
 ): Promise<{ order: OrderRow; items: OrderItemRow[]; changed: boolean }> {
+  // reprice=true is the explicit "Recalculate prices" action — it re-runs the
+  // engine for every rental line against the CURRENT config. Default false:
+  // a line is only re-priced when its OWN inputs (dates/quantity) changed, so an
+  // external structure/ruleset edit never rewrites an existing order's totals.
+  const reprice = opts?.reprice === true;
   const order = await loadOrderRaw(orderId, workspaceId);
   if (!order || order.deleted_at) {
     throw new Error('not_found');
@@ -404,24 +454,29 @@ export async function recomputeOrderTotals(
   }
 
   // Load workspace billing + tax settings (with fallbacks) + GST context.
-  const wsRows = await query<{ settings: unknown; place_of_supply: string | null }>(sql`
-    SELECT settings, place_of_supply FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
+  const wsRows = await query<{ settings: unknown; place_of_supply: string | null; state_code: string | null }>(sql`
+    SELECT settings, place_of_supply, state_code FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
   `);
   const billing = readBilling(wsRows[0]?.settings);
   const tax = readTax(wsRows[0]?.settings);
-  const workspacePlaceOfSupply = wsRows[0]?.place_of_supply ?? null;
   const features = (wsRows[0]?.settings as Record<string, unknown> | null)?.['features'] as
     | Record<string, unknown>
     | undefined;
   const gstSplitOn = features?.['gst_split_cgst_sgst_igst'] === true;
 
-  // GST state resolution (order override → person default → workspace place).
-  const resolvedState = resolveGstState({
-    orderState: order.gst_state,
-    personDefaultState: order.person_default_gst_state ?? null,
-    workspacePlaceOfSupply,
+  // Sub-turn 13 — code-based GST split. Workspace code falls back to its
+  // place-of-supply NAME if unset; customer code is derived from GSTIN → explicit
+  // code → address, else assumed (workspace state) with state_assumed = true.
+  const workspaceCode = wsRows[0]?.state_code ?? stateNameToCode(wsRows[0]?.place_of_supply ?? null);
+  const gst = resolveGst({
+    gstin: order.person_gstin ?? null,
+    customerStateCode: order.person_state_code ?? null,
+    // an explicit per-order override name wins over the customer default.
+    customerStateName: order.gst_state ?? order.person_state_name ?? order.person_default_gst_state ?? null,
+    workspaceStateCode: workspaceCode,
   });
-  const isIntraState = resolvedState !== null && resolvedState === workspacePlaceOfSupply;
+  const isIntraState = gst.isIntraState;
+  const workspaceDefaultBps = Math.round((tax.default_gst_percent ?? 0) * 100);
 
   // Billable days — null when the rental window is incomplete (skip rental recompute).
   let billableDays: number | null = null;
@@ -437,8 +492,8 @@ export async function recomputeOrderTotals(
     .filter((it) => it.item_type === 'rental' && it.product_id)
     .map((it) => it.product_id as string);
   const pricingConfigs = await loadPricingConfigs(workspaceId, rentalProductIds);
-  // Per-line engine snapshot to persist (method/period/tier/explain).
-  const pricedSnapshots = new Map<string, PriceResult>();
+  // Per-line engine snapshot to persist (only for lines actually re-priced).
+  const pricedSnapshots = new Map<string, { priced: PriceResult; sig: { start: string; end: string; quantity: number } }>();
 
   let changed = false;
 
@@ -446,6 +501,11 @@ export async function recomputeOrderTotals(
   let subtotalPaise = 0;
   let manualTaxSum = 0;
   let lineTaxSum = 0; // sum of per-line cgst+sgst+igst (used when GST split is on)
+  // Deposit base (Sub-turn 13): ONLY rental-nature lines count. Services, sale
+  // items, custom lines, delivery/fees are excluded so a ₹1,200 delivery charge
+  // never silently raises the deposit.
+  let depositBasePaise = 0;      // rental-nature line totals (for order_percentage)
+  let depositProductSum = 0;     // Σ product security_deposit × qty (for product_value)
   // The single coupon-managed discount line is reconciled AFTER the loop (its
   // amount depends on the subtotal computed here).
   let existingDiscountItem: OrderItemRow | null = null;
@@ -473,25 +533,42 @@ export async function recomputeOrderTotals(
         // Incomplete rental window — leave the line's total untouched.
         desiredTotal = storedTotal;
       } else {
-        // Sub-turn 13: price through the engine. Base rate is the line's
-        // snapshot (immutable); method/period/structure/ruleset come from the
-        // product's current config.
-        const cfg = item.product_id ? pricingConfigs.get(item.product_id) : undefined;
-        const priced = computeLinePrice({
-          method: cfg?.method ?? 'fixed_fee',
-          basePaise: Number(item.daily_rate_paise ?? 0),
-          chargePeriod: cfg?.chargePeriod ?? 'day',
+        // Sub-turn 13: re-price ONLY when THIS line's own inputs (the order
+        // window + this line's quantity) changed, or on an explicit reprice.
+        // Otherwise keep the snapshot — an external structure/ruleset edit must
+        // not rewrite an existing order (Booqable's guarantee).
+        const curSig = {
+          start: new Date(order.rental_start).toISOString(),
+          end: new Date(order.rental_end).toISOString(),
           quantity: qty,
-          start: new Date(order.rental_start),
-          end: new Date(order.rental_end),
-          structure: cfg?.structure ?? null,
-          ruleset: cfg?.ruleset ?? null,
-          graceHours: billing.grace_period_hours,
-          minimumPeriods: billing.minimum_days,
-        });
-        desiredTotal = priced.lineTotalPaise;
-        desiredBillableDays = priced.periodsCharged;
-        pricedSnapshots.set(item.id, priced);
+        };
+        const prevSig = item.price_breakdown?.priced_inputs ?? null;
+        const inputsUnchanged =
+          !!prevSig && prevSig.start === curSig.start && prevSig.end === curSig.end
+          && Number(prevSig.quantity) === qty;
+
+        if (!reprice && inputsUnchanged) {
+          // Frozen snapshot.
+          desiredTotal = storedTotal;
+          desiredBillableDays = item.billable_days;
+        } else {
+          const cfg = item.product_id ? pricingConfigs.get(item.product_id) : undefined;
+          const priced = computeLinePrice({
+            method: cfg?.method ?? 'fixed_fee',
+            basePaise: Number(item.daily_rate_paise ?? 0),
+            chargePeriod: cfg?.chargePeriod ?? 'day',
+            quantity: qty,
+            start: new Date(order.rental_start),
+            end: new Date(order.rental_end),
+            structure: cfg?.structure ?? null,
+            ruleset: cfg?.ruleset ?? null,
+            graceHours: billing.grace_period_hours,
+            minimumPeriods: billing.minimum_days,
+          });
+          desiredTotal = priced.lineTotalPaise;
+          desiredBillableDays = priced.periodsCharged;
+          pricedSnapshots.set(item.id, { priced, sig: curSig });
+        }
       }
     } else if (item.item_type === 'tax' && item.manual_price) {
       // Operator-entered tax line — leave exactly as-is.
@@ -508,14 +585,19 @@ export async function recomputeOrderTotals(
         ? 0
         : desiredTotal;
 
-    // Per-line GST breakdown (all zeros unless the split feature is on).
-    const { cgst_paise, sgst_paise, igst_paise } = computeLineTax({
-      chargeablePaise: chargeable,
-      itemType: item.item_type,
-      isIntraState,
-      taxPct: tax.default_gst_percent,
-      featureFlagOn: gstSplitOn,
-    });
+    // Per-line GST breakdown (Sub-turn 13): rate comes from the PRODUCT
+    // (gst_rate_bps), falling back to the workspace default when unset — a
+    // taxable product with no rate is invoiced at the default (never 0%, which
+    // would be a compliance violation) and flagged for the UI warning. The
+    // split (CGST+SGST vs IGST) is decided by state code.
+    const lineCfg = item.product_id ? pricingConfigs.get(item.product_id) : undefined;
+    const lineTaxable = gstSplitOn
+      && TAXABLE_ITEM_TYPES.has(item.item_type)
+      && (lineCfg ? lineCfg.isTaxable : true);
+    const lineRateBps = lineCfg?.gstRateBps ?? workspaceDefaultBps;
+    const { cgst_paise, sgst_paise, igst_paise } = lineTaxable
+      ? splitGstBps(chargeable, lineRateBps, isIntraState)
+      : { cgst_paise: 0, sgst_paise: 0, igst_paise: 0 };
 
     // Persist the line only if something actually moved.
     const billableChanged = (desiredBillableDays ?? null) !== (item.billable_days ?? null);
@@ -524,10 +606,23 @@ export async function recomputeOrderTotals(
       cgst_paise !== Number(item.cgst_paise) ||
       sgst_paise !== Number(item.sgst_paise) ||
       igst_paise !== Number(item.igst_paise);
-    // Engine snapshot (Sub-turn 13) — how this rental line was priced, so the
-    // number is explainable months later. Null for non-engine lines.
+    // Engine snapshot (Sub-turn 13). Present ONLY for lines actually re-priced
+    // this pass — a frozen line's price_breakdown/priced_* are PRESERVED (the
+    // CASE keeps the existing values), so a tax-only or unrelated recompute never
+    // wipes the snapshot. hasSnap drives whether we set or keep the priced cols.
     const snap = pricedSnapshots.get(item.id) ?? null;
-    if (desiredTotal !== storedTotal || billableChanged || chargeableChanged || taxChanged || snap) {
+    const hasSnap = snap !== null;
+    const breakdownJson = snap
+      ? JSON.stringify({
+          method: snap.priced.method,
+          charge_period: snap.priced.periodUnit,
+          periods_charged: snap.priced.periodsCharged,
+          tier: (snap.priced.explain as Record<string, unknown>).tier ?? null,
+          rules_applied: snap.priced.rulesApplied,
+          priced_inputs: snap.sig,
+        })
+      : null;
+    if (desiredTotal !== storedTotal || billableChanged || chargeableChanged || taxChanged || hasSnap) {
       await sql`
         UPDATE order_items SET
           total_amount_paise   = ${desiredTotal}::bigint,
@@ -536,10 +631,10 @@ export async function recomputeOrderTotals(
           cgst_paise           = ${cgst_paise}::bigint,
           sgst_paise           = ${sgst_paise}::bigint,
           igst_paise           = ${igst_paise}::bigint,
-          priced_method        = ${snap ? snap.method : null}::pricing_method,
-          priced_charge_period = ${snap ? snap.periodUnit : null}::charge_period,
-          priced_tier_id       = ${snap ? snap.tierId : null}::uuid,
-          price_explain        = ${snap ? JSON.stringify({ ...snap.explain, rules_applied: snap.rulesApplied, periods_charged: snap.periodsCharged }) : null}::jsonb,
+          priced_method        = CASE WHEN ${hasSnap}::boolean THEN ${snap ? snap.priced.method : null}::pricing_method ELSE priced_method END,
+          priced_charge_period = CASE WHEN ${hasSnap}::boolean THEN ${snap ? snap.priced.periodUnit : null}::charge_period ELSE priced_charge_period END,
+          priced_tier_id       = CASE WHEN ${hasSnap}::boolean THEN ${snap ? snap.priced.tierId : null}::uuid ELSE priced_tier_id END,
+          price_breakdown      = CASE WHEN ${hasSnap}::boolean THEN ${breakdownJson}::jsonb ELSE price_breakdown END,
           updated_at           = now()
         WHERE id = ${item.id}::uuid
           AND workspace_id = ${workspaceId}::uuid
@@ -557,6 +652,14 @@ export async function recomputeOrderTotals(
       manualTaxSum += desiredTotal;
     }
     // 'deposit' lines are computed but excluded from subtotal/tax/total.
+
+    // Deposit base — rental-NATURE product lines only (Sub-turn 13).
+    if (!item.is_custom_line && item.item_type === 'rental' && lineCfg?.nature === 'rental') {
+      depositBasePaise += desiredTotal;
+      if (lineCfg.securityDepositPaise != null) {
+        depositProductSum += lineCfg.securityDepositPaise * Number(item.quantity);
+      }
+    }
   }
 
   // --- Coupon-managed discount line (Sub-turn 8b) -----------------------------
@@ -581,14 +684,10 @@ export async function recomputeOrderTotals(
       changed = true;
     }
   } else {
+    // The discount reduces the taxable base uniformly, so it nets tax at the
+    // workspace default rate (it isn't tied to one product). Negated below.
     const dTax = gstSplitOn
-      ? computeLineTax({
-          chargeablePaise: discountPaise,
-          itemType: 'rental', // force a taxable computation; we negate it below
-          isIntraState,
-          taxPct: tax.default_gst_percent,
-          featureFlagOn: true,
-        })
+      ? splitGstBps(discountPaise, workspaceDefaultBps, isIntraState)
       : { cgst_paise: 0, sgst_paise: 0, igst_paise: 0 };
     const negCgst = -dTax.cgst_paise;
     const negSgst = -dTax.sgst_paise;
@@ -740,6 +839,47 @@ export async function recomputeOrderTotals(
     total_paise: totalPaise,
     balance_paise: balancePaise,
   };
+
+  // Deposit auto-calc (Sub-turn 13). Method: customer override → workspace
+  // default. order_percentage bills the RENTAL-nature base only; product_value
+  // sums per-product deposit values; fixed uses the customer/workspace amount.
+  // Method 'none' leaves any manually-set deposit alone (the 6d manual flow owns
+  // it), so we only compute/store when a real method is configured.
+  const depositSettings = readDeposit(wsRows[0]?.settings);
+  const depMethod = (order.person_deposit_method_override as string | null) ?? depositSettings.method ?? 'none';
+  if (depMethod !== 'none') {
+    let depositRequired = 0;
+    if (depMethod === 'order_percentage') {
+      const pct = Number(order.person_deposit_percentage_bps ?? depositSettings.percentage_bps ?? 0);
+      depositRequired = Math.floor((depositBasePaise * pct) / 10000);
+    } else if (depMethod === 'product_value') {
+      depositRequired = depositProductSum;
+    } else if (depMethod === 'fixed') {
+      depositRequired = Number(order.person_deposit_value_paise ?? depositSettings.value_paise ?? 0);
+    }
+    if (Number(order.deposit_required_paise ?? 0) !== depositRequired
+        || (order.deposit_method_used ?? null) !== depMethod) {
+      await sql`
+        UPDATE orders SET deposit_required_paise = ${depositRequired}::bigint,
+                          deposit_method_used = ${depMethod}::deposit_method, updated_at = now()
+        WHERE id = ${orderId}::uuid AND workspace_id = ${workspaceId}::uuid
+      `;
+      changed = true;
+    }
+  }
+
+  // Persist the GST resolution snapshot (Sub-turn 13) when it moved. state_assumed
+  // drives the block-with-confirm at invoice finalisation.
+  if ((order.gst_state_code ?? null) !== (gst.customerCode ?? null)
+      || (order.state_assumed ?? false) !== gst.stateAssumed) {
+    await sql`
+      UPDATE orders SET gst_state_code = ${gst.customerCode}::text,
+                        state_assumed = ${gst.stateAssumed}::boolean,
+                        updated_at = now()
+      WHERE id = ${orderId}::uuid AND workspace_id = ${workspaceId}::uuid
+    `;
+    changed = true;
+  }
 
   const totalsChanged =
     oldTotals.subtotal_paise !== newTotals.subtotal_paise ||

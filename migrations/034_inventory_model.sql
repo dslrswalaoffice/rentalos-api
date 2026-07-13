@@ -148,7 +148,13 @@ ALTER TABLE order_items
   ADD COLUMN IF NOT EXISTS priced_method      pricing_method,
   ADD COLUMN IF NOT EXISTS priced_charge_period charge_period,
   ADD COLUMN IF NOT EXISTS priced_tier_id     uuid REFERENCES pricing_tiers(id) ON DELETE SET NULL,
-  ADD COLUMN IF NOT EXISTS price_explain      jsonb;
+  -- Full resolved-price snapshot: method, charge period, tier + multiplier, each
+  -- rule + its adjustment, AND the priced_inputs (dates + quantity) that produced
+  -- it. Recompute re-prices a line ONLY when its own priced_inputs change — an
+  -- external structure/ruleset edit never rewrites an existing line (Booqable's
+  -- "does not update prices for products already on orders"). An explicit
+  -- Recalculate action forces a re-price.
+  ADD COLUMN IF NOT EXISTS price_breakdown    jsonb;
 
 -- Negative unit price is legal ONLY on a custom line (fixed-amount discounts).
 -- Existing coupon 'discount' lines carry a negative total but unit stays >= 0,
@@ -197,4 +203,4 @@ ON CONFLICT (product_id, location_id) DO NOTHING;
 COMMENT ON TABLE pricing_structures IS 'Multiplier-based rental pricing (Sub-turn 13). Tiers multiply the product base_price_paise; is_template=true means reusable across products.';
 COMMENT ON TABLE stock_levels IS 'Per-location bulk stock (Sub-turn 13). Serialized stock uses assets.location_id; bulk uses this. Supersedes products.stock_quantity.';
 COMMENT ON COLUMN products.nature IS 'rental (comes back) | service (no availability constraint) | sale (quantity on hand, decremented at dispatch, never returns).';
-COMMENT ON COLUMN order_items.price_explain IS 'Snapshot of how this line was priced (method, charge period, tier, rules applied) — so the number is explainable months later.';
+COMMENT ON COLUMN order_items.price_breakdown IS 'Resolved-price snapshot: method, charge period, tier+multiplier, rules+adjustments, and priced_inputs (dates+quantity). Kept until the line''s own inputs change or an explicit Recalculate — external config edits never rewrite it.';
