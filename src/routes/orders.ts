@@ -1027,10 +1027,20 @@ const addItemSchema = z.object({
   parent_item_id:    z.string().uuid().optional(),
   description:       z.string().min(1).max(500),
   quantity:          z.number().int().positive().default(1),
+  // Sub-turn 13-0: for a RENTAL line the SERVER computes the rate from the
+  // product — a client-supplied unit_amount_paise/daily_rate_paise is ignored
+  // (and billable_days always comes from the order window via recompute).
+  // Non-rental lines (delivery_fee, damage, other, …) are operator-priced, so
+  // unit_amount_paise still applies to them. A rental price change is only
+  // possible through `override`, which requires orders.override_price.
   unit_amount_paise: z.number().int().default(0),
   daily_rate_paise:  z.number().int().optional(),
   billable_days:     z.number().int().positive().optional(),
   sort_order:        z.number().int().default(0),
+  override: z.object({
+    unit_amount_paise: z.number().int(),
+    label:             z.string().min(1).max(200),
+  }).optional(),
 });
 
 orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
@@ -1051,28 +1061,58 @@ orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
     return c.json({ error: 'locked' }, 409);
   }
 
-  // Rental items must have a valid product from this workspace.
+  // Resolve the line's money SERVER-SIDE (Sub-turn 13-0). For a rental line the
+  // rate comes from the product, never the client; the only way to set a
+  // different price is an explicit `override`, which requires
+  // orders.override_price. Non-rental lines stay operator-priced.
+  let lineDailyRate: number | null = null;
+  let lineUnit = input.unit_amount_paise;
+  let manualPrice = false;
+  let overrideLabel: string | null = null;
+
   if (input.item_type === 'rental') {
     if (!input.product_id) {
       return c.json({ error: 'invalid_request', reason: 'product_id_required_for_rental' }, 400);
     }
-    const p = await query<{ id: string }>(sql`
-      SELECT id FROM products
+    const p = await query<{ id: string; daily_rate: number }>(sql`
+      SELECT id, daily_rate FROM products
       WHERE id = ${input.product_id}
         AND workspace_id = ${session.workspace.id}
         AND deleted_at IS NULL
       LIMIT 1
     `);
     if (p.length === 0) return c.json({ error: 'product_not_found' }, 404);
+
+    if (input.override) {
+      if (!can(session, 'orders.override_price')) {
+        return c.json({ error: 'forbidden', required_permission: ['orders.override_price'] }, 403);
+      }
+      lineDailyRate = input.override.unit_amount_paise;
+      lineUnit = input.override.unit_amount_paise;
+      manualPrice = true;
+      overrideLabel = input.override.label;
+    } else {
+      // Server-authoritative: the product's own rate. Client rate fields ignored.
+      lineDailyRate = Number(p[0]!.daily_rate);
+      lineUnit = Number(p[0]!.daily_rate);
+    }
+  } else if (input.override) {
+    // Override on a non-rental line is still a permissioned, labelled act.
+    if (!can(session, 'orders.override_price')) {
+      return c.json({ error: 'forbidden', required_permission: ['orders.override_price'] }, 403);
+    }
+    lineUnit = input.override.unit_amount_paise;
+    manualPrice = true;
+    overrideLabel = input.override.label;
   }
 
-  const totalAmount = input.unit_amount_paise * input.quantity;
+  const totalAmount = lineUnit * input.quantity;
 
   const inserted = await query<OrderItemRow>(sql`
     INSERT INTO order_items (
       workspace_id, order_id, parent_item_id, item_type, product_id,
       description, quantity, daily_rate_paise, billable_days,
-      unit_amount_paise, total_amount_paise, sort_order
+      unit_amount_paise, total_amount_paise, manual_price, price_override_label, sort_order
     ) VALUES (
       ${session.workspace.id},
       ${id},
@@ -1081,10 +1121,12 @@ orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
       ${input.product_id ?? null}::uuid,
       ${input.description},
       ${input.quantity},
-      ${input.daily_rate_paise ?? null},
+      ${lineDailyRate}::bigint,
       ${input.billable_days ?? null},
-      ${input.unit_amount_paise},
+      ${lineUnit},
       ${totalAmount},
+      ${manualPrice}::boolean,
+      ${overrideLabel}::text,
       ${input.sort_order}
     )
     RETURNING *
@@ -1174,9 +1216,13 @@ orders.patch('/:id/items/:itemId', requirePermission('orders.edit'), async (c) =
   // A null here means "leave manual_price as-is" (COALESCE below preserves it).
   const isRental = existing[0]!.item_type === 'rental';
   const wantsRevert = p.manual_price === false;
+  // Sub-turn 13-0: changing EITHER unit_amount_paise OR daily_rate_paise on a
+  // rental line is a price override (the server otherwise owns the rate), so
+  // both require orders.override_price via the guard below.
   const wantsOverride =
     !wantsRevert &&
-    ((p.unit_amount_paise !== undefined && isRental) || p.manual_price === true);
+    (((p.unit_amount_paise !== undefined || p.daily_rate_paise !== undefined) && isRental)
+      || p.manual_price === true);
   const manualPriceToSet: boolean | null = wantsRevert
     ? false
     : wantsOverride
