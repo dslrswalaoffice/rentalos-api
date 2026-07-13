@@ -84,6 +84,7 @@ export type AuditEventType =
   | 'orders.invoice.status.changed'
   | 'orders.invoice.status.forced'
   | 'orders.dispatch.batch'
+  | 'orders.dispatch.reverted'
   | 'orders.return.batch'
   | 'orders.contract.signed'
   | 'orders.contract.unsigned_generated'
