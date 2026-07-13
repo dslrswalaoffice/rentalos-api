@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#635bff">
+  <meta name="theme-color" content="#202058">
   <title>Sign in · RentalOS</title>
   <!-- Sub-turn 9d — perceived-speed: warm a connection to the API origin
        before the first fetch (same-origin here, harmless where it is). The
        Google Fonts links are dropped in favour of the system font stack so the
        sign-in text paints instantly with no FOIT. -->
   <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23635bff'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
   <!-- Stripe-inspired design system (Sub-turn 9d completes the rollout). Loaded
        before the page's own styles so this bespoke split-screen sign-in stays
        authoritative for its layout while adopting the shared token palette via
@@ -22,24 +22,24 @@
        sign-in re-skins with zero markup/JS changes — the layout mechanics and
        all element IDs are byte-identical. Fonts drop to the system stack. -------- */
     :root {
-      --ink:            #1a1f36;   /* warm near-black — primary text */
-      --text:           #3c4257;
-      --head:           #635bff;   /* violet accent — headings / links */
-      --muted:          #8792a2;
-      --muted-strong:   #4f566b;
+      --ink:            #202058;   /* warm near-black — primary text */
+      --text:           #3f4350;
+      --head:           #26235a;   /* violet accent — headings / links */
+      --muted:          #6b7280;
+      --muted-strong:   #3f4350;
       --card:           #ffffff;   /* elevated surface */
-      --bg:             #f7f8fa;   /* warm off-white page bg */
-      --side:           #f7f8fa;   /* input bg */
-      --border:         #e3e8ee;
-      --border-strong:  #d5dbe4;
-      --accent-soft:    #e9e8ff;   /* violet soft */
-      --orange:         #635bff;   /* brand mark — remapped to the violet accent */
-      --focus:          #a5a0ff;   /* violet focus ring */
+      --bg:             #eef0f3;   /* warm off-white page bg */
+      --side:           #fcfcfd;   /* input bg */
+      --border:         #e3e6ea;
+      --border-strong:  #d8dbe0;
+      --accent-soft:    #fbe9d7;   /* violet soft */
+      --orange:         #e88020;   /* brand mark — remapped to the violet accent */
+      --focus:          #b9c0ee;   /* violet focus ring */
 
       /* system font stack — instant paint, no FOIT (Google Fonts dropped) */
-      --font-display: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
-      --font-body:    system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
-      --font-mono:    ui-monospace, "SF Mono", "JetBrains Mono", Consolas, monospace;
+      --font-display: 'Space Grotesk', 'Arzachel', system-ui, -apple-system, sans-serif;
+      --font-body:    'Manrope', 'Ponjoung', system-ui, -apple-system, sans-serif;
+      --font-mono:    'JetBrains Mono', ui-monospace, monospace;
 
       --shadow-card:    0 20px 48px -24px rgba(16, 24, 40, 0.28);
       --shadow-btn:     0 6px 16px -6px rgba(32, 32, 88, 0.50);
@@ -463,7 +463,8 @@
   <!-- Vercel Speed Insights -->
   <script src="/_lib/speed-insights.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
-</head>
+    <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  </head>
 <body>
   <main class="page">
     <!-- ============ LEFT: auth ============ -->

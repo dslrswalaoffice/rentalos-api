@@ -7,7 +7,7 @@
   <title>Person · RentalOS</title>
   <!-- Sub-turn 9c — preconnect to the API origin (perceived-speed). -->
   <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23635bff'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
   <!-- Critical CSS: system font + off-white bg → instant paint, no FOIT. -->
   <style>
     :root { --bg-page:#f7f8fa; --text-primary:#1a1f36; --font-sys: system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif; }
@@ -22,14 +22,14 @@
   <style>
     /* Sub-turn 9c — legacy tokens remapped onto the Stripe design-system palette. */
     :root {
-      --ink:#1a1f36; --text:#4f566b; --head:#635bff; --muted:#8792a2; --muted-strong:#4f566b; --muted-soft:#a3acb9;
-      --card:#ffffff; --bg:#f7f8fa; --side:#ffffff; --chrome:#f0f2f5; --thead:#f0f2f5; --border:#e3e8ee; --border-strong:#c1c9d2;
-      --accent-soft:#eeecff; --border-accent:#d7d5ff; --orange:#635bff; --orange-soft:#eeecff; --focus:#b9b5ff;
-      --ok-solid:#00875a; --ok-soft:#e3fcef; --ok-strong:#006644; --warn-solid:#b25e09; --warn-soft:#fef3c7; --warn-strong:#92400e;
-      --bad-solid:#cd3d64; --bad-soft:#fce4ec; --bad-strong:#a01c40;
-      --font-display:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;
-      --font-body:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;
-      --font-mono:ui-monospace,"SF Mono",Monaco,Consolas,"Liberation Mono",monospace;
+      --ink:#202058; --text:#3f4350; --head:#26235a; --muted:#6b7280; --muted-strong:#3f4350; --muted-soft:#9aa1ad;
+      --card:#ffffff; --bg:#eef0f3; --side:#fcfcfd; --chrome:#f1f2f4; --thead:#fafbfc; --border:#e3e6ea; --border-strong:#d8dbe0;
+      --accent-soft:#fbe9d7; --border-accent:#c7cdf5; --orange:#e88020; --orange-soft:#fbeee0; --focus:#b9c0ee;
+      --ok-solid:#177a45; --ok-soft:#e8f6ee; --ok-strong:#177a45; --warn-solid:#b9791b; --warn-soft:#fbf2e2; --warn-strong:#8a5a12;
+      --bad-solid:#b42318; --bad-soft:#fdecec; --bad-strong:#b42318;
+      --font-display:'Space Grotesk', 'Arzachel', system-ui, -apple-system, sans-serif;
+      --font-body:'Manrope', 'Ponjoung', system-ui, -apple-system, sans-serif;
+      --font-mono:'JetBrains Mono', ui-monospace, monospace;
       --sb-w:232px;
     }
     *,*::before,*::after { box-sizing:border-box; }
@@ -166,13 +166,13 @@
     /* modal */
     .modal-backdrop { position:fixed; inset:0; background:rgba(24,26,40,0.44); backdrop-filter:blur(3px); z-index:100; display:none; align-items:flex-start; justify-content:center; padding:40px 20px; overflow-y:auto; }
     .modal-backdrop.open { display:flex; }
-    .modal { background:var(--card); border:1px solid var(--border-strong); border-radius:16px; box-shadow:0 30px 60px -20px rgba(16,24,40,0.45); width:100%; max-width:520px; overflow:hidden; margin:auto; }
-    .modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--border); }
+    .modal { max-height: 90vh; display: flex; flex-direction: column; background:var(--card); border:1px solid var(--border-strong); border-radius:16px; box-shadow:0 30px 60px -20px rgba(16,24,40,0.45); width:100%; max-width:520px; overflow:hidden; margin:auto; }
+    .modal-head { flex-shrink: 0; display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--border); }
     .modal-title { font-family:var(--font-display); font-weight:600; font-size:17px; color:var(--ink); }
     .modal-close { background:transparent; border:none; padding:6px; border-radius:6px; cursor:pointer; color:var(--muted); }
     .modal-close:hover { background:var(--bg); color:var(--ink); }
-    .modal-body { padding:20px 22px 8px; }
-    .modal-foot { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid var(--border); background:var(--thead); }
+    .modal-body { overflow-y: auto; flex: 1 1 auto; min-height: 0; padding:20px 22px 8px; }
+    .modal-foot { flex-shrink: 0; display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid var(--border); background:var(--thead); }
     .field { margin-bottom:16px; }
     .field label { display:block; font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:0.08em; color:var(--muted-strong); text-transform:uppercase; margin-bottom:6px; }
     .field label .hint { text-transform:none; letter-spacing:0; font-weight:400; color:var(--muted-soft); font-family:var(--font-body); font-size:11px; margin-left:6px; }
@@ -251,7 +251,8 @@
   <!-- Vercel Speed Insights -->
   <script src="/_lib/speed-insights.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
-</head>
+    <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  </head>
 <body>
   <div class="app">
     <aside class="sb">
@@ -573,7 +574,10 @@
     }
 
     function infoRow(label, value) {
-      const v = value ? escapeHtml(value) : '<span class="empty">—</span>';
+      // 13-A: an EMPTY field is a quiet muted em-dash at normal row height — not
+      // the page-level `.empty` box (dashed border + 56px padding), which was the
+      // bug (a loading/empty-state box misused for an inline empty value).
+      const v = value ? escapeHtml(value) : '—';
       return `<div class="info-row"><div class="info-label">${escapeHtml(label)}</div><div class="info-value${value?'':' empty'}">${v}</div></div>`;
     }
 

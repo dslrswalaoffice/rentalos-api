@@ -1,7 +1,8 @@
 /* ==========================================================================
    RentalOS Design System (Sub-turn 9a)
    --------------------------------------------------------------------------
-   Stripe-inspired token layer + component styles + skeleton loaders.
+   Token layer + component styles + skeleton loaders.
+   Palette re-tokenized to the DSLRSWALA prototype (navy + orange) in Sub-turn 13-A.
 
    Loaded ONLY on settings.html in 9a (proof of concept). Uses standard class
    names (.btn, .card, .input, …) and :root custom properties. Where it is
@@ -16,52 +17,52 @@
    -------------------------------------------------------------------------- */
 :root {
   /* Neutrals */
-  --bg-page: #f7f8fa;                 /* off-white page background */
+  --bg-page: #eef0f3;                 /* off-white page background */
   --bg-elevated: #ffffff;             /* cards, modals */
-  --bg-subtle: #f0f2f5;               /* subdued panels */
+  --bg-subtle: #f1f2f4;               /* subdued panels */
   --bg-hover: rgba(0, 0, 0, 0.03);    /* row hover */
   --bg-active: rgba(0, 0, 0, 0.06);   /* pressed states */
 
   /* Text */
-  --text-primary: #1a1f36;            /* near-black, warm */
-  --text-secondary: #4f566b;          /* body */
-  --text-tertiary: #8792a2;           /* labels, meta */
-  --text-quaternary: #a3acb9;         /* placeholders, hints */
+  --text-primary: #202058;            /* near-black, warm */
+  --text-secondary: #3f4350;          /* body */
+  --text-tertiary: #6b7280;           /* labels, meta */
+  --text-quaternary: #b0b6bf;         /* placeholders, hints */
   --text-inverse: #ffffff;            /* on dark backgrounds */
 
   /* Borders */
   --border-subtle: #eef0f3;
-  --border-default: #e3e8ee;
-  --border-strong: #c1c9d2;
-  --border-focus: var(--accent);
+  --border-default: #e3e6ea;
+  --border-strong: #d8dbe0;
+  --border-focus: #26235a;
 
-  /* Accent — muted Stripe-style violet-blue */
-  --accent: #635bff;
-  --accent-hover: #524cd4;
-  --accent-active: #4139a8;
-  --accent-soft: #eeecff;
-  --accent-text: #4b45c7;
+  /* Accent — prototype orange */
+  --accent: #e88020;
+  --accent-hover: #cf6f16;
+  --accent-active: #b25f12;
+  --accent-soft: #fbe9d7;
+  --accent-text: #a85f12;
 
   /* Semantic */
-  --success: #00875a;
-  --success-soft: #e3fcef;
-  --success-text: #006644;
+  --success: #177a45;
+  --success-soft: #e8f6ee;
+  --success-text: #177a45;
 
-  --warning: #b25e09;
-  --warning-soft: #fef3c7;
-  --warning-text: #92400e;
+  --warning: #b9791b;
+  --warning-soft: #fbf2e2;
+  --warning-text: #8a5a12;
 
-  --danger: #cd3d64;
-  --danger-soft: #fce4ec;
-  --danger-text: #a01c40;
+  --danger: #b42318;
+  --danger-soft: #fdecec;
+  --danger-text: #b42318;
 
-  --info: #0073e6;
+  --info: #2438a8;
   --info-soft: #e0f2fe;
-  --info-text: #036fa3;
+  --info-text: #2438a8;
 
   /* Typography */
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Monaco, Consolas, "Liberation Mono", monospace;
+  --font-sans: 'Manrope', 'Ponjoung', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
   --fs-xs: 11px;
   --fs-sm: 12px;
@@ -106,7 +107,7 @@
   --shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 6px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.06), 0 2px 12px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.10), 0 4px 16px rgba(0, 0, 0, 0.06);
-  --shadow-focus: 0 0 0 3px rgba(99, 91, 255, 0.15);
+  --shadow-focus: 0 0 0 3px rgba(232, 128, 32, 0.18);
 
   /* Transitions */
   --transition-fast: 100ms ease-out;
@@ -116,6 +117,23 @@
   /* Layout */
   --sidebar-width: 240px;
   --header-height: 56px;
+
+  /* ---- Sub-turn 13-A: prototype-named tokens (navy-ink + orange), aliasing the
+     remapped palette above so fresh markup + any page using these names resolve
+     to the same values. Extracted from RentalOS_Prototype_standalone.html. ---- */
+  --ink: #202058; --head: #26235a;
+  --accent-soft-2: #fbeee0;
+  --text: #3f4350; --sub: #9aa1ad; --dim: #b0b6bf; --nav-fg: #5b616b;
+  --canvas: #eef0f3; --card: #ffffff; --side: #fcfcfd; --chrome: #f1f2f4;
+  --thead: #fafbfc; --hover: #f6f7fb;
+  --border: #e3e6ea; --border-accent: #c7cdf5; --nav-active-bg: #ecebf4;
+  --ok-fg: #177a45; --ok-bg: #e8f6ee;
+  --warn-fg: #b9791b; --warn-bg: #fbf2e2; --warn-fg-deep: #8a5a12;
+  --bad-fg: #b42318; --bad-bg: #fdecec; --bad-bd: #f3cfd2;
+  --fa: 'Space Grotesk', 'Arzachel', system-ui, sans-serif;
+  --fp: 'Manrope', 'Ponjoung', system-ui, sans-serif;
+  --fm: 'JetBrains Mono', ui-monospace, monospace;
+  --radius-card: 14px;
 }
 
 /* --------------------------------------------------------------------------
@@ -556,6 +574,7 @@ select {
 }
 
 .modal-head {
+  flex-shrink: 0;
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
@@ -572,9 +591,11 @@ select {
   padding: var(--space-5);
   overflow-y: auto;
   flex: 1;
+  min-height: 0; /* 13-A: without this the flex child won't shrink and scroll never engages */
 }
 
 .modal-foot {
+  flex-shrink: 0;
   padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-subtle);
@@ -2001,4 +2022,59 @@ select {
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 200ms;
+}
+
+/* ==========================================================================
+   Sub-turn 13-A — prototype interaction details. Small, and most of what makes
+   it feel finished. Tokens/polish only; no component restructured.
+   ========================================================================== */
+body { font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+
+/* Focus rings — navy for controls, soft-blue for fields (prototype). */
+a:focus-visible, button:focus-visible {
+  outline: 2px solid var(--head);
+  outline-offset: 2px;
+  border-radius: 7px;
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid #b9c0ee;
+  outline-offset: 1px;
+}
+input::placeholder, textarea::placeholder { color: var(--dim); }
+input:hover:not(:focus), select:hover, textarea:hover:not(:focus) { border-color: #c7ccd3; }
+
+/* Empty-state em-dash — a quiet field value, NOT a dashed skeleton box. */
+.field-value--empty { color: var(--dim); font-family: var(--fp); }
+
+/* KPI tile hover (prototype). */
+.metric-tile { transition: box-shadow .16s ease, transform .1s ease, border-color .16s ease; }
+.metric-tile:hover {
+  box-shadow: 0 12px 26px -14px rgba(16,24,40,.30);
+  transform: translateY(-1px);
+  border-color: #d3d7e2;
+}
+.metric-tile:active { transform: translateY(0) scale(0.997); }
+
+/* Scrollbar — 11px, padding-box inset. */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb {
+  background: #d3d7dd; border-radius: 7px;
+  border: 3px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: #bfc4cc; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Toast — navy. */
+.toast {
+  background: var(--ink); color: #fff; border-radius: 11px;
+  box-shadow: 0 16px 40px -12px rgba(16,24,40,.5);
+}
+
+/* Page entry. */
+@keyframes mcRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: no-preference) {
+  .main > *:last-child { animation: mcRise .34s cubic-bezier(.22,.61,.36,1) both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
 }
