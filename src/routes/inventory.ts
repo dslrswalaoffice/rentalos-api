@@ -159,6 +159,7 @@ inventory.get('/products', async (c) => {
       -- default until set — never 0%, which would be a compliance violation).
       p.nature::text AS nature, p.tracking_method::text AS tracking_method,
       p.pricing_method::text AS pricing_method, p.base_price_paise, p.charge_period::text AS charge_period,
+      p.pricing_structure_id, p.pricing_ruleset_id,
       p.gst_rate_bps, p.is_taxable, p.security_deposit_value_paise,
       (p.is_taxable AND p.gst_rate_bps IS NULL) AS gst_rate_missing,
       p.is_active, p.is_kit,
@@ -263,6 +264,7 @@ inventory.get('/products/:id', async (c) => {
       -- default until set — never 0%, which would be a compliance violation).
       p.nature::text AS nature, p.tracking_method::text AS tracking_method,
       p.pricing_method::text AS pricing_method, p.base_price_paise, p.charge_period::text AS charge_period,
+      p.pricing_structure_id, p.pricing_ruleset_id,
       p.gst_rate_bps, p.is_taxable, p.security_deposit_value_paise,
       (p.is_taxable AND p.gst_rate_bps IS NULL) AS gst_rate_missing,
       p.is_active, p.is_kit,
@@ -355,7 +357,18 @@ inventory.get('/products/:id', async (c) => {
   `);
   // Combined manual + co-rental recommendations preview (Sub-turn 8c).
   const recommendations = await loadRecommendations(session.workspace.id, id, 6);
-  return c.json({ product, assets, assets_by_location, custom_fields, tags, downtimes, recommendations });
+  // Sub-turn 13 chunk 9 — per-location on-hand for BULK products (capacity for
+  // rental-bulk, stock for sale-bulk). Powers the per-location stepper UI. Tracked
+  // products have no stock_levels rows (their capacity is COUNT(assets)).
+  const stock_levels = await query<{ location_id: string; location_name: string | null; quantity: number }>(sql`
+    SELECT sl.location_id, l.name AS location_name, sl.quantity
+    FROM stock_levels sl
+    LEFT JOIN locations l ON l.id = sl.location_id
+    WHERE sl.product_id = ${id}::uuid
+      AND l.workspace_id = ${session.workspace.id}::uuid
+    ORDER BY l.name ASC
+  `);
+  return c.json({ product, assets, assets_by_location, stock_levels, custom_fields, tags, downtimes, recommendations });
 });
 
 // ============================================================================

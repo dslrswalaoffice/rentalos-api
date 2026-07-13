@@ -165,6 +165,9 @@
     .radio-content strong { font-size: 13.5px; color: var(--head); }
     .radio-hint { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
     .hint.locked { color: var(--warn-strong); font-style: italic; font-size: 11.5px; margin: 8px 0 0; }
+    /* Sub-turn 13 chunk 9 — permanent-decision chrome on the create modal. */
+    .immutable-note { font-size: 11.5px; color: var(--warn-strong); background: var(--warn-soft); border: 1px solid #f0dcae; border-radius: 8px; padding: 8px 10px; margin-bottom: 14px; line-height: 1.45; }
+    .lock-chip { font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--warn-strong); background: var(--warn-soft); border: 1px solid #f0dcae; border-radius: 5px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; }
     .kit-check { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--thead); cursor: pointer; font-size: 13px; color: var(--ink); }
     .kit-check input { margin: 0; }
     .kit-component-row { display: grid; grid-template-columns: 1fr 90px 70px; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); align-items: center; }
@@ -241,6 +244,57 @@
     .advanced { display: none; }
     .advanced.open { display: block; padding-top: 6px; border-top: 1px dashed var(--border); margin-top: 10px; }
     .modal-foot { flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--thead); }
+    /* The <form> sits between the flex .modal and the scrolling .modal-body — make
+       it a flex column that fills the remaining height so the body actually scrolls
+       and the footer stays pinned (completes the 13-A three-region fix). */
+    #edit-form, #add-form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+    /* Sub-turn 13 chunk 9 — edit-modal tabs + identity badges (pinned, don't scroll). */
+    .identity-badges { flex-shrink: 0; display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 22px 0; }
+    .id-badge { font-size: 11px; font-weight: 600; color: var(--head); background: var(--chrome); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; display: inline-flex; align-items: center; gap: 5px; }
+    .id-badge .id-badge-k { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 9.5px; letter-spacing: .05em; }
+    .modal-tabs { flex-shrink: 0; display: flex; gap: 2px; padding: 12px 22px 0; border-bottom: 1px solid var(--border); }
+    .modal-tab { appearance: none; background: transparent; border: none; border-bottom: 2px solid transparent; padding: 8px 12px; font-family: var(--font-body); font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
+    .modal-tab:hover { color: var(--head); }
+    .modal-tab.active { color: var(--orange); border-bottom-color: var(--orange); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .gst-warn { font-size: 12px; color: var(--warn-strong); background: var(--warn-soft); border: 1px solid #f0dcae; border-radius: 8px; padding: 9px 11px; margin-bottom: 14px; line-height: 1.45; }
+    .structure-preview { margin-top: 10px; font-size: 12px; color: var(--muted-strong); }
+    .structure-preview table { width: 100%; border-collapse: collapse; }
+    .structure-preview td { padding: 3px 6px; border-bottom: 1px solid var(--border); }
+    .structure-preview td.sp-price { text-align: right; font-family: var(--font-mono); color: var(--head); }
+    .stock-loc-list { display: flex; flex-direction: column; gap: 8px; }
+    .stock-loc-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+    .stock-loc-row .sl-name { font-size: 13px; color: var(--ink); font-weight: 500; }
+    .stepper { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .stepper button { appearance: none; border: none; background: var(--chrome); width: 30px; height: 30px; font-size: 16px; line-height: 1; color: var(--head); cursor: pointer; }
+    .stepper button:hover { background: var(--bg); }
+    .stepper input { width: 54px; text-align: center; border: none; border-left: 1px solid var(--border); border-right: 1px solid var(--border); border-radius: 0; height: 30px; font-family: var(--font-mono); }
+    /* Structure builder */
+    .sb-tier-head, .sb-tier-row { display: grid; grid-template-columns: 1.2fr 0.8fr 1fr 32px; gap: 8px; align-items: center; }
+    .sb-tier-head { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 6px; font-weight: 600; }
+    .sb-tier-row { margin-bottom: 8px; }
+    .sb-tier-row .sb-dur { display: flex; gap: 4px; }
+    .sb-tier-row input[type=number] { width: 100%; }
+    .sb-tier-row .sb-del { appearance: none; border: none; background: transparent; color: var(--bad-strong); cursor: pointer; font-size: 16px; }
+    .sb-overflow-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted-strong); flex-wrap: wrap; }
+    .sb-overflow-price { font-family: var(--font-mono); color: var(--head); font-weight: 600; }
+    /* Ruleset builder */
+    .rb-order-note { font-size: 11.5px; color: var(--muted); margin: 10px 0; }
+    .rb-rule-row { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 10px; background: var(--card); }
+    .rb-rule-row[draggable=true] { cursor: grab; }
+    .rb-rule-row.dragging { opacity: .5; }
+    .rb-rule-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .rb-rule-head .rb-num { font-family: var(--font-mono); font-size: 11px; color: var(--muted); background: var(--chrome); border-radius: 5px; padding: 1px 6px; }
+    .rb-rule-head input { flex: 1; }
+    .rb-rule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .rb-rule-grid .field { margin: 0; }
+    .rb-dow { display: flex; gap: 4px; flex-wrap: wrap; }
+    .rb-dow label { font-size: 11px; display: flex; align-items: center; gap: 3px; border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; cursor: pointer; }
+    .rb-dow label:has(input:checked) { background: var(--accent-soft); border-color: var(--border-accent); }
+    .rb-empty-example { border: 1px dashed var(--border-strong); border-radius: 10px; padding: 14px; margin-top: 12px; background: var(--thead); }
+    .rb-example-title { font-size: 12px; font-weight: 600; color: var(--muted-strong); margin-bottom: 4px; }
+    .rb-example-body { font-size: 12.5px; color: var(--muted); }
     .btn { padding: 9px 16px; border-radius: 9px; font-family: var(--font-body); font-weight: 600; font-size: 12.5px; cursor: pointer; border: 1px solid transparent; }
     .btn.ghost { background: var(--card); color: var(--muted-strong); border-color: var(--border); }
     .btn.ghost:hover { background: var(--bg); border-color: var(--border-strong); color: var(--ink); }
@@ -462,14 +516,32 @@
         <div class="modal-body">
           <div id="form-error" class="form-error" style="display:none;"></div>
 
+          <!-- Sub-turn 13, chunk 9 — CREATE captures ONLY the irreversible decisions.
+               Everything else (pricing detail, GST, deposit, stock, cost) is edited
+               afterwards. Nature + tracking can never change after creation. -->
+          <div class="immutable-note">These two choices are permanent. To change them later you'd delete and recreate the product.</div>
+
           <div class="field field-important">
-            <label>Tracking mode <span class="req">*</span></label>
+            <label>Nature <span class="req">*</span> <span class="lock-chip">permanent</span></label>
+            <div class="radio-group" id="add-nature-group">
+              <label><input type="radio" name="add_nature" value="rental" checked>
+                <div class="radio-content"><strong>Rental</strong><span class="radio-hint">Goes out and comes back. Reserves capacity for a date window (cameras, lenses, lights).</span></div></label>
+              <label><input type="radio" name="add_nature" value="sale">
+                <div class="radio-content"><strong>Sale</strong><span class="radio-hint">Sold, not returned. Dispatch depletes on-hand stock (SD cards, consumables, ex-demo gear).</span></div></label>
+              <label><input type="radio" name="add_nature" value="service">
+                <div class="radio-content"><strong>Service</strong><span class="radio-hint">Labour or a flat charge — no physical unit to track (transport, an operator, an attender).</span></div></label>
+            </div>
+          </div>
+
+          <div class="field field-important" id="add-tracking-field">
+            <label>Tracking <span class="req">*</span> <span class="lock-chip">permanent</span></label>
             <div class="radio-group" id="add-mode-group">
               <label><input type="radio" name="add_tracking_mode" value="tracked" checked>
-                <div class="radio-content"><strong>Tracked</strong><span class="radio-hint">Each unit has an identifier. Best for high-value items where specific units matter (cameras, lenses).</span></div></label>
+                <div class="radio-content"><strong>Serialized</strong><span class="radio-hint">Each unit has its own identifier. Best where specific units matter (cameras, lenses).</span></div></label>
               <label><input type="radio" name="add_tracking_mode" value="bulk">
                 <div class="radio-content"><strong>Bulk</strong><span class="radio-hint">Fungible stock, no individual identifiers. Best for cheap / consumable items (cards, cables, tape).</span></div></label>
             </div>
+            <p class="hint" id="add-tracking-service-note" hidden>Service products aren't tracked — there's no physical unit.</p>
           </div>
           <div class="field" id="add-stock-field" hidden>
             <label for="f-stock">Stock quantity <span class="req">*</span></label>
@@ -604,135 +676,287 @@
         <div class="modal-title" id="edit-modal-title">Edit product</div>
         <button class="modal-close" id="edit-close" aria-label="Close">✕</button>
       </header>
+      <!-- Sub-turn 13 chunk 9 — nature + tracking are read-only identity, shown as
+           pinned badges; the mutable fields live in scrollable tabs below. -->
+      <div class="identity-badges" id="edit-identity"></div>
+      <div class="modal-tabs" id="edit-tabs" role="tablist">
+        <button type="button" class="modal-tab active" data-tab="general" role="tab">General</button>
+        <button type="button" class="modal-tab" data-tab="pricing" role="tab">Pricing</button>
+        <button type="button" class="modal-tab" data-tab="inventory" role="tab">Inventory</button>
+        <button type="button" class="modal-tab" data-tab="costs" id="tab-costs" role="tab" hidden>Costs</button>
+      </div>
       <form id="edit-form" novalidate>
+        <input type="hidden" id="e-tracking-mode">
         <div class="modal-body">
           <div id="edit-error" class="form-error" style="display:none;"></div>
-          <div class="field field-important">
-            <label>Tracking mode</label>
-            <div class="radio-group" id="edit-mode-group">
-              <label><input type="radio" name="edit_tracking_mode" value="tracked" disabled>
-                <div class="radio-content"><strong>Tracked</strong><span class="radio-hint">Each unit is a serialized asset.</span></div></label>
-              <label><input type="radio" name="edit_tracking_mode" value="bulk" disabled>
-                <div class="radio-content"><strong>Bulk</strong><span class="radio-hint">Fungible stock by quantity.</span></div></label>
-            </div>
-            <p class="hint locked">Tracking mode can't be changed after creation. Delete and recreate if needed.</p>
-          </div>
-          <div class="field" id="edit-stock-field" hidden>
-            <label for="e-stock">Stock quantity</label>
-            <input id="e-stock" type="number" min="0" step="1">
-            <div class="field-hint">Total units currently in stock. Update as you receive more or lose stock.</div>
-          </div>
-          <div class="field">
-            <label for="e-name">Product name</label>
-            <input id="e-name" type="text" maxlength="200" autocomplete="off">
-          </div>
-          <div class="field-row">
+
+          <!-- ============ GENERAL ============ -->
+          <div class="tab-panel active" data-panel="general">
             <div class="field">
-              <label for="e-category">Category</label>
-              <input id="e-category" type="text" maxlength="100" list="category-list" autocomplete="off" placeholder="e.g. Camera Body">
-              <datalist id="category-list"></datalist>
+              <label for="e-name">Product name</label>
+              <input id="e-name" type="text" maxlength="200" autocomplete="off">
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="e-category">Category</label>
+                <input id="e-category" type="text" maxlength="100" list="category-list" autocomplete="off" placeholder="e.g. Camera Body">
+                <datalist id="category-list"></datalist>
+              </div>
+              <div class="field">
+                <label for="e-hsn">HSN code <span class="hint">max 8 chars</span></label>
+                <input id="e-hsn" type="text" maxlength="8" style="font-family:var(--font-mono);" autocomplete="off" placeholder="85258010">
+              </div>
+            </div>
+            <div class="field field-image">
+              <label>Product image</label>
+              <div class="image-preview-area">
+                <img id="image-preview" src="" alt="" hidden>
+                <div class="image-placeholder" id="image-placeholder">
+                  <div class="placeholder-icon">🖼</div>
+                  <div class="placeholder-text">No image</div>
+                </div>
+              </div>
+              <div class="image-actions">
+                <label class="btn small" for="image-file-input" style="cursor:pointer;">Upload image</label>
+                <input type="file" id="image-file-input" accept="image/jpeg,image/png,image/webp" hidden>
+                <button type="button" class="btn ghost small" id="image-remove-btn" hidden>Remove</button>
+              </div>
+              <div class="image-progress" id="image-progress" hidden>
+                <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-bar-fill"></div></div>
+                <div class="progress-text" id="progress-text">Uploading…</div>
+              </div>
+              <div class="image-error" id="image-error" hidden></div>
+              <div class="field-hint" style="margin-top:12px;">Or paste an image URL:</div>
+              <input id="e-image" type="url" maxlength="2000" autocomplete="off" placeholder="https://…">
             </div>
             <div class="field">
-              <label for="e-hsn">HSN code <span class="hint">max 8 chars</span></label>
-              <input id="e-hsn" type="text" maxlength="8" style="font-family:var(--font-mono);" autocomplete="off" placeholder="85258010">
+              <label class="kit-check"><input type="checkbox" id="e-kit"> This is a kit (bundles multiple products)</label>
             </div>
+            <section class="modal-section" id="product-tags-section">
+              <h3 class="section-title">Tags</h3>
+              <div class="entity-tags" id="product-tags"></div>
+            </section>
+            <section class="modal-section" id="cf-section" data-cf-section hidden>
+              <h3 class="section-title">Custom fields</h3>
+              <div id="cf-inputs"></div>
+            </section>
+            <section class="modal-section" id="recommendations-section">
+              <h3 class="section-title">Recommendations</h3>
+              <p class="field-hint" style="margin-top:0;">Products commonly rented alongside this one. Manual curation shows first; auto-suggestions come from order history.</p>
+              <div class="reco-block">
+                <div class="reco-block-head"><h4>Manual</h4><button type="button" class="btn ghost tiny" id="add-reco-btn">+ Add</button></div>
+                <div id="reco-manual-list"></div>
+              </div>
+              <div class="reco-block">
+                <h4>From order history (last 180 days)</h4>
+                <div id="reco-auto-list"></div>
+              </div>
+            </section>
           </div>
-          <div class="field">
-            <label for="e-daily">Daily rate</label>
-            <div class="prefix-wrap"><span class="prefix">₹</span><input id="e-daily" type="number" min="1" step="1"></div>
-          </div>
-          <!-- Sub-turn 11 — purchase cost (owner/manager only; hidden for staff). -->
-          <div class="field" id="cost-field" hidden>
-            <label for="e-purchase-cost">Default cost per item <span class="hint">used to calculate ROI</span></label>
-            <div class="prefix-wrap"><span class="prefix">₹</span><input id="e-purchase-cost" type="number" min="0" step="1" placeholder="Not set"></div>
-            <div class="field-hint">Applies as a fallback to all stock of this product — past, current, and future. You can override it per unit.</div>
-            <div class="field-hint" id="e-cost-note"></div>
-          </div>
-          <div class="field field-image">
-            <label>Product image</label>
-            <div class="image-preview-area">
-              <img id="image-preview" src="" alt="" hidden>
-              <div class="image-placeholder" id="image-placeholder">
-                <div class="placeholder-icon">🖼</div>
-                <div class="placeholder-text">No image</div>
+
+          <!-- ============ PRICING ============ -->
+          <div class="tab-panel" data-panel="pricing">
+            <div class="gst-warn" id="e-gst-warn" hidden>⚠ GST rate not set — this product is billed at the workspace default (18%) until you set a rate below.</div>
+
+            <div class="field">
+              <label for="e-pricing-method">Pricing method</label>
+              <select id="e-pricing-method">
+                <option value="fixed_fee">Fixed fee — a rate per period (per day / week / …)</option>
+                <option value="fixed_price">Fixed price — one flat charge, any duration</option>
+                <option value="structure">Structure — duration tiers with multipliers</option>
+              </select>
+            </div>
+
+            <div class="field-row" id="e-price-row">
+              <div class="field">
+                <label for="e-daily" id="e-base-label">Base price</label>
+                <div class="prefix-wrap"><span class="prefix">₹</span><input id="e-daily" type="number" min="1" step="1"></div>
+                <div class="field-hint" id="e-base-hint">The rate charged per charge period.</div>
+              </div>
+              <div class="field" id="e-charge-period-field">
+                <label for="e-charge-period">Charge period</label>
+                <select id="e-charge-period">
+                  <option value="hour">Per hour</option>
+                  <option value="day" selected>Per day</option>
+                  <option value="week">Per week</option>
+                  <option value="month">Per month</option>
+                </select>
               </div>
             </div>
-            <div class="image-actions">
-              <label class="btn small" for="image-file-input" style="cursor:pointer;">Upload image</label>
-              <input type="file" id="image-file-input" accept="image/jpeg,image/png,image/webp" hidden>
-              <button type="button" class="btn ghost small" id="image-remove-btn" hidden>Remove</button>
-            </div>
-            <div class="image-progress" id="image-progress" hidden>
-              <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-bar-fill"></div></div>
-              <div class="progress-text" id="progress-text">Uploading…</div>
-            </div>
-            <div class="image-error" id="image-error" hidden></div>
-            <div class="field-hint" style="margin-top:12px;">Or paste an image URL:</div>
-            <input id="e-image" type="url" maxlength="2000" autocomplete="off" placeholder="https://…">
+
+            <section class="modal-section" id="e-structure-section" hidden>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h3 class="section-title">Duration structure</h3>
+                <button type="button" class="btn ghost tiny" id="e-edit-structure">Build / edit tiers</button>
+              </div>
+              <p class="field-hint" style="margin-top:0;">Multiply the base price by a tier for each duration. Pick a saved structure or build one.</p>
+              <select id="e-structure"><option value="">— No structure —</option></select>
+              <div id="e-structure-preview" class="structure-preview"></div>
+            </section>
+
+            <section class="modal-section">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h3 class="section-title">Price rules</h3>
+                <button type="button" class="btn ghost tiny" id="e-edit-ruleset">Build / edit rules</button>
+              </div>
+              <p class="field-hint" style="margin-top:0;">Weekend surcharges, half-day caps, seasonal pricing. Applied on top of the base.</p>
+              <select id="e-ruleset"><option value="">— No rules —</option></select>
+            </section>
+
+            <section class="modal-section">
+              <h3 class="section-title">Tax</h3>
+              <div class="field">
+                <label class="kit-check"><input type="checkbox" id="e-taxable"> Charge GST on this product</label>
+              </div>
+              <div class="field" id="e-gst-rate-field">
+                <label for="e-gst-rate">GST rate <span class="hint">%</span></label>
+                <div class="prefix-wrap"><input id="e-gst-rate" type="number" min="0" max="50" step="0.01" placeholder="18"><span class="prefix" style="border-left:1px solid var(--border);border-right:none;">%</span></div>
+                <div class="field-hint">Split into CGST+SGST (same state) or IGST (inter-state) automatically at invoice time.</div>
+              </div>
+            </section>
+
+            <section class="modal-section">
+              <h3 class="section-title">Deposit</h3>
+              <div class="field">
+                <label for="e-security-deposit">Security deposit <span class="hint">held, refundable</span></label>
+                <div class="prefix-wrap"><span class="prefix">₹</span><input id="e-security-deposit" type="number" min="0" step="1" placeholder="0"></div>
+                <div class="field-hint">Per-unit deposit collected when this product goes out. Custom order lines never count toward the deposit base.</div>
+              </div>
+            </section>
           </div>
-          <div class="field">
-            <label class="kit-check"><input type="checkbox" id="e-kit"> This is a kit (bundles multiple products)</label>
+
+          <!-- ============ INVENTORY ============ -->
+          <div class="tab-panel" data-panel="inventory">
+            <div class="field" id="edit-stock-field" hidden>
+              <label>Stock by location</label>
+              <div id="e-stock-locations" class="stock-loc-list"></div>
+              <input id="e-stock" type="hidden">
+              <div class="field-hint">On-hand quantity per location. For rental-bulk this is capacity; for sale-bulk it depletes as items dispatch.</div>
+            </div>
+            <section class="modal-section">
+              <h3 class="section-title">Availability</h3>
+              <p class="section-hint">Control how this product handles buffer time and overbooking.</p>
+              <div class="avail-field-row">
+                <div class="field field-narrow">
+                  <label for="e-buffer-before">Buffer before <span class="hint">hours</span></label>
+                  <input id="e-buffer-before" type="number" min="0" max="72" step="1" autocomplete="off">
+                  <div class="field-hint">Prep time before rentals start (charging, cleaning, packing)</div>
+                </div>
+                <div class="field field-narrow">
+                  <label for="e-buffer-after">Buffer after <span class="hint">hours</span></label>
+                  <input id="e-buffer-after" type="number" min="0" max="72" step="1" autocomplete="off">
+                  <div class="field-hint">Turnaround time after rentals end (inspection, reset)</div>
+                </div>
+                <div class="field field-narrow">
+                  <label for="e-shortage-limit">Shortage limit</label>
+                  <input id="e-shortage-limit" type="number" min="0" max="100" step="1" autocomplete="off">
+                  <div class="field-hint">Allow this many overbooks above capacity (0 = strict, no overbook)</div>
+                </div>
+              </div>
+            </section>
+            <section class="modal-section" id="asset-loc-section" hidden>
+              <h3 class="section-title">Asset locations</h3>
+              <p class="field-hint" style="margin-top:0;">Move individual units between locations. Changing a unit's location updates per-location availability.</p>
+              <div id="asset-loc-list"></div>
+            </section>
+            <section class="modal-section" id="downtimes-section">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h3 class="section-title">Downtimes</h3>
+                <button type="button" class="btn ghost tiny" id="add-downtime-btn">+ Add downtime</button>
+              </div>
+              <p class="field-hint" style="margin-top:0;">Maintenance windows that block this product's availability.</p>
+              <div id="downtimes-list"></div>
+            </section>
           </div>
-          <section class="modal-section">
-            <h3 class="section-title">Availability</h3>
-            <p class="section-hint">Control how this product handles buffer time and overbooking.</p>
-            <div class="avail-field-row">
-              <div class="field field-narrow">
-                <label for="e-buffer-before">Buffer before <span class="hint">hours</span></label>
-                <input id="e-buffer-before" type="number" min="0" max="72" step="1" autocomplete="off">
-                <div class="field-hint">Prep time before rentals start (charging, cleaning, packing)</div>
-              </div>
-              <div class="field field-narrow">
-                <label for="e-buffer-after">Buffer after <span class="hint">hours</span></label>
-                <input id="e-buffer-after" type="number" min="0" max="72" step="1" autocomplete="off">
-                <div class="field-hint">Turnaround time after rentals end (inspection, reset)</div>
-              </div>
-              <div class="field field-narrow">
-                <label for="e-shortage-limit">Shortage limit</label>
-                <input id="e-shortage-limit" type="number" min="0" max="100" step="1" autocomplete="off">
-                <div class="field-hint">Allow this many overbooks above capacity (0 = strict, no overbook)</div>
-              </div>
+
+          <!-- ============ COSTS ============ -->
+          <div class="tab-panel" data-panel="costs">
+            <div class="field" id="cost-field">
+              <label for="e-purchase-cost">Default cost per item <span class="hint">used to calculate ROI</span></label>
+              <div class="prefix-wrap"><span class="prefix">₹</span><input id="e-purchase-cost" type="number" min="0" step="1" placeholder="Not set"></div>
+              <div class="field-hint">Applies as a fallback to all stock of this product — past, current, and future. You can override it per unit.</div>
+              <div class="field-hint" id="e-cost-note"></div>
             </div>
-          </section>
-          <section class="modal-section" id="cf-section" data-cf-section hidden>
-            <h3 class="section-title">Custom fields</h3>
-            <div id="cf-inputs"></div>
-          </section>
-          <section class="modal-section" id="asset-loc-section" hidden>
-            <h3 class="section-title">Asset locations</h3>
-            <p class="field-hint" style="margin-top:0;">Move individual units between locations. Changing a unit's location updates per-location availability.</p>
-            <div id="asset-loc-list"></div>
-          </section>
-          <section class="modal-section" id="product-tags-section">
-            <h3 class="section-title">Tags</h3>
-            <div class="entity-tags" id="product-tags"></div>
-          </section>
-          <section class="modal-section" id="downtimes-section">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <h3 class="section-title">Downtimes</h3>
-              <button type="button" class="btn ghost tiny" id="add-downtime-btn">+ Add downtime</button>
-            </div>
-            <p class="field-hint" style="margin-top:0;">Maintenance windows that block this product's availability.</p>
-            <div id="downtimes-list"></div>
-          </section>
-          <section class="modal-section" id="recommendations-section">
-            <h3 class="section-title">Recommendations</h3>
-            <p class="field-hint" style="margin-top:0;">Products commonly rented alongside this one. Manual curation shows first; auto-suggestions come from order history.</p>
-            <div class="reco-block">
-              <div class="reco-block-head"><h4>Manual</h4><button type="button" class="btn ghost tiny" id="add-reco-btn">+ Add</button></div>
-              <div id="reco-manual-list"></div>
-            </div>
-            <div class="reco-block">
-              <h4>From order history (last 180 days)</h4>
-              <div id="reco-auto-list"></div>
-            </div>
-          </section>
+          </div>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn ghost" id="edit-cancel">Cancel</button>
           <button type="submit" class="btn primary" id="edit-submit">Save changes</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Sub-turn 13 chunk 9 — Structure builder (Booqable two-way price↔multiplier). -->
+  <div class="modal-backdrop" id="structure-modal">
+    <div class="modal" role="dialog" aria-labelledby="structure-modal-title" style="max-width:620px;">
+      <header class="modal-head">
+        <div class="modal-title" id="structure-modal-title">Duration structure</div>
+        <button class="modal-close" id="structure-close" aria-label="Close">✕</button>
+      </header>
+      <div class="modal-body">
+        <div id="structure-error" class="form-error" style="display:none;"></div>
+        <div class="field">
+          <label for="sb-name">Structure name</label>
+          <input id="sb-name" type="text" maxlength="200" placeholder="e.g. Camera body pricing">
+        </div>
+        <div class="field">
+          <label for="sb-example">Your example price <span class="hint">think in rupees, not multipliers</span></label>
+          <div class="prefix-wrap"><span class="prefix">₹</span><input id="sb-example" type="number" min="0" step="1" placeholder="9000"></div>
+          <div class="field-hint">A placeholder base so you can see resulting prices. The real base price lives on the product.</div>
+        </div>
+        <div class="sb-tier-head">
+          <span>Duration</span><span>Multiplier</span><span>Resulting price</span><span></span>
+        </div>
+        <div id="sb-tiers"></div>
+        <button type="button" class="btn ghost tiny" id="sb-add-tier" style="margin-top:8px;">+ Add tier</button>
+        <section class="modal-section">
+          <h3 class="section-title">Overflow</h3>
+          <p class="field-hint" style="margin-top:0;">Beyond the longest tier, charge each extra period at this rate.</p>
+          <div class="sb-overflow-row">
+            <span>each extra</span>
+            <select id="sb-overflow-period"><option value="">— none —</option><option value="hour">hour</option><option value="day">day</option><option value="week">week</option><option value="month">month</option></select>
+            <span>at</span>
+            <input id="sb-overflow-mult" type="number" min="0" step="0.05" placeholder="0.7" style="width:80px;">×
+            <span class="sb-overflow-price" id="sb-overflow-price">—</span>
+          </div>
+        </section>
+        <label class="kit-check" style="margin-top:14px;"><input type="checkbox" id="sb-template"> Save as a reusable template <span class="hint" style="margin-left:4px;">appears in Settings for every product</span></label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="structure-cancel">Cancel</button>
+        <button type="button" class="btn primary" id="structure-save">Save structure</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sub-turn 13 chunk 9 — Ruleset builder. -->
+  <div class="modal-backdrop" id="ruleset-modal">
+    <div class="modal" role="dialog" aria-labelledby="ruleset-modal-title" style="max-width:640px;">
+      <header class="modal-head">
+        <div class="modal-title" id="ruleset-modal-title">Price rules</div>
+        <button class="modal-close" id="ruleset-close" aria-label="Close">✕</button>
+      </header>
+      <div class="modal-body">
+        <div id="ruleset-error" class="form-error" style="display:none;"></div>
+        <div class="field">
+          <label for="rb-name">Ruleset name</label>
+          <input id="rb-name" type="text" maxlength="200" placeholder="e.g. Weekend + half-day">
+        </div>
+        <label class="kit-check"><input type="checkbox" id="rb-stacking"> Stack rules <span class="hint" style="margin-left:4px;">on = each rule compounds on the previous; off = additive</span></label>
+        <div class="rb-order-note" id="rb-order-note">Rules apply top-to-bottom. Order matters when stacking — drag to reorder.</div>
+        <div id="rb-rules"></div>
+        <button type="button" class="btn ghost tiny" id="rb-add-rule" style="margin-top:8px;">+ Add rule</button>
+        <div class="rb-empty-example" id="rb-empty-example">
+          <div class="rb-example-title">Example — a weekend rule would look like:</div>
+          <div class="rb-example-body">Name <b>Weekend surcharge</b> · Kind <b>adjust price</b> · When <b>Sat, Sun</b> · What <b>+20%</b></div>
+          <div class="field-hint" style="margin-top:6px;">Nothing is added automatically — build the rules your workspace needs.</div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="ruleset-cancel">Cancel</button>
+        <button type="button" class="btn primary" id="ruleset-save">Save rules</button>
+      </div>
     </div>
   </div>
 
@@ -1029,7 +1253,9 @@
       document.getElementById('f-stock').value = '';
       const trackedRadio = document.querySelector('input[name="add_tracking_mode"][value="tracked"]');
       if (trackedRadio) trackedRadio.checked = true;
-      applyAddMode('tracked');
+      const rentalRadio = document.querySelector('input[name="add_nature"][value="rental"]');
+      if (rentalRadio) rentalRadio.checked = true;
+      applyAddNature('rental');
       document.getElementById('advanced').classList.remove('open');
       document.getElementById('advanced-chev').style.transform = '';
       modal.classList.add('open');
@@ -1042,8 +1268,29 @@
       document.getElementById('add-stock-field').hidden = mode !== 'bulk';
       document.getElementById('add-units-field').hidden = mode === 'bulk';
     }
+    // Sub-turn 13 chunk 9 — NATURE CONSTRAINS TRACKING (enforced in the UI, not
+    // only the API). service ⇒ tracking forced to 'none' (whole control disabled,
+    // no units, no stock); rental/sale ⇒ serialized | bulk.
+    function applyAddNature(nature) {
+      const trackingField = document.getElementById('add-tracking-field');
+      const svcNote = document.getElementById('add-tracking-service-note');
+      const radios = document.querySelectorAll('input[name="add_tracking_mode"]');
+      if (nature === 'service') {
+        radios.forEach(r => { r.disabled = true; });
+        svcNote.hidden = false;
+        document.getElementById('add-stock-field').hidden = true;
+        document.getElementById('add-units-field').hidden = true;
+      } else {
+        radios.forEach(r => { r.disabled = false; });
+        svcNote.hidden = true;
+        const mode = document.querySelector('input[name="add_tracking_mode"]:checked')?.value || 'tracked';
+        applyAddMode(mode);
+      }
+    }
     document.querySelectorAll('input[name="add_tracking_mode"]').forEach(r =>
       r.addEventListener('change', () => applyAddMode(r.value)));
+    document.querySelectorAll('input[name="add_nature"]').forEach(r =>
+      r.addEventListener('change', () => applyAddNature(r.value)));
 
     document.getElementById('btn-add').addEventListener('click', openModal);
     document.getElementById('modal-close').addEventListener('click', closeModal);
@@ -1094,15 +1341,23 @@
       formError.style.display = 'none';
 
       const fd = new FormData(form);
+      const nature = (document.querySelector('input[name="add_nature"]:checked')?.value) || 'rental';
       const trackingMode = (document.querySelector('input[name="add_tracking_mode"]:checked')?.value) || 'tracked';
+      // Sub-turn 13 — derive the immutable tracking_method. service ⇒ none;
+      // else serialized (tracked) | bulk. tracking_method wins on the server.
+      const trackingMethod = nature === 'service' ? 'none' : (trackingMode === 'bulk' ? 'bulk' : 'serialized');
       const body = {
         name: (fd.get('name') || '').toString().trim(),
         category: (fd.get('category') || '').toString(),
         daily_rate: rupeesToPaise(fd.get('daily_rate') || 0),
         deposit: rupeesToPaise(fd.get('deposit') || 0),
-        tracking_mode: trackingMode,
+        nature,
+        tracking_method: trackingMethod,
+        tracking_mode: trackingMethod === 'bulk' ? 'bulk' : 'tracked',
       };
-      if (trackingMode === 'bulk') {
+      if (trackingMethod === 'none') {
+        // Service: no units, no stock.
+      } else if (trackingMethod === 'bulk') {
         body.stock_quantity = Math.max(0, parseInt(document.getElementById('f-stock').value || '0', 10) || 0);
       } else {
         body.initial_units = parseInt(fd.get('initial_units') || '1', 10);
@@ -1166,42 +1421,186 @@
       } catch { /* autocomplete is a nicety — ignore failures */ }
     }
 
-    function openEdit(id) {
+    // Sub-turn 13 chunk 9 — pricing config caches (loaded once per open).
+    let editStructures = [];
+    let editRulesets = [];
+
+    // Tab switching — content scrolls inside the panel; header/tabs/footer pinned.
+    function switchEditTab(name) {
+      document.querySelectorAll('#edit-tabs .modal-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.tab === name));
+      document.querySelectorAll('#edit-form .tab-panel').forEach(pnl =>
+        pnl.classList.toggle('active', pnl.dataset.panel === name));
+      // Scroll the body back to the top on tab change.
+      const body = editModal.querySelector('.modal-body');
+      if (body) body.scrollTop = 0;
+    }
+    document.querySelectorAll('#edit-tabs .modal-tab').forEach(t =>
+      t.addEventListener('click', () => switchEditTab(t.dataset.tab)));
+
+    const NATURE_LABEL = { rental: 'Rental', sale: 'Sale', service: 'Service' };
+    const TRACKING_LABEL = { serialized: 'Serialized', bulk: 'Bulk', none: 'Not tracked' };
+
+    // Show/hide the method-specific pricing fields.
+    function applyPricingMethodUI(method) {
+      const isStructure = method === 'structure';
+      const isFixedPrice = method === 'fixed_price';
+      document.getElementById('e-structure-section').hidden = !isStructure;
+      // Charge period is meaningless for a flat fixed price.
+      document.getElementById('e-charge-period-field').style.display = isFixedPrice ? 'none' : '';
+      const baseLabel = document.getElementById('e-base-label');
+      const baseHint = document.getElementById('e-base-hint');
+      if (isFixedPrice) { baseLabel.textContent = 'Flat price'; baseHint.textContent = 'One charge regardless of rental duration.'; }
+      else if (isStructure) { baseLabel.textContent = 'Base price'; baseHint.textContent = 'The 1× amount the structure multiplies for longer durations.'; }
+      else { baseLabel.textContent = 'Base price'; baseHint.textContent = 'The rate charged per charge period.'; }
+    }
+    document.getElementById('e-pricing-method').addEventListener('change', (e) => {
+      applyPricingMethodUI(e.target.value);
+      renderStructurePreview();
+    });
+    document.getElementById('e-structure').addEventListener('change', renderStructurePreview);
+    document.getElementById('e-daily').addEventListener('input', renderStructurePreview);
+    document.getElementById('e-taxable').addEventListener('change', (e) => {
+      document.getElementById('e-gst-rate-field').style.display = e.target.checked ? '' : 'none';
+    });
+
+    async function loadPricingConfigLists() {
+      try {
+        const [s, r] = await Promise.all([
+          api.get('/api/pricing/structures').catch(() => ({ structures: [] })),
+          api.get('/api/pricing/rulesets').catch(() => ({ rulesets: [] })),
+        ]);
+        editStructures = s.structures || [];
+        editRulesets = r.rulesets || [];
+      } catch { editStructures = []; editRulesets = []; }
+    }
+
+    function fillStructureSelect(selectedId) {
+      const sel = document.getElementById('e-structure');
+      sel.innerHTML = '<option value="">— No structure —</option>' +
+        editStructures.map(s => `<option value="${escapeAttr(s.id)}"${s.id === selectedId ? ' selected' : ''}>${escapeHtml(s.name)}${s.is_template ? ' (template)' : ''}</option>`).join('');
+    }
+    function fillRulesetSelect(selectedId) {
+      const sel = document.getElementById('e-ruleset');
+      sel.innerHTML = '<option value="">— No rules —</option>' +
+        editRulesets.map(r => `<option value="${escapeAttr(r.id)}"${r.id === selectedId ? ' selected' : ''}>${escapeHtml(r.name)}${r.stacking ? ' · stacking' : ''}</option>`).join('');
+    }
+
+    // Live preview: base price × each tier multiplier = resulting price.
+    function renderStructurePreview() {
+      const box = document.getElementById('e-structure-preview');
+      const sid = document.getElementById('e-structure').value;
+      const s = editStructures.find(x => x.id === sid);
+      if (!sid || !s || !(s.tiers || []).length) { box.innerHTML = ''; return; }
+      const base = Math.round(Number(document.getElementById('e-daily').value || 0) * 100);
+      const rows = s.tiers.slice().sort((a, b) => (a.sort_order - b.sort_order) || (a.duration_value - b.duration_value)).map(t => {
+        const price = Math.ceil(base * Number(t.multiplier));
+        return `<tr><td>${t.duration_value} ${escapeHtml(t.duration_period)}${t.duration_value > 1 ? 's' : ''}</td><td>×${Number(t.multiplier)}</td><td class="sp-price">${base ? formatINR(price) : '—'}</td></tr>`;
+      }).join('');
+      const of = s.overflow_multiplier != null
+        ? `<tr><td>each extra ${escapeHtml(s.overflow_period || 'day')}</td><td>×${Number(s.overflow_multiplier)}</td><td class="sp-price">${base ? formatINR(Math.ceil(base * Number(s.overflow_multiplier))) : '—'}</td></tr>`
+        : '';
+      box.innerHTML = `<table>${rows}${of}</table>`;
+    }
+
+    function renderBulkStockLocations(stockLevels) {
+      const box = document.getElementById('e-stock-locations');
+      const levels = stockLevels || [];
+      if (!levels.length) { box.innerHTML = '<p class="field-hint" style="margin:0;">No stock recorded yet. Set a quantity per location.</p>'; }
+      else {
+        box.innerHTML = levels.map(l => `
+          <div class="stock-loc-row">
+            <span class="sl-name">${escapeHtml(l.location_name || 'Location')}</span>
+            <div class="stepper">
+              <button type="button" data-stock-dec="${escapeAttr(l.location_id)}">−</button>
+              <input type="number" min="0" step="1" class="stock-loc-in" data-stock-loc="${escapeAttr(l.location_id)}" value="${Number(l.quantity) || 0}">
+              <button type="button" data-stock-inc="${escapeAttr(l.location_id)}">+</button>
+            </div>
+          </div>`).join('');
+        box.querySelectorAll('[data-stock-dec]').forEach(b => b.addEventListener('click', () => {
+          const inp = box.querySelector(`.stock-loc-in[data-stock-loc="${b.dataset.stockDec}"]`);
+          inp.value = Math.max(0, (parseInt(inp.value, 10) || 0) - 1);
+        }));
+        box.querySelectorAll('[data-stock-inc]').forEach(b => b.addEventListener('click', () => {
+          const inp = box.querySelector(`.stock-loc-in[data-stock-loc="${b.dataset.stockInc}"]`);
+          inp.value = (parseInt(inp.value, 10) || 0) + 1;
+        }));
+      }
+    }
+
+    async function openEdit(id) {
       const p = allProducts.find(x => x.id === id);
-      if (!p) return;
       editingId = id;
       document.getElementById('edit-error').style.display = 'none';
-      document.getElementById('e-name').value = p.name || '';
-      document.getElementById('e-category').value = p.category || '';
-      document.getElementById('e-hsn').value = p.hsn_code || '';
-      document.getElementById('e-daily').value = p.daily_rate != null ? (Number(p.daily_rate) / 100) : '';
-      // Purchase cost (Sub-turn 11) — owner/manager only. Empty input = not set.
-      const costField = document.getElementById('cost-field');
-      costField.hidden = !canManageCost();
-      document.getElementById('e-purchase-cost').value = p.default_purchase_cost_paise != null ? (Number(p.default_purchase_cost_paise) / 100) : '';
+      switchEditTab('general');
+      // Fast paint from the list row.
+      if (p) {
+        document.getElementById('e-name').value = p.name || '';
+        document.getElementById('e-category').value = p.category || '';
+        document.getElementById('e-hsn').value = p.hsn_code || '';
+        document.getElementById('e-daily').value = p.daily_rate != null ? (Number(p.daily_rate) / 100) : '';
+        document.getElementById('e-image').value = p.image_url || '';
+        document.getElementById('e-buffer-before').value = p.buffer_before_hours ?? 0;
+        document.getElementById('e-buffer-after').value = p.buffer_after_hours ?? 0;
+        document.getElementById('e-shortage-limit').value = p.shortage_limit ?? 0;
+        document.getElementById('e-kit').checked = !!p.is_kit;
+        setImagePreview(p.image_url || '');
+      }
+      const mode = (p && p.tracking_mode) || 'tracked';
+      document.getElementById('e-tracking-mode').value = mode;
+      // Costs tab is owner/manager only.
+      document.getElementById('tab-costs').hidden = !canManageCost();
       document.getElementById('e-cost-note').textContent = '';
-      if (canManageCost()) loadCostNote(id);
-      document.getElementById('e-image').value = p.image_url || '';
-      document.getElementById('e-buffer-before').value = p.buffer_before_hours ?? 0;
-      document.getElementById('e-buffer-after').value = p.buffer_after_hours ?? 0;
-      document.getElementById('e-shortage-limit').value = p.shortage_limit ?? 0;
-      document.getElementById('e-kit').checked = !!p.is_kit;
-      // Tracking mode (locked) + stock quantity (Sub-turn 6h).
-      const mode = p.tracking_mode || 'tracked';
-      const modeRadio = document.querySelector(`input[name="edit_tracking_mode"][value="${mode}"]`);
-      if (modeRadio) modeRadio.checked = true;
-      document.getElementById('edit-stock-field').hidden = mode !== 'bulk';
-      document.getElementById('e-stock').value = mode === 'bulk' ? (p.stock_quantity ?? 0) : '';
-      setImagePreview(p.image_url || '');
       document.getElementById('image-progress').hidden = true;
       document.getElementById('image-error').hidden = true;
       document.getElementById('image-file-input').value = '';
+      editModal.classList.add('open');
+
       loadCategoriesDatalist();
       cfLoadAndRender(id);
       assetLocLoadAndRender(id, mode);
       loadProductTagsAndDowntimes(id);
       loadProductRecommendations(id);
-      editModal.classList.add('open');
+      if (canManageCost()) loadCostNote(id);
+
+      // Load the full model (pricing/GST/deposit/stock) + config lists in parallel.
+      await loadPricingConfigLists();
+      let detail = null;
+      try { detail = await api.get(`/api/inventory/products/${encodeURIComponent(id)}`); } catch {}
+      if (editingId !== id) return; // a different product was opened meanwhile
+      const d = detail && detail.product ? detail.product : (p || {});
+
+      // Identity badges (immutable).
+      document.getElementById('edit-identity').innerHTML =
+        `<span class="id-badge"><span class="id-badge-k">Nature</span> ${escapeHtml(NATURE_LABEL[d.nature] || d.nature || '—')}</span>` +
+        `<span class="id-badge"><span class="id-badge-k">Tracking</span> ${escapeHtml(TRACKING_LABEL[d.tracking_method] || d.tracking_method || TRACKING_LABEL[mode] || '—')}</span>`;
+
+      // Pricing tab.
+      const method = d.pricing_method || 'fixed_fee';
+      document.getElementById('e-pricing-method').value = method;
+      applyPricingMethodUI(method);
+      // Base price prefers base_price_paise, falls back to daily_rate.
+      const basePaise = d.base_price_paise != null ? Number(d.base_price_paise) : (d.daily_rate != null ? Number(d.daily_rate) : null);
+      document.getElementById('e-daily').value = basePaise != null ? (basePaise / 100) : '';
+      document.getElementById('e-charge-period').value = d.charge_period || 'day';
+      fillStructureSelect(d.pricing_structure_id || '');
+      fillRulesetSelect(d.pricing_ruleset_id || '');
+      renderStructurePreview();
+      // Tax.
+      const taxable = d.is_taxable !== false;
+      document.getElementById('e-taxable').checked = taxable;
+      document.getElementById('e-gst-rate-field').style.display = taxable ? '' : 'none';
+      document.getElementById('e-gst-rate').value = d.gst_rate_bps != null ? (Number(d.gst_rate_bps) / 100) : '';
+      document.getElementById('e-gst-warn').hidden = !(d.gst_rate_missing);
+      // Deposit.
+      document.getElementById('e-security-deposit').value = d.security_deposit_value_paise != null ? (Number(d.security_deposit_value_paise) / 100) : '';
+      // Cost.
+      document.getElementById('e-purchase-cost').value = d.default_purchase_cost_paise != null ? (Number(d.default_purchase_cost_paise) / 100) : '';
+      // Inventory: per-location stock (bulk) + stock quantity mirror.
+      const isBulk = (d.tracking_method || mode) === 'bulk';
+      document.getElementById('edit-stock-field').hidden = !isBulk;
+      document.getElementById('e-stock').value = isBulk ? (d.stock_quantity ?? 0) : '';
+      if (isBulk) renderBulkStockLocations(detail ? detail.stock_levels : []);
     }
     function closeEdit() { editModal.classList.remove('open'); editingId = null; }
 
@@ -1931,12 +2330,33 @@
       if (category) body.category = category;
       if (hsn) body.hsn_code = hsn;
       if (image) body.image_url = image;
-      if (daily !== '' && Number(daily) > 0) body.daily_rate = rupeesToPaise(daily);
+      // Sub-turn 13 — base price feeds BOTH the legacy daily_rate and the engine's
+      // base_price_paise (kept in sync so availability + pricing agree).
+      if (daily !== '' && Number(daily) > 0) {
+        const basePaise = rupeesToPaise(daily);
+        body.daily_rate = basePaise;
+        body.base_price_paise = basePaise;
+      }
       if (bufferBefore !== '') body.buffer_before_hours = Math.max(0, Math.min(72, Math.round(Number(bufferBefore))));
       if (bufferAfter !== '') body.buffer_after_hours = Math.max(0, Math.min(72, Math.round(Number(bufferAfter))));
       if (shortageLimit !== '') body.shortage_limit = Math.max(0, Math.min(100, Math.round(Number(shortageLimit))));
-      // Bulk stock quantity is editable; tracking_mode is immutable (not sent).
-      const editMode = document.querySelector('input[name="edit_tracking_mode"]:checked')?.value;
+      // Sub-turn 13 — pricing method / charge period.
+      body.pricing_method = document.getElementById('e-pricing-method').value;
+      if (body.pricing_method !== 'fixed_price') body.charge_period = document.getElementById('e-charge-period').value;
+      // Structure/ruleset — nullable (explicit null clears; PATCH honours `in body`).
+      body.pricing_structure_id = body.pricing_method === 'structure'
+        ? (document.getElementById('e-structure').value || null) : null;
+      body.pricing_ruleset_id = document.getElementById('e-ruleset').value || null;
+      // Tax.
+      const taxable = document.getElementById('e-taxable').checked;
+      body.is_taxable = taxable;
+      const gstPct = document.getElementById('e-gst-rate').value.trim();
+      body.gst_rate_bps = (taxable && gstPct !== '') ? Math.round(Number(gstPct) * 100) : null;
+      // Deposit.
+      const dep = document.getElementById('e-security-deposit').value.trim();
+      body.security_deposit_value_paise = dep === '' ? null : rupeesToPaise(dep);
+      // Bulk stock quantity mirror; tracking_mode is immutable (not sent).
+      const editMode = document.getElementById('e-tracking-mode').value;
       if (editMode === 'bulk') {
         const sq = document.getElementById('e-stock').value;
         if (sq !== '') body.stock_quantity = Math.max(0, Math.round(Number(sq)));
@@ -1952,6 +2372,14 @@
       submit.disabled = true; submit.textContent = 'Saving…';
       try {
         await api.patch(`/api/inventory/products/${savedId}`, body);
+        // Persist per-location bulk stock (one PATCH per location).
+        if (editMode === 'bulk') {
+          const rows = document.querySelectorAll('#e-stock-locations .stock-loc-in');
+          for (const inp of rows) {
+            const q = Math.max(0, parseInt(inp.value, 10) || 0);
+            try { await api.patch(`/api/inventory/products/${savedId}/stock`, { location_id: inp.dataset.stockLoc, quantity: q }); } catch {}
+          }
+        }
         closeEdit();
         await loadProducts();
         // Opening a product as a kit? Jump straight into building its contents.
@@ -1967,6 +2395,306 @@
     });
 
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editModal.classList.contains('open')) closeEdit(); });
+
+    // ================= Structure builder (Sub-turn 13 chunk 9) =================
+    // Booqable two-way binding: type a multiplier → resulting price updates; type a
+    // resulting price → the multiplier back-computes. Nobody thinks in multipliers.
+    const structureModal = document.getElementById('structure-modal');
+    let sbTiers = [];
+    let sbEditingId = null;
+
+    function sbClose() { structureModal.classList.remove('open'); }
+    function sbExample() { return Math.round(Number(document.getElementById('sb-example').value || 0) * 100); }
+
+    function sbRenderTiers() {
+      const box = document.getElementById('sb-tiers');
+      const base = sbExample();
+      box.innerHTML = sbTiers.map((t, i) => {
+        const price = base ? formatINR(Math.ceil(base * Number(t.multiplier || 0))) : '';
+        return `<div class="sb-tier-row" data-i="${i}">
+          <div class="sb-dur">
+            <input type="number" min="1" step="1" class="sb-dv" value="${Number(t.duration_value) || 1}" style="width:56px;">
+            <select class="sb-dp">
+              ${['hour','day','week','month'].map(pp => `<option value="${pp}"${t.duration_period === pp ? ' selected' : ''}>${pp}</option>`).join('')}
+            </select>
+          </div>
+          <input type="number" min="0" step="0.05" class="sb-mult" value="${Number(t.multiplier) || 0}">
+          <div class="prefix-wrap"><span class="prefix">₹</span><input type="number" min="0" step="1" class="sb-price" value="${base ? Math.ceil(base * Number(t.multiplier || 0)) : ''}" placeholder="${price || '—'}"></div>
+          <button type="button" class="sb-del" data-del="${i}" title="Remove">✕</button>
+        </div>`;
+      }).join('');
+      // Wire per-row events.
+      box.querySelectorAll('.sb-tier-row').forEach(row => {
+        const i = Number(row.dataset.i);
+        row.querySelector('.sb-dv').addEventListener('input', e => { sbTiers[i].duration_value = Math.max(1, parseInt(e.target.value, 10) || 1); });
+        row.querySelector('.sb-dp').addEventListener('change', e => { sbTiers[i].duration_period = e.target.value; });
+        row.querySelector('.sb-mult').addEventListener('input', e => {
+          sbTiers[i].multiplier = Math.max(0, Number(e.target.value) || 0);
+          const b = sbExample();
+          const priceInput = row.querySelector('.sb-price');
+          if (b) priceInput.value = Math.ceil(b * sbTiers[i].multiplier);
+        });
+        row.querySelector('.sb-price').addEventListener('input', e => {
+          const b = sbExample();
+          if (!b) return; // can't back-compute without an example price
+          const pricePaise = Math.round(Number(e.target.value || 0) * 100);
+          const mult = pricePaise / b;
+          sbTiers[i].multiplier = Math.round(mult * 1000) / 1000;
+          row.querySelector('.sb-mult').value = sbTiers[i].multiplier;
+        });
+      });
+      sbRenderOverflow();
+    }
+    function sbRenderOverflow() {
+      const base = sbExample();
+      const m = Number(document.getElementById('sb-overflow-mult').value || 0);
+      const el = document.getElementById('sb-overflow-price');
+      el.textContent = (base && m) ? formatINR(Math.ceil(base * m)) : '—';
+    }
+    document.getElementById('sb-example').addEventListener('input', sbRenderTiers);
+    document.getElementById('sb-overflow-mult').addEventListener('input', sbRenderOverflow);
+    document.getElementById('sb-add-tier').addEventListener('click', () => {
+      sbTiers.push({ duration_value: 1, duration_period: 'day', multiplier: 1 });
+      sbRenderTiers();
+    });
+    document.getElementById('sb-tiers').addEventListener('click', (e) => {
+      const del = e.target.closest('[data-del]');
+      if (!del) return;
+      sbTiers.splice(Number(del.dataset.del), 1);
+      sbRenderTiers();
+    });
+
+    function openStructureBuilder() {
+      document.getElementById('structure-error').style.display = 'none';
+      const sid = document.getElementById('e-structure').value;
+      const existing = editStructures.find(s => s.id === sid);
+      if (existing) {
+        sbEditingId = existing.id;
+        document.getElementById('sb-name').value = existing.name || '';
+        document.getElementById('sb-template').checked = !!existing.is_template;
+        document.getElementById('sb-overflow-period').value = existing.overflow_period || '';
+        document.getElementById('sb-overflow-mult').value = existing.overflow_multiplier != null ? existing.overflow_multiplier : '';
+        sbTiers = (existing.tiers || []).map(t => ({ duration_value: t.duration_value, duration_period: t.duration_period, multiplier: Number(t.multiplier) }));
+      } else {
+        sbEditingId = null;
+        document.getElementById('sb-name').value = (document.getElementById('e-name').value || 'New') + ' pricing';
+        document.getElementById('sb-template').checked = false;
+        document.getElementById('sb-overflow-period').value = '';
+        document.getElementById('sb-overflow-mult').value = '';
+        sbTiers = [{ duration_value: 1, duration_period: 'day', multiplier: 1 }];
+      }
+      // Seed the example price from the product's base price so prices are meaningful.
+      document.getElementById('sb-example').value = document.getElementById('e-daily').value || '';
+      sbRenderTiers();
+      structureModal.classList.add('open');
+    }
+    document.getElementById('e-edit-structure').addEventListener('click', openStructureBuilder);
+    document.getElementById('structure-close').addEventListener('click', sbClose);
+    document.getElementById('structure-cancel').addEventListener('click', sbClose);
+    structureModal.addEventListener('click', (e) => { if (e.target === structureModal) sbClose(); });
+
+    document.getElementById('structure-save').addEventListener('click', async () => {
+      const err = document.getElementById('structure-error');
+      err.style.display = 'none';
+      const name = document.getElementById('sb-name').value.trim();
+      if (!name) { err.style.display = 'block'; err.textContent = 'Give the structure a name.'; return; }
+      if (!sbTiers.length) { err.style.display = 'block'; err.textContent = 'Add at least one tier.'; return; }
+      const ovPeriod = document.getElementById('sb-overflow-period').value || null;
+      const ovMultRaw = document.getElementById('sb-overflow-mult').value;
+      const payload = {
+        name,
+        is_template: document.getElementById('sb-template').checked,
+        overflow_period: ovPeriod,
+        overflow_multiplier: (ovPeriod && ovMultRaw !== '') ? Number(ovMultRaw) : null,
+        tiers: sbTiers.map((t, i) => ({ duration_value: t.duration_value, duration_period: t.duration_period, multiplier: Number(t.multiplier) || 0, sort_order: i })),
+      };
+      const btn = document.getElementById('structure-save');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        const res = sbEditingId
+          ? await api.patch(`/api/pricing/structures/${sbEditingId}`, payload)
+          : await api.post('/api/pricing/structures', payload);
+        const saved = res.structure;
+        await loadPricingConfigLists();
+        // Switch the product to structure method + select the saved structure.
+        document.getElementById('e-pricing-method').value = 'structure';
+        applyPricingMethodUI('structure');
+        fillStructureSelect(saved.id);
+        renderStructurePreview();
+        sbClose();
+      } catch (ex) {
+        err.style.display = 'block';
+        err.textContent = 'Could not save: ' + (ex.body?.error || ex.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Save structure';
+      }
+    });
+
+    // ================= Ruleset builder (Sub-turn 13 chunk 9) =================
+    const rulesetModal = document.getElementById('ruleset-modal');
+    const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    let rbRules = [];
+    let rbEditingId = null;
+
+    function rbClose() { rulesetModal.classList.remove('open'); }
+
+    function rbRenderRules() {
+      const box = document.getElementById('rb-rules');
+      document.getElementById('rb-empty-example').style.display = rbRules.length ? 'none' : '';
+      box.innerHTML = rbRules.map((r, i) => {
+        const isPrice = r.kind !== 'adjust_charge_period';
+        const pct = r.price_adjustment_bps != null ? (r.price_adjustment_bps / 100) : '';
+        return `<div class="rb-rule-row" draggable="true" data-i="${i}">
+          <div class="rb-rule-head">
+            <span class="rb-num">${i + 1}</span>
+            <input type="text" class="rb-name" maxlength="200" placeholder="Rule name" value="${escapeAttr(r.name || '')}">
+            <button type="button" class="sb-del" data-del="${i}" title="Remove">✕</button>
+          </div>
+          <div class="rb-rule-grid">
+            <div class="field">
+              <label>Kind</label>
+              <select class="rb-kind">
+                <option value="adjust_price"${isPrice ? ' selected' : ''}>Adjust price (±%)</option>
+                <option value="adjust_charge_period"${!isPrice ? ' selected' : ''}>Adjust charge period</option>
+              </select>
+            </div>
+            <div class="field rb-what">
+              ${isPrice
+                ? `<label>Adjustment %</label><div class="prefix-wrap"><input type="number" step="1" class="rb-pct" value="${pct}" placeholder="+20"><span class="prefix" style="border-left:1px solid var(--border);border-right:none;">%</span></div>`
+                : `<label>Action</label><select class="rb-action">
+                    <option value="cap_at_one_day"${r.charge_period_action === 'cap_at_one_day' ? ' selected' : ''}>Cap at one day (half-day)</option>
+                    <option value="exclude_pickup_day"${r.charge_period_action === 'exclude_pickup_day' ? ' selected' : ''}>Exclude pickup day</option>
+                    <option value="exclude_return_day"${r.charge_period_action === 'exclude_return_day' ? ' selected' : ''}>Exclude return day</option>
+                  </select>`}
+            </div>
+          </div>
+          <div class="field" style="margin-top:8px;margin-bottom:0;">
+            <label>When — days of week <span class="hint">none = every day</span></label>
+            <div class="rb-dow">
+              ${DOW.map((d, di) => `<label><input type="checkbox" class="rb-dowc" data-dow="${di}"${(r.days_of_week || []).includes(di) ? ' checked' : ''}>${d}</label>`).join('')}
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+      // Wire per-row.
+      box.querySelectorAll('.rb-rule-row').forEach(row => {
+        const i = Number(row.dataset.i);
+        row.querySelector('.rb-name').addEventListener('input', e => { rbRules[i].name = e.target.value; });
+        row.querySelector('.rb-kind').addEventListener('change', e => {
+          rbRules[i].kind = e.target.value;
+          if (e.target.value === 'adjust_charge_period') { rbRules[i].charge_period_action = rbRules[i].charge_period_action || 'cap_at_one_day'; rbRules[i].price_adjustment_bps = null; }
+          else { rbRules[i].price_adjustment_bps = rbRules[i].price_adjustment_bps ?? 2000; rbRules[i].charge_period_action = null; }
+          rbRenderRules();
+        });
+        const pctIn = row.querySelector('.rb-pct');
+        if (pctIn) pctIn.addEventListener('input', e => { rbRules[i].price_adjustment_bps = e.target.value === '' ? null : Math.round(Number(e.target.value) * 100); });
+        const actIn = row.querySelector('.rb-action');
+        if (actIn) actIn.addEventListener('change', e => { rbRules[i].charge_period_action = e.target.value; });
+        row.querySelectorAll('.rb-dowc').forEach(cb => cb.addEventListener('change', () => {
+          const days = [...row.querySelectorAll('.rb-dowc')].filter(x => x.checked).map(x => Number(x.dataset.dow));
+          rbRules[i].days_of_week = days;
+        }));
+        // Drag-reorder.
+        row.addEventListener('dragstart', () => row.classList.add('dragging'));
+        row.addEventListener('dragend', () => { row.classList.remove('dragging'); });
+      });
+    }
+    document.getElementById('rb-rules').addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const dragging = document.querySelector('.rb-rule-row.dragging');
+      if (!dragging) return;
+      const rows = [...document.querySelectorAll('#rb-rules .rb-rule-row:not(.dragging)')];
+      const after = rows.find(r => e.clientY < r.getBoundingClientRect().top + r.offsetHeight / 2);
+      if (after) document.getElementById('rb-rules').insertBefore(dragging, after);
+      else document.getElementById('rb-rules').appendChild(dragging);
+    });
+    document.getElementById('rb-rules').addEventListener('drop', () => {
+      // Rebuild rbRules from the DOM order.
+      const order = [...document.querySelectorAll('#rb-rules .rb-rule-row')].map(r => Number(r.dataset.i));
+      rbRules = order.map(i => rbRules[i]);
+      rbRenderRules();
+    });
+    document.getElementById('rb-rules').addEventListener('click', (e) => {
+      const del = e.target.closest('[data-del]');
+      if (!del) return;
+      rbRules.splice(Number(del.dataset.del), 1);
+      rbRenderRules();
+    });
+    document.getElementById('rb-add-rule').addEventListener('click', () => {
+      rbRules.push({ name: '', kind: 'adjust_price', days_of_week: [], price_adjustment_bps: 2000, charge_period_action: null });
+      rbRenderRules();
+    });
+
+    function openRulesetBuilder() {
+      document.getElementById('ruleset-error').style.display = 'none';
+      const rid = document.getElementById('e-ruleset').value;
+      const existing = editRulesets.find(r => r.id === rid);
+      if (existing) {
+        rbEditingId = existing.id;
+        document.getElementById('rb-name').value = existing.name || '';
+        document.getElementById('rb-stacking').checked = !!existing.stacking;
+        rbRules = (existing.rules || []).map(r => ({
+          name: r.name, kind: r.kind, days_of_week: r.days_of_week || [],
+          date_from: r.date_from || null, date_until: r.date_until || null,
+          time_from: r.time_from || null, time_until: r.time_until || null,
+          price_adjustment_bps: r.price_adjustment_bps, charge_period_action: r.charge_period_action,
+        }));
+      } else {
+        rbEditingId = null;
+        document.getElementById('rb-name').value = (document.getElementById('e-name').value || 'New') + ' rules';
+        document.getElementById('rb-stacking').checked = false;
+        rbRules = []; // SEED NO RULES — the empty state teaches.
+      }
+      rbRenderRules();
+      rulesetModal.classList.add('open');
+    }
+    document.getElementById('e-edit-ruleset').addEventListener('click', openRulesetBuilder);
+    document.getElementById('ruleset-close').addEventListener('click', rbClose);
+    document.getElementById('ruleset-cancel').addEventListener('click', rbClose);
+    rulesetModal.addEventListener('click', (e) => { if (e.target === rulesetModal) rbClose(); });
+
+    document.getElementById('ruleset-save').addEventListener('click', async () => {
+      const err = document.getElementById('ruleset-error');
+      err.style.display = 'none';
+      const name = document.getElementById('rb-name').value.trim();
+      if (!name) { err.style.display = 'block'; err.textContent = 'Give the ruleset a name.'; return; }
+      for (const r of rbRules) {
+        if (!r.name || !r.name.trim()) { err.style.display = 'block'; err.textContent = 'Every rule needs a name.'; return; }
+      }
+      const payload = {
+        name,
+        stacking: document.getElementById('rb-stacking').checked,
+        rules: rbRules.map((r, i) => ({
+          name: r.name.trim(), kind: r.kind, sort_order: i,
+          days_of_week: (r.days_of_week && r.days_of_week.length) ? r.days_of_week : null,
+          date_from: r.date_from || null, date_until: r.date_until || null,
+          time_from: r.time_from || null, time_until: r.time_until || null,
+          price_adjustment_bps: r.kind === 'adjust_price' ? (r.price_adjustment_bps ?? 0) : null,
+          charge_period_action: r.kind === 'adjust_charge_period' ? (r.charge_period_action || 'cap_at_one_day') : null,
+        })),
+      };
+      const btn = document.getElementById('ruleset-save');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        const res = rbEditingId
+          ? await api.patch(`/api/pricing/rulesets/${rbEditingId}`, payload)
+          : await api.post('/api/pricing/rulesets', payload);
+        const saved = res.ruleset;
+        await loadPricingConfigLists();
+        fillRulesetSelect(saved.id);
+        rbClose();
+      } catch (ex) {
+        err.style.display = 'block';
+        err.textContent = 'Could not save: ' + (ex.body?.error || ex.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Save rules';
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (structureModal.classList.contains('open')) sbClose();
+      else if (rulesetModal.classList.contains('open')) rbClose();
+    });
 
     // ---------- kit builder (Sub-turn 5c-2) ----------
     const kitModal = document.getElementById('kit-modal');
