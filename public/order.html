@@ -387,6 +387,12 @@
 
     /* ========== dispatch drawer ========== */
     .dispatch-meta { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+    /* Sub-turn 12b: pinned physical units per line. */
+    .units-meta { font-size: 11.5px; color: var(--muted); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .unit-chip { font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.02em; padding: 1px 6px; border-radius: 4px; background: var(--orange-soft); color: var(--warn-strong); }
+    .unit-chip.unit-returned { background: var(--ok-soft); color: var(--ok-strong); }
+    .unit-chip.unit-damaged { background: var(--warn-soft); color: var(--warn-strong); }
+    .unit-chip.unit-lost { background: var(--bad-soft); color: var(--bad-strong); }
     .return-meta { font-size: 11.5px; margin-top: 4px; }
     .return-meta.ok { color: var(--ok-strong); }
     .return-meta.dmg { color: var(--warn-strong); }
@@ -1272,7 +1278,7 @@
     async function loadOrder() {
       if (!state.orderId) { renderNotFound(); return; }
       try {
-        const { order, items, events, can_finalize, custom_fields, tags, coupon_redemption } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}`);
+        const { order, items, events, can_finalize, custom_fields, tags, coupon_redemption, assets } = await api.get(`/api/orders/${encodeURIComponent(state.orderId)}`);
         state.order = order;
         state.items = items;
         state.events = events;
@@ -1280,6 +1286,13 @@
         state.customFields = custom_fields || [];
         state.tags = tags || [];
         state.couponRedemption = coupon_redemption || null;
+        // Sub-turn 12b: physical units pinned to this order (order_assets),
+        // grouped per line item for the "Units" display in each row.
+        state.assetsByItem = {};
+        (assets || []).forEach(a => {
+          if (!a.order_item_id) return;
+          (state.assetsByItem[a.order_item_id] = state.assetsByItem[a.order_item_id] || []).push(a);
+        });
         await loadContracts();
         render();
       } catch (err) {
@@ -1524,6 +1537,11 @@
         ? `<div class="dispatch-meta">Dispatched${it.handed_to ? ' to ' + escapeHtml(it.handed_to) : ''} · by ${escapeHtml(it.received_by_name || 'staff')}${it.dispatched_at ? ' · ' + escapeHtml(fmtDateTime(it.dispatched_at)) : ''}</div>`
         : '';
       const returnMeta = returnMetaHtml(it);
+      // Sub-turn 12b: the physical units pinned to this line at dispatch.
+      const pinned = (state.assetsByItem && state.assetsByItem[it.id]) || [];
+      const unitsMeta = pinned.length
+        ? `<div class="units-meta">Units: ${pinned.map(a => `<span class="unit-chip unit-${escapeAttr(a.status)}" title="${escapeAttr(a.status)}">${escapeHtml(a.asset_code)}</span>`).join(' ')}</div>`
+        : '';
       const statusVal = it.status || 'pending_dispatch';
       const statusPill = `
         <div style="margin-top:6px;">
@@ -1533,7 +1551,7 @@
         </div>`;
       return `
         <tr data-row="${escapeAttr(it.id)}">
-          <td><div class="li-desc">${escapeHtml(it.description)}${typeTag}</div>${sub}${dispatchMeta}${returnMeta}${statusPill}</td>
+          <td><div class="li-desc">${escapeHtml(it.description)}${typeTag}</div>${sub}${dispatchMeta}${unitsMeta}${returnMeta}${statusPill}</td>
           <td class="num">${qtyCell}</td>
           <td class="num">${rate}</td>
           <td class="num">${days}</td>

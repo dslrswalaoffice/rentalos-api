@@ -28,6 +28,22 @@ export const RESERVING_STATUSES = [
   'returned',
 ] as const;
 
+// Item-level release (Sub-turn 12b — MODULE_AUDIT finding 4). An order in a
+// reserving status no longer blocks gear for items that have physically come
+// back. A rental line reserves capacity only while its OWN status still ties up
+// a unit: pending_dispatch / dispatched (unit expected or out) and the two
+// not_returned_* outcomes (unit still with the customer, unresolved). The moment
+// an item is marked returned / returned_with_damage / missing, its capacity is
+// released — without waiting for the whole order to close. (A damaged unit is
+// re-blocked at the ASSET level via an auto-created repair downtime, so it
+// doesn't rejoin availability; a missing unit is retired out of capacity.)
+export const RESERVING_ITEM_STATUSES = [
+  'pending_dispatch',
+  'dispatched',
+  'not_returned_chargeable',
+  'not_returned_non_chargeable',
+] as const;
+
 const BUFFER_MIN_HOURS = 0;
 const BUFFER_MAX_HOURS = 72;
 
@@ -210,11 +226,22 @@ export async function checkAvailability(args: {
     FROM products p
     LEFT JOIN LATERAL (
       SELECT COUNT(*) AS total
-      FROM assets
-      WHERE product_id = p.id
-        AND workspace_id = p.workspace_id
-        AND deleted_at IS NULL
-        AND (${effectiveLocationId}::uuid IS NULL OR location_id = ${effectiveLocationId}::uuid)
+      FROM assets asset
+      WHERE asset.product_id = p.id
+        AND asset.workspace_id = p.workspace_id
+        AND asset.deleted_at IS NULL
+        AND (${effectiveLocationId}::uuid IS NULL OR asset.location_id = ${effectiveLocationId}::uuid)
+        -- Sub-turn 12b: a unit held offline by an active ASSET-level downtime
+        -- (repair/missing) drops out of capacity for the window — capacity minus
+        -- one, not a whole-product block. Product-level downtimes are handled
+        -- separately (loadDowntimeConflicts) and still block the full product.
+        AND NOT EXISTS (
+          SELECT 1 FROM product_downtimes d
+          WHERE d.asset_id = asset.id
+            AND d.status IN ('scheduled', 'started')
+            AND d.start_at < ${args.end.toISOString()}::timestamptz
+            AND d.end_at   > ${args.start.toISOString()}::timestamptz
+        )
     ) a ON true
     WHERE p.id = ${args.productId}::uuid
       AND p.workspace_id = ${args.workspaceId}::uuid
@@ -264,6 +291,10 @@ export async function checkAvailability(args: {
       AND oi.item_type = 'rental'
       AND o.deleted_at IS NULL
       AND o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
+      -- Item-level release (Sub-turn 12b): a returned/missing line stops
+      -- reserving even while its order is still open (released at RETURN, not
+      -- CLOSE). Same string_to_array trick to dodge the enum-array serialization.
+      AND oi.status::text = ANY(string_to_array(${RESERVING_ITEM_STATUSES.join(',')}::text, ','))
       AND o.id != COALESCE(${args.excludeOrderId ?? null}::uuid,
                            '00000000-0000-0000-0000-000000000000'::uuid)
       -- Tracked products reserve per-location (pickup_location_id); bulk products
@@ -363,6 +394,9 @@ async function loadDowntimeConflicts(
     FROM product_downtimes
     WHERE workspace_id = ${workspaceId}::uuid
       AND product_id = ${productId}::uuid
+      -- Only live blocks (Sub-turn 12b added the lifecycle column; legacy rows
+      -- default to 'scheduled', so this stays backward-compatible).
+      AND status IN ('scheduled', 'started')
       AND (location_id IS NULL OR location_id = ${locationId}::uuid)
       AND start_at < ${windowEnd.toISOString()}::timestamptz
       AND end_at   > ${windowStart.toISOString()}::timestamptz
