@@ -432,6 +432,16 @@ The wizard state lives in a module-scoped `state` object. Refresh loses progress
 
 ---
 
+## Migration discipline
+
+- **Every migration runs in a TRANSACTION** (`sql.transaction([...])` in `src/lib/migrate.ts` — all statements plus the `schema_migrations` INSERT together). It either fully applies and records itself, or leaves zero trace. Never both-and-neither. A half-applied migration with no ledger entry is the worst possible state — the schema and the ledger disagree and nobody can tell where the DB actually is.
+- **EVERY `ADD CONSTRAINT` must be preceded, IN THE SAME MIGRATION, by the data fix that makes it satisfiable.** Postgres validates a new constraint against existing rows. A constraint added without the fix aborts the migration and takes the whole deploy down. (This took production down on 2026-07-13 — migration 034, `order_items_negative_only_custom`, violated by legacy negative-price lines that predated custom line items. The fix: reclassify them as custom lines *before* the `ADD CONSTRAINT`.)
+- **Transaction-hostile statements** (`ALTER TYPE ... ADD VALUE`, `CREATE INDEX CONCURRENTLY`, `VACUUM`, `ALTER SYSTEM`, `CREATE/DROP DATABASE`) cannot run inside a transaction block. The runner detects them and falls back to autocommit for that migration — so those migrations MUST be individually idempotent (every statement guarded). Flag any migration that needs one.
+- **Migrations run at Vercel build time.** A bad migration = a dead deploy = the app is offline. Treat every migration as production-critical, even against dummy data.
+- Corollary for the audit checklist: before shipping any migration, ask of each constraint — *can existing data violate it, and if so does the same migration fix the data first?* Contract-phase column drops are where this gets expensive.
+
+---
+
 ## Sub-turn discipline
 
 Aamir works in "sub-turns" — one focused deliverable per turn.
