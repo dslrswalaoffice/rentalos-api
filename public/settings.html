@@ -367,7 +367,7 @@
   <script type="module">
     import { api, ensureAuth } from '/_lib/api.js';
 
-    const state = { data: null, tab: 'workspace', form: null, baseline: null, integrations: null };
+    const state = { data: null, tab: 'workspace', form: null, baseline: null, integrations: null, members: null, invites: null, inviteLink: null };
 
     const CATEGORY_LABELS = {
       payment: { title: 'Payment gateway', sub: 'Collect deposits and rental payments online. One active provider at a time.' },
@@ -460,7 +460,7 @@
       else if (state.tab === 'locations') { el.innerHTML = locationsTab(); wireLocationsTab(); }
       else if (state.tab === 'tags') { el.innerHTML = tagsTab(); wireTagsTab(); }
       else if (state.tab === 'coupons') { el.innerHTML = couponsTab(); wireCouponsTab(); }
-      else { el.innerHTML = usersTab(); }
+      else { el.innerHTML = usersTab(); wireUsersTab(); }
     }
 
     function renderTopbar() {
@@ -1414,24 +1414,180 @@
     }
 
     // ---------- users tab ----------
+    // ---------- team (members + invitations) — Sub-turn 10 ----------
+    const INVITE_ROLES_BY_ROLE = {
+      owner:   ['manager', 'staff', 'client', 'investor'],
+      manager: ['staff', 'client', 'investor'],
+    };
+    function daysUntil(iso) {
+      const ms = new Date(iso).getTime() - Date.now();
+      const d = Math.ceil(ms / 86400000);
+      return d <= 0 ? 'today' : (d === 1 ? '1 day' : d + ' days');
+    }
+
+    async function loadMembers() {
+      try { const res = await api.get('/api/members'); state.members = res.members || []; }
+      catch (err) { state.members = { error: err.body?.error || err.message || 'error' }; }
+      if (state.tab === 'users') render();
+    }
+    async function loadInvites() {
+      // Only owner/manager can list invites; others skip the call.
+      if (!canEditMetadata()) { state.invites = []; return; }
+      try { const res = await api.get('/api/invitations'); state.invites = res.invitations || []; }
+      catch { state.invites = []; }
+      if (state.tab === 'users') render();
+    }
+
     function usersTab() {
-      const users = state.data.users || [];
-      const rows = users.map(u => `
-        <tr>
-          <td><strong>${escapeHtml(u.display_name)}</strong></td>
-          <td>${escapeHtml(u.email)}</td>
-          <td><span class="role-pill role-${escapeAttr(u.role)}">${escapeHtml(u.role)}</span></td>
-          <td><span class="status-dot ${u.is_active ? '' : 'inactive'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
-          <td>${escapeHtml(fmtDate(u.created_at))}</td>
-        </tr>`).join('');
-      return `
-        <div class="notice"><strong>User management coming soon</strong>For now, users are added directly via the database. Contact support@dslrswala.com for access changes.</div>
-        <div class="card" style="padding:0;overflow:hidden;">
+      if (state.members === null) loadMembers();
+      if (state.invites === null) loadInvites();
+      const canInvite = canEditMetadata();
+      const myRole = state.data?.current_user?.role;
+
+      // Members list
+      let membersInner;
+      if (state.members === null) {
+        membersInner = '<div class="loading">Loading team…</div>';
+      } else if (!Array.isArray(state.members)) {
+        membersInner = `<p class="card-sub">Couldn't load members: ${escapeHtml(state.members?.error || 'error')}</p>`;
+      } else {
+        const rows = state.members.map(m => `
+          <tr>
+            <td><strong>${escapeHtml(m.name)}</strong></td>
+            <td>${escapeHtml(m.email)}</td>
+            <td><span class="role-pill role-${escapeAttr(m.role)}">${escapeHtml(m.role)}</span></td>
+            <td>${escapeHtml(fmtDate(m.created_at))}</td>
+          </tr>`).join('');
+        membersInner = `<div class="card" style="padding:0;overflow:hidden;">
           <table class="users">
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">No users.</td></tr>'}</tbody>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px;">No members.</td></tr>'}</tbody>
           </table>
         </div>`;
+      }
+
+      // Invite form (owner/manager only) — role options depend on caller's role
+      const roleOpts = (INVITE_ROLES_BY_ROLE[myRole] || [])
+        .map(r => `<option value="${r}">${r.charAt(0).toUpperCase() + r.slice(1)}</option>`).join('');
+      const inviteForm = !canInvite ? '' : `
+        <div class="card" id="invite-form-card" hidden style="margin-top:14px;">
+          <div class="section-h">Invite a team member</div>
+          <div id="invite-error" class="notice" style="display:none;background:var(--bad-soft);color:var(--bad-strong);"></div>
+          <div class="field"><label>Email</label>
+            <input type="email" id="invite-email" placeholder="name@dslrswala.com" autocomplete="off"></div>
+          <div class="field"><label>Role</label>
+            <select id="invite-role">${roleOpts}</select></div>
+          <div style="display:flex;gap:8px;margin-top:6px;">
+            <button class="btn primary" id="invite-send">Send invite</button>
+            <button class="btn ghost" id="invite-cancel">Cancel</button>
+          </div>
+        </div>`;
+
+      // Accept-link banner (shown ONCE after a successful invite)
+      const link = state.inviteLink;
+      const linkBanner = !link ? '' : `
+        <div class="card" style="margin-top:14px;border-color:var(--ok-solid);">
+          <div class="section-h">Invitation created${link.email_sent ? '' : ' — email could not be sent'}</div>
+          <p class="card-sub">${link.email_sent
+            ? 'The invite was emailed. You can also copy the link below.'
+            : 'The email failed to send. Copy this link and share it (e.g. WhatsApp) yourself.'}</p>
+          <p class="card-sub"><strong>This link is shown once. Copy it now if you want to send it yourself.</strong></p>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="invite-link-value" readonly value="${escapeAttr(link.accept_url)}" style="flex:1;font-family:var(--font-mono);font-size:11px;">
+            <button class="btn primary" id="invite-copy">Copy</button>
+            <button class="btn ghost" id="invite-link-dismiss">Done</button>
+          </div>
+        </div>`;
+
+      // Pending invitations — hidden entirely when empty
+      const invites = Array.isArray(state.invites) ? state.invites : [];
+      const pendingCard = invites.length === 0 ? '' : `
+        <div class="card" id="pending-card" style="margin-top:14px;padding:0;overflow:hidden;">
+          <div class="section-h" style="padding:14px 16px 0;">Pending invitations</div>
+          <table class="users">
+            <tbody>${invites.map(iv => `
+              <tr>
+                <td>${escapeHtml(iv.email)}</td>
+                <td><span class="role-pill role-${escapeAttr(iv.role)}">${escapeHtml(iv.role)}</span></td>
+                <td style="color:var(--muted);">expires in ${escapeHtml(daysUntil(iv.expires_at))}</td>
+                <td style="text-align:right;"><button class="btn ghost" data-revoke="${escapeAttr(iv.id)}">Revoke</button></td>
+              </tr>`).join('')}</tbody>
+          </table>
+        </div>`;
+
+      return `
+        <div class="card">
+          <div class="section-h" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>Team members</span>
+            ${canInvite ? `<button class="btn primary" id="invite-open">+ Invite member</button>` : ''}
+          </div>
+          <p class="card-sub">Everyone with access to this workspace.</p>
+        </div>
+        ${membersInner}
+        ${inviteForm}
+        ${linkBanner}
+        ${pendingCard}`;
+    }
+
+    function wireUsersTab() {
+      const openBtn = document.getElementById('invite-open');
+      const formCard = document.getElementById('invite-form-card');
+      if (openBtn && formCard) openBtn.addEventListener('click', () => { formCard.hidden = false; document.getElementById('invite-email')?.focus(); });
+      document.getElementById('invite-cancel')?.addEventListener('click', () => { if (formCard) formCard.hidden = true; });
+
+      const errBox = document.getElementById('invite-error');
+      const showErr = (m) => { if (errBox) { errBox.textContent = m; errBox.style.display = 'block'; } };
+
+      document.getElementById('invite-send')?.addEventListener('click', async () => {
+        if (errBox) errBox.style.display = 'none';
+        const email = (document.getElementById('invite-email')?.value || '').trim();
+        const role = document.getElementById('invite-role')?.value;
+        if (!email) { showErr('Enter an email address.'); return; }
+        const btn = document.getElementById('invite-send'); btn.disabled = true; btn.textContent = 'Sending…';
+        try {
+          const res = await api.post('/api/invitations', { email, role });
+          state.inviteLink = { accept_url: res.accept_url, email_sent: res.email_sent };
+          state.invites = null; // force reload of pending list
+          showToast('Invitation created');
+          render();
+        } catch (err) {
+          btn.disabled = false; btn.textContent = 'Send invite';
+          const code = err.body?.error;
+          if (code === 'already_member') showErr('That person is already on the team.');
+          else if (code === 'account_disabled') showErr('That account has been disabled and cannot be re-invited.');
+          else if (code === 'invite_pending') {
+            const id = err.body?.invitation_id;
+            showErr('An invite is already pending for that email.');
+            if (id && errBox) {
+              const b = document.createElement('button');
+              b.className = 'btn ghost'; b.style.marginTop = '8px'; b.textContent = 'Revoke pending invite';
+              b.addEventListener('click', async () => {
+                try { await api.del(`/api/invitations/${id}`); showToast('Revoked — try inviting again'); state.invites = null; if (errBox) errBox.style.display = 'none'; render(); }
+                catch { showToast('Could not revoke'); }
+              });
+              errBox.appendChild(document.createElement('br')); errBox.appendChild(b);
+            }
+          }
+          else if (err.status === 403) showErr("You don't have permission to invite that role.");
+          else showErr('Could not send invite: ' + (code || err.message));
+        }
+      });
+
+      // Copy / dismiss the one-time accept link
+      document.getElementById('invite-copy')?.addEventListener('click', async () => {
+        const input = document.getElementById('invite-link-value');
+        try { await navigator.clipboard.writeText(input.value); showToast('Link copied'); }
+        catch { input.select(); document.execCommand('copy'); showToast('Link copied'); }
+      });
+      document.getElementById('invite-link-dismiss')?.addEventListener('click', () => { state.inviteLink = null; render(); });
+
+      // Revoke pending invites
+      document.querySelectorAll('[data-revoke]').forEach(b => b.addEventListener('click', async () => {
+        const id = b.getAttribute('data-revoke');
+        b.disabled = true; b.textContent = 'Revoking…';
+        try { await api.del(`/api/invitations/${id}`); showToast('Invitation revoked'); state.invites = null; render(); }
+        catch { b.disabled = false; b.textContent = 'Revoke'; showToast('Could not revoke'); }
+      }));
     }
 
     // ---------- integrations tab ----------

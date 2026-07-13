@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#635bff">
+  <title>Accept invitation · RentalOS</title>
+  <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23635bff'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <!-- Critical CSS: system font + off-white bg → instant paint, no FOIT. -->
+  <style>
+    :root { --bg-page:#f7f8fa; --text-primary:#1a1f36; --font-sys: system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif; }
+    html,body { margin:0; }
+    body { font-family: var(--font-sys); background: var(--bg-page); color: var(--text-primary); -webkit-font-smoothing: antialiased; }
+  </style>
+  <!-- Auth pages load ONLY the design system (no styles.css), like the sign-in page. -->
+  <link rel="stylesheet" href="/design-system.css">
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div style="width:40px;height:40px;border-radius:9px;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;">R</div>
+        <div style="font-weight:var(--fw-semibold);margin-top:var(--space-2);">RentalOS</div>
+      </div>
+
+      <div id="content">
+        <div class="auth-subtitle" id="loading-state">Checking your invitation…</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token') || '';
+    const content = document.getElementById('content');
+
+    function esc(s) {
+      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function cap(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+
+    // ---- terminal (non-fillable) states ----
+    function renderMessage(title, message, { showSignIn = true } = {}) {
+      content.innerHTML = `
+        <h1 class="auth-title">${esc(title)}</h1>
+        <div class="auth-error">${esc(message)}</div>
+        ${showSignIn ? `<div class="auth-footer">Already have access? <a href="/index.html">Sign in</a></div>` : ''}
+      `;
+    }
+
+    // ---- the fillable accept form (new vs existing account) ----
+    function renderForm(info) {
+      const existing = info.existing_user === true;
+      const roleLabel = cap(info.role);
+      const subtitle = existing
+        ? 'You already have a RentalOS account — enter your password to join.'
+        : `You've been invited as ${esc(roleLabel)}.`;
+
+      content.innerHTML = `
+        <h1 class="auth-title">Join ${esc(info.workspace_name)}</h1>
+        <p class="auth-subtitle">${subtitle}</p>
+        <div class="auth-error" id="form-error" hidden></div>
+        <form id="accept-form" novalidate>
+          <div class="field">
+            <label class="label">Email</label>
+            <input type="email" value="${esc(info.email)}" disabled aria-readonly="true">
+          </div>
+          ${existing ? '' : `
+          <div class="field">
+            <label class="label" for="name">Your name</label>
+            <input type="text" id="name" name="name" autocomplete="name" maxlength="100" required autofocus>
+          </div>`}
+          <div class="field">
+            <label class="label" for="password">${existing ? 'Your password' : 'Choose a password'}</label>
+            <input type="password" id="password" name="password" autocomplete="${existing ? 'current-password' : 'new-password'}" required ${existing ? 'autofocus' : ''}>
+            ${existing ? '' : `<div class="field-hint">At least 8 characters, including a letter and a number, plus a symbol (or make it 12+ characters).</div>`}
+          </div>
+          <button type="submit" class="btn primary" style="width:100%;" id="submit-btn">
+            ${existing ? `Join ${esc(info.workspace_name)}` : 'Create account &amp; join'}
+          </button>
+        </form>
+      `;
+
+      const form = document.getElementById('accept-form');
+      const errBox = document.getElementById('form-error');
+      const submitBtn = document.getElementById('submit-btn');
+      const showErr = (m) => { errBox.textContent = m; errBox.hidden = false; };
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errBox.hidden = true;
+        const password = document.getElementById('password').value;
+        const nameEl = document.getElementById('name');
+        const payload = { token, password };
+        if (nameEl) payload.name = nameEl.value.trim();
+
+        submitBtn.disabled = true;
+        const originalLabel = submitBtn.textContent;
+        submitBtn.textContent = existing ? 'Joining…' : 'Creating…';
+        try {
+          const res = await fetch('/api/invitations/accept', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) { location.href = '/dashboard.html'; return; }
+
+          let data = null; try { data = await res.json(); } catch {}
+          if (res.status === 401) {
+            showErr('That password is incorrect for your existing account.');
+          } else if (res.status === 400 && data?.error === 'weak_password') {
+            showErr('Password ' + (data.reason || 'does not meet the requirements') + '.');
+          } else if (res.status === 400 && data?.error === 'name_required') {
+            showErr('Please enter your name.');
+          } else if (res.status === 409 && data?.error === 'already_member') {
+            showErr("You're already a member of this workspace. Try signing in.");
+          } else if (res.status === 410 && data?.error === 'expired') {
+            renderMessage('Invitation expired', 'This invitation has expired. Ask your workspace owner for a new one.');
+            return;
+          } else if (res.status === 410 && data?.error === 'already_accepted') {
+            renderMessage('Already used', 'This invitation has already been used. Sign in instead.');
+            return;
+          } else if (res.status === 404) {
+            renderMessage("Invitation isn't valid", "This invitation link isn't valid.");
+            return;
+          } else {
+            showErr('Could not accept the invitation (' + res.status + '). Try again in a moment.');
+          }
+        } catch {
+          showErr('Cannot reach the server. Check your connection and try again.');
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalLabel;
+        }
+      });
+    }
+
+    async function init() {
+      if (!token) {
+        renderMessage("Invitation isn't valid", "This invitation link isn't valid.");
+        return;
+      }
+      try {
+        const res = await fetch('/api/invitations/verify?token=' + encodeURIComponent(token), { credentials: 'omit' });
+        let data = null; try { data = await res.json(); } catch {}
+        if (res.ok) { renderForm(data); return; }
+        if (res.status === 410 && data?.error === 'expired') {
+          renderMessage('Invitation expired', 'This invitation has expired. Ask your workspace owner for a new one.');
+        } else if (res.status === 410 && data?.error === 'already_accepted') {
+          renderMessage('Already used', 'This invitation has already been used. Sign in instead.');
+        } else {
+          renderMessage("Invitation isn't valid", "This invitation link isn't valid.");
+        }
+      } catch {
+        renderMessage('Something went wrong', 'Could not check this invitation. Try again in a moment.', { showSignIn: false });
+      }
+    }
+    init();
+  </script>
+</body>
+</html>

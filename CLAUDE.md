@@ -708,6 +708,22 @@ Migrated the last pages so **every page in RentalOS now runs on the design syste
 
 ---
 
+## Team invitations (Sub-turn 10)
+
+- **`invitations` table** (migration 029) + `/api/invitations` routes + `/api/members`. Invite by email → tokenized link → `accept-invite.html` sets password → auto-login. This **replaces the removed admin bootstrap token** — there is no longer any way to mint an account from a static env token.
+- **A team member is a `users` row + a `workspace_memberships` row (role on the membership) — NEVER a `people` row.** `people` is the customer table; the inviter/invitee are login users. `invitations.invited_by_user_id → users(id)` (the spec's `people` FK was wrong for this schema).
+- **Invite token pattern:** 32 random bytes, SHA-256 hashed at rest — same as sessions (`generateToken`/`hashToken`). bcryptjs (cost 12) is for passwords only, never for tokens.
+- **Role escalation guard (server-enforced, not just UI):** owner can invite manager/staff/client/investor; manager can invite staff/client/investor only. **NOBODY can invite owner** — enforced in `invitations.ts` (403 `cannot_invite_owner`) AND by a CHECK constraint on `invitations.role` (owner absent from the allowed set).
+- **Existing-user path (security):** `users.email` is globally unique. An invite grants the right to JOIN a workspace, never to authenticate as an existing account. Invite create: existing user + membership here → 409 `already_member`; existing user + no membership here → 201 with `existing_user:true`; existing user with `deleted_at` set → 409 `account_disabled` (never resurrected). Accept, `existing_user`: the password field is their EXISTING password — verified with `bcrypt.compare`, membership created, **password never changed**; wrong password → 401.
+- **Invite expiry** configurable at `workspaces.settings.invitations.expiry_days` (default 7).
+- **Email uses the existing adapter registry** (active workspace `email` integration, decrypted via `INTEGRATION_ENC_KEY`) — no new dependency, nodemailer stays dynamic-imported (F5). **A failed send does NOT roll back the invite** — `accept_url` is returned at creation so it can be shared manually. `accept_url` is shown ONCE and never retrievable (the raw token is not stored).
+- **Verify never distinguishes revoked from never-existed** — both return 404 `invalid` (no info leak). Expired → 410 `expired`, used → 410 `already_accepted`.
+- **Audit events:** `invitation.created`, `invitation.revoked`, `invitation.accepted`.
+- **`ADMIN_SETUP_TOKEN` is REMOVED** (route file + config binding deleted; it was never mounted). Do not reintroduce. `src/lib/seed.ts` is now orphaned (only the deleted admin route called it) — left in place, reads no token.
+- **Deferred (not built in Sub-turn 10):** change an existing member's role, remove a member, last-owner protection. Revoke + re-invite is the workaround.
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.
