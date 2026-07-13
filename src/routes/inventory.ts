@@ -17,10 +17,10 @@ import {
 import {
   sessionMiddleware,
   requireAuth,
-  requireRole,
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission, can } from '../lib/permissions.js';
 
 type SessionVar = {
   sessionId: string;
@@ -381,7 +381,7 @@ const createSchema = z.object({
   location_id: z.string().uuid().optional(),
 });
 
-inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
+inventory.post('/products', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
 
@@ -547,7 +547,7 @@ const updateSchema = z.object({
   tag_ids: z.array(z.string().uuid()).optional(), // Sub-turn 8a — replace-all
 });
 
-inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
+inventory.patch('/products/:id', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -593,6 +593,13 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
   // when omitted, so `in p` distinguishes "omitted" from "sent as null".
   const costProvided = 'default_purchase_cost_paise' in p;
   const costValue = costProvided ? (p.default_purchase_cost_paise ?? null) : null;
+
+  // Sub-turn 12a: editing a product needs inventory.manage (route-gated), but
+  // touching the purchase COST is a distinct capability (inventory.costs — owner
+  // by default, not in the manager preset).
+  if (costProvided && !can(session, 'inventory.costs')) {
+    return c.json({ error: 'forbidden', required_permission: ['inventory.costs'] }, 403);
+  }
 
   // COALESCE-based partial update: any field the caller omits is preserved.
   // We deliberately do NOT support clearing other nullable fields via PATCH.
@@ -669,7 +676,7 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
 // DELETE /api/inventory/products/:id — soft delete (archive)
 // Refuses if any asset is currently rented.
 // ============================================================================
-inventory.delete('/products/:id', requireRole('owner', 'manager'), async (c) => {
+inventory.delete('/products/:id', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -729,7 +736,7 @@ inventory.delete('/products/:id', requireRole('owner', 'manager'), async (c) => 
 // ============================================================================
 const relocateSchema = z.object({ location_id: z.string().uuid() });
 
-inventory.patch('/assets/:id/location', requireRole('owner', 'manager'), async (c) => {
+inventory.patch('/assets/:id/location', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const assetId = c.req.param('id');
@@ -790,7 +797,7 @@ const bulkCostSchema = z.object({
   })).min(1).max(500),
 });
 
-inventory.patch('/assets/bulk-cost', requireRole('owner', 'manager'), async (c) => {
+inventory.patch('/assets/bulk-cost', requirePermission('inventory.costs'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
 
@@ -866,7 +873,7 @@ const assetCostSchema = z.object({
   purchase_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 });
 
-inventory.patch('/assets/:id', requireRole('owner', 'manager'), async (c) => {
+inventory.patch('/assets/:id', requirePermission('inventory.costs'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const assetId = c.req.param('id');
@@ -967,7 +974,7 @@ const kitAddSchema = z.object({
   quantity: z.number().int().positive(),
 });
 
-inventory.post('/products/:id/kit-components', requireRole('owner', 'manager'), async (c) => {
+inventory.post('/products/:id/kit-components', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1020,7 +1027,7 @@ inventory.post('/products/:id/kit-components', requireRole('owner', 'manager'), 
 // PATCH /api/inventory/products/:id/kit-components/:componentId — update qty
 const kitQtySchema = z.object({ quantity: z.number().int().positive() });
 
-inventory.patch('/products/:id/kit-components/:componentId', requireRole('owner', 'manager'), async (c) => {
+inventory.patch('/products/:id/kit-components/:componentId', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1051,7 +1058,7 @@ inventory.patch('/products/:id/kit-components/:componentId', requireRole('owner'
 });
 
 // DELETE /api/inventory/products/:id/kit-components/:componentId — remove
-inventory.delete('/products/:id/kit-components/:componentId', requireRole('owner', 'manager'), async (c) => {
+inventory.delete('/products/:id/kit-components/:componentId', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1109,7 +1116,7 @@ async function loadProductForImage(workspaceId: string, productId: string) {
 }
 
 // POST /api/inventory/products/:id/image — multipart upload (field name "image")
-inventory.post('/products/:id/image', requireRole('owner', 'manager'), async (c) => {
+inventory.post('/products/:id/image', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const productId = c.req.param('id');
@@ -1180,7 +1187,7 @@ inventory.post('/products/:id/image', requireRole('owner', 'manager'), async (c)
 });
 
 // DELETE /api/inventory/products/:id/image — clear image (delete blob if owned)
-inventory.delete('/products/:id/image', requireRole('owner', 'manager'), async (c) => {
+inventory.delete('/products/:id/image', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const productId = c.req.param('id');

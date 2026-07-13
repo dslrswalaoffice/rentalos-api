@@ -110,8 +110,114 @@ const DEFAULT_TAX: TaxSettings = {
   charge_gst_by_default: false,
 };
 
+import {
+  computeLinePrice,
+  type PricingMethod,
+  type ChargePeriod,
+  type PricingStructure,
+  type PricingRuleset,
+  type PriceResult,
+} from './pricing_engine.js';
+
 // Line types that make up the pre-tax subtotal.
 const SUBTOTAL_TYPES = new Set(['rental', 'delivery_fee', 'late_fee', 'damage', 'other']);
+
+// ----------------------------------------------------------------------------
+// Pricing config loader (Sub-turn 13, chunk 3). Batched — 1 products query + 2
+// for structures/tiers + 2 for rulesets/rules, regardless of line count (F2).
+// The line's RATE is snapshotted on order_items.daily_rate_paise (immutable);
+// method / charge_period / structure / ruleset are re-read here (config, not
+// rate — changing them affects re-priced orders, documented).
+// ----------------------------------------------------------------------------
+type LinePricingConfig = {
+  method: PricingMethod;
+  chargePeriod: ChargePeriod;
+  structure: PricingStructure | null;
+  ruleset: PricingRuleset | null;
+};
+
+async function loadPricingConfigs(
+  workspaceId: string,
+  productIds: string[],
+): Promise<Map<string, LinePricingConfig>> {
+  const out = new Map<string, LinePricingConfig>();
+  const ids = [...new Set(productIds.filter(Boolean))];
+  if (ids.length === 0) return out;
+
+  const prods = await query<{
+    id: string; pricing_method: string; charge_period: string | null;
+    pricing_structure_id: string | null; pricing_ruleset_id: string | null;
+  }>(sql`
+    SELECT id, pricing_method::text AS pricing_method, charge_period::text AS charge_period,
+           pricing_structure_id, pricing_ruleset_id
+    FROM products
+    WHERE workspace_id = ${workspaceId}::uuid
+      AND id::text = ANY(string_to_array(${ids.join(',')}::text, ','))
+  `);
+
+  const structureIds = [...new Set(prods.map((p) => p.pricing_structure_id).filter(Boolean) as string[])];
+  const rulesetIds = [...new Set(prods.map((p) => p.pricing_ruleset_id).filter(Boolean) as string[])];
+
+  const structures = new Map<string, PricingStructure>();
+  if (structureIds.length) {
+    const srows = await query<{ id: string; name: string; overflow_period: string | null; overflow_multiplier: string | number | null }>(sql`
+      SELECT id, name, overflow_period::text AS overflow_period, overflow_multiplier
+      FROM pricing_structures WHERE workspace_id = ${workspaceId}::uuid
+        AND id::text = ANY(string_to_array(${structureIds.join(',')}::text, ','))
+    `);
+    for (const s of srows) structures.set(s.id, {
+      id: s.id, name: s.name,
+      overflow_period: (s.overflow_period as ChargePeriod | null) ?? null,
+      overflow_multiplier: s.overflow_multiplier != null ? Number(s.overflow_multiplier) : null,
+      tiers: [],
+    });
+    const trows = await query<{ id: string; structure_id: string; duration_value: number; duration_period: string; multiplier: string | number; sort_order: number }>(sql`
+      SELECT id, structure_id, duration_value, duration_period::text AS duration_period, multiplier, sort_order
+      FROM pricing_tiers WHERE structure_id::text = ANY(string_to_array(${structureIds.join(',')}::text, ','))
+    `);
+    for (const t of trows) structures.get(t.structure_id)?.tiers.push({
+      id: t.id, duration_value: Number(t.duration_value),
+      duration_period: t.duration_period as ChargePeriod, multiplier: Number(t.multiplier),
+      sort_order: Number(t.sort_order),
+    });
+  }
+
+  const rulesets = new Map<string, PricingRuleset>();
+  if (rulesetIds.length) {
+    const rrows = await query<{ id: string; name: string; stacking: boolean }>(sql`
+      SELECT id, name, stacking FROM pricing_rulesets WHERE workspace_id = ${workspaceId}::uuid
+        AND id::text = ANY(string_to_array(${rulesetIds.join(',')}::text, ','))
+    `);
+    for (const r of rrows) rulesets.set(r.id, { id: r.id, name: r.name, stacking: r.stacking, rules: [] });
+    const prows = await query<{
+      id: string; ruleset_id: string; name: string; kind: string; sort_order: number;
+      days_of_week: number[] | null; date_from: string | null; date_until: string | null;
+      time_from: string | null; time_until: string | null;
+      price_adjustment_bps: number | null; charge_period_action: string | null;
+    }>(sql`
+      SELECT id, ruleset_id, name, kind::text AS kind, sort_order, days_of_week,
+             date_from::text AS date_from, date_until::text AS date_until,
+             time_from::text AS time_from, time_until::text AS time_until,
+             price_adjustment_bps, charge_period_action
+      FROM pricing_rules WHERE ruleset_id::text = ANY(string_to_array(${rulesetIds.join(',')}::text, ','))
+    `);
+    for (const p of prows) rulesets.get(p.ruleset_id)?.rules.push({
+      id: p.id, name: p.name, kind: p.kind as PricingRuleset['rules'][number]['kind'],
+      sort_order: Number(p.sort_order), days_of_week: p.days_of_week,
+      date_from: p.date_from, date_until: p.date_until, time_from: p.time_from, time_until: p.time_until,
+      price_adjustment_bps: p.price_adjustment_bps != null ? Number(p.price_adjustment_bps) : null,
+      charge_period_action: p.charge_period_action as PricingRuleset['rules'][number]['charge_period_action'],
+    });
+  }
+
+  for (const p of prods) out.set(p.id, {
+    method: (p.pricing_method as PricingMethod) ?? 'fixed_fee',
+    chargePeriod: (p.charge_period as ChargePeriod) ?? 'day',
+    structure: p.pricing_structure_id ? structures.get(p.pricing_structure_id) ?? null : null,
+    ruleset: p.pricing_ruleset_id ? rulesets.get(p.pricing_ruleset_id) ?? null : null,
+  });
+  return out;
+}
 
 // Sentinel sort order so the auto GST line always renders last.
 const AUTO_TAX_SORT_ORDER = 9999;
@@ -325,6 +431,15 @@ export async function recomputeOrderTotals(
 
   const items = await loadItems(orderId, workspaceId);
 
+  // Pricing configs for the rental lines' products (batched — F2-safe). Used by
+  // the engine below; the line's snapshotted daily_rate_paise stays the base.
+  const rentalProductIds = items
+    .filter((it) => it.item_type === 'rental' && it.product_id)
+    .map((it) => it.product_id as string);
+  const pricingConfigs = await loadPricingConfigs(workspaceId, rentalProductIds);
+  // Per-line engine snapshot to persist (method/period/tier/explain).
+  const pricedSnapshots = new Map<string, PriceResult>();
+
   let changed = false;
 
   // --- Per-line recompute (everything except the auto GST + discount lines) ---
@@ -354,13 +469,29 @@ export async function recomputeOrderTotals(
     let desiredBillableDays = item.billable_days;
 
     if (item.item_type === 'rental' && !item.manual_price) {
-      if (billableDays === null) {
+      if (billableDays === null || !order.rental_start || !order.rental_end) {
         // Incomplete rental window — leave the line's total untouched.
         desiredTotal = storedTotal;
       } else {
-        const rate = Number(item.daily_rate_paise ?? 0);
-        desiredTotal = qty * rate * billableDays;
-        desiredBillableDays = billableDays;
+        // Sub-turn 13: price through the engine. Base rate is the line's
+        // snapshot (immutable); method/period/structure/ruleset come from the
+        // product's current config.
+        const cfg = item.product_id ? pricingConfigs.get(item.product_id) : undefined;
+        const priced = computeLinePrice({
+          method: cfg?.method ?? 'fixed_fee',
+          basePaise: Number(item.daily_rate_paise ?? 0),
+          chargePeriod: cfg?.chargePeriod ?? 'day',
+          quantity: qty,
+          start: new Date(order.rental_start),
+          end: new Date(order.rental_end),
+          structure: cfg?.structure ?? null,
+          ruleset: cfg?.ruleset ?? null,
+          graceHours: billing.grace_period_hours,
+          minimumPeriods: billing.minimum_days,
+        });
+        desiredTotal = priced.lineTotalPaise;
+        desiredBillableDays = priced.periodsCharged;
+        pricedSnapshots.set(item.id, priced);
       }
     } else if (item.item_type === 'tax' && item.manual_price) {
       // Operator-entered tax line — leave exactly as-is.
@@ -393,16 +524,23 @@ export async function recomputeOrderTotals(
       cgst_paise !== Number(item.cgst_paise) ||
       sgst_paise !== Number(item.sgst_paise) ||
       igst_paise !== Number(item.igst_paise);
-    if (desiredTotal !== storedTotal || billableChanged || chargeableChanged || taxChanged) {
+    // Engine snapshot (Sub-turn 13) — how this rental line was priced, so the
+    // number is explainable months later. Null for non-engine lines.
+    const snap = pricedSnapshots.get(item.id) ?? null;
+    if (desiredTotal !== storedTotal || billableChanged || chargeableChanged || taxChanged || snap) {
       await sql`
         UPDATE order_items SET
-          total_amount_paise = ${desiredTotal}::bigint,
-          billable_days      = ${desiredBillableDays ?? null}::int,
-          chargeable_paise   = ${chargeable}::bigint,
-          cgst_paise         = ${cgst_paise}::bigint,
-          sgst_paise         = ${sgst_paise}::bigint,
-          igst_paise         = ${igst_paise}::bigint,
-          updated_at         = now()
+          total_amount_paise   = ${desiredTotal}::bigint,
+          billable_days        = ${desiredBillableDays ?? null}::int,
+          chargeable_paise     = ${chargeable}::bigint,
+          cgst_paise           = ${cgst_paise}::bigint,
+          sgst_paise           = ${sgst_paise}::bigint,
+          igst_paise           = ${igst_paise}::bigint,
+          priced_method        = ${snap ? snap.method : null}::pricing_method,
+          priced_charge_period = ${snap ? snap.periodUnit : null}::charge_period,
+          priced_tier_id       = ${snap ? snap.tierId : null}::uuid,
+          price_explain        = ${snap ? JSON.stringify({ ...snap.explain, rules_applied: snap.rulesApplied, periods_charged: snap.periodsCharged }) : null}::jsonb,
+          updated_at           = now()
         WHERE id = ${item.id}::uuid
           AND workspace_id = ${workspaceId}::uuid
       `;

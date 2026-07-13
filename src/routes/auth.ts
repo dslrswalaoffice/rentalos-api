@@ -100,7 +100,7 @@ auth.post('/login', async (c) => {
   // 4. Find their active workspace membership. For MVP: pick the first one.
   //    When a user belongs to multiple workspaces, we'll return a picker here.
   const memberships = await query<{
-    workspace_id: string; role: 'owner' | 'manager' | 'staff' | 'client' | 'investor';
+    workspace_id: string; role: 'owner' | 'manager' | 'staff';
     workspace_slug: string; workspace_name: string; workspace_location: string | null;
   }>(sql`
     SELECT

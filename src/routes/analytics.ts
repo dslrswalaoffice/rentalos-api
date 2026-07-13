@@ -3,10 +3,10 @@ import type { Context } from 'hono';
 import {
   sessionMiddleware,
   requireAuth,
-  requireRole,
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 import {
   getRevenueAnalysis,
   getUtilization,
@@ -41,7 +41,7 @@ type Env = { Variables: { session: SessionVar } };
 export const analytics = new Hono<Env>();
 
 // Auth + role gate: owner/manager only. Staff / client / investor → 403.
-analytics.use('*', sessionMiddleware, requireAuth, requireRole('owner', 'manager'));
+analytics.use('*', sessionMiddleware, requireAuth, requirePermission('reports.view'));
 
 // Default range = last 30 days. Custom range via ?start=ISO&end=ISO.
 function parseRange(c: Context): { start: Date; end: Date } | null {
@@ -73,7 +73,7 @@ const csvFilename = (section: string, r: { start: Date; end: Date }) =>
 // aggregate queries = 3 total, constant regardless of product count. NOT cached
 // (cost edits must reflect immediately).
 // ---------------------------------------------------------------------------
-analytics.get('/product-roi', async (c) => {
+analytics.get('/product-roi', requirePermission('inventory.costs'), async (c) => {
   const session = c.get('session')!;
   const wsRows = await query<{ settings: Record<string, any> | null }>(sql`
     SELECT settings FROM workspaces WHERE id = ${session.workspace.id}::uuid LIMIT 1
@@ -141,7 +141,7 @@ function csvResponse(c: Context, section: string, range: { start: Date; end: Dat
   });
 }
 
-analytics.get('/revenue/csv', async (c) => {
+analytics.get('/revenue/csv', requirePermission('reports.export'), async (c) => {
   const session = c.get('session')!;
   const range = parseRange(c);
   if (!range) return c.json({ error: 'invalid_range' }, 400);
@@ -150,7 +150,7 @@ analytics.get('/revenue/csv', async (c) => {
   return csvResponse(c, 'revenue', range, csv);
 });
 
-analytics.get('/utilization/csv', async (c) => {
+analytics.get('/utilization/csv', requirePermission('reports.export'), async (c) => {
   const session = c.get('session')!;
   const range = parseRange(c);
   if (!range) return c.json({ error: 'invalid_range' }, 400);
@@ -162,7 +162,7 @@ analytics.get('/utilization/csv', async (c) => {
   return csvResponse(c, 'utilization', range, csv);
 });
 
-analytics.get('/customers/csv', async (c) => {
+analytics.get('/customers/csv', requirePermission('reports.export'), async (c) => {
   const session = c.get('session')!;
   const range = parseRange(c);
   if (!range) return c.json({ error: 'invalid_range' }, 400);

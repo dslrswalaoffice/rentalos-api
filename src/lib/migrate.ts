@@ -36,6 +36,11 @@ const EXPECTED_TABLES = [
   'login_attempts',
   'products',
   'assets',
+  'pricing_structures',
+  'pricing_tiers',
+  'pricing_rulesets',
+  'pricing_rules',
+  'stock_levels',
 ] as const;
 
 export type MigrationResult = {

@@ -1415,9 +1415,11 @@
 
     // ---------- users tab ----------
     // ---------- team (members + invitations) — Sub-turn 10 ----------
+    // Sub-turn 12a: roles collapsed to owner|manager|staff. Only manager|staff
+    // are invitable; a manager (if granted team.manage) may invite staff only.
     const INVITE_ROLES_BY_ROLE = {
-      owner:   ['manager', 'staff', 'client', 'investor'],
-      manager: ['staff', 'client', 'investor'],
+      owner:   ['manager', 'staff'],
+      manager: ['staff'],
     };
     function daysUntil(iso) {
       const ms = new Date(iso).getTime() - Date.now();
@@ -1426,7 +1428,15 @@
     }
 
     async function loadMembers() {
-      try { const res = await api.get('/api/members'); state.members = res.members || []; }
+      try {
+        const res = await api.get('/api/members');
+        state.members = res.members || [];
+        // Sub-turn 12a: capture the permission editor context.
+        state.teamCanManage = res.can_manage === true;
+        state.teamIsOwner = res.is_owner === true;
+        state.permRegistry = res.registry || {};
+        state.permGroups = res.groups || [];
+      }
       catch (err) { state.members = { error: err.body?.error || err.message || 'error' }; }
       if (state.tab === 'users') render();
     }
@@ -1441,7 +1451,8 @@
     function usersTab() {
       if (state.members === null) loadMembers();
       if (state.invites === null) loadInvites();
-      const canInvite = canEditMetadata();
+      // Sub-turn 12a: inviting/managing the team is team.manage (owner by default).
+      const canInvite = state.teamCanManage === true;
       const myRole = state.data?.current_user?.role;
 
       // Members list
@@ -1451,20 +1462,31 @@
       } else if (!Array.isArray(state.members)) {
         membersInner = `<p class="card-sub">Couldn't load members: ${escapeHtml(state.members?.error || 'error')}</p>`;
       } else {
-        const rows = state.members.map(m => `
-          <tr>
-            <td><strong>${escapeHtml(m.name)}</strong></td>
+        const rows = state.members.map(m => {
+          const deact = m.status === 'deactivated';
+          const statusPill = `<span class="role-pill" style="background:${deact ? 'var(--bad-soft)' : 'var(--ok-soft)'};color:${deact ? 'var(--bad-strong)' : 'var(--ok-strong)'};">${deact ? 'deactivated' : 'active'}</span>`;
+          const editBtn = state.teamCanManage
+            ? `<button class="btn ghost" data-edit-member="${escapeAttr(m.user_id)}">Manage</button>`
+            : '';
+          return `
+          <tr${deact ? ' style="opacity:0.6;"' : ''}>
+            <td><strong>${escapeHtml(m.name)}</strong>${m.is_self ? ' <span style="color:var(--muted);font-size:11px;">(you)</span>' : ''}</td>
             <td>${escapeHtml(m.email)}</td>
             <td><span class="role-pill role-${escapeAttr(m.role)}">${escapeHtml(m.role)}</span></td>
-            <td>${escapeHtml(fmtDate(m.created_at))}</td>
-          </tr>`).join('');
+            <td>${statusPill}</td>
+            <td style="text-align:right;">${editBtn}</td>
+          </tr>`;
+        }).join('');
         membersInner = `<div class="card" style="padding:0;overflow:hidden;">
           <table class="users">
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px;">No members.</td></tr>'}</tbody>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">No members.</td></tr>'}</tbody>
           </table>
         </div>`;
       }
+
+      // Sub-turn 12a: the "Edit team member" editor (owner/team.manage only).
+      const editorCard = memberEditorHtml();
 
       // Invite form (owner/manager only) — role options depend on caller's role
       const roleOpts = (INVITE_ROLES_BY_ROLE[myRole] || [])
@@ -1524,9 +1546,76 @@
           <p class="card-sub">Everyone with access to this workspace.</p>
         </div>
         ${membersInner}
+        ${editorCard}
         ${inviteForm}
         ${linkBanner}
         ${pendingCard}`;
+    }
+
+    // Sub-turn 12a: "Edit team member" — status, role preset, granular
+    // permissions, make-owner. All actions are server-enforced regardless of UI.
+    function memberEditorHtml() {
+      const uid = state.editingMember;
+      if (!uid || !Array.isArray(state.members)) return '';
+      const m = state.members.find(x => x.user_id === uid);
+      if (!m) return '';
+      const isOwnerTarget = m.role === 'owner';
+      const isSelf = m.is_self;
+      const groups = state.permGroups || [];
+      const registry = state.permRegistry || {};
+      const perms = m.permissions || {};
+
+      const permsBody = isOwnerTarget
+        ? `<p class="card-sub" style="color:var(--muted);">Owners have full access. This cannot be changed.</p>`
+        : groups.map(g => `
+          <div style="margin-bottom:12px;">
+            <div style="font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;color:var(--muted);margin-bottom:6px;">${escapeHtml(g.label)}</div>
+            ${g.keys.map(k => {
+              const checked = perms[k] === true;
+              return `<label style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;cursor:${isSelf ? 'not-allowed' : 'pointer'};">
+                <input type="checkbox" data-perm-key="${escapeAttr(k)}" ${checked ? 'checked' : ''} ${isSelf ? 'disabled' : ''} style="margin-top:3px;">
+                <span><strong style="font-family:var(--font-mono);font-size:11px;">${escapeHtml(k)}</strong><br><span style="color:var(--muted);font-size:12px;">${escapeHtml(registry[k] || '')}</span></span>
+              </label>`;
+            }).join('')}
+          </div>`).join('');
+
+      const roleSwitch = (isOwnerTarget || isSelf) ? '' : `
+        <div class="field" style="margin-top:8px;">
+          <label>Role preset</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="member-role">
+              <option value="manager" ${m.role === 'manager' ? 'selected' : ''}>Manager</option>
+              <option value="staff" ${m.role === 'staff' ? 'selected' : ''}>Staff</option>
+            </select>
+            <button class="btn ghost" id="member-role-apply">Apply preset</button>
+          </div>
+          <p class="card-sub" style="color:var(--muted);">Applying a preset overwrites the custom permissions below.</p>
+        </div>`;
+
+      const statusRow = isSelf ? '' : `
+        <div class="field" style="margin-top:8px;">
+          <label>Account status</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span class="role-pill" style="background:${m.status === 'deactivated' ? 'var(--bad-soft)' : 'var(--ok-soft)'};color:${m.status === 'deactivated' ? 'var(--bad-strong)' : 'var(--ok-strong)'};">${escapeHtml(m.status)}</span>
+            ${m.status === 'deactivated'
+              ? `<button class="btn ghost" id="member-activate">Reactivate</button>`
+              : `<button class="btn ghost" id="member-deactivate" style="color:var(--bad-strong);">Deactivate member</button>`}
+            ${(state.teamIsOwner && !isOwnerTarget && m.status === 'active') ? `<button class="btn ghost" id="member-make-owner">Make owner</button>` : ''}
+          </div>
+        </div>`;
+
+      return `
+        <div class="card" id="member-editor" style="margin-top:14px;border-color:var(--head);">
+          <div class="section-h" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>Edit — ${escapeHtml(m.name)}</span>
+            <button class="btn ghost" id="member-editor-close">Close</button>
+          </div>
+          <p class="card-sub">${escapeHtml(m.email)} · <span class="role-pill role-${escapeAttr(m.role)}">${escapeHtml(m.role)}</span>${isSelf ? ' · you cannot edit your own permissions' : ''}</p>
+          ${statusRow}
+          ${roleSwitch}
+          <div class="section-h" style="margin-top:12px;">Permissions</div>
+          <div id="member-perms">${permsBody}</div>
+        </div>`;
     }
 
     function wireUsersTab() {
@@ -1588,6 +1677,66 @@
         try { await api.del(`/api/invitations/${id}`); showToast('Invitation revoked'); state.invites = null; render(); }
         catch { b.disabled = false; b.textContent = 'Revoke'; showToast('Could not revoke'); }
       }));
+
+      // ----- Sub-turn 12a: team member editor -----
+      document.querySelectorAll('[data-edit-member]').forEach(b => b.addEventListener('click', () => {
+        state.editingMember = b.getAttribute('data-edit-member'); render();
+      }));
+      document.getElementById('member-editor-close')?.addEventListener('click', () => { state.editingMember = null; render(); });
+
+      const memberErr = (err, fallback) => {
+        const code = err.body?.error;
+        showToast(({
+          cannot_edit_own_permissions: "You can't edit your own permissions.",
+          owner_permissions_immutable: "Owners have full access — it can't be changed.",
+          cannot_grant_unheld_permission: "You can't grant a permission you don't hold.",
+          cannot_deactivate_self: "You can't deactivate yourself.",
+          cannot_deactivate_last_owner: "Can't deactivate the last owner.",
+          cannot_change_own_role: "You can't change your own role.",
+          cannot_demote_owner: "Use another owner action to change an owner.",
+          only_owner_can_make_owner: 'Only an owner can promote someone to owner.',
+        })[code] || (fallback + (code ? ': ' + code : '')));
+      };
+
+      // Permission checkbox toggles — save immediately.
+      document.querySelectorAll('#member-perms [data-perm-key]').forEach(cb => cb.addEventListener('change', async () => {
+        const key = cb.getAttribute('data-perm-key');
+        const value = cb.checked;
+        cb.disabled = true;
+        try {
+          await api.patch(`/api/members/${state.editingMember}/permissions`, { permissions: { [key]: value } });
+          const m = state.members.find(x => x.user_id === state.editingMember);
+          if (m) { m.permissions = m.permissions || {}; if (value) m.permissions[key] = true; else delete m.permissions[key]; }
+          showToast('Permission updated');
+        } catch (err) { cb.checked = !value; memberErr(err, 'Could not update permission'); }
+        finally { cb.disabled = false; }
+      }));
+
+      // Role preset switch (overwrites custom permissions).
+      document.getElementById('member-role-apply')?.addEventListener('click', async () => {
+        const role = document.getElementById('member-role')?.value;
+        if (!confirm(`Switch this member to the ${role} preset? This overwrites their current custom permissions.`)) return;
+        try { await api.patch(`/api/members/${state.editingMember}/role`, { role }); showToast('Role updated'); state.members = null; render(); }
+        catch (err) { memberErr(err, 'Could not change role'); }
+      });
+
+      // Deactivate / reactivate.
+      document.getElementById('member-deactivate')?.addEventListener('click', async () => {
+        if (!confirm('Deactivate this member? They will be signed out and unable to log in until reactivated.')) return;
+        try { await api.patch(`/api/members/${state.editingMember}/status`, { status: 'deactivated' }); showToast('Member deactivated'); state.members = null; render(); }
+        catch (err) { memberErr(err, 'Could not deactivate'); }
+      });
+      document.getElementById('member-activate')?.addEventListener('click', async () => {
+        try { await api.patch(`/api/members/${state.editingMember}/status`, { status: 'active' }); showToast('Member reactivated'); state.members = null; render(); }
+        catch (err) { memberErr(err, 'Could not reactivate'); }
+      });
+
+      // Make owner (owner actor only, irreversible loss of exclusivity).
+      document.getElementById('member-make-owner')?.addEventListener('click', async () => {
+        if (!confirm('Make this member an owner? Owners have full, unremovable access. You will no longer be the sole owner.')) return;
+        try { await api.post(`/api/members/${state.editingMember}/make-owner`, {}); showToast('Member is now an owner'); state.members = null; render(); }
+        catch (err) { memberErr(err, 'Could not make owner'); }
+      });
     }
 
     // ---------- integrations tab ----------

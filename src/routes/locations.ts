@@ -6,10 +6,10 @@ import { audit } from '../lib/audit.js';
 import {
   sessionMiddleware,
   requireAuth,
-  requireRole,
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/locations.ts  (Sub-turn 6i, Phase 1) — multi-location stock
@@ -99,7 +99,7 @@ const createSchema = z.object({
   is_default: z.boolean().default(false),
 });
 
-locations.post('/', requireRole('owner', 'manager'), async (c) => {
+locations.post('/', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
 
@@ -159,7 +159,7 @@ const updateSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
-locations.patch('/:id', requireRole('owner', 'manager'), async (c) => {
+locations.patch('/:id', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -227,7 +227,7 @@ locations.patch('/:id', requireRole('owner', 'manager'), async (c) => {
 // ============================================================================
 // DELETE /api/locations/:id — soft-delete if referenced, else hard-delete
 // ============================================================================
-locations.delete('/:id', requireRole('owner', 'manager'), async (c) => {
+locations.delete('/:id', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');

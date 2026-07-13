@@ -12,6 +12,7 @@ import {
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/invoices.ts  (Sub-turn 2.4a-endpoints)
@@ -525,7 +526,7 @@ export async function generateInvoice(params: {
 }
 
 // POST /:orderId — generate a new invoice (thin wrapper over generateInvoice)
-invoices.post('/:orderId', async (c) => {
+invoices.post('/:orderId', requirePermission('invoices.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const orderId = c.req.param('orderId');
@@ -581,7 +582,7 @@ const invoiceTransitionSchema = z.object({
   force:  z.boolean().default(false),
 });
 
-invoices.post('/:orderId/:invoiceId/transitions', async (c) => {
+invoices.post('/:orderId/:invoiceId/transitions', requirePermission('invoices.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const orderId = c.req.param('orderId');

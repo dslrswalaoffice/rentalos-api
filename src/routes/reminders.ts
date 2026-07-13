@@ -12,6 +12,7 @@ import {
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/reminders.ts  (Sub-turn 6f) — multi-channel invoice reminders
@@ -457,7 +458,7 @@ const manualSchema = z.object({
   channel: z.enum(['whatsapp', 'email']).optional(),
 });
 
-reminders.post('/invoices/:invoiceId/send', sessionMiddleware, requireAuth, async (c) => {
+reminders.post('/invoices/:invoiceId/send', sessionMiddleware, requireAuth, requirePermission('invoices.manage'), async (c) => {
   const session = c.get('session')!;
   const invoiceId = c.req.param('invoiceId');
 

@@ -9,6 +9,7 @@ import {
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/workspace.ts  (Sub-turn 4a)
@@ -273,7 +274,7 @@ const patchSchema = z.object({
   }).optional(),
 });
 
-workspace.patch('/settings', async (c) => {
+workspace.patch('/settings', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const role = session.user.role;

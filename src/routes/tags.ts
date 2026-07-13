@@ -6,10 +6,10 @@ import { audit } from '../lib/audit.js';
 import {
   sessionMiddleware,
   requireAuth,
-  requireRole,
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/tags.ts  (Sub-turn 8a) — mounted at /api/tags
@@ -80,7 +80,7 @@ const createSchema = z.object({
   sort_order: z.number().int().default(0),
 });
 
-tags.post('/', requireRole('owner', 'manager'), async (c) => {
+tags.post('/', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
 
@@ -127,7 +127,7 @@ const updateSchema = z.object({
 
 // The :id is constrained to a UUID so the literal /assignments and /reorder
 // paths can never be captured as an id (Hono matches in registration order).
-tags.patch('/:id{[0-9a-fA-F-]{36}}', requireRole('owner', 'manager'), async (c) => {
+tags.patch('/:id{[0-9a-fA-F-]{36}}', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -174,7 +174,7 @@ tags.patch('/:id{[0-9a-fA-F-]{36}}', requireRole('owner', 'manager'), async (c) 
 // ============================================================================
 // DELETE /api/tags/:id — soft-delete (owner/manager). Assignments preserved.
 // ============================================================================
-tags.delete('/:id{[0-9a-fA-F-]{36}}', requireRole('owner', 'manager'), async (c) => {
+tags.delete('/:id{[0-9a-fA-F-]{36}}', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -205,7 +205,7 @@ tags.delete('/:id{[0-9a-fA-F-]{36}}', requireRole('owner', 'manager'), async (c)
 // ============================================================================
 const reorderSchema = z.object({ tag_ids: z.array(z.string().uuid()).max(500) });
 
-tags.post('/reorder', requireRole('owner', 'manager'), async (c) => {
+tags.post('/reorder', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json().catch(() => null);
   const parsed = reorderSchema.safeParse(body);
@@ -242,6 +242,8 @@ async function tagInWorkspace(workspaceId: string, tagId: string): Promise<boole
 }
 
 // POST /api/tags/assignments — assign (idempotent)
+// All members may tag entities (Sub-turn 8a design): tagging is lightweight
+// metadata, not a privileged mutation. No permission gate by design.
 tags.post('/assignments', async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json().catch(() => null);
@@ -264,6 +266,7 @@ tags.post('/assignments', async (c) => {
 });
 
 // DELETE /api/tags/assignments — unassign
+// All members (see POST /assignments) — untagging is symmetric with tagging.
 tags.delete('/assignments', async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json().catch(() => null);
@@ -288,6 +291,7 @@ const replaceSchema = z.object({
   tag_ids: z.array(z.string().uuid()).max(100),
 });
 
+// All members (see POST /assignments) — replace-all tag set on an entity.
 tags.put('/assignments', async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json().catch(() => null);

@@ -102,7 +102,11 @@ export type AuditEventType =
   | 'integration.test_run'
   | 'invitation.created'
   | 'invitation.revoked'
-  | 'invitation.accepted';
+  | 'invitation.accepted'
+  | 'team.member.permission_changed'
+  | 'team.member.status_changed'
+  | 'team.member.role_changed'
+  | 'team.member.made_owner';
 
 export type AuditEventInput = {
   workspaceId?: string | null;

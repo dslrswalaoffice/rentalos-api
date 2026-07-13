@@ -22,6 +22,7 @@ import {
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission, can } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/orders.ts
@@ -780,7 +781,7 @@ async function resolveOrderLocation(
   return { id: rows[0]!.id };
 }
 
-orders.post('/', async (c) => {
+orders.post('/', requirePermission('orders.create'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
 
@@ -896,7 +897,7 @@ const updateSchema = z.object({
   tag_ids:            z.array(z.string().uuid()).optional(), // Sub-turn 8a — replace-all
 });
 
-orders.patch('/:id', async (c) => {
+orders.patch('/:id', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1026,13 +1027,23 @@ const addItemSchema = z.object({
   parent_item_id:    z.string().uuid().optional(),
   description:       z.string().min(1).max(500),
   quantity:          z.number().int().positive().default(1),
+  // Sub-turn 13-0: for a RENTAL line the SERVER computes the rate from the
+  // product — a client-supplied unit_amount_paise/daily_rate_paise is ignored
+  // (and billable_days always comes from the order window via recompute).
+  // Non-rental lines (delivery_fee, damage, other, …) are operator-priced, so
+  // unit_amount_paise still applies to them. A rental price change is only
+  // possible through `override`, which requires orders.override_price.
   unit_amount_paise: z.number().int().default(0),
   daily_rate_paise:  z.number().int().optional(),
   billable_days:     z.number().int().positive().optional(),
   sort_order:        z.number().int().default(0),
+  override: z.object({
+    unit_amount_paise: z.number().int(),
+    label:             z.string().min(1).max(200),
+  }).optional(),
 });
 
-orders.post('/:id/items', async (c) => {
+orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1050,28 +1061,60 @@ orders.post('/:id/items', async (c) => {
     return c.json({ error: 'locked' }, 409);
   }
 
-  // Rental items must have a valid product from this workspace.
+  // Resolve the line's money SERVER-SIDE (Sub-turn 13-0). For a rental line the
+  // rate comes from the product, never the client; the only way to set a
+  // different price is an explicit `override`, which requires
+  // orders.override_price. Non-rental lines stay operator-priced.
+  let lineDailyRate: number | null = null;
+  let lineUnit = input.unit_amount_paise;
+  let manualPrice = false;
+  let overrideLabel: string | null = null;
+
   if (input.item_type === 'rental') {
     if (!input.product_id) {
       return c.json({ error: 'invalid_request', reason: 'product_id_required_for_rental' }, 400);
     }
-    const p = await query<{ id: string }>(sql`
-      SELECT id FROM products
+    const p = await query<{ id: string; base_price_paise: number | null; daily_rate: number }>(sql`
+      SELECT id, base_price_paise, daily_rate FROM products
       WHERE id = ${input.product_id}
         AND workspace_id = ${session.workspace.id}
         AND deleted_at IS NULL
       LIMIT 1
     `);
     if (p.length === 0) return c.json({ error: 'product_not_found' }, 404);
+
+    if (input.override) {
+      if (!can(session, 'orders.override_price')) {
+        return c.json({ error: 'forbidden', required_permission: ['orders.override_price'] }, 403);
+      }
+      lineDailyRate = input.override.unit_amount_paise;
+      lineUnit = input.override.unit_amount_paise;
+      manualPrice = true;
+      overrideLabel = input.override.label;
+    } else {
+      // Server-authoritative: snapshot the product's base rate (Sub-turn 13).
+      // The pricing engine turns this into the line total on the recompute that
+      // fires immediately after insert; client rate fields are ignored.
+      lineDailyRate = Number(p[0]!.base_price_paise ?? p[0]!.daily_rate);
+      lineUnit = Number(p[0]!.base_price_paise ?? p[0]!.daily_rate);
+    }
+  } else if (input.override) {
+    // Override on a non-rental line is still a permissioned, labelled act.
+    if (!can(session, 'orders.override_price')) {
+      return c.json({ error: 'forbidden', required_permission: ['orders.override_price'] }, 403);
+    }
+    lineUnit = input.override.unit_amount_paise;
+    manualPrice = true;
+    overrideLabel = input.override.label;
   }
 
-  const totalAmount = input.unit_amount_paise * input.quantity;
+  const totalAmount = lineUnit * input.quantity;
 
   const inserted = await query<OrderItemRow>(sql`
     INSERT INTO order_items (
       workspace_id, order_id, parent_item_id, item_type, product_id,
       description, quantity, daily_rate_paise, billable_days,
-      unit_amount_paise, total_amount_paise, sort_order
+      unit_amount_paise, total_amount_paise, manual_price, price_override_label, sort_order
     ) VALUES (
       ${session.workspace.id},
       ${id},
@@ -1080,10 +1123,12 @@ orders.post('/:id/items', async (c) => {
       ${input.product_id ?? null}::uuid,
       ${input.description},
       ${input.quantity},
-      ${input.daily_rate_paise ?? null},
+      ${lineDailyRate}::bigint,
       ${input.billable_days ?? null},
-      ${input.unit_amount_paise},
+      ${lineUnit},
       ${totalAmount},
+      ${manualPrice}::boolean,
+      ${overrideLabel}::text,
       ${input.sort_order}
     )
     RETURNING *
@@ -1134,7 +1179,7 @@ const updateItemSchema = z.object({
   manual_price:      z.boolean().optional(),
 });
 
-orders.patch('/:id/items/:itemId', async (c) => {
+orders.patch('/:id/items/:itemId', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1173,14 +1218,25 @@ orders.patch('/:id/items/:itemId', async (c) => {
   // A null here means "leave manual_price as-is" (COALESCE below preserves it).
   const isRental = existing[0]!.item_type === 'rental';
   const wantsRevert = p.manual_price === false;
+  // Sub-turn 13-0: changing EITHER unit_amount_paise OR daily_rate_paise on a
+  // rental line is a price override (the server otherwise owns the rate), so
+  // both require orders.override_price via the guard below.
   const wantsOverride =
     !wantsRevert &&
-    ((p.unit_amount_paise !== undefined && isRental) || p.manual_price === true);
+    (((p.unit_amount_paise !== undefined || p.daily_rate_paise !== undefined) && isRental)
+      || p.manual_price === true);
   const manualPriceToSet: boolean | null = wantsRevert
     ? false
     : wantsOverride
       ? true
       : null;
+
+  // Manually overriding the calculated price is a distinct capability (Sub-turn
+  // 12a). Ordinary edits (qty, description, revert-to-auto) need only orders.edit
+  // (already gated on the route); locking in a manual price needs override_price.
+  if (wantsOverride && !can(session, 'orders.override_price')) {
+    return c.json({ error: 'forbidden', required_permission: ['orders.override_price'] }, 403);
+  }
 
   const updated = await query<OrderItemRow>(sql`
     UPDATE order_items SET
@@ -1249,7 +1305,7 @@ orders.patch('/:id/items/:itemId', async (c) => {
 // ============================================================================
 // DELETE /api/orders/:id/items/:itemId — remove a line item
 // ============================================================================
-orders.delete('/:id/items/:itemId', async (c) => {
+orders.delete('/:id/items/:itemId', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1310,7 +1366,7 @@ const itemStatusSchema = z.object({
   condition_notes: z.string().max(2000).optional(),
 });
 
-orders.patch('/:id/items/:itemId/status', async (c) => {
+orders.patch('/:id/items/:itemId/status', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1430,7 +1486,7 @@ orders.patch('/:id/items/:itemId/status', async (c) => {
 // ============================================================================
 // POST /api/orders/:id/recompute — force a pricing recompute
 // ============================================================================
-orders.post('/:id/recompute', async (c) => {
+orders.post('/:id/recompute', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1471,7 +1527,7 @@ const depositSchema = z.object({
   deposit_required_paise: z.number().int().nonnegative(),
 });
 
-orders.patch('/:id/deposit', async (c) => {
+orders.patch('/:id/deposit', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1541,7 +1597,7 @@ type ExtensionConflict = {
   order_conflicts: unknown[];
 };
 
-orders.post('/:id/extend', async (c) => {
+orders.post('/:id/extend', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1762,6 +1818,24 @@ orders.post('/:id/transitions', async (c) => {
     return c.json({ order, unchanged: true });
   }
 
+  // Permission gate (Sub-turn 12a): cancel / revert / forward-progression are
+  // distinct capabilities. Staff may PROGRESS an order but not cancel it or
+  // revert its status. Cancelling is always orders.cancel; a move to an earlier
+  // lifecycle stage is a revert; anything else is ordinary editing.
+  const LIFECYCLE_RANK: Record<string, number> = {
+    draft: 0, quoted: 1, confirmed: 2, dispatched: 3, active: 3,
+    returned: 4, closed: 5, cancelled: 6,
+  };
+  const neededPerm: 'orders.cancel' | 'orders.revert_status' | 'orders.edit' =
+    to === 'cancelled'
+      ? 'orders.cancel'
+      : (LIFECYCLE_RANK[to] ?? 99) < (LIFECYCLE_RANK[order.status] ?? 0)
+        ? 'orders.revert_status'
+        : 'orders.edit';
+  if (!can(session, neededPerm)) {
+    return c.json({ error: 'forbidden', required_permission: [neededPerm] }, 403);
+  }
+
   let canonical = isCanonical(order.status, to);
   let finalizeViaCanFinalize = false;
 
@@ -1882,7 +1956,7 @@ const dispatchSchema = z.object({
   }).optional(),
 });
 
-orders.post('/:id/dispatch', async (c) => {
+orders.post('/:id/dispatch', requirePermission('dispatch.execute'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -2222,7 +2296,7 @@ const returnSchema = z.object({
   returned_by_user_id: z.string().uuid().optional(),
 });
 
-orders.post('/:id/return', async (c) => {
+orders.post('/:id/return', requirePermission('returns.execute'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -2416,7 +2490,7 @@ orders.post('/:id/return', async (c) => {
 // ============================================================================
 // DELETE /api/orders/:id — soft delete (only drafts)
 // ============================================================================
-orders.delete('/:id', async (c) => {
+orders.delete('/:id', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
