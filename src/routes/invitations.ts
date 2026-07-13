@@ -12,12 +12,12 @@ import type { EmailAdapter } from '../lib/adapters/types.js';
 import {
   sessionMiddleware,
   requireAuth,
-  requireRole,
   createSession,
   setSessionCookie,
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission, presetPermissions, type WorkspaceRole } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/invitations.ts (Sub-turn 10) — mounted at /api/invitations
@@ -70,7 +70,10 @@ function originFromRequest(c: Context): string {
 
 // Roles that can be invited. 'owner' is deliberately absent — owner exists only
 // via workspace creation, enforced here AND by the DB CHECK constraint.
-const INVITABLE_ROLES = ['manager', 'staff', 'client', 'investor'] as const;
+// Sub-turn 12a: roles collapsed to owner|manager|staff. Only manager|staff are
+// invitable (owner is never invitable; client/investor removed). The DB CHECK
+// on invitations.role (migration 032) enforces this independently.
+const INVITABLE_ROLES = ['manager', 'staff'] as const;
 type InvitableRole = (typeof INVITABLE_ROLES)[number];
 
 // Best-effort send via the workspace's active email adapter (same registry as
@@ -126,7 +129,7 @@ const createSchema = z.object({
   role: z.string().min(1).max(20),
 });
 
-invitations.post('/', requireAuth, requireRole('owner', 'manager'), async (c) => {
+invitations.post('/', requireAuth, requirePermission('team.manage'), async (c) => {
   const session = c.get('session')!;
   const wsId = session.workspace.id;
   const { ipAddress, userAgent } = clientCtx(c);
@@ -142,8 +145,9 @@ invitations.post('/', requireAuth, requireRole('owner', 'manager'), async (c) =>
   if (!INVITABLE_ROLES.includes(role as InvitableRole)) {
     return c.json({ error: 'invalid_request', reason: 'unknown_role' }, 400);
   }
-  // Escalation guard: a manager can invite staff/client/investor only —
-  // never another manager (and never owner, handled above).
+  // Escalation guard: even a manager who's been granted team.manage may invite
+  // staff only — never another manager (and never owner, handled above). No
+  // privilege escalation via invitations.
   if (session.user.role === 'manager' && role === 'manager') {
     return c.json({ error: 'insufficient_role' }, 403);
   }
@@ -253,7 +257,7 @@ invitations.post('/', requireAuth, requireRole('owner', 'manager'), async (c) =>
 // ============================================================================
 // GET /api/invitations — pending list (owner/manager)
 // ============================================================================
-invitations.get('/', requireAuth, requireRole('owner', 'manager'), async (c) => {
+invitations.get('/', requireAuth, requirePermission('team.manage'), async (c) => {
   const session = c.get('session')!;
   const rows = await query<{
     id: string; email: string; role: string; expires_at: string;
@@ -275,7 +279,7 @@ invitations.get('/', requireAuth, requireRole('owner', 'manager'), async (c) => 
 // ============================================================================
 // DELETE /api/invitations/:id — revoke (owner/manager). Idempotent.
 // ============================================================================
-invitations.delete('/:id', requireAuth, requireRole('owner', 'manager'), async (c) => {
+invitations.delete('/:id', requireAuth, requirePermission('team.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -407,8 +411,10 @@ invitations.post('/accept', async (c) => {
     if (membership.length) return c.json({ error: 'already_member' }, 409);
 
     await sql`
-      INSERT INTO workspace_memberships (workspace_id, user_id, role, status, invited_by)
-      VALUES (${wsId}::uuid, ${userId}::uuid, ${role}::workspace_role, 'active', ${invitedByUserId}::uuid)
+      INSERT INTO workspace_memberships (workspace_id, user_id, role, status, permissions, invited_by)
+      VALUES (${wsId}::uuid, ${userId}::uuid, ${role}::workspace_role, 'active',
+              ${JSON.stringify(presetPermissions(role as WorkspaceRole))}::jsonb,
+              ${invitedByUserId}::uuid)
     `;
   } else {
     // NEW account: name required, password must pass the app-wide policy.
@@ -433,8 +439,10 @@ invitations.post('/accept', async (c) => {
     userId = created[0]!.id;
 
     await sql`
-      INSERT INTO workspace_memberships (workspace_id, user_id, role, status, invited_by)
-      VALUES (${wsId}::uuid, ${userId}::uuid, ${role}::workspace_role, 'active', ${invitedByUserId}::uuid)
+      INSERT INTO workspace_memberships (workspace_id, user_id, role, status, permissions, invited_by)
+      VALUES (${wsId}::uuid, ${userId}::uuid, ${role}::workspace_role, 'active',
+              ${JSON.stringify(presetPermissions(role as WorkspaceRole))}::jsonb,
+              ${invitedByUserId}::uuid)
     `;
   }
 

@@ -22,6 +22,7 @@ import {
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission, can } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/orders.ts
@@ -780,7 +781,7 @@ async function resolveOrderLocation(
   return { id: rows[0]!.id };
 }
 
-orders.post('/', async (c) => {
+orders.post('/', requirePermission('orders.create'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
 
@@ -896,7 +897,7 @@ const updateSchema = z.object({
   tag_ids:            z.array(z.string().uuid()).optional(), // Sub-turn 8a — replace-all
 });
 
-orders.patch('/:id', async (c) => {
+orders.patch('/:id', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1032,7 +1033,7 @@ const addItemSchema = z.object({
   sort_order:        z.number().int().default(0),
 });
 
-orders.post('/:id/items', async (c) => {
+orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1134,7 +1135,7 @@ const updateItemSchema = z.object({
   manual_price:      z.boolean().optional(),
 });
 
-orders.patch('/:id/items/:itemId', async (c) => {
+orders.patch('/:id/items/:itemId', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1181,6 +1182,13 @@ orders.patch('/:id/items/:itemId', async (c) => {
     : wantsOverride
       ? true
       : null;
+
+  // Manually overriding the calculated price is a distinct capability (Sub-turn
+  // 12a). Ordinary edits (qty, description, revert-to-auto) need only orders.edit
+  // (already gated on the route); locking in a manual price needs override_price.
+  if (wantsOverride && !can(session, 'orders.override_price')) {
+    return c.json({ error: 'forbidden', required_permission: ['orders.override_price'] }, 403);
+  }
 
   const updated = await query<OrderItemRow>(sql`
     UPDATE order_items SET
@@ -1249,7 +1257,7 @@ orders.patch('/:id/items/:itemId', async (c) => {
 // ============================================================================
 // DELETE /api/orders/:id/items/:itemId — remove a line item
 // ============================================================================
-orders.delete('/:id/items/:itemId', async (c) => {
+orders.delete('/:id/items/:itemId', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1310,7 +1318,7 @@ const itemStatusSchema = z.object({
   condition_notes: z.string().max(2000).optional(),
 });
 
-orders.patch('/:id/items/:itemId/status', async (c) => {
+orders.patch('/:id/items/:itemId/status', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1430,7 +1438,7 @@ orders.patch('/:id/items/:itemId/status', async (c) => {
 // ============================================================================
 // POST /api/orders/:id/recompute — force a pricing recompute
 // ============================================================================
-orders.post('/:id/recompute', async (c) => {
+orders.post('/:id/recompute', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1471,7 +1479,7 @@ const depositSchema = z.object({
   deposit_required_paise: z.number().int().nonnegative(),
 });
 
-orders.patch('/:id/deposit', async (c) => {
+orders.patch('/:id/deposit', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1541,7 +1549,7 @@ type ExtensionConflict = {
   order_conflicts: unknown[];
 };
 
-orders.post('/:id/extend', async (c) => {
+orders.post('/:id/extend', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -1762,6 +1770,24 @@ orders.post('/:id/transitions', async (c) => {
     return c.json({ order, unchanged: true });
   }
 
+  // Permission gate (Sub-turn 12a): cancel / revert / forward-progression are
+  // distinct capabilities. Staff may PROGRESS an order but not cancel it or
+  // revert its status. Cancelling is always orders.cancel; a move to an earlier
+  // lifecycle stage is a revert; anything else is ordinary editing.
+  const LIFECYCLE_RANK: Record<string, number> = {
+    draft: 0, quoted: 1, confirmed: 2, dispatched: 3, active: 3,
+    returned: 4, closed: 5, cancelled: 6,
+  };
+  const neededPerm: 'orders.cancel' | 'orders.revert_status' | 'orders.edit' =
+    to === 'cancelled'
+      ? 'orders.cancel'
+      : (LIFECYCLE_RANK[to] ?? 99) < (LIFECYCLE_RANK[order.status] ?? 0)
+        ? 'orders.revert_status'
+        : 'orders.edit';
+  if (!can(session, neededPerm)) {
+    return c.json({ error: 'forbidden', required_permission: [neededPerm] }, 403);
+  }
+
   let canonical = isCanonical(order.status, to);
   let finalizeViaCanFinalize = false;
 
@@ -1882,7 +1908,7 @@ const dispatchSchema = z.object({
   }).optional(),
 });
 
-orders.post('/:id/dispatch', async (c) => {
+orders.post('/:id/dispatch', requirePermission('dispatch.execute'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -2222,7 +2248,7 @@ const returnSchema = z.object({
   returned_by_user_id: z.string().uuid().optional(),
 });
 
-orders.post('/:id/return', async (c) => {
+orders.post('/:id/return', requirePermission('returns.execute'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -2416,7 +2442,7 @@ orders.post('/:id/return', async (c) => {
 // ============================================================================
 // DELETE /api/orders/:id — soft delete (only drafts)
 // ============================================================================
-orders.delete('/:id', async (c) => {
+orders.delete('/:id', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');

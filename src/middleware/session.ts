@@ -11,7 +11,9 @@ export type SessionUser = {
   id: string;
   email: string;
   displayName: string;
-  role: 'owner' | 'manager' | 'staff' | 'client' | 'investor';
+  // Sub-turn 12a: roles collapsed to three. client/investor removed — they get
+  // separate portals later, not workspace memberships.
+  role: 'owner' | 'manager' | 'staff';
 };
 
 export type SessionWorkspace = {
@@ -28,6 +30,7 @@ type SessionRow = {
   user_email: string;
   user_display_name: string;
   role: SessionUser['role'];
+  permissions: Record<string, boolean>;
   workspace_slug: string;
   workspace_name: string;
   workspace_location: string | null;
@@ -44,6 +47,10 @@ export async function getSession(cookieValue: string | null): Promise<{
   user: SessionUser;
   workspace: SessionWorkspace;
   sessionId: string;
+  // Sub-turn 12a: the member's granular permissions, loaded on the SAME query
+  // that resolves the session — zero extra round trips. Owners carry {} here;
+  // their access is code-enforced in can(), never read from this map.
+  permissions: Record<string, boolean>;
 } | null> {
   if (!cookieValue) return null;
   const tokenHash = hashToken(cookieValue);
@@ -56,6 +63,7 @@ export async function getSession(cookieValue: string | null): Promise<{
       u.email         AS user_email,
       u.display_name  AS user_display_name,
       m.role,
+      m.permissions,
       w.slug          AS workspace_slug,
       w.name          AS workspace_name,
       w.location      AS workspace_location
@@ -93,6 +101,7 @@ export async function getSession(cookieValue: string | null): Promise<{
       name: row.workspace_name,
       location: row.workspace_location,
     },
+    permissions: row.permissions ?? {},
   };
 }
 

@@ -10,6 +10,7 @@ import {
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission, can } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/payments.ts  (Sub-turn 2.2a)
@@ -358,7 +359,7 @@ const DEPOSIT_AUDIT: Record<string, 'payments.deposit_recorded' | 'payments.depo
   deposit_forfeit: 'payments.deposit_forfeited',
 };
 
-payments.post('/:orderId', async (c) => {
+payments.post('/:orderId', requirePermission('payments.record'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const orderId = c.req.param('orderId');
@@ -371,6 +372,13 @@ payments.post('/:orderId', async (c) => {
   const input = parsed.data;
   const kind = input.payment_kind;
   const isDeposit = kind !== 'rental';
+
+  // Sub-turn 12a: recording a rental payment or an incoming deposit needs
+  // payments.record (route-gated). RELEASING money already held — a deposit
+  // refund or forfeit — is deposits.retain, which staff don't have.
+  if ((kind === 'deposit_refund' || kind === 'deposit_forfeit') && !can(session, 'deposits.retain')) {
+    return c.json({ error: 'forbidden', required_permission: ['deposits.retain'] }, 403);
+  }
 
   const order = await loadOrderLite(orderId, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
@@ -481,7 +489,7 @@ payments.post('/:orderId', async (c) => {
 // ============================================================================
 // DELETE /:orderId/:paymentId — delete a recent payment (correction window)
 // ============================================================================
-payments.delete('/:orderId/:paymentId', async (c) => {
+payments.delete('/:orderId/:paymentId', requirePermission('payments.record'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const orderId = c.req.param('orderId');
@@ -571,7 +579,7 @@ const refundSchema = z.object({
   occurred_at:  z.string().datetime().optional(),
 });
 
-payments.post('/:orderId/:paymentId/refund', async (c) => {
+payments.post('/:orderId/:paymentId/refund', requirePermission('payments.refund'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const orderId = c.req.param('orderId');

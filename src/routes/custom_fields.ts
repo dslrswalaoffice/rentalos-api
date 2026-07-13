@@ -7,10 +7,10 @@ import { loadCustomFieldValues, upsertCustomFieldValues, type CustomFieldEntity 
 import {
   sessionMiddleware,
   requireAuth,
-  requireRole,
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/custom_fields.ts  (Sub-turn 6g) — workspace-defined custom fields
@@ -91,7 +91,7 @@ const createSchema = z.object({
   sort_order: z.number().int().default(0),
 });
 
-customFields.post('/definitions', requireRole('owner', 'manager'), async (c) => {
+customFields.post('/definitions', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
 
@@ -151,7 +151,7 @@ const updateSchema = z.object({
   sort_order: z.number().int().optional(),
 });
 
-customFields.patch('/definitions/:id', requireRole('owner', 'manager'), async (c) => {
+customFields.patch('/definitions/:id', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -204,7 +204,7 @@ customFields.patch('/definitions/:id', requireRole('owner', 'manager'), async (c
 // ============================================================================
 // DELETE /api/custom-fields/definitions/:id — soft-delete (owner/manager)
 // ============================================================================
-customFields.delete('/definitions/:id', requireRole('owner', 'manager'), async (c) => {
+customFields.delete('/definitions/:id', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -257,6 +257,9 @@ const valuesSchema = z.object({
   })),
 });
 
+// All members may SET custom-field VALUES on records they can already edit
+// (Sub-turn 6g design). Defining the fields is settings.manage; filling them in
+// is part of ordinary record editing. No separate gate by design.
 customFields.put('/values', async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);

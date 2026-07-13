@@ -753,6 +753,25 @@ Migrated the last pages so **every page in RentalOS now runs on the design syste
 
 ---
 
+## Roles + granular permissions (Sub-turn 12a)
+
+Closed the live security hole from `MODULE_AUDIT.md`: order/payment/invoice/settings/downtime mutations were gated only by `requireAuth` (no role). Booqable's model — **role is a preset, permission is the truth.**
+
+- **Roles collapsed to `owner | manager | staff`** (migration 032). `client`/`investor` **removed** — they get separate portals later, never workspace memberships. The DB CHECK on `invitations.role` now allows only `manager|staff`.
+- **Permission registry lives in code** (`src/lib/permissions.ts`) — 24 keys (`PERMISSIONS`), `PRESETS` (owner=`'*'` sentinel, manager, staff), `can(session, key)`, `presetPermissions(role)`, `requirePermission(...keys)` middleware. Adding a permission = a code change + a preset default, **not a migration**.
+- **Permissions live in `workspace_memberships.permissions` JSONB** — the session query already loads the membership row, so `can()` costs **zero extra queries** (the F2 lesson; a join table would be one round trip per request). `getSession` now SELECTs `m.permissions` and attaches it to the session.
+- **Owner = every permission, code-enforced** (`if role==='owner' return true`) — never stored as toggles, can never be reduced. Owners store `{}`.
+- **Deny by default:** an absent or unknown key = denied. `requirePermission` 403s on the first missing key.
+- **Deactivation:** `membership_status` gained `deactivated` (enum was `active|invited|suspended`). `getSession` already filters `status='active'`, so a deactivated member is rejected on their **next request** with no extra check — and the status PATCH also revokes their live sessions.
+- **Every mutating route now has an explicit `requirePermission`.** Sub-actions gated in-handler: order **transitions** (cancel→`orders.cancel`, backward→`orders.revert_status`, forward→`orders.edit`), item **price override**→`orders.override_price`, deposit **refund/forfeit**→`deposits.retain`, product/asset **cost writes**→`inventory.costs`. Genuinely all-member routes (tag assignments, custom-field values, own-notification reads) stay `requireAuth` **with an explaining comment** (per the "every route declares intent" rule).
+- **Intentional tightenings** (per the presets, these are by design, not regressions): `inventory.costs` (bulk-cost, per-asset cost, product-ROI, cost fields in product PATCH) → **owner-only** by default (manager must be granted it); `settings.manage` (workspace settings, integrations, custom-field **definitions**) → owner-only; `team.manage` (invitations, member management) → owner-only.
+- **Team management** (`/api/members`, owner via `team.manage`): `PATCH /:userId/permissions` (toggle; owner immutable; can't edit self; **can't grant a permission you don't hold**; unknown key → 400), `PATCH /:userId/status` (deactivate/reactivate; can't deactivate self or the **last active owner**), `PATCH /:userId/role` (switch preset — overwrites custom perms), `POST /:userId/make-owner` (owner actor only). Every change audits (`team.member.permission_changed`/`.status_changed`/`.role_changed`/`.made_owner`).
+- **Invitations seed permissions** from the role preset at accept time. The Sub-turn 10 escalation note ("owner can invite manager/staff/client/investor") is **superseded** — only `manager|staff` are invitable, a manager (if granted `team.manage`) may invite `staff` only, nobody invites `owner`.
+- **UI:** Settings → **Team** — member rows show role + status; a "Manage" action opens an editor (status/deactivate, role preset switch, 24 grouped permission checkboxes, Make owner). Owner target renders all-checked + disabled ("Owners have full access. This cannot be changed."); self can't edit own permissions. **All guards are server-enforced regardless of the UI.**
+- **Deferred:** custom named roles, permission groups/templates beyond the three presets, KYC field-level redaction (`people.view_sensitive` is registered but people reads aren't yet field-redacted — a documented follow-up).
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.
@@ -766,6 +785,11 @@ Migrated the last pages so **every page in RentalOS now runs on the design syste
 - ❌ No new fonts, colors, or component patterns invented ad-hoc — reuse the existing shell.
 - ❌ No `localStorage` / `sessionStorage` in artifacts (Aamir has explicitly ruled this out for the current phase).
 - ❌ No premature microservices — modular monolith until scaling forces separation.
+- ❌ No mutating route without an explicit `requirePermission` (or a comment stating it's intentionally all-member).
+- ❌ No default-allow on an unknown/absent permission key — deny by default.
+- ❌ No storing owner permissions in JSONB or reducing them — owner access is code-enforced in `can()`.
+- ❌ No permissions join table — permissions ride on `workspace_memberships` (loaded with the session, zero extra queries).
+- ❌ No `client`/`investor` workspace roles — collapsed to `owner|manager|staff`.
 
 ---
 

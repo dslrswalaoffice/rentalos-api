@@ -95,6 +95,7 @@ notifications.get('/unread-count', async (c) => {
 // ============================================================================
 // POST /api/notifications/:id/read — mark one read (idempotent)
 // ============================================================================
+// All members: a member marks THEIR OWN notifications read. No gate by design.
 notifications.post('/:id/read', async (c) => {
   const session = c.get('session')!;
   const id = c.req.param('id');
@@ -118,6 +119,7 @@ notifications.post('/:id/read', async (c) => {
 // ============================================================================
 // POST /api/notifications/mark-all-read
 // ============================================================================
+// All members: marks the caller's own notifications read. No gate by design.
 notifications.post('/mark-all-read', async (c) => {
   const session = c.get('session')!;
   const updated = await query<{ id: string }>(sql`

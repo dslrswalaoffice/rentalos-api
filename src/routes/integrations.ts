@@ -8,10 +8,10 @@ import { ADAPTER_METADATA, findAdapter, findMetadata } from '../lib/adapters/reg
 import {
   sessionMiddleware,
   requireAuth,
-  requireRole,
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/integrations.ts  (Sub-turn 6a)
@@ -124,7 +124,7 @@ const putSchema = z.object({
   test_mode: z.boolean().optional(),
 });
 
-integrations.put('/:category/:provider', requireRole('owner', 'manager'), async (c) => {
+integrations.put('/:category/:provider', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const category = c.req.param('category');
@@ -189,7 +189,7 @@ integrations.put('/:category/:provider', requireRole('owner', 'manager'), async 
 // ============================================================================
 // POST /api/integrations/:category/:provider/activate
 // ============================================================================
-integrations.post('/:category/:provider/activate', requireRole('owner', 'manager'), async (c) => {
+integrations.post('/:category/:provider/activate', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const category = c.req.param('category');
@@ -235,7 +235,7 @@ integrations.post('/:category/:provider/activate', requireRole('owner', 'manager
 // ============================================================================
 // POST /api/integrations/:category/:provider/deactivate
 // ============================================================================
-integrations.post('/:category/:provider/deactivate', requireRole('owner', 'manager'), async (c) => {
+integrations.post('/:category/:provider/deactivate', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const category = c.req.param('category');
@@ -262,7 +262,7 @@ integrations.post('/:category/:provider/deactivate', requireRole('owner', 'manag
 // ============================================================================
 // POST /api/integrations/:category/:provider/test
 // ============================================================================
-integrations.post('/:category/:provider/test', requireRole('owner', 'manager'), async (c) => {
+integrations.post('/:category/:provider/test', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const category = c.req.param('category');
@@ -313,7 +313,7 @@ integrations.post('/:category/:provider/test', requireRole('owner', 'manager'), 
 // ============================================================================
 // DELETE /api/integrations/:category/:provider — remove configuration entirely
 // ============================================================================
-integrations.delete('/:category/:provider', requireRole('owner', 'manager'), async (c) => {
+integrations.delete('/:category/:provider', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const category = c.req.param('category');

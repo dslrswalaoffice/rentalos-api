@@ -11,10 +11,10 @@ import {
 import {
   sessionMiddleware,
   requireAuth,
-  requireRole,
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/recommendations.ts  (Sub-turn 8c) — mounted at /api/recommendations
@@ -62,7 +62,7 @@ recommendations.get('/products/:productId', async (c) => {
 // ============================================================================
 // GET /products/:productId/manual — manual only (owner/manager, for editing UI)
 // ============================================================================
-recommendations.get('/products/:productId/manual', requireRole('owner', 'manager'), async (c) => {
+recommendations.get('/products/:productId/manual', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const productId = c.req.param('productId');
   const manual = await loadManualRecommendations(session.workspace.id, productId);
@@ -78,7 +78,7 @@ const addSchema = z.object({
   note: z.string().max(200).nullable().optional(),
 });
 
-recommendations.post('/products/:productId/manual', requireRole('owner', 'manager'), async (c) => {
+recommendations.post('/products/:productId/manual', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const productId = c.req.param('productId');
@@ -140,7 +140,7 @@ recommendations.post('/products/:productId/manual', requireRole('owner', 'manage
 // ============================================================================
 const reorderSchema = z.object({ recommended_product_ids: z.array(z.string().uuid()).max(100) });
 
-recommendations.post('/products/:productId/manual/reorder', requireRole('owner', 'manager'), async (c) => {
+recommendations.post('/products/:productId/manual/reorder', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const productId = c.req.param('productId');
 
@@ -164,7 +164,7 @@ recommendations.post('/products/:productId/manual/reorder', requireRole('owner',
 // ============================================================================
 // DELETE /products/:productId/manual/:recommendedId — remove (owner/manager)
 // ============================================================================
-recommendations.delete('/products/:productId/manual/:recommendedId', requireRole('owner', 'manager'), async (c) => {
+recommendations.delete('/products/:productId/manual/:recommendedId', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const productId = c.req.param('productId');

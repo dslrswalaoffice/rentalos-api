@@ -15,10 +15,10 @@ import {
 import {
   sessionMiddleware,
   requireAuth,
-  requireRole,
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 type SessionVar = {
   sessionId: string;
@@ -271,7 +271,7 @@ const createSchema = z.object({
   roles: z.array(z.enum(VALID_ROLES)).min(1).default(['customer']),
 });
 
-people.post('/', requireRole('owner', 'manager'), async (c) => {
+people.post('/', requirePermission('people.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
 
@@ -382,7 +382,7 @@ const updateSchema = z.object({
   tag_ids: z.array(z.string().uuid()).optional(), // Sub-turn 8a — replace-all
 });
 
-people.patch('/:id', requireRole('owner', 'manager'), async (c) => {
+people.patch('/:id', requirePermission('people.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -474,7 +474,7 @@ people.patch('/:id', requireRole('owner', 'manager'), async (c) => {
 // ============================================================================
 // DELETE /api/people/:id — soft archive
 // ============================================================================
-people.delete('/:id', requireRole('owner', 'manager'), async (c) => {
+people.delete('/:id', requirePermission('people.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -511,7 +511,7 @@ const roleAddSchema = z.object({
   role: z.enum(VALID_ROLES),
 });
 
-people.post('/:id/roles', requireRole('owner', 'manager'), async (c) => {
+people.post('/:id/roles', requirePermission('people.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -556,7 +556,7 @@ people.post('/:id/roles', requireRole('owner', 'manager'), async (c) => {
 // ============================================================================
 // DELETE /api/people/:id/roles/:role — deactivate (soft) a role
 // ============================================================================
-people.delete('/:id/roles/:role', requireRole('owner', 'manager'), async (c) => {
+people.delete('/:id/roles/:role', requirePermission('people.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -598,7 +598,7 @@ const tierSchema = z.object({
   tier: z.enum(['normal', 'premium', 'vip']).nullable(),
 });
 
-people.patch('/:id/tier', requireRole('owner', 'manager'), async (c) => {
+people.patch('/:id/tier', requirePermission('people.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -648,7 +648,7 @@ const trustSchema = z.object({
   trust_score: z.number().int().min(0).max(100).nullable(),
 });
 
-people.patch('/:id/trust-score', requireRole('owner', 'manager'), async (c) => {
+people.patch('/:id/trust-score', requirePermission('people.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -701,7 +701,7 @@ const commSchema = z.object({
   occurred_at: z.string().datetime().optional(),
 });
 
-people.post('/:id/communications', requireRole('owner', 'manager'), async (c) => {
+people.post('/:id/communications', requirePermission('people.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -764,7 +764,7 @@ people.post('/:id/communications', requireRole('owner', 'manager'), async (c) =>
 // ============================================================================
 const COMM_DELETE_WINDOW_MS = 5 * 60 * 1000;
 
-people.delete('/:id/communications/:commId', requireRole('owner', 'manager'), async (c) => {
+people.delete('/:id/communications/:commId', requirePermission('people.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');

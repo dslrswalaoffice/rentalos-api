@@ -8,10 +8,10 @@ import { recomputeOrderTotals } from '../lib/pricing.js';
 import {
   sessionMiddleware,
   requireAuth,
-  requireRole,
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/coupons.ts  (Sub-turn 8b) — mounted at /api/coupons
@@ -76,7 +76,7 @@ function computeDiscount(coupon: {
 // ============================================================================
 // GET /api/coupons — list (owner/manager)
 // ============================================================================
-coupons.get('/', requireRole('owner', 'manager'), async (c) => {
+coupons.get('/', requirePermission('orders.apply_discount'), async (c) => {
   const session = c.get('session')!;
   const rows = await query<CouponRow & { active_uses: number; total_redemptions: number }>(sql`
     SELECT c.*,
@@ -105,7 +105,7 @@ const createSchema = z.object({
   max_uses_per_customer: z.number().int().positive().nullable().optional(),
 });
 
-coupons.post('/', requireRole('owner', 'manager'), async (c) => {
+coupons.post('/', requirePermission('orders.apply_discount'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
 
@@ -236,7 +236,7 @@ async function validateCoupon(workspaceId: string, code: string, orderId: string
   return { ok: true, coupon, order: { id: order.id, customer_person_id: order.customer_person_id, order_number: Number(order.order_number), customer_name: order.customer_name }, subtotal, discount };
 }
 
-coupons.post('/validate', async (c) => {
+coupons.post('/validate', requirePermission('orders.apply_discount'), async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json().catch(() => null);
   const parsed = validateSchema.safeParse(body);
@@ -262,7 +262,7 @@ coupons.post('/validate', async (c) => {
 // ============================================================================
 // POST /api/coupons/apply — apply to an order + recompute (any member)
 // ============================================================================
-coupons.post('/apply', async (c) => {
+coupons.post('/apply', requirePermission('orders.apply_discount'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const body = await c.req.json().catch(() => null);
@@ -329,7 +329,7 @@ coupons.post('/apply', async (c) => {
 // ============================================================================
 const removeSchema = z.object({ order_id: z.string().uuid() });
 
-coupons.post('/remove', async (c) => {
+coupons.post('/remove', requirePermission('orders.apply_discount'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const body = await c.req.json().catch(() => null);
@@ -367,7 +367,7 @@ coupons.post('/remove', async (c) => {
 // :id is UUID-constrained so the literal /validate,/apply,/remove POST paths and
 // (defensively) any future literal GET path can't be captured as an id.
 // ============================================================================
-coupons.get('/:id{[0-9a-fA-F-]{36}}', requireRole('owner', 'manager'), async (c) => {
+coupons.get('/:id{[0-9a-fA-F-]{36}}', requirePermission('orders.apply_discount'), async (c) => {
   const session = c.get('session')!;
   const id = c.req.param('id');
   const rows = await query<CouponRow & { active_uses: number; total_redemptions: number }>(sql`
@@ -413,7 +413,7 @@ const updateSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
-coupons.patch('/:id{[0-9a-fA-F-]{36}}', requireRole('owner', 'manager'), async (c) => {
+coupons.patch('/:id{[0-9a-fA-F-]{36}}', requirePermission('orders.apply_discount'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -457,7 +457,7 @@ coupons.patch('/:id{[0-9a-fA-F-]{36}}', requireRole('owner', 'manager'), async (
 // ============================================================================
 // DELETE /api/coupons/:id — soft-delete (deactivate). Redemptions preserved.
 // ============================================================================
-coupons.delete('/:id{[0-9a-fA-F-]{36}}', requireRole('owner', 'manager'), async (c) => {
+coupons.delete('/:id{[0-9a-fA-F-]{36}}', requirePermission('orders.apply_discount'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');

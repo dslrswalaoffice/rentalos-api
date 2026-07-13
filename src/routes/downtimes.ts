@@ -9,6 +9,7 @@ import {
   type SessionUser,
   type SessionWorkspace,
 } from '../middleware/session.js';
+import { requirePermission } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/downtimes.ts  (Sub-turn 8a) — mounted at /api/downtimes
@@ -88,7 +89,7 @@ const createSchema = z.object({
   reason: z.string().min(1).max(500),
 });
 
-downtimes.post('/', async (c) => {
+downtimes.post('/', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
 
@@ -186,7 +187,7 @@ const updateSchema = z.object({
   location_id: z.string().uuid().nullable().optional(),
 });
 
-downtimes.patch('/:id', async (c) => {
+downtimes.patch('/:id', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
@@ -240,7 +241,7 @@ downtimes.patch('/:id', async (c) => {
 // ============================================================================
 // DELETE /api/downtimes/:id — hard delete (downtimes have no soft-delete)
 // ============================================================================
-downtimes.delete('/:id', async (c) => {
+downtimes.delete('/:id', requirePermission('inventory.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
