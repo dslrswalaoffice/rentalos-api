@@ -724,6 +724,23 @@ Migrated the last pages so **every page in RentalOS now runs on the design syste
 
 ---
 
+## Purchase cost + product ROI (Sub-turn 11)
+
+- **Two-level cost.** `products.default_purchase_cost_paise` (fallback) + `assets.purchase_cost_paise` (per-unit override) + `assets.purchase_date`. Resolution is `COALESCE(asset, product)` **at read time — never denormalized**, so changing a product default updates every non-overridden unit live. Asset responses carry computed `effective_cost_paise` + `cost_source` (`'asset'|'product'|'none'`).
+- **Schema reality (STEP 0):** `assets` already had a dormant `purchase_price integer` + `purchase_date date`. Migration 030 reuses `purchase_date`, and replaces `purchase_price` with a BIGINT `purchase_cost_paise` (values copied, old column dropped). `products` had no cost column — `default_purchase_cost_paise` is a clean add.
+- **NULL cost ≠ zero cost.** No recorded cost shows "Cost not set", never "ROI −100%". ROI is `null`, never a fabricated percentage.
+- **ROI = (lifetime_revenue − total_cost) / total_cost × 100** over earned orders (`{dispatched, active, returned, closed}`). `GET /api/analytics/product-roi`, **owner/manager only**, **tracked non-kit products only** (bulk consumables + kits excluded — no per-unit capital/holding period). **2 set-based aggregate queries + 1 settings query = 3 total, constant** regardless of product count.
+- **cost_complete=false ⇒ roi_pct=null AND recovered_pct=null.** Never compute ROI from a partial cost picture.
+- **Bundled ₹0 lines never produce a negative ROI.** `is_bundled_only` (revenue only from `order_items` child lines, `parent_item_id IS NOT NULL`) ⇒ `roi_pct=null`, UI shows "Bundled".
+- **`months_held < 6` ⇒ status `too_new`** — a new purchase is never a divest candidate. Statuses: `healthy`/`watch`/`divest_candidate`/`too_new`/`cost_missing`, thresholds at `settings.analytics.roi_thresholds` (defaults min_months 6, healthy 100%, watch 40%). Sorted worst-recovery-first.
+- **Display contract:** every ROI surface leads with **capital → holding period → current earning rate → recovery %**, never a bare percentage. `cost_missing` rows group at the bottom with a link to bulk entry.
+- **Cost is owner/manager only** — product cost field, per-asset overrides, bulk entry, ROI, and the idle-capital tile are all gated server-side; staff get 403 and the UI hides the fields.
+- **Cost UI lives in inventory.html** (no product detail page exists): the product edit modal has the **default cost** field; per-unit costs + dates are entered on the **bulk cost screen** (one screen, tab-through, product-row default with opt-in cascade, **one `PATCH /api/inventory/assets/bulk-cost`** call, partial-success tolerant). Idle-capital tile = Σ effective cost of tracked units with no rental in 90 days, disclosing any units with missing cost.
+- **Every cost change is audited** (`inventory.product.updated` / `inventory.asset.updated`).
+- **Deferred:** depreciation, resale/salvage value, annualized (time-weighted) ROI, investor profit splits.
+
+---
+
 ## What NOT to do
 
 - ❌ No JWTs — opaque session tokens only.
