@@ -156,6 +156,7 @@
     .type-badge { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 4px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.04em; vertical-align: middle; }
     .type-badge.type-tracked { background: #e0f2fe; color: #075985; }
     .type-badge.type-bulk { background: #fef3c7; color: #92400e; }
+    .type-badge.type-service { background: #ede9fe; color: #5b21b6; }
     .field-important { padding: 12px; background: var(--thead); border: 1px solid var(--border); border-radius: 9px; margin-bottom: 16px; }
     .radio-group { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
     .radio-group > label { display: flex; gap: 10px; cursor: pointer; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; align-items: flex-start; background: var(--card); }
@@ -536,9 +537,9 @@
           <div class="field field-important" id="add-tracking-field">
             <label>Tracking <span class="req">*</span> <span class="lock-chip">permanent</span></label>
             <div class="radio-group" id="add-mode-group">
-              <label><input type="radio" name="add_tracking_mode" value="tracked" checked>
+              <label><input type="radio" name="add_tracking" value="tracked" checked>
                 <div class="radio-content"><strong>Serialized</strong><span class="radio-hint">Each unit has its own identifier. Best where specific units matter (cameras, lenses).</span></div></label>
-              <label><input type="radio" name="add_tracking_mode" value="bulk">
+              <label><input type="radio" name="add_tracking" value="bulk">
                 <div class="radio-content"><strong>Bulk</strong><span class="radio-hint">Fungible stock, no individual identifiers. Best for cheap / consumable items (cards, cables, tape).</span></div></label>
             </div>
             <p class="hint" id="add-tracking-service-note" hidden>Service products aren't tracked — there's no physical unit.</p>
@@ -609,22 +610,6 @@
               <textarea id="f-desc" name="description" maxlength="2000" placeholder="Anything customers should know — sensor, mount, condition of build…"></textarea>
             </div>
 
-            <div class="field-row">
-              <div class="field">
-                <label for="f-weekly">Weekly rate <span class="hint">optional</span></label>
-                <div class="prefix-wrap">
-                  <span class="prefix">₹</span>
-                  <input id="f-weekly" name="weekly_rate" type="number" min="1" step="1" placeholder="e.g. 45000">
-                </div>
-              </div>
-              <div class="field">
-                <label for="f-monthly">Monthly rate <span class="hint">optional</span></label>
-                <div class="prefix-wrap">
-                  <span class="prefix">₹</span>
-                  <input id="f-monthly" name="monthly_rate" type="number" min="1" step="1" placeholder="e.g. 150000">
-                </div>
-              </div>
-            </div>
 
             <div class="field">
               <label for="f-replacement">Replacement value <span class="hint">for damage claims</span></label>
@@ -1133,9 +1118,17 @@
       });
     }
 
+    // Sub-turn 13 — a product's tracking badge is driven by tracking_method
+    // (serialized → TRACKED, bulk → BULK, none → SERVICE).
+    function trackingBadge(p) {
+      const tm = p.tracking_method || (p.nature === 'service' ? 'none' : 'serialized');
+      if (tm === 'bulk') return { cls: 'bulk', label: 'BULK' };
+      if (tm === 'none') return { cls: 'service', label: 'SERVICE' };
+      return { cls: 'tracked', label: 'TRACKED' };
+    }
     function rowHtml(p) {
       const availClass = p.available_units === 0 ? 'style="color:var(--bad-strong);"' : '';
-      const weekly = p.weekly_rate ? `<div class="rate-sub">${formatINR(p.weekly_rate)}/wk</div>` : '';
+      const badge = trackingBadge(p);
       const thumb = p.image_url
         ? `<img src="${escapeAttr(p.image_url)}" alt="" class="product-thumb" width="40" height="40" loading="lazy" decoding="async" onerror="this.style.display='none'">`
         : `<div class="product-thumb-placeholder">${escapeHtml((p.name || '?').charAt(0).toUpperCase())}</div>`;
@@ -1143,16 +1136,15 @@
         <tr data-id="${p.id}">
           <td class="product-image-cell">${thumb}</td>
           <td>
-            <div class="product-name">${escapeHtml(p.name)}<span class="type-badge type-${escapeAttr(p.tracking_mode || 'tracked')}">${p.tracking_mode === 'bulk' ? 'BULK' : 'TRACKED'}</span>${p.is_kit ? `<span class="kit-badge">KIT · ${p.component_count} item${p.component_count === 1 ? '' : 's'}</span>` : ''}${!p.is_active ? '<span class="archived-badge">archived</span>' : ''}</div>
+            <div class="product-name">${escapeHtml(p.name)}<span class="type-badge type-${badge.cls}">${badge.label}</span>${p.is_kit ? `<span class="kit-badge">KIT · ${p.component_count} item${p.component_count === 1 ? '' : 's'}</span>` : ''}${!p.is_active ? '<span class="archived-badge">archived</span>' : ''}</div>
             <div class="product-sku">${escapeHtml(p.sku)}</div>
             ${(p.tags && p.tags.length) ? `<div class="row-tags">${p.tags.map(t => `<span class="tag-chip tag-${escapeAttr(t.color)}">${escapeHtml(t.name)}</span>`).join('')}</div>` : ''}
           </td>
           <td><span class="cat-tag">${escapeHtml(p.category)}</span></td>
-          ${multiLocation ? `<td>${p.tracking_mode === 'bulk' ? '<span style="color:var(--muted-soft);">—</span>' : (p.location_names ? escapeHtml(p.location_names) : '<span style="color:var(--muted-soft);">—</span>')}</td>` : ''}
+          ${multiLocation ? `<td>${badge.cls !== 'tracked' ? '<span style="color:var(--muted-soft);">—</span>' : (p.location_names ? escapeHtml(p.location_names) : '<span style="color:var(--muted-soft);">—</span>')}</td>` : ''}
           <td>${p.hsn_code ? `<span class="hsn-code">${escapeHtml(p.hsn_code)}</span>` : '<span style="color:var(--muted-soft);">—</span>'}</td>
           <td style="text-align:right;">
             <div class="rate">${formatINR(p.daily_rate)}</div>
-            ${weekly}
           </td>
           <td>
             <span class="units">
@@ -1251,7 +1243,7 @@
       document.getElementById('f-deposit').value = 0;
       document.getElementById('f-units').value = 1;
       document.getElementById('f-stock').value = '';
-      const trackedRadio = document.querySelector('input[name="add_tracking_mode"][value="tracked"]');
+      const trackedRadio = document.querySelector('input[name="add_tracking"][value="tracked"]');
       if (trackedRadio) trackedRadio.checked = true;
       const rentalRadio = document.querySelector('input[name="add_nature"][value="rental"]');
       if (rentalRadio) rentalRadio.checked = true;
@@ -1274,7 +1266,7 @@
     function applyAddNature(nature) {
       const trackingField = document.getElementById('add-tracking-field');
       const svcNote = document.getElementById('add-tracking-service-note');
-      const radios = document.querySelectorAll('input[name="add_tracking_mode"]');
+      const radios = document.querySelectorAll('input[name="add_tracking"]');
       if (nature === 'service') {
         radios.forEach(r => { r.disabled = true; });
         svcNote.hidden = false;
@@ -1283,11 +1275,11 @@
       } else {
         radios.forEach(r => { r.disabled = false; });
         svcNote.hidden = true;
-        const mode = document.querySelector('input[name="add_tracking_mode"]:checked')?.value || 'tracked';
+        const mode = document.querySelector('input[name="add_tracking"]:checked')?.value || 'tracked';
         applyAddMode(mode);
       }
     }
-    document.querySelectorAll('input[name="add_tracking_mode"]').forEach(r =>
+    document.querySelectorAll('input[name="add_tracking"]').forEach(r =>
       r.addEventListener('change', () => applyAddMode(r.value)));
     document.querySelectorAll('input[name="add_nature"]').forEach(r =>
       r.addEventListener('change', () => applyAddNature(r.value)));
@@ -1342,7 +1334,7 @@
 
       const fd = new FormData(form);
       const nature = (document.querySelector('input[name="add_nature"]:checked')?.value) || 'rental';
-      const trackingMode = (document.querySelector('input[name="add_tracking_mode"]:checked')?.value) || 'tracked';
+      const trackingMode = (document.querySelector('input[name="add_tracking"]:checked')?.value) || 'tracked';
       // Sub-turn 13 — derive the immutable tracking_method. service ⇒ none;
       // else serialized (tracked) | bulk. tracking_method wins on the server.
       const trackingMethod = nature === 'service' ? 'none' : (trackingMode === 'bulk' ? 'bulk' : 'serialized');
@@ -1353,7 +1345,6 @@
         deposit: rupeesToPaise(fd.get('deposit') || 0),
         nature,
         tracking_method: trackingMethod,
-        tracking_mode: trackingMethod === 'bulk' ? 'bulk' : 'tracked',
       };
       if (trackingMethod === 'none') {
         // Service: no units, no stock.
@@ -1366,10 +1357,6 @@
       if (sku) body.sku = sku.toUpperCase();
       const desc = (fd.get('description') || '').toString().trim();
       if (desc) body.description = desc;
-      const weekly = fd.get('weekly_rate');
-      if (weekly) body.weekly_rate = rupeesToPaise(weekly);
-      const monthly = fd.get('monthly_rate');
-      if (monthly) body.monthly_rate = rupeesToPaise(monthly);
       const repl = fd.get('replacement_value');
       if (repl) body.replacement_value = rupeesToPaise(repl);
       const notes = (fd.get('notes') || '').toString().trim();
@@ -1546,7 +1533,7 @@
         document.getElementById('e-kit').checked = !!p.is_kit;
         setImagePreview(p.image_url || '');
       }
-      const mode = (p && p.tracking_mode) || 'tracked';
+      const mode = (p && p.tracking_method === 'bulk') ? 'bulk' : 'tracked';
       document.getElementById('e-tracking-mode').value = mode;
       // Costs tab is owner/manager only.
       document.getElementById('tab-costs').hidden = !canManageCost();
@@ -1599,7 +1586,7 @@
       // Inventory: per-location stock (bulk) + stock quantity mirror.
       const isBulk = (d.tracking_method || mode) === 'bulk';
       document.getElementById('edit-stock-field').hidden = !isBulk;
-      document.getElementById('e-stock').value = isBulk ? (d.stock_quantity ?? 0) : '';
+      document.getElementById('e-stock').value = isBulk ? (d.effective_capacity ?? 0) : '';
       if (isBulk) renderBulkStockLocations(detail ? detail.stock_levels : []);
     }
     function closeEdit() { editModal.classList.remove('open'); editingId = null; }
@@ -1652,7 +1639,7 @@
 
     async function openBulkCost() {
       if (!canManageCost()) return;
-      const tracked = (allProducts || []).filter(p => p.tracking_mode === 'tracked' && !p.is_kit && p.is_active);
+      const tracked = (allProducts || []).filter(p => p.tracking_method === 'serialized' && !p.is_kit && p.is_active);
       const body = document.getElementById('bulk-cost-body');
       document.getElementById('bulk-cost-error').style.display = 'none';
       body.innerHTML = '<div class="loading">Loading units…</div>';
@@ -2355,12 +2342,9 @@
       // Deposit.
       const dep = document.getElementById('e-security-deposit').value.trim();
       body.security_deposit_value_paise = dep === '' ? null : rupeesToPaise(dep);
-      // Bulk stock quantity mirror; tracking_mode is immutable (not sent).
+      // Bulk stock is set per-location via the stepper (PATCH /stock below) —
+      // stock is no longer a product column.
       const editMode = document.getElementById('e-tracking-mode').value;
-      if (editMode === 'bulk') {
-        const sq = document.getElementById('e-stock').value;
-        if (sq !== '') body.stock_quantity = Math.max(0, Math.round(Number(sq)));
-      }
       // Purchase cost (Sub-turn 11) — empty clears (explicit null), value sets.
       if (canManageCost()) {
         const costVal = document.getElementById('e-purchase-cost').value.trim();

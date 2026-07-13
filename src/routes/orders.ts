@@ -318,14 +318,14 @@ async function pinAssetsForItem(args: {
   pickupLocationId: string | null;
   explicitAssetIds?: string[];
 }): Promise<AssignedAsset[]> {
-  const prodRows = await query<{ tracking_mode: string; tracking_method: string | null; nature: string }>(sql`
-    SELECT tracking_mode, tracking_method::text AS tracking_method, nature::text AS nature FROM products
+  const prodRows = await query<{ tracking_method: string | null; nature: string }>(sql`
+    SELECT tracking_method::text AS tracking_method, nature::text AS nature FROM products
     WHERE id = ${args.productId}::uuid AND workspace_id = ${args.workspaceId}::uuid
     LIMIT 1
   `);
   if (!prodRows.length) return [];
   const nature = prodRows[0]!.nature;
-  const isBulk = (prodRows[0]!.tracking_method ?? prodRows[0]!.tracking_mode) === 'bulk';
+  const isBulk = prodRows[0]!.tracking_method === 'bulk';
 
   // SERVICE: nothing physical to dispatch.
   if (nature === 'service') return [];
@@ -1895,10 +1895,10 @@ async function undoDispatch(args: {
 }): Promise<{ item_id: string; kind: string; quantity: number; asset_codes: string[] }[]> {
   const items = await query<{
     item_id: string; product_id: string | null; quantity: number;
-    nature: string | null; tracking_method: string | null; tracking_mode: string | null;
+    nature: string | null; tracking_method: string | null;
   }>(sql`
     SELECT oi.id AS item_id, oi.product_id, oi.quantity,
-           p.nature::text AS nature, p.tracking_method::text AS tracking_method, p.tracking_mode
+           p.nature::text AS nature, p.tracking_method::text AS tracking_method
     FROM order_items oi
     LEFT JOIN products p ON p.id = oi.product_id
     WHERE oi.order_id = ${args.orderId}::uuid AND oi.workspace_id = ${args.workspaceId}::uuid
@@ -1906,7 +1906,7 @@ async function undoDispatch(args: {
   `);
   const restored: { item_id: string; kind: string; quantity: number; asset_codes: string[] }[] = [];
   for (const it of items) {
-    const isBulk = (it.tracking_method ?? it.tracking_mode) === 'bulk';
+    const isBulk = it.tracking_method === 'bulk';
     let kind = 'rental';
     let codes: string[] = [];
     if (it.nature === 'sale' && isBulk && it.product_id) {

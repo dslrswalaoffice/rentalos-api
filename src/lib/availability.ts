@@ -89,7 +89,7 @@ export type AvailabilityResult = {
   available: boolean; // FALSE only when demand exceeds capacity + shortage_limit
   requested: number;
   capacity: number;
-  capacity_source: 'assets' | 'stock_quantity'; // Sub-turn 6h — tracked vs bulk
+  capacity_source: 'assets' | 'stock_levels'; // Sub-turn 6h + 13 — tracked vs bulk
   location_id: string | null; // Sub-turn 6i — which location was checked (null for bulk / no default)
   currently_booked: number;
   shortage_limit: number;   // per-product allowed overbook (Sub-turn 6b)
@@ -150,25 +150,34 @@ export async function getDefaultLocationId(workspaceId: string): Promise<string 
   return rows[0]?.id ?? null;
 }
 
-// Single source of truth for a product's capacity (Sub-turn 6h + 6i). Tracked
-// products count live asset rows AT A LOCATION (default when omitted); bulk
-// products use the workspace-global stock_quantity column (per-location bulk is
-// Phase 2, so locationId is ignored for bulk). Exported for reuse.
+// Single source of truth for a product's capacity (Sub-turn 6h + 6i; Sub-turn 13
+// contract phase). Tracked products count live asset rows AT A LOCATION (default
+// when omitted); bulk products sum stock_levels (per-location when a location is
+// given, else workspace-wide). Exported for reuse.
 export async function getProductCapacity(
   workspaceId: string,
   productId: string,
   locationId?: string,
-): Promise<{ capacity: number; source: 'assets' | 'stock_quantity' }> {
-  const rows = await query<{ tracking_mode: string; stock_quantity: number | null }>(sql`
-    SELECT p.tracking_mode, p.stock_quantity
+): Promise<{ capacity: number; source: 'assets' | 'stock_levels' }> {
+  const rows = await query<{ tracking_method: string | null }>(sql`
+    SELECT p.tracking_method::text AS tracking_method
     FROM products p
     WHERE p.id = ${productId}::uuid AND p.workspace_id = ${workspaceId}::uuid
     LIMIT 1
   `);
   const row = rows[0];
   if (!row) return { capacity: 0, source: 'assets' };
-  if (row.tracking_mode === 'bulk') {
-    return { capacity: Number(row.stock_quantity ?? 0), source: 'stock_quantity' };
+  if (row.tracking_method === 'bulk') {
+    // Bulk capacity = Σ stock_levels (at the location if given, else all).
+    const bulkRows = await query<{ q: number }>(sql`
+      SELECT COALESCE(SUM(sl.quantity), 0)::int AS q
+      FROM stock_levels sl
+      JOIN locations l ON l.id = sl.location_id
+      WHERE sl.product_id = ${productId}::uuid
+        AND l.workspace_id = ${workspaceId}::uuid
+        AND (${locationId ?? null}::uuid IS NULL OR sl.location_id = ${locationId ?? null}::uuid)
+    `);
+    return { capacity: Number(bulkRows[0]?.q ?? 0), source: 'stock_levels' };
   }
   const effectiveLocationId = locationId ?? (await getDefaultLocationId(workspaceId));
   const countRows = await query<{ c: number }>(sql`
@@ -224,7 +233,6 @@ export async function checkAvailability(args: {
   const productRows = await query<{
     nature: string;
     tracking_method: string | null;
-    tracking_mode: string;
     is_active: boolean;
     is_kit: boolean;
     buffer_before_hours: number;
@@ -236,7 +244,6 @@ export async function checkAvailability(args: {
     SELECT
       p.nature::text          AS nature,
       p.tracking_method::text AS tracking_method,
-      p.tracking_mode,
       p.is_active, p.is_kit,
       p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
       COALESCE(a.total, 0)::int  AS total_units,
@@ -305,10 +312,10 @@ export async function checkAvailability(args: {
 
   // Bulk (rental OR sale) capacity is per-location stock_levels (Sub-turn 13);
   // serialized capacity is the window-aware asset count.
-  const isBulk = (productRows[0]!.tracking_method ?? productRows[0]!.tracking_mode) === 'bulk';
+  const isBulk = productRows[0]!.tracking_method === 'bulk';
   const isSale = nature === 'sale';
   const capacity = isBulk ? productRows[0]!.bulk_quantity : productRows[0]!.total_units;
-  const capacitySource: 'assets' | 'stock_quantity' = isBulk ? 'stock_quantity' : 'assets';
+  const capacitySource: 'assets' | 'stock_levels' = isBulk ? 'stock_levels' : 'assets';
 
   // KIT PATH: capacity is derived from the components, not the kit's own assets.
   // Kit-level buffer + shortage fields exist but are IGNORED — each component

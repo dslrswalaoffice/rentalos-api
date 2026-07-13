@@ -104,13 +104,13 @@ async function overbookWarnings(workspaceId: string, from: Date, to: Date): Prom
   const defaultLocationId = await getDefaultLocationId(workspaceId);
 
   const [products, bookings, downtimes] = await Promise.all([
-    // Capacity per product — engine rule: bulk → stock_quantity (workspace-
-    // global), tracked → live assets at the default location (the sweep passes
-    // no locationId, so the engine would resolve the default too).
-    query<{ id: string; name: string; is_kit: boolean; tracking_mode: string; capacity: number }>(sql`
-      SELECT p.id, p.name, p.is_kit, p.tracking_mode,
-             (CASE WHEN p.tracking_mode = 'bulk'
-                   THEN COALESCE(p.stock_quantity, 0)
+    // Capacity per product — engine rule: bulk → Σ stock_levels (workspace-wide,
+    // Sub-turn 13 contract phase), tracked → live assets at the default location
+    // (the sweep passes no locationId, so the engine would resolve the default too).
+    query<{ id: string; name: string; is_kit: boolean; tracking_method: string | null; capacity: number }>(sql`
+      SELECT p.id, p.name, p.is_kit, p.tracking_method::text AS tracking_method,
+             (CASE WHEN p.tracking_method = 'bulk'
+                   THEN COALESCE(sl.stock_total, 0)
                    ELSE COALESCE(a.total, 0) END)::int AS capacity
       FROM products p
       LEFT JOIN LATERAL (
@@ -121,6 +121,12 @@ async function overbookWarnings(workspaceId: string, from: Date, to: Date): Prom
           AND deleted_at IS NULL
           AND (${defaultLocationId}::uuid IS NULL OR location_id = ${defaultLocationId}::uuid)
       ) a ON true
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(sl2.quantity), 0)::int AS stock_total
+        FROM stock_levels sl2
+        JOIN locations l2 ON l2.id = sl2.location_id
+        WHERE sl2.product_id = p.id AND l2.workspace_id = p.workspace_id
+      ) sl ON true
       WHERE p.workspace_id = ${workspaceId}::uuid
         AND p.is_active = true
         AND p.deleted_at IS NULL
@@ -142,7 +148,7 @@ async function overbookWarnings(workspaceId: string, from: Date, to: Date): Prom
         AND oi.item_type = 'rental'
         AND o.deleted_at IS NULL
         AND o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
-        AND (p.tracking_mode = 'bulk' OR ${defaultLocationId}::uuid IS NULL
+        AND (p.tracking_method = 'bulk' OR ${defaultLocationId}::uuid IS NULL
              OR o.pickup_location_id = ${defaultLocationId}::uuid)
         AND o.rental_start - make_interval(hours => p.buffer_before_hours) < ${toIso}::timestamptz
         AND o.rental_end   + make_interval(hours => p.buffer_after_hours)  > ${fromIso}::timestamptz
@@ -158,7 +164,7 @@ async function overbookWarnings(workspaceId: string, from: Date, to: Date): Prom
       JOIN products p ON p.id = pd.product_id
       WHERE pd.workspace_id = ${workspaceId}::uuid
         AND (pd.location_id IS NULL
-             OR (p.tracking_mode != 'bulk' AND pd.location_id = ${defaultLocationId}::uuid))
+             OR (p.tracking_method != 'bulk' AND pd.location_id = ${defaultLocationId}::uuid))
         AND pd.start_at < ${toIso}::timestamptz
         AND pd.end_at   > ${fromIso}::timestamptz
     `),
