@@ -579,8 +579,26 @@ Workspace-defined custom fields on **orders, people, products** (not line items 
 - **`getProductCapacity(workspaceId, productId)`** in `src/lib/availability.ts` is the single capacity source → `{ capacity, source: 'assets' | 'stock_quantity' }`. `checkAvailability` computes capacity mode-aware inline (same logic) and returns `capacity_source` on every result.
 - **Kit components can be either mode.** Kit availability is still `MIN` across components; each component's `checkAvailability` picks its own capacity source, so a bulk component contributes `floor(stock_quantity / per-kit qty)`.
 - **Reservation math is unchanged** across modes (`reserved = SUM(order_items.quantity)` over reserving orders). **Wizard / dispatch / return are mode-agnostic** — they reference product IDs + quantities, never assets directly.
-- **Inventory responses** carry `tracking_mode`, `stock_quantity`, and a computed `effective_capacity` (`stock_quantity` for bulk, else `COUNT(assets)`). The list shows a blue TRACKED / amber BULK badge.
+- **Inventory responses** carry `tracking_method`, `effective_capacity`, and per-location `stock_levels`. The list shows a blue TRACKED / amber BULK / violet SERVICE badge.
 - No stock-movement log (audit covers updates).
+
+> **⚠ SUPERSEDED by the Sub-turn 13 contract phase (migration 038).** The
+> columns this 6h section describes — `products.tracking_mode`,
+> `products.stock_quantity`, and the legacy `weekly_rate` / `monthly_rate` — were
+> **dropped**. The new sources of truth are:
+> - **`products.tracking_method`** (`serialized` | `bulk` | `none`) — replaces
+>   `tracking_mode`. `serialized` ≙ the old `tracked`; `none` = service products.
+> - **`stock_levels`** (per-location rows) — replaces the workspace-global
+>   `stock_quantity` column. Bulk capacity = `Σ stock_levels`; the old
+>   `stock_quantity` invariant was `= Σ stock_levels`, so every capacity read
+>   (availability, analytics, dashboard, inventory) was repointed 1:1.
+> - `getProductCapacity` / `checkAvailability` now return
+>   `capacity_source: 'assets' | 'stock_levels'`.
+> - `stock_quantity` survives ONLY as a **create request param** (the bulk seed
+>   quantity → `stock_levels` at the default location) and the
+>   `stock_quantity_required` error code — never as a column.
+> - Product **PATCH stock** is per-location (`PATCH /products/:id/stock` with
+>   `{ location_id, quantity }`); the edit modal uses a +/− stepper per location.
 
 ---
 

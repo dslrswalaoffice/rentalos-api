@@ -82,8 +82,6 @@ type ProductRow = {
   category: string;
   description: string | null;
   daily_rate: number;
-  weekly_rate: number | null;
-  monthly_rate: number | null;
   deposit: number;
   replacement_value: number | null;
   specifications: Record<string, unknown>;
@@ -93,8 +91,6 @@ type ProductRow = {
   buffer_before_hours: number;
   buffer_after_hours: number;
   shortage_limit: number;
-  tracking_mode: string;
-  stock_quantity: number | null;
   default_purchase_cost_paise: number | null; // Sub-turn 11 — fallback unit cost
   nature: string;                    // Sub-turn 13
   tracking_method: string | null;
@@ -150,15 +146,16 @@ inventory.get('/products', async (c) => {
   const products = await query<ProductRow>(sql`
     SELECT
       p.id, p.sku, p.name, p.category, p.description,
-      p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
+      p.daily_rate, p.deposit, p.replacement_value,
       p.specifications, p.notes, p.image_url, p.hsn_code,
       p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
-      p.tracking_mode, p.stock_quantity, p.default_purchase_cost_paise,
+      p.default_purchase_cost_paise,
       -- Sub-turn 13: product model + per-product GST. gst_rate_missing warns the
       -- UI that a taxable product has no rate (it's billed at the workspace
       -- default until set — never 0%, which would be a compliance violation).
       p.nature::text AS nature, p.tracking_method::text AS tracking_method,
       p.pricing_method::text AS pricing_method, p.base_price_paise, p.charge_period::text AS charge_period,
+      p.pricing_structure_id, p.pricing_ruleset_id,
       p.gst_rate_bps, p.is_taxable, p.security_deposit_value_paise,
       (p.is_taxable AND p.gst_rate_bps IS NULL) AS gst_rate_missing,
       p.is_active, p.is_kit,
@@ -168,7 +165,10 @@ inventory.get('/products', async (c) => {
       COALESCE(a.available, 0)::int AS available_units,
       COALESCE(a.rented,    0)::int AS rented_units,
       COALESCE(a.offline, 0)::int AS offline_units,
-      (CASE WHEN p.tracking_mode = 'bulk' THEN COALESCE(p.stock_quantity, 0) ELSE COALESCE(a.total, 0) END)::int AS effective_capacity,
+      (CASE WHEN p.tracking_method = 'bulk'
+            THEN COALESCE((SELECT SUM(sl.quantity)::int FROM stock_levels sl JOIN locations l ON l.id = sl.location_id
+                           WHERE sl.product_id = p.id AND l.workspace_id = p.workspace_id), 0)
+            ELSE COALESCE(a.total, 0) END)::int AS effective_capacity,
       a.location_names,
       COUNT(*) OVER()::int AS full_total
     FROM products p
@@ -254,15 +254,16 @@ inventory.get('/products/:id', async (c) => {
   const rows = await query<ProductRow>(sql`
     SELECT
       p.id, p.sku, p.name, p.category, p.description,
-      p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
+      p.daily_rate, p.deposit, p.replacement_value,
       p.specifications, p.notes, p.image_url, p.hsn_code,
       p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
-      p.tracking_mode, p.stock_quantity, p.default_purchase_cost_paise,
+      p.default_purchase_cost_paise,
       -- Sub-turn 13: product model + per-product GST. gst_rate_missing warns the
       -- UI that a taxable product has no rate (it's billed at the workspace
       -- default until set — never 0%, which would be a compliance violation).
       p.nature::text AS nature, p.tracking_method::text AS tracking_method,
       p.pricing_method::text AS pricing_method, p.base_price_paise, p.charge_period::text AS charge_period,
+      p.pricing_structure_id, p.pricing_ruleset_id,
       p.gst_rate_bps, p.is_taxable, p.security_deposit_value_paise,
       (p.is_taxable AND p.gst_rate_bps IS NULL) AS gst_rate_missing,
       p.is_active, p.is_kit,
@@ -272,7 +273,10 @@ inventory.get('/products/:id', async (c) => {
       COALESCE(a.available, 0)::int AS available_units,
       COALESCE(a.rented,    0)::int AS rented_units,
       COALESCE(a.offline, 0)::int AS offline_units,
-      (CASE WHEN p.tracking_mode = 'bulk' THEN COALESCE(p.stock_quantity, 0) ELSE COALESCE(a.total, 0) END)::int AS effective_capacity
+      (CASE WHEN p.tracking_method = 'bulk'
+            THEN COALESCE((SELECT SUM(sl.quantity)::int FROM stock_levels sl JOIN locations l ON l.id = sl.location_id
+                           WHERE sl.product_id = p.id AND l.workspace_id = p.workspace_id), 0)
+            ELSE COALESCE(a.total, 0) END)::int AS effective_capacity
     FROM products p
     LEFT JOIN LATERAL (
       -- Sub-turn 12b: truthful physical counts (see the list query above).
@@ -355,7 +359,18 @@ inventory.get('/products/:id', async (c) => {
   `);
   // Combined manual + co-rental recommendations preview (Sub-turn 8c).
   const recommendations = await loadRecommendations(session.workspace.id, id, 6);
-  return c.json({ product, assets, assets_by_location, custom_fields, tags, downtimes, recommendations });
+  // Sub-turn 13 chunk 9 — per-location on-hand for BULK products (capacity for
+  // rental-bulk, stock for sale-bulk). Powers the per-location stepper UI. Tracked
+  // products have no stock_levels rows (their capacity is COUNT(assets)).
+  const stock_levels = await query<{ location_id: string; location_name: string | null; quantity: number }>(sql`
+    SELECT sl.location_id, l.name AS location_name, sl.quantity
+    FROM stock_levels sl
+    LEFT JOIN locations l ON l.id = sl.location_id
+    WHERE sl.product_id = ${id}::uuid
+      AND l.workspace_id = ${session.workspace.id}::uuid
+    ORDER BY l.name ASC
+  `);
+  return c.json({ product, assets, assets_by_location, stock_levels, custom_fields, tags, downtimes, recommendations });
 });
 
 // ============================================================================
@@ -377,9 +392,8 @@ inventory.get('/categories', async (c) => {
 
 // ============================================================================
 // PATCH /api/inventory/products/:id/stock — set per-location BULK stock
-// (Sub-turn 13). stock_levels is the source of truth; we keep the legacy
-// products.stock_quantity in sync (= Σ across locations) until it's dropped in
-// the contract phase, so the products_bulk_requires_quantity CHECK holds.
+// (Sub-turn 13). stock_levels is the ONLY source of truth for bulk capacity
+// (the legacy products.stock_quantity column was dropped in the contract phase).
 // ============================================================================
 const stockSchema = z.object({ location_id: z.string().uuid(), quantity: z.number().int().min(0) });
 inventory.patch('/products/:id/stock', requirePermission('inventory.manage'), async (c) => {
@@ -390,12 +404,12 @@ inventory.patch('/products/:id/stock', requirePermission('inventory.manage'), as
   if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   const { location_id, quantity } = parsed.data;
 
-  const prod = await query<{ tracking_method: string | null; tracking_mode: string }>(sql`
-    SELECT tracking_method::text AS tracking_method, tracking_mode FROM products
+  const prod = await query<{ tracking_method: string | null }>(sql`
+    SELECT tracking_method::text AS tracking_method FROM products
     WHERE id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid AND deleted_at IS NULL LIMIT 1
   `);
   if (!prod.length) return c.json({ error: 'not_found' }, 404);
-  if ((prod[0]!.tracking_method ?? prod[0]!.tracking_mode) !== 'bulk') {
+  if (prod[0]!.tracking_method !== 'bulk') {
     return c.json({ error: 'not_a_bulk_product' }, 400);
   }
   const loc = await query<{ id: string }>(sql`
@@ -407,11 +421,6 @@ inventory.patch('/products/:id/stock', requirePermission('inventory.manage'), as
     INSERT INTO stock_levels (product_id, location_id, quantity)
     VALUES (${id}::uuid, ${location_id}::uuid, ${quantity}::int)
     ON CONFLICT (product_id, location_id) DO UPDATE SET quantity = EXCLUDED.quantity
-  `;
-  await sql`
-    UPDATE products SET stock_quantity = (SELECT COALESCE(SUM(quantity), 0) FROM stock_levels WHERE product_id = ${id}::uuid),
-                        updated_at = now()
-    WHERE id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
   `;
   await audit({
     workspaceId: session.workspace.id, actorUserId: session.user.id,
@@ -432,8 +441,6 @@ const createSchema = z.object({
   description: z.string().max(2000).optional(),
   // All monetary values in paise (rupees × 100).
   daily_rate: z.number().int().positive(),
-  weekly_rate: z.number().int().positive().optional(),
-  monthly_rate: z.number().int().positive().optional(),
   deposit: z.number().int().min(0).default(0),
   replacement_value: z.number().int().positive().optional(),
   default_purchase_cost_paise: z.number().int().min(0).nullable().optional(), // Sub-turn 11
@@ -442,8 +449,8 @@ const createSchema = z.object({
   is_kit: z.boolean().default(false),
   // How many physical units to create right now (asset rows). Ignored for bulk.
   initial_units: z.number().int().min(0).max(50).default(1),
-  // Tracking mode (Sub-turn 6h): 'tracked' (asset rows) or 'bulk' (stock_quantity).
-  tracking_mode: z.enum(['tracked', 'bulk']).default('tracked'),
+  // Bulk products need a starting on-hand quantity — it seeds stock_levels (the
+  // legacy products.stock_quantity column is gone; this is an input, not a column).
   stock_quantity: z.number().int().min(0).nullable().optional(),
   // Sub-turn 6i — which location the initial tracked assets live at. Omitted →
   // the workspace default location.
@@ -471,19 +478,17 @@ inventory.post('/products', requirePermission('inventory.manage'), async (c) => 
   }
   const input = parsed.data;
 
-  // Derive the model (Sub-turn 13). tracking_method wins if supplied; else from
-  // the legacy tracking_mode. nature=service forces 'none' (no units). The legacy
-  // tracking_mode drives the CHECK + asset logic: 'bulk' or 'tracked'.
-  let trackingMethod: 'serialized' | 'bulk' | 'none' =
-    input.tracking_method ?? (input.tracking_mode === 'bulk' ? 'bulk' : 'serialized');
+  // Derive the model (Sub-turn 13). tracking_method is the source of truth.
+  // nature=service forces 'none' (no units). isBulk drives the asset + stock logic.
+  let trackingMethod: 'serialized' | 'bulk' | 'none' = input.tracking_method ?? 'serialized';
   if (input.nature === 'service') trackingMethod = 'none';
-  const trackingMode: 'tracked' | 'bulk' = trackingMethod === 'bulk' ? 'bulk' : 'tracked';
+  const isBulk = trackingMethod === 'bulk';
   const basePrice = input.base_price_paise ?? input.daily_rate;
   // service / none products carry no serialized units.
   const initialUnits = trackingMethod === 'none' ? 0 : input.initial_units;
 
-  // Tracking-mode / stock-quantity coupling (mirrors the DB constraint).
-  if (trackingMode === 'bulk') {
+  // Bulk ⇒ starting on-hand required (seeds stock_levels); non-bulk ⇒ no stock qty.
+  if (isBulk) {
     if (input.stock_quantity == null) return c.json({ error: 'stock_quantity_required' }, 400);
   } else if (input.stock_quantity != null) {
     return c.json({ error: 'stock_quantity_not_allowed_for_tracked' }, 400);
@@ -492,7 +497,7 @@ inventory.post('/products', requirePermission('inventory.manage'), async (c) => 
   // Resolve the location the new tracked assets belong to (Sub-turn 6i). Bulk
   // products have no asset rows, so location is irrelevant there.
   let assetLocationId: string | null = null;
-  if (trackingMode !== 'bulk') {
+  if (!isBulk) {
     if (input.location_id) {
       const locRows = await query<{ id: string; is_active: boolean }>(sql`
         SELECT id, is_active FROM locations
@@ -522,14 +527,14 @@ inventory.post('/products', requirePermission('inventory.manage'), async (c) => 
 
   // 2. Insert product + asset rows in a single atomic CTE.
   //    If either step fails, both roll back. Bulk products get NO asset rows.
-  const codes = trackingMode === 'bulk' ? [] : assetCodesFor(sku, initialUnits);
+  const codes = isBulk ? [] : assetCodesFor(sku, initialUnits);
   const inserted = await query<ProductRow & { asset_ids: string[] | null }>(sql`
     WITH new_product AS (
       INSERT INTO products (
         workspace_id, sku, name, category, description,
-        daily_rate, weekly_rate, monthly_rate, deposit, replacement_value,
+        daily_rate, deposit, replacement_value,
         default_purchase_cost_paise,
-        specifications, notes, is_kit, tracking_mode, stock_quantity, created_by,
+        specifications, notes, is_kit, created_by,
         nature, tracking_method, base_price_paise, pricing_method, charge_period,
         gst_rate_bps, is_taxable, security_deposit_value_paise
       ) VALUES (
@@ -539,16 +544,12 @@ inventory.post('/products', requirePermission('inventory.manage'), async (c) => 
         ${input.category},
         ${input.description ?? null},
         ${input.daily_rate},
-        ${input.weekly_rate ?? null},
-        ${input.monthly_rate ?? null},
         ${input.deposit},
         ${input.replacement_value ?? null},
         ${input.default_purchase_cost_paise ?? null}::bigint,
         ${JSON.stringify(input.specifications ?? {})}::jsonb,
         ${input.notes ?? null},
         ${input.is_kit},
-        ${trackingMode}::text,
-        ${input.stock_quantity ?? null}::int,
         ${session.user.id},
         ${input.nature}::product_nature,
         ${trackingMethod}::tracking_method,
@@ -580,8 +581,7 @@ inventory.post('/products', requirePermission('inventory.manage'), async (c) => 
       0::int AS rented_units,
       0::int AS offline_units,
       0::int AS component_count,
-      (CASE WHEN np.tracking_mode = 'bulk' THEN COALESCE(np.stock_quantity, 0)
-            ELSE (SELECT COUNT(*) FROM new_assets) END)::int AS effective_capacity,
+      (SELECT COUNT(*) FROM new_assets)::int AS effective_capacity,
       (SELECT array_agg(id) FROM new_assets) AS asset_ids
     FROM new_product np
   `);
@@ -590,11 +590,12 @@ inventory.post('/products', requirePermission('inventory.manage'), async (c) => 
   if (!product) {
     return c.json({ error: 'create_failed' }, 500);
   }
+  // Bulk capacity is stock_levels, not asset rows — reflect the seed value.
+  if (isBulk) product.effective_capacity = input.stock_quantity ?? 0;
 
   // Sub-turn 13: a bulk product's initial stock lands at one location's
-  // stock_levels (the per-location source of truth). stock_quantity stays in
-  // sync as its total until the contract phase drops it.
-  if (trackingMode === 'bulk') {
+  // stock_levels — the ONLY source of truth for bulk capacity.
+  if (isBulk) {
     const stockLocId = input.location_id ?? (await getDefaultLocationId(session.workspace.id));
     if (stockLocId) {
       await sql`
@@ -640,8 +641,6 @@ const updateSchema = z.object({
   category: z.string().min(1).max(100).optional(),
   description: z.string().max(2000).optional(),
   daily_rate: z.number().int().positive().optional(),
-  weekly_rate: z.number().int().positive().optional(),
-  monthly_rate: z.number().int().positive().optional(),
   deposit: z.number().int().min(0).optional(),
   replacement_value: z.number().int().positive().optional(),
   // Sub-turn 11 — nullable: omit preserves, explicit null clears (handled below).
@@ -653,8 +652,6 @@ const updateSchema = z.object({
   buffer_before_hours: z.number().int().min(0).max(72).optional(),
   buffer_after_hours: z.number().int().min(0).max(72).optional(),
   shortage_limit: z.number().int().min(0).max(100).optional(),
-  tracking_mode: z.enum(['tracked', 'bulk']).optional(),
-  stock_quantity: z.number().int().min(0).nullable().optional(),
   is_active: z.boolean().optional(),
   is_kit: z.boolean().optional(),
   custom_fields: z.array(z.object({ definition_id: z.string().uuid(), value: z.string().nullable() })).optional(),
@@ -688,8 +685,8 @@ inventory.patch('/products/:id', requirePermission('inventory.manage'), async (c
   const p = parsed.data;
 
   // Fetch existing to make sure it belongs to this workspace before touching it.
-  const existing = await query<{ id: string; is_active: boolean; name: string; is_kit: boolean; tracking_mode: string; stock_quantity: number | null; nature: string; tracking_method: string | null }>(sql`
-    SELECT id, is_active, name, is_kit, tracking_mode, stock_quantity, nature::text AS nature, tracking_method::text AS tracking_method FROM products
+  const existing = await query<{ id: string; is_active: boolean; name: string; is_kit: boolean; nature: string; tracking_method: string | null }>(sql`
+    SELECT id, is_active, name, is_kit, nature::text AS nature, tracking_method::text AS tracking_method FROM products
     WHERE id = ${id} AND workspace_id = ${session.workspace.id} AND deleted_at IS NULL
     LIMIT 1
   `);
@@ -697,7 +694,6 @@ inventory.patch('/products/:id', requirePermission('inventory.manage'), async (c
 
   // Sub-turn 13: nature and tracking are IMMUTABLE (they change availability +
   // pricing semantics). Reject a differing value; the UI renders them read-only.
-  // (tracking_mode already has its own immutability guard below, from Sub-turn 6h.)
   if (p.nature !== undefined && p.nature !== existing[0]!.nature) {
     return c.json({ error: 'nature_immutable', reason: 'delete_and_recreate' }, 409);
   }
@@ -705,15 +701,6 @@ inventory.patch('/products/:id', requirePermission('inventory.manage'), async (c
     return c.json({ error: 'tracking_immutable', reason: 'delete_and_recreate' }, 409);
   }
   const before = existing[0]!;
-
-  // Tracking mode is immutable after creation (Sub-turn 6h).
-  if (p.tracking_mode && p.tracking_mode !== before.tracking_mode) {
-    return c.json({ error: 'tracking_mode_immutable', reason: 'Delete and recreate the product to change tracking mode.' }, 409);
-  }
-  // Only bulk products carry a stock_quantity.
-  if (p.stock_quantity != null && before.tracking_mode !== 'bulk') {
-    return c.json({ error: 'stock_quantity_not_allowed_for_tracked' }, 409);
-  }
 
   // Un-kitting a product with components would orphan the bundle. Block it.
   if (p.is_kit === false && before.is_kit) {
@@ -756,8 +743,6 @@ inventory.patch('/products/:id', requirePermission('inventory.manage'), async (c
       category          = COALESCE(${p.category          ?? null}::text,    category),
       description       = COALESCE(${p.description       ?? null}::text,    description),
       daily_rate        = COALESCE(${p.daily_rate        ?? null}::integer, daily_rate),
-      weekly_rate       = COALESCE(${p.weekly_rate       ?? null}::integer, weekly_rate),
-      monthly_rate      = COALESCE(${p.monthly_rate      ?? null}::integer, monthly_rate),
       deposit           = COALESCE(${p.deposit           ?? null}::integer, deposit),
       replacement_value = COALESCE(${p.replacement_value ?? null}::integer, replacement_value),
       specifications    = COALESCE(${p.specifications ? JSON.stringify(p.specifications) : null}::jsonb, specifications),
@@ -767,7 +752,6 @@ inventory.patch('/products/:id', requirePermission('inventory.manage'), async (c
       buffer_before_hours = COALESCE(${p.buffer_before_hours ?? null}::integer, buffer_before_hours),
       buffer_after_hours  = COALESCE(${p.buffer_after_hours  ?? null}::integer, buffer_after_hours),
       shortage_limit      = COALESCE(${p.shortage_limit      ?? null}::integer, shortage_limit),
-      stock_quantity      = COALESCE(${p.stock_quantity      ?? null}::integer, stock_quantity),
       is_active           = COALESCE(${p.is_active           ?? null}::boolean, is_active),
       is_kit              = COALESCE(${p.is_kit              ?? null}::boolean, is_kit),
       -- Sub-turn 13 pricing/GST/deposit config.
@@ -784,10 +768,10 @@ inventory.patch('/products/:id', requirePermission('inventory.manage'), async (c
     WHERE id = ${id} AND workspace_id = ${session.workspace.id}
     RETURNING
       id, sku, name, category, description,
-      daily_rate, weekly_rate, monthly_rate, deposit, replacement_value,
+      daily_rate, deposit, replacement_value,
       specifications, notes, image_url, hsn_code,
       buffer_before_hours, buffer_after_hours, shortage_limit,
-      tracking_mode, stock_quantity, default_purchase_cost_paise,
+      default_purchase_cost_paise,
       nature::text AS nature, tracking_method::text AS tracking_method,
       pricing_method::text AS pricing_method, base_price_paise, charge_period::text AS charge_period,
       gst_rate_bps, is_taxable, security_deposit_value_paise,
@@ -795,7 +779,10 @@ inventory.patch('/products/:id', requirePermission('inventory.manage'), async (c
       is_active, is_kit, created_at, updated_at,
       0::int AS total_units, 0::int AS available_units,
       0::int AS rented_units, 0::int AS offline_units,
-      (CASE WHEN tracking_mode = 'bulk' THEN COALESCE(stock_quantity, 0) ELSE 0 END)::int AS effective_capacity,
+      (CASE WHEN tracking_method = 'bulk'
+            THEN COALESCE((SELECT SUM(sl.quantity)::int FROM stock_levels sl JOIN locations l ON l.id = sl.location_id
+                           WHERE sl.product_id = products.id AND l.workspace_id = products.workspace_id), 0)
+            ELSE 0 END)::int AS effective_capacity,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = products.id)::int AS component_count
   `);
 

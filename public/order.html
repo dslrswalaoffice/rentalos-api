@@ -710,6 +710,7 @@
               <option value="deposit">Deposit</option>
               <option value="tax">Tax</option>
               <option value="other">Other</option>
+              <option value="custom">Custom line…</option>
             </select>
           </div>
 
@@ -750,6 +751,7 @@
           </div>
 
           <div class="field-hint" id="fi-discount-hint" style="display:none;margin-bottom:12px;">Discounts are subtracted from the subtotal — enter the amount to knock off.</div>
+          <div class="field-hint" id="fi-custom-hint" style="display:none;margin-bottom:12px;">A named one-off charge. A <b>negative</b> amount acts as a fixed discount. Custom lines are <b>excluded from the deposit base</b>.</div>
 
           <div class="total-preview">
             <span class="tp-label" id="fi-preview-label">Line total</span>
@@ -2283,11 +2285,16 @@
 
     function syncItemTypeFields() {
       const isRental = fiType.value === 'rental';
+      const isCustom = fiType.value === 'custom';
       document.getElementById('fi-product-field').style.display = isRental ? 'block' : 'none';
       document.getElementById('fi-rate-field').style.display = isRental ? 'block' : 'none';
       document.getElementById('fi-desc-field').style.display = isRental ? 'none' : 'block';
       document.getElementById('fi-amount-field').style.display = isRental ? 'none' : 'block';
       document.getElementById('fi-discount-hint').style.display = fiType.value === 'discount' ? 'block' : 'none';
+      document.getElementById('fi-custom-hint').style.display = isCustom ? 'block' : 'none';
+      // Custom lines allow a negative amount (a fixed discount); everything else ≥ 0.
+      document.getElementById('fi-amount').min = isCustom ? '' : '0';
+      document.getElementById('fi-desc').placeholder = isCustom ? 'e.g. Rush handling / Goodwill credit' : 'e.g. Pickup delivery charge';
     }
 
     async function loadProducts(term) {
@@ -2346,6 +2353,11 @@
         const rate = state.picked ? Number(state.picked.daily_rate) : 0;
         if (days != null) { paise = qty * rate * days; label.textContent = `Line total (${qty} × rate × ${days} day${days === 1 ? '' : 's'})`; }
         else { paise = 0; label.textContent = 'Line total (set rental dates for estimate)'; }
+      } else if (fiType.value === 'custom') {
+        // Custom lines take the amount as entered (negative = fixed discount).
+        const amt = Math.round(Number(document.getElementById('fi-amount').value || 0) * 100);
+        paise = qty * amt;
+        label.textContent = paise < 0 ? 'Line total (custom credit)' : 'Line total (custom)';
       } else {
         const amt = rupeesToPaise(document.getElementById('fi-amount').value || 0);
         paise = qty * amt;
@@ -2373,6 +2385,20 @@
           quantity: qty,
           unit_amount_paise: 0,
           daily_rate_paise: Number(state.picked.daily_rate),
+          sort_order: nextSort,
+        };
+      } else if (type === 'custom') {
+        // Custom line (chunk 7): a named one-off charge, no product, negative allowed.
+        const desc = document.getElementById('fi-desc').value.trim();
+        if (!desc) { errBox.style.display = 'block'; errBox.textContent = 'Name the custom line.'; return; }
+        const amt = Math.round(Number(document.getElementById('fi-amount').value || 0) * 100);
+        payload = {
+          item_type: 'other',
+          is_custom_line: true,
+          custom_name: desc,
+          description: desc,
+          quantity: qty,
+          unit_amount_paise: amt,
           sort_order: nextSort,
         };
       } else {

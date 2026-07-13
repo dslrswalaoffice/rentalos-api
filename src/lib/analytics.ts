@@ -227,7 +227,7 @@ async function revenueByCategory(workspaceId: string, start: Date, end: Date): P
 // Section 2: Utilization
 // ---------------------------------------------------------------------------
 // unit_days_rented / (capacity × days_in_range). Capacity is mode-aware
-// (bulk → stock_quantity; tracked → live asset count) and WORKSPACE-WIDE
+// (bulk → Σ stock_levels; tracked → live asset count) and WORKSPACE-WIDE
 // (all locations), matching the "how busy is the whole business" intent. We
 // count assets across every location rather than calling getProductCapacity
 // (which resolves to the default location only) so multi-location workspaces
@@ -250,8 +250,8 @@ export async function getUtilization(
       p.id AS product_id,
       p.name,
       p.category,
-      CASE WHEN p.tracking_mode = 'bulk'
-           THEN COALESCE(p.stock_quantity, 0)
+      CASE WHEN p.tracking_method = 'bulk'
+           THEN COALESCE(sl.stock_total, 0)
            ELSE COALESCE(ac.asset_count, 0)
       END::int AS capacity,
       COALESCE(u.unit_days, 0)::float AS unit_days
@@ -263,6 +263,13 @@ export async function getUtilization(
         AND a.product_id = p.id
         AND a.deleted_at IS NULL
     ) ac ON true
+    LEFT JOIN LATERAL (
+      -- Sub-turn 13 contract phase — bulk capacity is Σ stock_levels (all locations).
+      SELECT COALESCE(SUM(sl2.quantity), 0)::int AS stock_total
+      FROM stock_levels sl2
+      JOIN locations l2 ON l2.id = sl2.location_id
+      WHERE sl2.product_id = p.id AND l2.workspace_id = p.workspace_id
+    ) sl ON true
     LEFT JOIN LATERAL (
       SELECT SUM(
         oi.quantity *
@@ -573,7 +580,7 @@ export async function getProductRoi(
     FROM products p
     JOIN assets a ON a.product_id = p.id AND a.workspace_id = p.workspace_id AND a.deleted_at IS NULL
     WHERE p.workspace_id = ${workspaceId}::uuid
-      AND p.tracking_mode = 'tracked'
+      AND p.tracking_method = 'serialized'
       AND p.is_kit = false
       AND p.deleted_at IS NULL
     GROUP BY p.id, p.name, p.default_purchase_cost_paise
