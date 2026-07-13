@@ -15,138 +15,125 @@
 /* --------------------------------------------------------------------------
    1. Tokens
    -------------------------------------------------------------------------- */
-/* ==========================================================================
-   THE SINGLE SOURCE OF TRUTH (Design-system Phase 0/1).
-   Values extracted from RentalOS_Prototype_standalone.html §01–05 by frequency
-   across all 41 screens — not approximations. Every real colour lives here EXACTLY
-   ONCE (the CANONICAL block); every other name is a var() alias, so a palette
-   change is a one-line edit. Pages carry NO :root and NO hex — this file is the
-   only place a hue is defined.
-   ========================================================================== */
 :root {
-  /* ---- §01 · EIGHT ROLE COLOURS. Each a triple: solid / tint-bg / tint-fg ---- */
-  --ink:        #202058;   /* text, sidebar, headers */
-  --head:       #26235a;   /* links, emphasis — "accent deep" */
+  /* Neutrals */
+  --bg-page: #eef0f3;                 /* off-white page background */
+  --bg-elevated: #ffffff;             /* cards, modals */
+  --bg-subtle: #f1f2f4;               /* subdued panels */
+  --bg-hover: rgba(0, 0, 0, 0.03);    /* row hover */
+  --bg-active: rgba(0, 0, 0, 0.06);   /* pressed states */
 
-  --accent:     #e88020;   /* PRIMARY ACTIONS, FOCUS — orange (one per view) */
-  --accent-bg:  #fbe9d7;
+  /* Text */
+  --text-primary: #202058;            /* near-black, warm */
+  --text-secondary: #3f4350;          /* body */
+  --text-tertiary: #6b7280;           /* labels, meta */
+  --text-quaternary: #b0b6bf;         /* placeholders, hints */
+  --text-inverse: #ffffff;            /* on dark backgrounds */
 
-  --canvas:     #eef0f3;   /* app background — NOT white */
-
-  --success:    #1f9d57;   /* solid  (13-A wrongly used the -fg value here) */
-  --success-bg: #e8f6ee;
-  --success-fg: #177a45;
-
-  --warning:    #b9791b;
-  --warning-bg: #fbf2e2;
-  --warning-fg: #8a5a12;
-
-  --danger:     #cc3340;   /* solid  (13-A wrongly used the -fg value here) */
-  --danger-bg:  #fdecec;
-  --danger-fg:  #b42318;
-
-  --info:       #2438a8;
-  --info-bg:    #eef1fc;
-  --info-fg:    #2438a8;
-
-  /* ---- §01 · GREYS ---- */
-  --text:          #3f4350;   /* body */
-  --muted:         #6b7280;   /* secondary, section labels */
-  --sub:           #9aa1ad;   /* tertiary, meta, timestamps */
-  --dim:           #b0b6bf;   /* placeholders, empty em-dashes, disabled */
-  --card:          #ffffff;
-  --chrome:        #f1f2f4;   /* toolbars */
-  --border:        #e3e6ea;
+  /* Borders */
+  --border-subtle: #eef0f3;
+  --border-default: #e3e6ea;
   --border-strong: #d8dbe0;
-  --hover:         #f6f7fb;   /* row hover */
-  --side:          #fcfcfd;   /* sidebar surface (structural near-white) */
+  --border-focus: #26235a;
 
-  /* ---- §02 · TYPOGRAPHY — three families, fixed roles ---- */
-  --fa: 'Space Grotesk', 'Arzachel', system-ui, sans-serif;   /* display/headings 16–40 */
-  --fp: 'Manrope', 'Ponjoung', system-ui, -apple-system, sans-serif; /* body/UI 12–16 */
-  --fm: 'JetBrains Mono', ui-monospace, monospace;            /* labels/IDs/numbers 9–13 */
-  --fw-normal: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
-  --fs-xs: 11px; --fs-sm: 12px; --fs-base: 14px; --fs-md: 15px; --fs-lg: 16px;
-  --fs-xl: 18px; --fs-2xl: 22px; --fs-3xl: 28px; --fs-4xl: 36px;
-  --lh-tight: 1.3; --lh-base: 1.5; --lh-relaxed: 1.6;
+  /* Accent — prototype orange */
+  --accent: #e88020;
+  --accent-hover: #cf6f16;
+  --accent-active: #b25f12;
+  --accent-soft: #fbe9d7;
+  --accent-text: #a85f12;
 
-  /* ---- §03 · SPACING — prototype 8px rhythm (canonical scale) ---- */
-  --sp-1: 4px; --sp-2: 6px; --sp-3: 8px; --sp-4: 11px;
-  --sp-5: 14px; --sp-6: 16px; --sp-7: 18px; --sp-8: 22px;
+  /* Semantic */
+  --success: #177a45;
+  --success-soft: #e8f6ee;
+  --success-text: #177a45;
 
-  /* ---- §04 · RADIUS ---- */
-  --r-control: 8px;   /* inputs, buttons (range 7–9) */
-  --r-card:    14px;  /* cards, modals (range 14–16) */
-  --r-tile:    12px;  /* KPI / metric tiles — 12px, NOT 14 */
-  --r-pill:    999px;
+  --warning: #b9791b;
+  --warning-soft: #fbf2e2;
+  --warning-text: #8a5a12;
 
-  /* ---- Shadows / transitions / layout (structural — rgba, no hue) ---- */
+  --danger: #b42318;
+  --danger-soft: #fdecec;
+  --danger-text: #b42318;
+
+  --info: #2438a8;
+  --info-soft: #e0f2fe;
+  --info-text: #2438a8;
+
+  /* Typography */
+  --font-sans: 'Manrope', 'Ponjoung', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 14px;
+  --fs-md: 15px;
+  --fs-lg: 16px;
+  --fs-xl: 18px;
+  --fs-2xl: 22px;
+  --fs-3xl: 28px;
+  --fs-4xl: 36px;
+
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --lh-tight: 1.3;
+  --lh-base: 1.5;
+  --lh-relaxed: 1.6;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Radii */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* Shadows — tinted, subtle */
   --shadow-xs: 0 0 0 1px rgba(0, 0, 0, 0.05);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  --shadow:    0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 6px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 6px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.06), 0 2px 12px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.10), 0 4px 16px rgba(0, 0, 0, 0.06);
-  --shadow-btn:  0 6px 16px -6px rgba(32, 32, 88, 0.50);
-  --shadow-card: 0 20px 48px -24px rgba(16, 24, 40, 0.28);
-  --shadow-focus: 0 0 0 3px rgba(232, 128, 32, 0.18);   /* accent glow (legacy soft focus) */
+  --shadow-focus: 0 0 0 3px rgba(232, 128, 32, 0.18);
+
+  /* Transitions */
   --transition-fast: 100ms ease-out;
   --transition: 150ms ease-out;
   --transition-slow: 250ms ease-out;
-  --sidebar-width: 232px;
+
+  /* Layout */
+  --sidebar-width: 240px;
   --header-height: 56px;
 
-  /* ======================================================================
-     COMPAT BRIDGE — legacy 9a/13-A names → canonical tokens. Every value is a
-     var() pointer, so there is still exactly ONE definition per real colour.
-     This is DEBT: it exists only so the 15 pages (whose inline :root blocks
-     this PR deleted) keep resolving without renaming thousands of var() calls.
-     Rename page variables to the canonical names above and delete this block in
-     a later phase. Two entries FIX live drift (marked ← FIX).
-     ====================================================================== */
-  /* neutrals */
-  --bg: var(--canvas); --bg-page: var(--canvas);
-  --bg-elevated: var(--card); --bg-subtle: var(--chrome);
-  --bg-hover: var(--hover); --bg-active: rgba(0, 0, 0, 0.06);
-  --thead: var(--hover);
-  /* text */
-  --text-primary: var(--ink); --text-secondary: var(--text);
-  --text-tertiary: var(--muted); --text-quaternary: var(--dim);
-  --text-inverse: #ffffff; --muted-strong: var(--text); --muted-soft: var(--sub);
-  --nav-fg: var(--muted);
-  /* borders */
-  --border-subtle: var(--canvas); --border-default: var(--border);
-  --border-focus: var(--head);
-  --border-accent: var(--accent);   /* ← FIX: was periwinkle #c7cdf5 on an orange tint */
-  --focus: var(--ink);              /* ← FIX: was periwinkle #b9c0ee; §14 focus is navy */
-  --nav-active-bg: var(--accent-bg);
-  /* accent */
-  --orange: var(--accent); --orange-soft: var(--accent-bg);
-  --accent-soft: var(--accent-bg); --accent-soft-2: var(--accent-bg);
-  --accent-hover: #cf6f16; --accent-active: #b25f12; --accent-text: var(--warning-fg);
-  /* semantic — long (9a) + short (page) names */
-  --success-soft: var(--success-bg); --success-text: var(--success-fg);
-  --ok-solid: var(--success); --ok-soft: var(--success-bg); --ok-strong: var(--success-fg);
-  --ok-fg: var(--success-fg); --ok-bg: var(--success-bg);
-  --warning-soft: var(--warning-bg); --warning-text: var(--warning-fg);
-  --warn-solid: var(--warning); --warn-soft: var(--warning-bg); --warn-strong: var(--warning-fg);
-  --warn-fg: var(--warning); --warn-bg: var(--warning-bg); --warn-fg-deep: var(--warning-fg);
-  --danger-soft: var(--danger-bg); --danger-text: var(--danger-fg);
-  --bad-solid: var(--danger); --bad-soft: var(--danger-bg); --bad-strong: var(--danger-fg);
-  --bad-fg: var(--danger-fg); --bad-bg: var(--danger-bg); --bad-bd: var(--danger-bg);
-  --info-soft: var(--info-bg); --info-text: var(--info-fg);
-  /* typography */
-  --font-sans: var(--fp); --font-body: var(--fp);
-  --font-display: var(--fa); --font-mono: var(--fm);
-  --font-sys: var(--fp);
-  /* spacing — kept at prior values so no layout shifts this phase; --sp-* is canonical */
-  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
-  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
-  /* radius — legacy names bridge to canonical; --radius (6px) kept for existing controls */
-  --radius-xs: 3px; --radius-sm: 4px; --radius: 6px;
-  --radius-md: var(--r-control); --radius-lg: var(--r-tile);
-  --radius-full: var(--r-pill); --radius-card: var(--r-card);
-  /* layout */
-  --sb-w: var(--sidebar-width);
+  /* ---- Sub-turn 13-A: prototype-named tokens (navy-ink + orange), aliasing the
+     remapped palette above so fresh markup + any page using these names resolve
+     to the same values. Extracted from RentalOS_Prototype_standalone.html. ---- */
+  --ink: #202058; --head: #26235a;
+  --accent-soft-2: #fbeee0;
+  --text: #3f4350; --sub: #9aa1ad; --dim: #b0b6bf; --nav-fg: #5b616b;
+  --canvas: #eef0f3; --card: #ffffff; --side: #fcfcfd; --chrome: #f1f2f4;
+  --thead: #fafbfc; --hover: #f6f7fb;
+  --border: #e3e6ea; --border-accent: #c7cdf5; --nav-active-bg: #ecebf4;
+  --ok-fg: #177a45; --ok-bg: #e8f6ee;
+  --warn-fg: #b9791b; --warn-bg: #fbf2e2; --warn-fg-deep: #8a5a12;
+  --bad-fg: #b42318; --bad-bg: #fdecec; --bad-bd: #f3cfd2;
+  --fa: 'Space Grotesk', 'Arzachel', system-ui, sans-serif;
+  --fp: 'Manrope', 'Ponjoung', system-ui, sans-serif;
+  --fm: 'JetBrains Mono', ui-monospace, monospace;
+  --radius-card: 14px;
 }
 
 /* --------------------------------------------------------------------------
@@ -2043,16 +2030,18 @@ select {
    ========================================================================== */
 body { font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
 
-/* §14 · FOCUS — one ring for EVERY control: 2px solid navy (--ink), 2px offset,
-   on :focus-visible. (Was two rings, one a hardcoded periwinkle — the drift.) */
-a:focus-visible, button:focus-visible,
-input:focus-visible, select:focus-visible, textarea:focus-visible,
-[tabindex]:focus-visible, [role="button"]:focus-visible {
-  outline: 2px solid var(--ink);
+/* Focus rings — navy for controls, soft-blue for fields (prototype). */
+a:focus-visible, button:focus-visible {
+  outline: 2px solid var(--head);
   outline-offset: 2px;
+  border-radius: 7px;
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid #b9c0ee;
+  outline-offset: 1px;
 }
 input::placeholder, textarea::placeholder { color: var(--dim); }
-input:hover:not(:focus), select:hover, textarea:hover:not(:focus) { border-color: var(--border-strong); }
+input:hover:not(:focus), select:hover, textarea:hover:not(:focus) { border-color: #c7ccd3; }
 
 /* Empty-state em-dash — a quiet field value, NOT a dashed skeleton box. */
 .field-value--empty { color: var(--dim); font-family: var(--fp); }
