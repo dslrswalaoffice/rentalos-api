@@ -12,10 +12,14 @@ import {
   getUtilization,
   getCustomerAnalytics,
   getOperationalHealth,
+  getProductRoi,
+  DEFAULT_ROI_THRESHOLDS,
+  type RoiThresholds,
   cacheKey,
   withCache,
   toCSV,
 } from '../lib/analytics.js';
+import { sql, query } from '../db.js';
 
 // ============================================================================
 // src/routes/analytics.ts  (Sub-turn 7) — mounted at /api/analytics
@@ -62,6 +66,27 @@ const rangeKey = (r: { start: Date; end: Date }) =>
 
 const csvFilename = (section: string, r: { start: Date; end: Date }) =>
   `${section}-${r.start.toISOString().slice(0, 10)}-to-${r.end.toISOString().slice(0, 10)}.csv`;
+
+// ---------------------------------------------------------------------------
+// Product ROI (Sub-turn 11). Owner/manager only (inherited from the mount).
+// Not range-scoped (lifetime revenue). One settings query + two set-based
+// aggregate queries = 3 total, constant regardless of product count. NOT cached
+// (cost edits must reflect immediately).
+// ---------------------------------------------------------------------------
+analytics.get('/product-roi', async (c) => {
+  const session = c.get('session')!;
+  const wsRows = await query<{ settings: Record<string, any> | null }>(sql`
+    SELECT settings FROM workspaces WHERE id = ${session.workspace.id}::uuid LIMIT 1
+  `);
+  const raw = wsRows[0]?.settings?.analytics?.roi_thresholds ?? {};
+  const thresholds: RoiThresholds = {
+    min_months: Number.isFinite(Number(raw.min_months)) ? Number(raw.min_months) : DEFAULT_ROI_THRESHOLDS.min_months,
+    healthy_recovered_pct: Number.isFinite(Number(raw.healthy_recovered_pct)) ? Number(raw.healthy_recovered_pct) : DEFAULT_ROI_THRESHOLDS.healthy_recovered_pct,
+    watch_recovered_pct: Number.isFinite(Number(raw.watch_recovered_pct)) ? Number(raw.watch_recovered_pct) : DEFAULT_ROI_THRESHOLDS.watch_recovered_pct,
+  };
+  const data = await getProductRoi(session.workspace.id, thresholds);
+  return c.json({ ...data, thresholds });
+});
 
 // ---------------------------------------------------------------------------
 // Section JSON endpoints

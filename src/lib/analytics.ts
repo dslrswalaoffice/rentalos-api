@@ -517,3 +517,156 @@ export function toCSV(rows: Array<Record<string, unknown>>, columns: string[]): 
   const lines = rows.map((row) => columns.map((col) => escape(row[col])).join(','));
   return [header, ...lines].join('\n');
 }
+
+// ============================================================================
+// Product ROI (Sub-turn 11). Real capital-efficiency, replacing fabricated
+// figures. Tracked, non-kit products only (bulk consumables have no per-unit
+// capital/holding period; kits have derived capacity, no own assets).
+//
+// Query count: TWO set-based queries regardless of product count (cost+units
+// aggregate; revenue aggregate) — the caller adds one for workspace settings.
+//
+// Correctness rules (locked): NULL cost is never zero; cost_complete=false ⇒
+// roi/recovered = null (no partial-cost ROI); bundled-only products (revenue
+// only from child ₹0 lines) ⇒ roi null, shown "Bundled", never −100%.
+// ============================================================================
+export type RoiThresholds = { min_months: number; healthy_recovered_pct: number; watch_recovered_pct: number };
+export const DEFAULT_ROI_THRESHOLDS: RoiThresholds = { min_months: 6, healthy_recovered_pct: 100, watch_recovered_pct: 40 };
+
+export type ProductRoiRow = {
+  product_id: string;
+  name: string;
+  unit_count: number;
+  total_cost_paise: number;
+  cost_source: 'asset' | 'product' | 'none';
+  cost_complete: boolean;
+  lifetime_revenue_paise: number;
+  roi_pct: number | null;
+  recovered_pct: number | null;
+  first_purchase_date: string | null;
+  months_held: number | null;
+  revenue_last_90d_paise: number;
+  rentals_last_90d: number;
+  is_bundled_only: boolean;
+  status: 'healthy' | 'watch' | 'divest_candidate' | 'too_new' | 'cost_missing';
+};
+
+export async function getProductRoi(
+  workspaceId: string,
+  thresholds: RoiThresholds = DEFAULT_ROI_THRESHOLDS,
+): Promise<{ products: ProductRoiRow[]; idle_capital_paise: number; idle_units_missing_cost: number }> {
+  // Query 1 — cost + units per tracked, non-kit product (INNER JOIN assets, so
+  // products with zero assets are naturally excluded).
+  const costRows = await query<{
+    id: string; name: string; default_purchase_cost_paise: number | null;
+    unit_count: number; overridden_count: number; resolved_count: number;
+    total_cost_paise: number; first_purchase_date: string | null; months_held: number | null;
+  }>(sql`
+    SELECT p.id, p.name, p.default_purchase_cost_paise,
+      COUNT(a.id)::int AS unit_count,
+      COUNT(a.id) FILTER (WHERE a.purchase_cost_paise IS NOT NULL)::int AS overridden_count,
+      COUNT(a.id) FILTER (WHERE COALESCE(a.purchase_cost_paise, p.default_purchase_cost_paise) IS NOT NULL)::int AS resolved_count,
+      COALESCE(SUM(COALESCE(a.purchase_cost_paise, p.default_purchase_cost_paise)), 0)::bigint AS total_cost_paise,
+      MIN(a.purchase_date)::text AS first_purchase_date,
+      (EXTRACT(YEAR FROM age(now(), MIN(a.purchase_date))) * 12
+       + EXTRACT(MONTH FROM age(now(), MIN(a.purchase_date))))::int AS months_held
+    FROM products p
+    JOIN assets a ON a.product_id = p.id AND a.workspace_id = p.workspace_id AND a.deleted_at IS NULL
+    WHERE p.workspace_id = ${workspaceId}::uuid
+      AND p.tracking_mode = 'tracked'
+      AND p.is_kit = false
+      AND p.deleted_at IS NULL
+    GROUP BY p.id, p.name, p.default_purchase_cost_paise
+  `);
+
+  // Query 2 — revenue per product over EARNED orders. Bundled child lines
+  // (parent_item_id IS NOT NULL) are the ₹0 enablers; standalone_lines counts
+  // top-level lines so is_bundled_only can be derived.
+  const revRows = await query<{
+    product_id: string; lifetime_revenue_paise: number;
+    standalone_lines: number; total_lines: number;
+    revenue_last_90d_paise: number; rentals_last_90d: number;
+  }>(sql`
+    SELECT oi.product_id,
+      COALESCE(SUM(oi.total_amount_paise), 0)::bigint AS lifetime_revenue_paise,
+      COUNT(*) FILTER (WHERE oi.parent_item_id IS NULL)::int AS standalone_lines,
+      COUNT(*)::int AS total_lines,
+      COALESCE(SUM(oi.total_amount_paise) FILTER (WHERE o.rental_start >= now() - interval '90 days'), 0)::bigint AS revenue_last_90d_paise,
+      COUNT(*) FILTER (WHERE o.rental_start >= now() - interval '90 days')::int AS rentals_last_90d
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE oi.workspace_id = ${workspaceId}::uuid
+      AND oi.item_type = 'rental'
+      AND oi.product_id IS NOT NULL
+      AND o.deleted_at IS NULL
+      AND o.status::text IN ('dispatched', 'active', 'returned', 'closed')
+    GROUP BY oi.product_id
+  `);
+  const revByProduct = new Map(revRows.map((r) => [r.product_id, r]));
+
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  let idleCapital = 0;
+  let idleMissingCost = 0;
+
+  const products: ProductRoiRow[] = costRows.map((c) => {
+    const unit_count = Number(c.unit_count);
+    const resolved = Number(c.resolved_count);
+    const overridden = Number(c.overridden_count);
+    const total_cost_paise = Number(c.total_cost_paise);
+    const cost_complete = unit_count > 0 && resolved === unit_count;
+    const cost_source: 'asset' | 'product' | 'none' =
+      resolved === 0 ? 'none' : (overridden === unit_count ? 'asset' : 'product');
+    const months_held = c.months_held == null ? null : Number(c.months_held);
+
+    const rev = revByProduct.get(c.id);
+    const lifetime = rev ? Number(rev.lifetime_revenue_paise) : 0;
+    const total_lines = rev ? Number(rev.total_lines) : 0;
+    const standalone_lines = rev ? Number(rev.standalone_lines) : 0;
+    const revenue_last_90d = rev ? Number(rev.revenue_last_90d_paise) : 0;
+    const rentals_last_90d = rev ? Number(rev.rentals_last_90d) : 0;
+    const is_bundled_only = total_lines > 0 && standalone_lines === 0;
+
+    // Idle capital (this-product contribution): recovered nothing in 90 days.
+    if (rentals_last_90d === 0) {
+      idleCapital += total_cost_paise;
+      if (!cost_complete) idleMissingCost += (unit_count - resolved);
+    }
+
+    let roi_pct: number | null = null;
+    let recovered_pct: number | null = null;
+    if (cost_complete && !is_bundled_only && total_cost_paise > 0) {
+      roi_pct = round2(((lifetime - total_cost_paise) / total_cost_paise) * 100);
+      recovered_pct = round2((lifetime / total_cost_paise) * 100);
+    }
+
+    let status: ProductRoiRow['status'];
+    if (!cost_complete) status = 'cost_missing';
+    else if (is_bundled_only) status = 'healthy'; // enabler — UI shows "Bundled"
+    else if (months_held != null && months_held < thresholds.min_months) status = 'too_new';
+    else if (recovered_pct != null && recovered_pct >= thresholds.healthy_recovered_pct) status = 'healthy';
+    else if (recovered_pct != null && recovered_pct >= thresholds.watch_recovered_pct) status = 'watch';
+    else status = 'divest_candidate';
+
+    return {
+      product_id: c.id, name: c.name, unit_count, total_cost_paise,
+      cost_source, cost_complete, lifetime_revenue_paise: lifetime,
+      roi_pct, recovered_pct, first_purchase_date: c.first_purchase_date,
+      months_held, revenue_last_90d_paise: revenue_last_90d, rentals_last_90d,
+      is_bundled_only, status,
+    };
+  });
+
+  // Sort: cost_missing to the very bottom; otherwise worst capital recovery
+  // first (recovered_pct ascending), with null recovery (bundled) after numbers.
+  products.sort((a, b) => {
+    const am = a.status === 'cost_missing', bm = b.status === 'cost_missing';
+    if (am !== bm) return am ? 1 : -1;
+    const ar = a.recovered_pct, br = b.recovered_pct;
+    if (ar == null && br == null) return 0;
+    if (ar == null) return 1;
+    if (br == null) return -1;
+    return ar - br;
+  });
+
+  return { products, idle_capital_paise: idleCapital, idle_units_missing_cost: idleMissingCost };
+}
