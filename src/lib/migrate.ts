@@ -43,6 +43,13 @@ const EXPECTED_TABLES = [
   'stock_levels',
 ] as const;
 
+// Statements Postgres forbids inside a transaction block. A migration containing
+// any of these can't be applied atomically and falls back to autocommit (see the
+// escape hatch in runMigrations). Anchored to statement start (post-trim) so a
+// column literally named "vacuum" in a string can't false-match.
+const TX_HOSTILE_STATEMENT =
+  /^\s*(ALTER\s+TYPE\s+[\s\S]+\bADD\s+VALUE\b|(CREATE|DROP)\s+INDEX\s+CONCURRENTLY|REINDEX\b[\s\S]*\bCONCURRENTLY\b|VACUUM\b|ALTER\s+SYSTEM\b|(CREATE|DROP)\s+DATABASE\b)/i;
+
 export type MigrationResult = {
   applied: string[]; // versions applied this run
   skipped: string[]; // versions already recorded, skipped
@@ -111,15 +118,54 @@ export async function runMigrations(sql: Sql): Promise<MigrationResult> {
     // The Neon HTTP driver requires one statement per call. Split at top-level
     // `;`, respecting quotes/dollar-quotes/comments. Migrations are OUR static
     // SQL only — never build these strings from user input.
-    const statements = splitSqlStatements(contents);
-    for (const stmt of statements) {
-      const trimmed = stmt.trim();
-      if (!trimmed) continue;
-      await sql(trimmed);
-    }
+    const statements = splitSqlStatements(contents)
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-    await sql`INSERT INTO schema_migrations (version) VALUES (${version})
-              ON CONFLICT (version) DO NOTHING`;
+    // --------------------------------------------------------------------------
+    // ATOMICITY (incident fix). A migration must EITHER fully apply and be
+    // recorded, OR leave zero trace. The old loop ran each statement as its own
+    // HTTP call = its own implicit transaction, then recorded the ledger only
+    // after ALL statements — so a mid-migration failure committed the earlier
+    // statements but never wrote the ledger. The schema and the ledger then
+    // disagree and no re-run can tell where the DB actually is. That is exactly
+    // how 034 half-applied in production.
+    //
+    // The Neon HTTP driver's `sql.transaction([...])` runs an array of queries
+    // in ONE server-side BEGIN/COMMIT over a single request: any failure rolls
+    // the whole batch back. It is non-interactive (all statements known up front)
+    // which is fine for migrations. We append the ledger INSERT as the final
+    // query IN THE SAME transaction, so "applied" and "recorded" are inseparable.
+    //
+    // ESCAPE HATCH — a few statements CANNOT run inside a transaction block in
+    // Postgres (ALTER TYPE ... ADD VALUE, CREATE INDEX CONCURRENTLY, VACUUM,
+    // ALTER SYSTEM, REINDEX ... CONCURRENTLY). Wrapping them would fail with a
+    // NEW error. There is no way to make such a migration atomic — Postgres
+    // forbids it — so we run it in AUTOCOMMIT (statement-by-statement) and record
+    // after. A migration that needs this MUST be individually idempotent (every
+    // statement guarded), so a partial failure re-converges on the next deploy.
+    // We do NOT silently pretend it was atomic — we warn.
+    const hostile = statements.filter((s) => TX_HOSTILE_STATEMENT.test(s));
+
+    if (hostile.length > 0) {
+      console.warn(
+        `[migrate] ${version}: contains ${hostile.length} statement(s) that Postgres ` +
+          `forbids inside a transaction block (e.g. ALTER TYPE ADD VALUE / CREATE INDEX ` +
+          `CONCURRENTLY). Running NON-atomically. This migration must be individually ` +
+          `idempotent — every statement guarded — so a partial failure re-converges.`
+      );
+      for (const stmt of statements) await sql(stmt);
+      await sql`INSERT INTO schema_migrations (version) VALUES (${version})
+                ON CONFLICT (version) DO NOTHING`;
+    } else {
+      // All statements + the ledger insert, atomic. Rolls back leaving zero
+      // trace on any error. sql.transaction accepts un-awaited query promises.
+      await sql.transaction([
+        ...statements.map((stmt) => sql(stmt)),
+        sql`INSERT INTO schema_migrations (version) VALUES (${version})
+            ON CONFLICT (version) DO NOTHING`,
+      ]);
+    }
     applied.push(version);
   }
 

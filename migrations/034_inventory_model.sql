@@ -157,8 +157,17 @@ ALTER TABLE order_items
   ADD COLUMN IF NOT EXISTS price_breakdown    jsonb;
 
 -- Negative unit price is legal ONLY on a custom line (fixed-amount discounts).
--- Existing coupon 'discount' lines carry a negative total but unit stays >= 0,
--- so this guard is safe additively.
+-- DATA FIX FIRST (mandatory — Postgres validates ADD CONSTRAINT against existing
+-- rows): a negative-priced line that predates custom lines WAS a discount, so
+-- reclassify it as a custom line. This is truthful, not a hack, and idempotent
+-- (re-running only re-touches rows that are already negative). Without this the
+-- ADD CONSTRAINT aborts on legacy negative rows — the incident that half-applied
+-- this migration. The column is unit_amount_paise (NOT unit_price_paise).
+UPDATE order_items
+SET is_custom_line = true,
+    custom_name    = COALESCE(custom_name, 'Legacy discount')
+WHERE unit_amount_paise < 0;
+
 DO $$ BEGIN
   ALTER TABLE order_items ADD CONSTRAINT order_items_negative_only_custom CHECK (
     unit_amount_paise >= 0 OR is_custom_line = true
