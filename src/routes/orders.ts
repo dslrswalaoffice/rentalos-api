@@ -1074,8 +1074,8 @@ orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
     if (!input.product_id) {
       return c.json({ error: 'invalid_request', reason: 'product_id_required_for_rental' }, 400);
     }
-    const p = await query<{ id: string; daily_rate: number }>(sql`
-      SELECT id, daily_rate FROM products
+    const p = await query<{ id: string; base_price_paise: number | null; daily_rate: number }>(sql`
+      SELECT id, base_price_paise, daily_rate FROM products
       WHERE id = ${input.product_id}
         AND workspace_id = ${session.workspace.id}
         AND deleted_at IS NULL
@@ -1092,9 +1092,11 @@ orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
       manualPrice = true;
       overrideLabel = input.override.label;
     } else {
-      // Server-authoritative: the product's own rate. Client rate fields ignored.
-      lineDailyRate = Number(p[0]!.daily_rate);
-      lineUnit = Number(p[0]!.daily_rate);
+      // Server-authoritative: snapshot the product's base rate (Sub-turn 13).
+      // The pricing engine turns this into the line total on the recompute that
+      // fires immediately after insert; client rate fields are ignored.
+      lineDailyRate = Number(p[0]!.base_price_paise ?? p[0]!.daily_rate);
+      lineUnit = Number(p[0]!.base_price_paise ?? p[0]!.daily_rate);
     }
   } else if (input.override) {
     // Override on a non-rental line is still a permissioned, labelled act.
