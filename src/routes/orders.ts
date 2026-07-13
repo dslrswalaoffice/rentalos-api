@@ -272,6 +272,178 @@ async function loadItems(orderId: string) {
   `);
 }
 
+// ============================================================================
+// Physical object tracking (Sub-turn 12b) — MODULE_AUDIT findings 1, 2, 6
+// ----------------------------------------------------------------------------
+// Assignment (order_assets) is created at DISPATCH, never at reservation:
+// availability reasons about order_items (capacity claims); WHICH specific unit
+// goes out is decided at the counter. asset.status is written here and only in
+// this file's dispatch/return flow — 'out' on dispatch, back to 'available' or
+// 'retired' on return per the outcome table. Every physical write folds into the
+// batch order_event + audit payload (per-asset audit rows would be noise; the
+// repo convention is one batch row carrying the detail — see the dispatch
+// handler's own comment).
+// ============================================================================
+
+type AssignedAsset = { asset_id: string; asset_code: string; item_id: string };
+
+/** Physical units pinned to an order (order_assets), for the detail response. */
+async function loadOrderAssets(orderId: string, workspaceId: string) {
+  return await query<{
+    id: string; order_item_id: string | null; asset_id: string;
+    asset_code: string; status: string;
+    dispatched_at: string | null; returned_at: string | null;
+  }>(sql`
+    SELECT oa.id, oa.order_item_id, oa.asset_id,
+           a.asset_code, oa.status::text AS status,
+           oa.dispatched_at, oa.returned_at
+    FROM order_assets oa
+    JOIN assets a ON a.id = oa.asset_id
+    WHERE oa.order_id = ${orderId}::uuid
+      AND oa.workspace_id = ${workspaceId}::uuid
+    ORDER BY a.asset_code ASC
+  `);
+}
+
+/** Pin physical units for one dispatched rental line: order_assets row +
+ *  asset.status='out'. Tracked products only (bulk have no serialized units).
+ *  Explicit ids are validated (in-workspace, right product, currently
+ *  available); otherwise auto-assign available units at the pickup location up
+ *  to the line quantity. Returns the units actually pinned (may be fewer than
+ *  quantity if the product is short — the advisory model dispatches anyway). */
+async function pinAssetsForItem(args: {
+  workspaceId: string; orderId: string; itemId: string;
+  productId: string; quantity: number;
+  pickupLocationId: string | null;
+  explicitAssetIds?: string[];
+}): Promise<AssignedAsset[]> {
+  const prodRows = await query<{ tracking_mode: string }>(sql`
+    SELECT tracking_mode FROM products
+    WHERE id = ${args.productId}::uuid AND workspace_id = ${args.workspaceId}::uuid
+    LIMIT 1
+  `);
+  if (!prodRows.length || prodRows[0]!.tracking_mode === 'bulk') return [];
+
+  let chosen: { id: string; asset_code: string }[] = [];
+  if (args.explicitAssetIds && args.explicitAssetIds.length) {
+    const ids = [...new Set(args.explicitAssetIds)];
+    chosen = await query<{ id: string; asset_code: string }>(sql`
+      SELECT id, asset_code FROM assets
+      WHERE workspace_id = ${args.workspaceId}::uuid
+        AND product_id = ${args.productId}::uuid
+        AND deleted_at IS NULL
+        AND status = 'available'::asset_status
+        AND id::text = ANY(string_to_array(${ids.join(',')}::text, ','))
+      ORDER BY asset_code ASC
+    `);
+  } else {
+    chosen = await query<{ id: string; asset_code: string }>(sql`
+      SELECT id, asset_code FROM assets
+      WHERE workspace_id = ${args.workspaceId}::uuid
+        AND product_id = ${args.productId}::uuid
+        AND deleted_at IS NULL
+        AND status = 'available'::asset_status
+        AND (${args.pickupLocationId}::uuid IS NULL OR location_id = ${args.pickupLocationId}::uuid)
+      ORDER BY asset_code ASC
+      LIMIT ${args.quantity}::int
+    `);
+  }
+
+  const pinned: AssignedAsset[] = [];
+  for (const a of chosen) {
+    // Idempotent against races: skip a unit already on this order, and only flip
+    // a still-available unit to 'out'.
+    await sql`
+      INSERT INTO order_assets (workspace_id, order_id, order_item_id, asset_id, status, dispatched_at)
+      VALUES (${args.workspaceId}::uuid, ${args.orderId}::uuid, ${args.itemId}::uuid,
+              ${a.id}::uuid, 'dispatched'::order_asset_status, now())
+      ON CONFLICT (order_id, asset_id) DO NOTHING
+    `;
+    await sql`
+      UPDATE assets SET status = 'out'::asset_status, updated_at = now()
+      WHERE id = ${a.id}::uuid AND workspace_id = ${args.workspaceId}::uuid
+        AND status = 'available'::asset_status
+    `;
+    pinned.push({ asset_id: a.id, asset_code: a.asset_code, item_id: args.itemId });
+  }
+  return pinned;
+}
+
+type Disposition = { asset_id: string; asset_code: string; outcome: string; downtime_id: string | null };
+
+/** Apply a return outcome to the physical units pinned to a line. OK →
+ *  available; damaged → available + an auto-created asset-level repair downtime
+ *  (capacity-1 for its window, so it doesn't rejoin availability until fixed);
+ *  missing → retired (soft-deleted out of capacity). not_returned_* leaves the
+ *  unit 'out' (still with the customer). Returns a summary for the batch audit. */
+async function applyReturnDisposition(args: {
+  workspaceId: string; orderId: string; orderNumber: number; itemId: string;
+  outcome: string; actorUserId: string; repairDays: number;
+}): Promise<Disposition[]> {
+  const rows = await query<{ asset_id: string; asset_code: string }>(sql`
+    SELECT oa.asset_id, a.asset_code
+    FROM order_assets oa JOIN assets a ON a.id = oa.asset_id
+    WHERE oa.order_id = ${args.orderId}::uuid
+      AND oa.order_item_id = ${args.itemId}::uuid
+      AND oa.workspace_id = ${args.workspaceId}::uuid
+      AND oa.status = 'dispatched'::order_asset_status
+  `);
+
+  const out: Disposition[] = [];
+  for (const r of rows) {
+    let oaStatus: string;
+    let downtimeId: string | null = null;
+
+    if (args.outcome === 'returned') {
+      oaStatus = 'returned';
+      await sql`
+        UPDATE assets SET status = 'available'::asset_status, updated_at = now()
+        WHERE id = ${r.asset_id}::uuid AND workspace_id = ${args.workspaceId}::uuid
+      `;
+    } else if (args.outcome === 'returned_with_damage') {
+      oaStatus = 'damaged';
+      await sql`
+        UPDATE assets SET status = 'available'::asset_status, updated_at = now()
+        WHERE id = ${r.asset_id}::uuid AND workspace_id = ${args.workspaceId}::uuid
+      `;
+      const dt = await query<{ id: string }>(sql`
+        INSERT INTO product_downtimes
+          (workspace_id, asset_id, kind, status, start_at, end_at, reason, order_id, created_by_user_id)
+        VALUES (
+          ${args.workspaceId}::uuid, ${r.asset_id}::uuid,
+          'repair'::downtime_reason, 'scheduled'::downtime_status,
+          now(), now() + make_interval(days => ${args.repairDays}::int),
+          ${`Damage on return (order #${args.orderNumber})`}::text,
+          ${args.orderId}::uuid, ${args.actorUserId}::uuid
+        )
+        RETURNING id
+      `);
+      downtimeId = dt[0]?.id ?? null;
+    } else if (args.outcome === 'missing') {
+      oaStatus = 'lost';
+      // Retired = status 'retired' AND soft-deleted (CLAUDE.md), out of capacity.
+      await sql`
+        UPDATE assets SET status = 'retired'::asset_status, deleted_at = now(), updated_at = now()
+        WHERE id = ${r.asset_id}::uuid AND workspace_id = ${args.workspaceId}::uuid
+      `;
+    } else {
+      // not_returned_chargeable / not_returned_non_chargeable: the unit is still
+      // physically with the customer. Leave it 'out' and its order_assets row
+      // 'dispatched' — the line keeps reserving (RESERVING_ITEM_STATUSES).
+      continue;
+    }
+
+    await sql`
+      UPDATE order_assets
+        SET status = ${oaStatus}::order_asset_status, returned_at = now(), updated_at = now()
+      WHERE order_id = ${args.orderId}::uuid AND asset_id = ${r.asset_id}::uuid
+        AND workspace_id = ${args.workspaceId}::uuid
+    `;
+    out.push({ asset_id: r.asset_id, asset_code: r.asset_code, outcome: oaStatus, downtime_id: downtimeId });
+  }
+  return out;
+}
+
 async function loadEvents(orderId: string) {
   return await query<{
     id: string; event_type: string;
@@ -560,9 +732,12 @@ orders.get('/:id', async (c) => {
   ]);
 
   const canFinalize = deriveCanFinalize(items);
+  // Physical units pinned to this order (Sub-turn 12b) — empty until dispatch.
+  const orderAssets = await loadOrderAssets(id, session.workspace.id);
   return c.json({
     order, items, events, can_finalize: canFinalize, custom_fields: customFields, tags,
     coupon_redemption: redemption[0] ?? null,
+    assets: orderAssets,
   });
 });
 
@@ -1694,6 +1869,12 @@ const dispatchSchema = z.object({
   handed_to:           z.string().max(200).optional(),
   received_by_user_id: z.string().uuid().optional(),
   dispatch_notes:      z.string().max(1000).optional(),
+  // Sub-turn 12b: which physical units go out per line. Optional — omitted lines
+  // auto-assign available units at the pickup location. Bulk lines are ignored.
+  assignments: z.array(z.object({
+    item_id:   z.string().uuid(),
+    asset_ids: z.array(z.string().uuid()).max(100),
+  })).optional(),
   contract: z.object({
     signature_png_base64: z.string().max(200000).optional(),
     signer_name:          z.string().max(200),
@@ -1770,6 +1951,27 @@ orders.post('/:id/dispatch', async (c) => {
     `;
   }
 
+  // Pin physical units (Sub-turn 12b): order_assets rows + asset.status='out'.
+  // Tracked rental lines only; bulk/non-rental lines are skipped inside the
+  // helper. Explicit picks come from the request; otherwise auto-assign.
+  const assignmentsMap = new Map<string, string[]>();
+  for (const a of parsed.data.assignments ?? []) assignmentsMap.set(a.item_id, a.asset_ids);
+  const assignedAssets: AssignedAsset[] = [];
+  for (const itemId of requested) {
+    const it = byId.get(itemId)!;
+    if (it.item_type !== 'rental' || !it.product_id) continue;
+    const pinned = await pinAssetsForItem({
+      workspaceId: session.workspace.id,
+      orderId: id,
+      itemId,
+      productId: it.product_id,
+      quantity: Number(it.quantity),
+      pickupLocationId: order.pickup_location_id ?? null,
+      explicitAssetIds: assignmentsMap.get(itemId),
+    });
+    assignedAssets.push(...pinned);
+  }
+
   // Auto-advance order status if it's still pre-dispatch.
   const orderStatusChanged = ['draft', 'quoted', 'confirmed'].includes(order.status);
   if (orderStatusChanged) {
@@ -1786,6 +1988,8 @@ orders.post('/:id/dispatch', async (c) => {
     received_by_user_id: receivedBy,
     dispatch_notes: dispatch_notes ?? null,
     auto_order_status_transition: orderStatusChanged,
+    // Sub-turn 12b: the specific units pinned (one batch row, not per-asset).
+    assigned_assets: assignedAssets,
   };
 
   const dispatchEventId = await recordOrderEvent({
@@ -1926,6 +2130,7 @@ orders.post('/:id/dispatch', async (c) => {
     items_dispatched: dispatched,
     order_status_changed: orderStatusChanged,
     contract: contractSummary,
+    assigned_assets: assignedAssets,
   });
 });
 
@@ -2093,6 +2298,31 @@ orders.post('/:id/return', async (c) => {
     `;
   }
 
+  // Release / re-block physical units per outcome (Sub-turn 12b): OK →
+  // available (capacity released now, not at close); damaged → available + an
+  // auto-created asset-level repair downtime; missing → retired. Reuses the
+  // units pinned at dispatch (order_assets). Orders dispatched before this
+  // sub-turn have no pinned units, so this is a no-op for them — the item-status
+  // change alone still releases their capacity.
+  const wsRows = await query<{ settings: any }>(sql`
+    SELECT settings FROM workspaces WHERE id = ${session.workspace.id}::uuid LIMIT 1
+  `);
+  const rawRepairDays = Number(wsRows[0]?.settings?.downtime?.default_repair_days);
+  const repairDays = Number.isFinite(rawRepairDays) && rawRepairDays > 0 ? rawRepairDays : 7;
+  const dispositions: Disposition[] = [];
+  for (const r of reqItems) {
+    const d = await applyReturnDisposition({
+      workspaceId: session.workspace.id,
+      orderId: id,
+      orderNumber: Number(order.order_number),
+      itemId: r.item_id,
+      outcome: r.outcome,
+      actorUserId: session.user.id,
+      repairDays,
+    });
+    dispositions.push(...d);
+  }
+
   // Auto-advance to 'returned' once every item is terminal (and the order is
   // still mid-rental).
   const afterItems = await loadItems(id);
@@ -2123,6 +2353,8 @@ orders.post('/:id/return', async (c) => {
     auto_order_status_transition: orderStatusChanged,
     terminal_items_count: terminalCount,
     total_items_count: afterItems.length,
+    // Sub-turn 12b: physical dispositions (unit → outcome, + any repair downtime).
+    asset_dispositions: dispositions,
   };
 
   await recordOrderEvent({
@@ -2177,6 +2409,7 @@ orders.post('/:id/return', async (c) => {
     items_returned: returned,
     order_status_changed: orderStatusChanged,
     can_finalize: deriveCanFinalize(freshItems),
+    asset_dispositions: dispositions,
   });
 });
 

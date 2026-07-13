@@ -104,7 +104,7 @@ type ProductRow = {
   total_units: number;
   available_units: number;
   rented_units: number;
-  in_repair_units: number;
+  offline_units: number;
   effective_capacity: number;
   location_names?: string | null; // Sub-turn 6i — distinct asset locations (list view)
 };
@@ -151,17 +151,30 @@ inventory.get('/products', async (c) => {
       COALESCE(a.total,     0)::int AS total_units,
       COALESCE(a.available, 0)::int AS available_units,
       COALESCE(a.rented,    0)::int AS rented_units,
-      COALESCE(a.in_repair, 0)::int AS in_repair_units,
+      COALESCE(a.offline, 0)::int AS offline_units,
       (CASE WHEN p.tracking_mode = 'bulk' THEN COALESCE(p.stock_quantity, 0) ELSE COALESCE(a.total, 0) END)::int AS effective_capacity,
       a.location_names,
       COUNT(*) OVER()::int AS full_total
     FROM products p
     LEFT JOIN LATERAL (
+      -- Sub-turn 12b: counts are now TRUTHFUL — asset.status is written at
+      -- dispatch/return. available = on the shelf (status 'available' AND no
+      -- active offline block); rented = 'out' with a customer; offline = on
+      -- the shelf but held by an active asset-level repair/maintenance
+      -- downtime. (Retired units are soft-deleted, excluded by deleted_at.)
       SELECT
-        COUNT(*)                                              AS total,
-        COUNT(*) FILTER (WHERE ast.status = 'available')      AS available,
-        COUNT(*) FILTER (WHERE ast.status = 'rented')         AS rented,
-        COUNT(*) FILTER (WHERE ast.status = 'in_repair')      AS in_repair,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE ast.status = 'available' AND NOT EXISTS (
+          SELECT 1 FROM product_downtimes d
+          WHERE d.asset_id = ast.id AND d.status IN ('scheduled','started')
+            AND d.start_at <= now() AND d.end_at > now()
+        )) AS available,
+        COUNT(*) FILTER (WHERE ast.status = 'out') AS rented,
+        COUNT(*) FILTER (WHERE ast.status = 'available' AND EXISTS (
+          SELECT 1 FROM product_downtimes d
+          WHERE d.asset_id = ast.id AND d.status IN ('scheduled','started')
+            AND d.start_at <= now() AND d.end_at > now()
+        )) AS offline,
         string_agg(DISTINCT loc.name, ', ' ORDER BY loc.name) AS location_names
       FROM assets ast
       LEFT JOIN locations loc ON loc.id = ast.location_id
@@ -235,15 +248,24 @@ inventory.get('/products/:id', async (c) => {
       COALESCE(a.total,     0)::int AS total_units,
       COALESCE(a.available, 0)::int AS available_units,
       COALESCE(a.rented,    0)::int AS rented_units,
-      COALESCE(a.in_repair, 0)::int AS in_repair_units,
+      COALESCE(a.offline, 0)::int AS offline_units,
       (CASE WHEN p.tracking_mode = 'bulk' THEN COALESCE(p.stock_quantity, 0) ELSE COALESCE(a.total, 0) END)::int AS effective_capacity
     FROM products p
     LEFT JOIN LATERAL (
+      -- Sub-turn 12b: truthful physical counts (see the list query above).
       SELECT
-        COUNT(*)                                              AS total,
-        COUNT(*) FILTER (WHERE status = 'available')          AS available,
-        COUNT(*) FILTER (WHERE status = 'rented')             AS rented,
-        COUNT(*) FILTER (WHERE status = 'in_repair')          AS in_repair
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE assets.status = 'available' AND NOT EXISTS (
+          SELECT 1 FROM product_downtimes d
+          WHERE d.asset_id = assets.id AND d.status IN ('scheduled','started')
+            AND d.start_at <= now() AND d.end_at > now()
+        )) AS available,
+        COUNT(*) FILTER (WHERE assets.status = 'out') AS rented,
+        COUNT(*) FILTER (WHERE assets.status = 'available' AND EXISTS (
+          SELECT 1 FROM product_downtimes d
+          WHERE d.asset_id = assets.id AND d.status IN ('scheduled','started')
+            AND d.start_at <= now() AND d.end_at > now()
+        )) AS offline
       FROM assets
       WHERE product_id = p.id AND deleted_at IS NULL
     ) a ON true
@@ -456,7 +478,7 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
       (SELECT COUNT(*) FROM new_assets)::int AS total_units,
       (SELECT COUNT(*) FROM new_assets)::int AS available_units,
       0::int AS rented_units,
-      0::int AS in_repair_units,
+      0::int AS offline_units,
       0::int AS component_count,
       (CASE WHEN np.tracking_mode = 'bulk' THEN COALESCE(np.stock_quantity, 0)
             ELSE (SELECT COUNT(*) FROM new_assets) END)::int AS effective_capacity,
@@ -606,7 +628,7 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
       tracking_mode, stock_quantity, default_purchase_cost_paise,
       is_active, is_kit, created_at, updated_at,
       0::int AS total_units, 0::int AS available_units,
-      0::int AS rented_units, 0::int AS in_repair_units,
+      0::int AS rented_units, 0::int AS offline_units,
       (CASE WHEN tracking_mode = 'bulk' THEN COALESCE(stock_quantity, 0) ELSE 0 END)::int AS effective_capacity,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = products.id)::int AS component_count
   `);
@@ -652,16 +674,19 @@ inventory.delete('/products/:id', requireRole('owner', 'manager'), async (c) => 
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
 
-  const rented = await query<{ n: number }>(sql`
+  // Sub-turn 12b: a unit physically with a customer is status 'out' (was the
+  // never-written 'rented'). This guard is now real — you can't delete a product
+  // whose units are out on an active rental.
+  const out = await query<{ n: number }>(sql`
     SELECT COUNT(*)::int AS n
     FROM assets
     WHERE product_id = ${id}
       AND workspace_id = ${session.workspace.id}
-      AND status = 'rented'
+      AND status = 'out'
       AND deleted_at IS NULL
   `);
-  if ((rented[0]?.n ?? 0) > 0) {
-    return c.json({ error: 'has_rented_assets', rented_count: rented[0]!.n }, 409);
+  if ((out[0]?.n ?? 0) > 0) {
+    return c.json({ error: 'has_out_assets', out_count: out[0]!.n }, 409);
   }
 
   const deleted = await query<{ id: string }>(sql`
