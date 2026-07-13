@@ -11,6 +11,7 @@ import {
   type SessionWorkspace,
 } from '../middleware/session.js';
 import { requirePermission, can } from '../lib/permissions.js';
+import { recomputeOrderTotals } from '../lib/pricing.js';
 
 // ============================================================================
 // src/routes/payments.ts  (Sub-turn 2.2a)
@@ -439,6 +440,23 @@ payments.post('/:orderId', requirePermission('payments.record'), async (c) => {
       workspaceId: session.workspace.id, orderId,
       actorUserId: session.user.id, ipAddress, userAgent,
     });
+  }
+
+  // Sub-turn 13: a RETAINED (forfeited) deposit becomes an order line so the
+  // invoice EXPLAINS why the amount was withheld — not a mystery subtraction.
+  // It's a custom line; recompute picks up the total + tax. Fail-open.
+  if (kind === 'deposit_forfeit') {
+    const reason = (input.notes ?? '').trim();
+    await sql`
+      INSERT INTO order_items
+        (workspace_id, order_id, item_type, description, quantity,
+         unit_amount_paise, total_amount_paise, is_custom_line, custom_name, sort_order)
+      VALUES (${session.workspace.id}::uuid, ${orderId}::uuid, 'other'::order_item_type,
+              ${reason ? 'Retained deposit — ' + reason : 'Retained deposit'}::text, 1,
+              ${input.amount_paise}::bigint, ${input.amount_paise}::bigint,
+              true, 'Retained deposit'::text, 8500)
+    `;
+    await recomputeOrderTotals(orderId, session.workspace.id, session.user.id).catch(() => {});
   }
 
   await audit({

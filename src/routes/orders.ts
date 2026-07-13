@@ -1093,6 +1093,11 @@ const addItemSchema = z.object({
     unit_amount_paise: z.number().int(),
     label:             z.string().min(1).max(200),
   }).optional(),
+  // Sub-turn 13, chunk 7: a custom line — an operator-named charge with its own
+  // amount, NO product. Negative unit is allowed ONLY here (a fixed-amount
+  // discount / goodwill). Custom lines are excluded from the deposit base.
+  is_custom_line: z.boolean().optional(),
+  custom_name:    z.string().min(1).max(200).optional(),
 });
 
 orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
@@ -1160,13 +1165,30 @@ orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
     overrideLabel = input.override.label;
   }
 
+  // Custom line (chunk 7): operator-named charge, no product, negative allowed.
+  const isCustom = input.is_custom_line === true;
+  if (isCustom) {
+    if (input.item_type === 'rental') {
+      return c.json({ error: 'invalid_request', reason: 'custom_line_cannot_be_rental' }, 400);
+    }
+    if (!input.custom_name) {
+      return c.json({ error: 'invalid_request', reason: 'custom_name_required' }, 400);
+    }
+    lineUnit = input.unit_amount_paise; // as entered (may be negative)
+  }
+  // Negative unit price is legal ONLY on a custom line (DB CHECK enforces it too).
+  if (lineUnit < 0 && !isCustom) {
+    return c.json({ error: 'invalid_request', reason: 'negative_price_only_on_custom_line' }, 400);
+  }
+
   const totalAmount = lineUnit * input.quantity;
 
   const inserted = await query<OrderItemRow>(sql`
     INSERT INTO order_items (
       workspace_id, order_id, parent_item_id, item_type, product_id,
       description, quantity, daily_rate_paise, billable_days,
-      unit_amount_paise, total_amount_paise, manual_price, price_override_label, sort_order
+      unit_amount_paise, total_amount_paise, manual_price, price_override_label,
+      is_custom_line, custom_name, sort_order
     ) VALUES (
       ${session.workspace.id},
       ${id},
@@ -1181,6 +1203,8 @@ orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
       ${totalAmount},
       ${manualPrice}::boolean,
       ${overrideLabel}::text,
+      ${isCustom}::boolean,
+      ${isCustom ? input.custom_name : null}::text,
       ${input.sort_order}
     )
     RETURNING *
@@ -1858,6 +1882,74 @@ const transitionSchema = z.object({
   force:  z.boolean().default(false),
 });
 
+/** Undo a dispatch when an order is REVERTED back across the dispatch boundary
+ *  (Sub-turn 13, chunk 7). This is an UNDO of an operator error, distinct from a
+ *  customer return (still rejected for sale lines):
+ *    - rental: units flip 'out' → 'available'; order_assets removed.
+ *    - sale bulk: stock_levels RE-INCREMENTED (else one mistake silently
+ *      corrupts the count forever).
+ *    - sale serialized: the retired/sold units are UN-retired back to 'available'.
+ *  Every dispatched line resets to pending_dispatch. Returns a summary to audit. */
+async function undoDispatch(args: {
+  workspaceId: string; orderId: string; pickupLocationId: string | null;
+}): Promise<{ item_id: string; kind: string; quantity: number; asset_codes: string[] }[]> {
+  const items = await query<{
+    item_id: string; product_id: string | null; quantity: number;
+    nature: string | null; tracking_method: string | null; tracking_mode: string | null;
+  }>(sql`
+    SELECT oi.id AS item_id, oi.product_id, oi.quantity,
+           p.nature::text AS nature, p.tracking_method::text AS tracking_method, p.tracking_mode
+    FROM order_items oi
+    LEFT JOIN products p ON p.id = oi.product_id
+    WHERE oi.order_id = ${args.orderId}::uuid AND oi.workspace_id = ${args.workspaceId}::uuid
+      AND oi.item_type = 'rental' AND oi.status::text = 'dispatched'
+  `);
+  const restored: { item_id: string; kind: string; quantity: number; asset_codes: string[] }[] = [];
+  for (const it of items) {
+    const isBulk = (it.tracking_method ?? it.tracking_mode) === 'bulk';
+    let kind = 'rental';
+    let codes: string[] = [];
+    if (it.nature === 'sale' && isBulk && it.product_id) {
+      // Restore on-hand at the pickup location.
+      await sql`
+        UPDATE stock_levels SET quantity = quantity + ${Number(it.quantity)}::int
+        WHERE product_id = ${it.product_id}::uuid AND location_id = ${args.pickupLocationId}::uuid
+      `;
+      kind = 'sale_bulk';
+    } else if (it.nature === 'service') {
+      // nothing physical
+      kind = 'service';
+    } else {
+      // rental OR serialized sale: reclaim the pinned/sold units.
+      const assets = await query<{ asset_id: string; asset_code: string }>(sql`
+        SELECT oa.asset_id, a.asset_code FROM order_assets oa JOIN assets a ON a.id = oa.asset_id
+        WHERE oa.order_id = ${args.orderId}::uuid AND oa.order_item_id = ${it.item_id}::uuid
+          AND oa.workspace_id = ${args.workspaceId}::uuid
+      `);
+      for (const a of assets) {
+        // Un-retire a sold serialized unit or flip a rented one back on the shelf.
+        await sql`
+          UPDATE assets SET status = 'available'::asset_status, deleted_at = NULL, updated_at = now()
+          WHERE id = ${a.asset_id}::uuid AND workspace_id = ${args.workspaceId}::uuid
+        `;
+      }
+      await sql`
+        DELETE FROM order_assets WHERE order_id = ${args.orderId}::uuid
+          AND order_item_id = ${it.item_id}::uuid AND workspace_id = ${args.workspaceId}::uuid
+      `;
+      codes = assets.map((a) => a.asset_code);
+      kind = it.nature === 'sale' ? 'sale_serialized' : 'rental';
+    }
+    await sql`
+      UPDATE order_items SET status = 'pending_dispatch'::order_item_status,
+             dispatched_at = NULL, updated_at = now()
+      WHERE id = ${it.item_id}::uuid AND workspace_id = ${args.workspaceId}::uuid
+    `;
+    restored.push({ item_id: it.item_id, kind, quantity: Number(it.quantity), asset_codes: codes });
+  }
+  return restored;
+}
+
 orders.post('/:id/transitions', async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
@@ -1928,6 +2020,31 @@ orders.post('/:id/transitions', async (c) => {
        AND workspace_id = ${session.workspace.id}
     RETURNING *
   `);
+
+  // Sub-turn 13, chunk 7: reverting BACKWARD across the dispatch boundary undoes
+  // the dispatch — critically, it restores sale stock (bulk re-increment /
+  // serialized un-retire), so an operator dispatching the wrong order can't
+  // silently corrupt the count. Audited as a stock correction.
+  const crossesDispatchBackward =
+    (LIFECYCLE_RANK[order.status] ?? 0) >= 3 && (LIFECYCLE_RANK[to] ?? 0) < 3;
+  if (crossesDispatchBackward) {
+    const restored = await undoDispatch({
+      workspaceId: session.workspace.id,
+      orderId: id,
+      pickupLocationId: order.pickup_location_id ?? null,
+    });
+    if (restored.length) {
+      await audit({
+        workspaceId: session.workspace.id,
+        actorUserId: session.user.id,
+        eventType: 'orders.dispatch.reverted',
+        targetType: 'order',
+        targetId: id,
+        payload: { from: order.status, to, restored },
+        ipAddress, userAgent,
+      });
+    }
+  }
 
   await recordOrderEvent({
     workspaceId: session.workspace.id,
