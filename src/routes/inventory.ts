@@ -95,6 +95,7 @@ type ProductRow = {
   shortage_limit: number;
   tracking_mode: string;
   stock_quantity: number | null;
+  default_purchase_cost_paise: number | null; // Sub-turn 11 — fallback unit cost
   is_active: boolean;
   is_kit: boolean;
   component_count: number;
@@ -143,7 +144,7 @@ inventory.get('/products', async (c) => {
       p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
       p.specifications, p.notes, p.image_url, p.hsn_code,
       p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
-      p.tracking_mode, p.stock_quantity,
+      p.tracking_mode, p.stock_quantity, p.default_purchase_cost_paise,
       p.is_active, p.is_kit,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = p.id)::int AS component_count,
       p.created_at, p.updated_at,
@@ -227,7 +228,7 @@ inventory.get('/products/:id', async (c) => {
       p.daily_rate, p.weekly_rate, p.monthly_rate, p.deposit, p.replacement_value,
       p.specifications, p.notes, p.image_url, p.hsn_code,
       p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
-      p.tracking_mode, p.stock_quantity,
+      p.tracking_mode, p.stock_quantity, p.default_purchase_cost_paise,
       p.is_active, p.is_kit,
       (SELECT COUNT(*) FROM product_kit_items pki WHERE pki.kit_product_id = p.id)::int AS component_count,
       p.created_at, p.updated_at,
@@ -260,10 +261,19 @@ inventory.get('/products/:id', async (c) => {
   const assets = await query<{
     id: string; asset_code: string; status: string;
     location_id: string; location_name: string | null;
+    purchase_cost_paise: number | null; purchase_date: string | null;
+    effective_cost_paise: number | null; cost_source: 'asset' | 'product' | 'none';
   }>(sql`
     SELECT a.id, a.asset_code, a.status::text AS status,
-           a.location_id, l.name AS location_name
+           a.location_id, l.name AS location_name,
+           a.purchase_cost_paise, a.purchase_date,
+           -- Resolved at read time — the product default stays live (Sub-turn 11).
+           COALESCE(a.purchase_cost_paise, pr.default_purchase_cost_paise) AS effective_cost_paise,
+           CASE WHEN a.purchase_cost_paise IS NOT NULL THEN 'asset'
+                WHEN pr.default_purchase_cost_paise IS NOT NULL THEN 'product'
+                ELSE 'none' END AS cost_source
     FROM assets a
+    JOIN products pr ON pr.id = a.product_id
     LEFT JOIN locations l ON l.id = a.location_id
     WHERE a.product_id = ${id}::uuid
       AND a.workspace_id = ${session.workspace.id}::uuid
@@ -335,6 +345,7 @@ const createSchema = z.object({
   monthly_rate: z.number().int().positive().optional(),
   deposit: z.number().int().min(0).default(0),
   replacement_value: z.number().int().positive().optional(),
+  default_purchase_cost_paise: z.number().int().min(0).nullable().optional(), // Sub-turn 11
   specifications: z.record(z.unknown()).optional(),
   notes: z.string().max(2000).optional(),
   is_kit: z.boolean().default(false),
@@ -405,6 +416,7 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
       INSERT INTO products (
         workspace_id, sku, name, category, description,
         daily_rate, weekly_rate, monthly_rate, deposit, replacement_value,
+        default_purchase_cost_paise,
         specifications, notes, is_kit, tracking_mode, stock_quantity, created_by
       ) VALUES (
         ${session.workspace.id},
@@ -417,6 +429,7 @@ inventory.post('/products', requireRole('owner', 'manager'), async (c) => {
         ${input.monthly_rate ?? null},
         ${input.deposit},
         ${input.replacement_value ?? null},
+        ${input.default_purchase_cost_paise ?? null}::bigint,
         ${JSON.stringify(input.specifications ?? {})}::jsonb,
         ${input.notes ?? null},
         ${input.is_kit},
@@ -495,6 +508,8 @@ const updateSchema = z.object({
   monthly_rate: z.number().int().positive().optional(),
   deposit: z.number().int().min(0).optional(),
   replacement_value: z.number().int().positive().optional(),
+  // Sub-turn 11 — nullable: omit preserves, explicit null clears (handled below).
+  default_purchase_cost_paise: z.number().int().min(0).nullable().optional(),
   specifications: z.record(z.unknown()).optional(),
   notes: z.string().max(2000).optional(),
   image_url: z.string().max(2000).optional(),
@@ -551,12 +566,19 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
     }
   }
 
+  // Cost is the one field that must support explicit-null-to-clear (Sub-turn 11):
+  // omitting it preserves, sending `null` clears it. Zod .optional() drops the key
+  // when omitted, so `in p` distinguishes "omitted" from "sent as null".
+  const costProvided = 'default_purchase_cost_paise' in p;
+  const costValue = costProvided ? (p.default_purchase_cost_paise ?? null) : null;
+
   // COALESCE-based partial update: any field the caller omits is preserved.
-  // We deliberately do NOT support clearing nullable fields (setting to NULL) via
-  // PATCH — that would require a different sentinel and adds error surface. Add a
-  // dedicated /products/:id/clear-field endpoint later if the need is real.
+  // We deliberately do NOT support clearing other nullable fields via PATCH.
   const updated = await query<ProductRow>(sql`
     UPDATE products SET
+      default_purchase_cost_paise = CASE WHEN ${costProvided}::boolean
+                                         THEN ${costValue}::bigint
+                                         ELSE default_purchase_cost_paise END,
       name              = COALESCE(${p.name              ?? null}::text,    name),
       category          = COALESCE(${p.category          ?? null}::text,    category),
       description       = COALESCE(${p.description       ?? null}::text,    description),
@@ -581,7 +603,7 @@ inventory.patch('/products/:id', requireRole('owner', 'manager'), async (c) => {
       daily_rate, weekly_rate, monthly_rate, deposit, replacement_value,
       specifications, notes, image_url, hsn_code,
       buffer_before_hours, buffer_after_hours, shortage_limit,
-      tracking_mode, stock_quantity,
+      tracking_mode, stock_quantity, default_purchase_cost_paise,
       is_active, is_kit, created_at, updated_at,
       0::int AS total_units, 0::int AS available_units,
       0::int AS rented_units, 0::int AS in_repair_units,
@@ -725,6 +747,148 @@ inventory.patch('/assets/:id/location', requireRole('owner', 'manager'), async (
   });
 
   return c.json({ ok: true });
+});
+
+// ============================================================================
+// PATCH /api/inventory/assets/bulk-cost — Sub-turn 11. Bulk purchase-cost entry.
+// Owner/manager ONLY (financial data). Registered BEFORE /assets/:id so the
+// literal path isn't captured by the :id param. Partial success: one bad row
+// never discards the good ones. One audit event per changed asset.
+// ============================================================================
+const bulkCostSchema = z.object({
+  updates: z.array(z.object({
+    asset_id: z.string().uuid(),
+    // Loose here (no .min) so a negative value becomes a REPORTED per-row failure
+    // rather than a 400 that discards every good row.
+    purchase_cost_paise: z.number().int().nullable().optional(),
+    purchase_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  })).min(1).max(500),
+});
+
+inventory.patch('/assets/bulk-cost', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = bulkCostSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const { updates } = parsed.data;
+
+  const failed: { asset_id: string; reason: string }[] = [];
+
+  // Per-row validation that must report, not reject.
+  const candidate = updates.filter((u) => {
+    if (u.purchase_cost_paise != null && u.purchase_cost_paise < 0) {
+      failed.push({ asset_id: u.asset_id, reason: 'negative_cost' }); return false;
+    }
+    return true;
+  });
+
+  // Which candidate assets actually belong to this workspace?
+  const ids = candidate.map((u) => u.asset_id);
+  const owned = ids.length
+    ? await query<{ id: string }>(sql`
+        SELECT id FROM assets
+        WHERE id = ANY(${'{' + ids.join(',') + '}'}::uuid[])
+          AND workspace_id = ${session.workspace.id}::uuid
+          AND deleted_at IS NULL
+      `)
+    : [];
+  const ownedSet = new Set(owned.map((r) => r.id));
+  const toApply = candidate.filter((u) => {
+    if (!ownedSet.has(u.asset_id)) { failed.push({ asset_id: u.asset_id, reason: 'not_found' }); return false; }
+    return true;
+  });
+
+  if (toApply.length) {
+    // One set-based UPDATE for every good row. COALESCE keeps a field the row
+    // omitted (bulk entry never destroys an existing value — clearing is done
+    // via the single-asset PATCH).
+    const payload = JSON.stringify(toApply.map((u) => ({
+      asset_id: u.asset_id,
+      cost: u.purchase_cost_paise ?? null,
+      pdate: u.purchase_date ?? null,
+    })));
+    await sql`
+      UPDATE assets a SET
+        purchase_cost_paise = COALESCE(u.cost, a.purchase_cost_paise),
+        purchase_date       = COALESCE(u.pdate, a.purchase_date),
+        updated_at          = now()
+      FROM jsonb_to_recordset(${payload}::jsonb) AS u(asset_id uuid, cost bigint, pdate date)
+      WHERE a.id = u.asset_id AND a.workspace_id = ${session.workspace.id}::uuid
+    `;
+    // One audit event per changed asset (financially material).
+    await Promise.all(toApply.map((u) => audit({
+      workspaceId: session.workspace.id,
+      actorUserId: session.user.id,
+      eventType: 'inventory.asset.updated',
+      targetType: 'asset',
+      targetId: u.asset_id,
+      payload: { fields: ['purchase_cost_paise', 'purchase_date'], via: 'bulk-cost' },
+      ipAddress, userAgent,
+    })));
+  }
+
+  return c.json({ updated: toApply.length, failed });
+});
+
+// ============================================================================
+// PATCH /api/inventory/assets/:id — Sub-turn 11. Per-unit cost override + date.
+// Owner/manager only. Explicit null clears (reverts to the product default).
+// ============================================================================
+const assetCostSchema = z.object({
+  purchase_cost_paise: z.number().int().min(0).nullable().optional(),
+  purchase_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+});
+
+inventory.patch('/assets/:id', requireRole('owner', 'manager'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const assetId = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = assetCostSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const p = parsed.data;
+
+  const costProvided = 'purchase_cost_paise' in p;
+  const dateProvided = 'purchase_date' in p;
+  const costValue = costProvided ? (p.purchase_cost_paise ?? null) : null;
+  const dateValue = dateProvided ? (p.purchase_date ?? null) : null;
+
+  const updated = await query<{
+    id: string; asset_code: string; purchase_cost_paise: number | null;
+    purchase_date: string | null; effective_cost_paise: number | null;
+    cost_source: 'asset' | 'product' | 'none';
+  }>(sql`
+    WITH upd AS (
+      UPDATE assets a SET
+        purchase_cost_paise = CASE WHEN ${costProvided}::boolean THEN ${costValue}::bigint ELSE a.purchase_cost_paise END,
+        purchase_date       = CASE WHEN ${dateProvided}::boolean THEN ${dateValue}::date  ELSE a.purchase_date END,
+        updated_at          = now()
+      WHERE a.id = ${assetId}::uuid AND a.workspace_id = ${session.workspace.id}::uuid AND a.deleted_at IS NULL
+      RETURNING a.id, a.asset_code, a.product_id, a.purchase_cost_paise, a.purchase_date
+    )
+    SELECT upd.id, upd.asset_code, upd.purchase_cost_paise, upd.purchase_date,
+           COALESCE(upd.purchase_cost_paise, pr.default_purchase_cost_paise) AS effective_cost_paise,
+           CASE WHEN upd.purchase_cost_paise IS NOT NULL THEN 'asset'
+                WHEN pr.default_purchase_cost_paise IS NOT NULL THEN 'product'
+                ELSE 'none' END AS cost_source
+    FROM upd JOIN products pr ON pr.id = upd.product_id
+  `);
+  if (!updated.length) return c.json({ error: 'not_found' }, 404);
+
+  await audit({
+    workspaceId: session.workspace.id,
+    actorUserId: session.user.id,
+    eventType: 'inventory.asset.updated',
+    targetType: 'asset',
+    targetId: assetId,
+    payload: { fields: Object.keys(p) },
+    ipAddress, userAgent,
+  });
+
+  return c.json({ asset: updated[0] });
 });
 
 // ============================================================================

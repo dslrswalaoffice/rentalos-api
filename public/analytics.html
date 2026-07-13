@@ -124,6 +124,13 @@
     .pill.premium{background:var(--orange-soft);color:var(--warn-strong);}
     .pill.normal{background:var(--accent-soft);color:var(--head);}
     .empty-state{padding:22px;text-align:center;color:var(--muted);font-size:12.5px;font-family:var(--font-mono);letter-spacing:0.03em;background:var(--thead);border:1px dashed var(--border-strong);border-radius:10px;}
+    /* Sub-turn 11 — Product ROI rows */
+    .roi-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--border);border-radius:9px;margin-bottom:8px;background:var(--card);}
+    .roi-row strong{color:var(--ink);}
+    .roi-meta{font-size:12px;color:var(--muted-strong);margin-top:3px;}
+    .roi-meta a{color:var(--head);font-weight:600;text-decoration:none;}
+    .roi-chip{flex-shrink:0;padding:3px 10px;border-radius:999px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;}
+    .roi-group-h{margin:16px 0 8px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--warn-strong);}
     .idle-alert{margin-top:20px;padding:14px 16px;background:var(--warn-soft);border-left:4px solid var(--warn-solid);border-radius:8px;}
     .idle-alert[hidden]{display:none;}
     .alert-head{font-weight:700;color:var(--warn-strong);margin-bottom:6px;font-size:13px;}
@@ -300,6 +307,15 @@
               <div class="stat-card"><div class="stat-label">Damage/forfeits</div><div class="stat-value" id="ops-damage">—</div></div>
             </div>
           </section>
+
+          <!-- Product ROI (Sub-turn 11) — real capital efficiency. -->
+          <section class="analytics-section" id="roi-section">
+            <div class="section-head">
+              <h2>Return on capital</h2>
+              <span style="font-size:11.5px;color:var(--muted);">Lifetime · tracked gear only</span>
+            </div>
+            <div id="roi-body"><div class="empty-state">Loading…</div></div>
+          </section>
         </div>
       </div>
     </div>
@@ -352,17 +368,19 @@
       renderRangeLabel();
       setLoading();
       try {
-        const [revenue, utilization, customers, operational] = await Promise.all([
+        const [revenue, utilization, customers, operational, roi] = await Promise.all([
           api.get(`/api/analytics/revenue${qs}`),
           api.get(`/api/analytics/utilization${qs}`),
           api.get(`/api/analytics/customers${qs}`),
           api.get(`/api/analytics/operational${qs}`),
+          api.get('/api/analytics/product-roi'), // lifetime — ignores the range
         ]);
-        state.data = { revenue, utilization, customers, operational };
+        state.data = { revenue, utilization, customers, operational, roi };
         renderRevenue(revenue);
         renderUtilization(utilization);
         renderCustomers(customers);
         renderOperational(operational);
+        renderRoi(roi);
       } catch (err) {
         if (err?.status === 403) {
           document.getElementById('sections').innerHTML =
@@ -485,6 +503,56 @@
       document.getElementById('ops-cancel').textContent = `${data.cancellation_rate_pct}%`;
       document.getElementById('ops-late').textContent = data.late_return_count;
       document.getElementById('ops-damage').textContent = data.damage_forfeit_count;
+    }
+
+    // ---------- Product ROI (Sub-turn 11) — display contract: capital →
+    // holding period → current earning rate → recovery %. Never a bare %. ----------
+    function inrCompact(paise) {
+      const r = Number(paise || 0) / 100;
+      if (r >= 1e7) return '₹' + (r / 1e7).toFixed(2).replace(/\.00$/, '') + 'Cr';
+      if (r >= 1e5) return '₹' + (r / 1e5).toFixed(2).replace(/\.00$/, '') + 'L';
+      return formatINR(paise);
+    }
+    function fmtHeld(months) {
+      if (months == null) return 'held —';
+      if (months < 12) return `held ${months}mo`;
+      const y = Math.floor(months / 12), m = months % 12;
+      return `held ${y}yr${m ? ' ' + m + 'mo' : ''}`;
+    }
+    function roiChip(r) {
+      if (r.is_bundled_only) return `<span class="roi-chip" style="background:var(--accent-soft);color:var(--head);">Bundled</span>`;
+      const map = {
+        healthy:          ['Healthy',          'var(--ok-soft)',  'var(--ok-strong)'],
+        watch:            ['Watch',            'var(--warn-soft)','var(--warn-strong)'],
+        divest_candidate: ['Divest candidate', 'var(--bad-soft)', 'var(--bad-strong)'],
+        too_new:          ['Too new',          'var(--thead)',    'var(--muted-strong)'],
+        cost_missing:     ['Cost not set',     'var(--thead)',    'var(--muted-strong)'],
+      };
+      const [label, bg, fg] = map[r.status] || [r.status, 'var(--thead)', 'var(--muted)'];
+      return `<span class="roi-chip" style="background:${bg};color:${fg};">${label}</span>`;
+    }
+    function roiRow(r, missing) {
+      const perMo = Math.round(Number(r.revenue_last_90d_paise || 0) / 3);
+      const rec = r.recovered_pct == null ? '—' : r.recovered_pct.toFixed(1) + '%';
+      const meta = missing
+        ? `${r.unit_count} unit${r.unit_count === 1 ? '' : 's'} · cost not set · <a href="/inventory.html">Set purchase costs →</a>`
+        : `${r.unit_count} unit${r.unit_count === 1 ? '' : 's'} · <strong>${inrCompact(r.total_cost_paise)} capital</strong> · ${fmtHeld(r.months_held)} · <strong>${formatINR(perMo)}/mo now</strong> · recovered <strong>${rec}</strong>`;
+      return `<div class="roi-row"><div><strong>${escapeHtml(r.name)}</strong><div class="roi-meta">${meta}</div></div>${roiChip(r)}</div>`;
+    }
+    function renderRoi(data) {
+      const el = document.getElementById('roi-body');
+      const rows = (data && data.products) || [];
+      if (!rows.length) {
+        el.innerHTML = '<div class="empty-state">No tracked gear to analyse yet. Add products with units and record their purchase costs.</div>';
+        return;
+      }
+      const priced = rows.filter(r => r.status !== 'cost_missing');
+      const missing = rows.filter(r => r.status === 'cost_missing');
+      let html = priced.map(r => roiRow(r, false)).join('');
+      if (missing.length) {
+        html += `<div class="roi-group-h">Costs not set — ROI unavailable</div>` + missing.map(r => roiRow(r, true)).join('');
+      }
+      el.innerHTML = html;
     }
 
     // ---------- vanilla SVG line chart ----------

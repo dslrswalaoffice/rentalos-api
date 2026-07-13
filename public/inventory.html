@@ -419,6 +419,11 @@
           </div>
           <div class="category-chips" id="category-chips"></div>
         </div>
+        <!-- Sub-turn 11 — capital / idle-capital + bulk cost entry (owner/manager). -->
+        <div class="content-head" id="capital-bar" hidden style="padding-top:0;align-items:center;">
+          <div class="sub" id="idle-capital-line" style="margin-left:0;"></div>
+          <button class="btn small" id="btn-bulk-cost" type="button">Set purchase costs</button>
+        </div>
         <div class="content-head" id="location-filter-row" style="display:none;padding-top:0;">
           <div class="category-chips" id="location-chips"></div>
         </div>
@@ -571,6 +576,26 @@
     </div>
   </div>
 
+  <!-- Bulk purchase-cost entry (Sub-turn 11) — one screen, tab-through, one save. -->
+  <div class="modal-backdrop" id="bulk-cost-modal">
+    <div class="modal" role="dialog" aria-labelledby="bulk-cost-title" style="max-width:760px;width:96%;">
+      <header class="modal-head">
+        <div>
+          <div class="modal-title" id="bulk-cost-title">Set purchase costs</div>
+          <div class="sub" id="bulk-progress" style="margin-left:0;"></div>
+        </div>
+        <button class="modal-close" id="bulk-close" aria-label="Close">✕</button>
+      </header>
+      <div id="bulk-cost-error" class="notice" style="display:none;background:var(--bad-soft);color:var(--bad-strong);margin:0 0 10px;"></div>
+      <p class="field-hint" style="margin:0 0 10px;">Tab moves to the next field. A product row's cost is the fallback for its units; a unit's own cost overrides it. Empty unit = inherits the product default.</p>
+      <div id="bulk-cost-body" style="max-height:60vh;overflow:auto;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+        <button class="btn ghost" id="bulk-cancel" type="button">Cancel</button>
+        <button class="btn primary" id="bulk-save" type="button">Save costs</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Edit product modal (Sub-turn 5c-1) -->
   <div class="modal-backdrop" id="edit-modal">
     <div class="modal" role="dialog" aria-labelledby="edit-modal-title">
@@ -614,6 +639,13 @@
           <div class="field">
             <label for="e-daily">Daily rate</label>
             <div class="prefix-wrap"><span class="prefix">₹</span><input id="e-daily" type="number" min="1" step="1"></div>
+          </div>
+          <!-- Sub-turn 11 — purchase cost (owner/manager only; hidden for staff). -->
+          <div class="field" id="cost-field" hidden>
+            <label for="e-purchase-cost">Default cost per item <span class="hint">used to calculate ROI</span></label>
+            <div class="prefix-wrap"><span class="prefix">₹</span><input id="e-purchase-cost" type="number" min="0" step="1" placeholder="Not set"></div>
+            <div class="field-hint">Applies as a fallback to all stock of this product — past, current, and future. You can override it per unit.</div>
+            <div class="field-hint" id="e-cost-note"></div>
           </div>
           <div class="field field-image">
             <label>Product image</label>
@@ -753,8 +785,11 @@
     let multiLocation = false;
 
     // ---------- hydrate identity ----------
+    let currentRole = null; // Sub-turn 11 — gates cost UI (owner/manager only)
+    const canManageCost = () => currentRole === 'owner' || currentRole === 'manager';
     async function hydrateIdentity() {
       const { user, workspace } = await ensureAuth();
+      currentRole = user.role;
       document.getElementById('ws-name').textContent = workspace.name;
       document.getElementById('ws-loc').textContent = workspace.location || '';
       const first = (user.displayName || '').split(' ')[0] || 'You';
@@ -1139,6 +1174,12 @@
       document.getElementById('e-category').value = p.category || '';
       document.getElementById('e-hsn').value = p.hsn_code || '';
       document.getElementById('e-daily').value = p.daily_rate != null ? (Number(p.daily_rate) / 100) : '';
+      // Purchase cost (Sub-turn 11) — owner/manager only. Empty input = not set.
+      const costField = document.getElementById('cost-field');
+      costField.hidden = !canManageCost();
+      document.getElementById('e-purchase-cost').value = p.default_purchase_cost_paise != null ? (Number(p.default_purchase_cost_paise) / 100) : '';
+      document.getElementById('e-cost-note').textContent = '';
+      if (canManageCost()) loadCostNote(id);
       document.getElementById('e-image').value = p.image_url || '';
       document.getElementById('e-buffer-before').value = p.buffer_before_hours ?? 0;
       document.getElementById('e-buffer-after').value = p.buffer_after_hours ?? 0;
@@ -1162,6 +1203,190 @@
       editModal.classList.add('open');
     }
     function closeEdit() { editModal.classList.remove('open'); editingId = null; }
+
+    // Sub-turn 11 — "N of M units overridden" note under the cost field.
+    async function loadCostNote(id) {
+      try {
+        const { assets } = await api.get(`/api/inventory/products/${encodeURIComponent(id)}`);
+        if (editingId !== id) return;
+        const list = assets || [];
+        const el = document.getElementById('e-cost-note');
+        if (!list.length) { el.textContent = ''; return; }
+        const overridden = list.filter(a => a.cost_source === 'asset').length;
+        el.innerHTML = `${overridden} of ${list.length} unit${list.length === 1 ? '' : 's'} have their own cost override. <a href="#" id="e-cost-bulk">Set purchase costs →</a>`;
+        const link = document.getElementById('e-cost-bulk');
+        if (link) link.addEventListener('click', (ev) => { ev.preventDefault(); closeEdit(); openBulkCost(); });
+      } catch {}
+    }
+
+    // ================= idle capital + bulk cost entry (Sub-turn 11) =================
+    const inr = (paise) => paise == null ? '—' : formatINR(paise);
+    // Compact ₹ for tiles: ₹6.99L / ₹1.2Cr
+    function inrCompact(paise) {
+      const r = Number(paise) / 100;
+      if (r >= 1e7) return '₹' + (r / 1e7).toFixed(2).replace(/\.00$/, '') + 'Cr';
+      if (r >= 1e5) return '₹' + (r / 1e5).toFixed(2).replace(/\.00$/, '') + 'L';
+      return formatINR(paise);
+    }
+
+    async function loadIdleCapital() {
+      const bar = document.getElementById('capital-bar');
+      if (!canManageCost()) { bar.hidden = true; return; }
+      bar.hidden = false;
+      try {
+        const roi = await api.get('/api/analytics/product-roi');
+        const line = document.getElementById('idle-capital-line');
+        const idle = Number(roi.idle_capital_paise || 0);
+        const missing = Number(roi.idle_units_missing_cost || 0);
+        let txt = `Idle capital: <strong>${inrCompact(idle)}</strong> <span style="color:var(--muted);">(no rental in 90 days)</span>`;
+        if (missing > 0) txt += ` <span style="color:var(--warn-strong);">+ ${missing} unit${missing === 1 ? '' : 's'} with no cost set</span>`;
+        line.innerHTML = txt;
+      } catch (err) {
+        if (err.status === 403) { bar.hidden = true; return; }
+        document.getElementById('idle-capital-line').textContent = 'Idle capital unavailable.';
+      }
+    }
+
+    const bulkModal = document.getElementById('bulk-cost-modal');
+    let bulkData = []; // [{ product, assets:[...] }]
+
+    async function openBulkCost() {
+      if (!canManageCost()) return;
+      const tracked = (allProducts || []).filter(p => p.tracking_mode === 'tracked' && !p.is_kit && p.is_active);
+      const body = document.getElementById('bulk-cost-body');
+      document.getElementById('bulk-cost-error').style.display = 'none';
+      body.innerHTML = '<div class="loading">Loading units…</div>';
+      bulkModal.classList.add('open');
+      try {
+        const details = await Promise.all(tracked.map(p =>
+          api.get(`/api/inventory/products/${encodeURIComponent(p.id)}`).then(d => ({ product: p, assets: d.assets || [] })).catch(() => null)
+        ));
+        bulkData = details.filter(Boolean).filter(d => d.assets.length > 0);
+        renderBulkCost();
+      } catch {
+        body.innerHTML = '<div class="empty"><p>Could not load units.</p></div>';
+      }
+    }
+
+    function renderBulkCost() {
+      const body = document.getElementById('bulk-cost-body');
+      if (!bulkData.length) { body.innerHTML = '<div class="empty"><p>No tracked units to cost.</p></div>'; updateBulkProgress(); return; }
+      body.innerHTML = bulkData.map(({ product, assets }) => {
+        const def = product.default_purchase_cost_paise != null ? (Number(product.default_purchase_cost_paise) / 100) : '';
+        const defR = product.default_purchase_cost_paise;
+        const units = assets.map(a => {
+          const own = a.purchase_cost_paise != null ? (Number(a.purchase_cost_paise) / 100) : '';
+          const ph = defR != null ? ('inherits ' + (Number(defR) / 100)) : 'not set';
+          const date = a.purchase_date || '';
+          return `<tr>
+            <td style="padding-left:22px;color:var(--muted-strong);">${escapeHtml(a.asset_code)}</td>
+            <td><div class="prefix-wrap" style="max-width:150px;"><span class="prefix">₹</span>
+              <input type="number" min="0" step="1" class="bulk-cost-in" data-asset="${escapeAttr(a.id)}" value="${own}" placeholder="${escapeAttr(ph)}"></div></td>
+            <td><input type="date" class="bulk-date-in" data-asset="${escapeAttr(a.id)}" value="${escapeAttr(date)}" style="max-width:150px;"></td>
+          </tr>`;
+        }).join('');
+        return `<table class="users" style="margin-bottom:14px;">
+          <thead><tr><th style="text-align:left;">${escapeHtml(product.name)} · ${assets.length} unit${assets.length === 1 ? '' : 's'}</th><th style="text-align:left;">Cost</th><th style="text-align:left;">Purchase date</th></tr></thead>
+          <tbody>
+            <tr style="background:var(--thead);">
+              <td><strong>Default for all units</strong></td>
+              <td><div class="prefix-wrap" style="max-width:150px;"><span class="prefix">₹</span>
+                <input type="number" min="0" step="1" class="bulk-default-in" data-product="${escapeAttr(product.id)}" value="${def}" placeholder="Not set"></div></td>
+              <td></td>
+            </tr>
+            ${units}
+          </tbody>
+        </table>`;
+      }).join('');
+
+      // Product-default change → offer to cascade to that product's unit inputs.
+      body.querySelectorAll('.bulk-default-in').forEach(inp => {
+        inp.addEventListener('change', () => {
+          const val = inp.value.trim();
+          if (val === '') { updateBulkProgress(); return; }
+          const pid = inp.getAttribute('data-product');
+          const group = bulkData.find(d => d.product.id === pid);
+          const n = group ? group.assets.length : 0;
+          if (n > 0 && window.confirm(`Apply ₹${val} to all ${n} unit${n === 1 ? '' : 's'} of ${group.product.name} as their cost?`)) {
+            body.querySelectorAll(`.bulk-cost-in`).forEach(ci => {
+              if (group.assets.some(a => a.id === ci.getAttribute('data-asset'))) ci.value = val;
+            });
+          }
+          updateBulkProgress();
+        });
+      });
+      body.querySelectorAll('.bulk-cost-in').forEach(inp => inp.addEventListener('input', updateBulkProgress));
+      updateBulkProgress();
+    }
+
+    function updateBulkProgress() {
+      const body = document.getElementById('bulk-cost-body');
+      let total = 0, withCost = 0;
+      bulkData.forEach(({ product, assets }) => {
+        const defInp = body.querySelector(`.bulk-default-in[data-product="${CSS.escape(product.id)}"]`);
+        const defSet = defInp && defInp.value.trim() !== '';
+        assets.forEach(a => {
+          total++;
+          const ci = body.querySelector(`.bulk-cost-in[data-asset="${CSS.escape(a.id)}"]`);
+          if ((ci && ci.value.trim() !== '') || defSet) withCost++;
+        });
+      });
+      document.getElementById('bulk-progress').textContent = `${withCost} of ${total} unit${total === 1 ? '' : 's'} have costs`;
+    }
+
+    async function saveBulkCost() {
+      const body = document.getElementById('bulk-cost-body');
+      const errBox = document.getElementById('bulk-cost-error');
+      errBox.style.display = 'none';
+      const btn = document.getElementById('bulk-save'); btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        // 1) Changed product defaults → product PATCH (few).
+        const defaultPatches = [];
+        bulkData.forEach(({ product }) => {
+          const inp = body.querySelector(`.bulk-default-in[data-product="${CSS.escape(product.id)}"]`);
+          if (!inp) return;
+          const val = inp.value.trim();
+          const newVal = val === '' ? null : rupeesToPaise(val);
+          const oldVal = product.default_purchase_cost_paise ?? null;
+          if (newVal !== oldVal) defaultPatches.push(api.patch(`/api/inventory/products/${product.id}`, { default_purchase_cost_paise: newVal }));
+        });
+        await Promise.all(defaultPatches);
+
+        // 2) All entered unit costs/dates → ONE bulk-cost call.
+        const updates = [];
+        body.querySelectorAll('.bulk-cost-in').forEach(ci => {
+          const id = ci.getAttribute('data-asset');
+          const dateInp = body.querySelector(`.bulk-date-in[data-asset="${CSS.escape(id)}"]`);
+          const cost = ci.value.trim();
+          const date = dateInp ? dateInp.value.trim() : '';
+          if (cost === '' && date === '') return; // nothing entered for this unit
+          const u = { asset_id: id };
+          if (cost !== '') u.purchase_cost_paise = rupeesToPaise(cost);
+          if (date !== '') u.purchase_date = date;
+          updates.push(u);
+        });
+        let failedMsg = '';
+        if (updates.length) {
+          const res = await api.patch('/api/inventory/assets/bulk-cost', { updates });
+          if (res.failed && res.failed.length) failedMsg = ` (${res.failed.length} row${res.failed.length === 1 ? '' : 's'} failed)`;
+        }
+        showToast(`Costs saved${failedMsg}`);
+        bulkModal.classList.remove('open');
+        await loadProducts();
+        loadIdleCapital();
+      } catch (err) {
+        btn.disabled = false; btn.textContent = 'Save costs';
+        errBox.textContent = 'Could not save: ' + (err.body?.error || err.message);
+        errBox.style.display = 'block';
+        return;
+      }
+      btn.disabled = false; btn.textContent = 'Save costs';
+    }
+
+    document.getElementById('btn-bulk-cost')?.addEventListener('click', openBulkCost);
+    document.getElementById('bulk-close')?.addEventListener('click', () => bulkModal.classList.remove('open'));
+    document.getElementById('bulk-cancel')?.addEventListener('click', () => bulkModal.classList.remove('open'));
+    document.getElementById('bulk-save')?.addEventListener('click', saveBulkCost);
 
     // ---------- product tags + downtimes in edit modal (Sub-turn 8a) ----------
     let editingTags = [];       // current assigned tags on the open product
@@ -1715,6 +1940,11 @@
         const sq = document.getElementById('e-stock').value;
         if (sq !== '') body.stock_quantity = Math.max(0, Math.round(Number(sq)));
       }
+      // Purchase cost (Sub-turn 11) — empty clears (explicit null), value sets.
+      if (canManageCost()) {
+        const costVal = document.getElementById('e-purchase-cost').value.trim();
+        body.default_purchase_cost_paise = costVal === '' ? null : rupeesToPaise(costVal);
+      }
       const cfValues = cfCollect();
       if (cfValues.length) body.custom_fields = cfValues;
       const submit = document.getElementById('edit-submit');
@@ -1872,6 +2102,7 @@
         // concurrently with the heavier products query.
         await loadLocations();
         await Promise.all([loadWorkspaceTags(), loadProducts()]);
+        loadIdleCapital(); // Sub-turn 11 — owner/manager only (self-hides otherwise)
       } catch (err) {
         console.error('boot failed', err);
       }
