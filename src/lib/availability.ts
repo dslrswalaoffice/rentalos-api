@@ -101,6 +101,9 @@ export type AvailabilityResult = {
   conflicts: AvailabilityConflict[];
   // True when a maintenance downtime intersects the requested window (Sub-turn 8a).
   has_downtime_conflict?: boolean;
+  // Product nature (Sub-turn 13): rental | service | sale. Sale = quantity on
+  // hand (no window); service = never blocks.
+  nature?: string;
   // Present only when the product is a kit (Sub-turn 5c-2).
   is_kit?: boolean;
   kit_components?: KitComponentAvailability[];
@@ -205,24 +208,39 @@ export async function checkAvailability(args: {
   // bulk). Falls back to the workspace default so pre-6i callers behave the same.
   const effectiveLocationId = args.locationId ?? (await getDefaultLocationId(args.workspaceId));
 
-  // Capacity = count of live assets for the product at the location. Also grab
-  // is_active + is_kit (to flag inactive products / route kits) and the
-  // per-product buffer + shortage config.
+  // ==========================================================================
+  // Sub-turn 13 — capacity is nature × tracking dependent. Read the product's
+  // nature/tracking, the per-location serialized count (window-aware for
+  // temporary/expected stock, downtime-excluded), AND the per-location bulk
+  // quantity from stock_levels.
+  //
+  // ⚠️ stock_levels.quantity means TWO DIFFERENT THINGS by nature — the ONLY
+  // difference is what dispatch does (see the dispatch handler in orders.ts):
+  //   BULK + RENTAL: quantity = CAPACITY you physically own. Dispatch/return do
+  //     NOT change it — the ORDER's reservation blocks it; the gear comes back.
+  //   BULK + SALE:   quantity = INVENTORY ON HAND. Dispatch PERMANENTLY
+  //     DECREMENTS it; there is no return. A sold card is gone.
+  // ==========================================================================
   const productRows = await query<{
-    total_units: number;
+    nature: string;
+    tracking_method: string | null;
     tracking_mode: string;
-    stock_quantity: number | null;
     is_active: boolean;
     is_kit: boolean;
     buffer_before_hours: number;
     buffer_after_hours: number;
     shortage_limit: number;
+    total_units: number;      // window-aware serialized count at the location
+    bulk_quantity: number;    // stock_levels.quantity at the location
   }>(sql`
     SELECT
-      COALESCE(a.total, 0)::int AS total_units,
-      p.tracking_mode, p.stock_quantity,
+      p.nature::text          AS nature,
+      p.tracking_method::text AS tracking_method,
+      p.tracking_mode,
       p.is_active, p.is_kit,
-      p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit
+      p.buffer_before_hours, p.buffer_after_hours, p.shortage_limit,
+      COALESCE(a.total, 0)::int  AS total_units,
+      COALESCE(sl.quantity, 0)::int AS bulk_quantity
     FROM products p
     LEFT JOIN LATERAL (
       SELECT COUNT(*) AS total
@@ -231,10 +249,20 @@ export async function checkAvailability(args: {
         AND asset.workspace_id = p.workspace_id
         AND asset.deleted_at IS NULL
         AND (${effectiveLocationId}::uuid IS NULL OR asset.location_id = ${effectiveLocationId}::uuid)
-        -- Sub-turn 12b: a unit held offline by an active ASSET-level downtime
-        -- (repair/missing) drops out of capacity for the window — capacity minus
-        -- one, not a whole-product block. Product-level downtimes are handled
-        -- separately (loadDowntimeConflicts) and still block the full product.
+        -- Stock-type window (Sub-turn 13): an asset only counts if it's actually
+        -- in stock for the requested window. current = always; expected = arrived
+        -- by window start; temporary (sub-rent) = covers the whole window.
+        AND (
+          asset.stock_type = 'current'
+          OR (asset.stock_type = 'expected'
+              AND asset.available_from IS NOT NULL
+              AND asset.available_from <= ${args.start.toISOString()}::timestamptz)
+          OR (asset.stock_type = 'temporary'
+              AND asset.available_from  IS NOT NULL AND asset.available_until IS NOT NULL
+              AND asset.available_from  <= ${args.start.toISOString()}::timestamptz
+              AND asset.available_until >= ${args.end.toISOString()}::timestamptz)
+        )
+        -- Asset-level downtime exclusion (Sub-turn 12b): capacity minus one.
         AND NOT EXISTS (
           SELECT 1 FROM product_downtimes d
           WHERE d.asset_id = asset.id
@@ -243,18 +271,44 @@ export async function checkAvailability(args: {
             AND d.end_at   > ${args.start.toISOString()}::timestamptz
         )
     ) a ON true
+    LEFT JOIN stock_levels sl
+      ON sl.product_id = p.id AND sl.location_id = ${effectiveLocationId}::uuid
     WHERE p.id = ${args.productId}::uuid
       AND p.workspace_id = ${args.workspaceId}::uuid
       AND p.deleted_at IS NULL
     LIMIT 1
   `);
   if (productRows.length === 0) throw new AvailabilityError('product_not_found');
-  // Capacity source depends on tracking mode (6h): bulk → stock_quantity
-  // (workspace-global), tracked → live asset rows at the location (6i).
-  const isBulk = productRows[0]!.tracking_mode === 'bulk';
-  const capacity = isBulk ? Number(productRows[0]!.stock_quantity ?? 0) : productRows[0]!.total_units;
-  const capacitySource: 'assets' | 'stock_quantity' = isBulk ? 'stock_quantity' : 'assets';
+  const nature = productRows[0]!.nature;
   const isActive = productRows[0]!.is_active;
+
+  // SERVICE: no availability constraint. Never blocks, never in a capacity query.
+  if (nature === 'service') {
+    const svc: AvailabilityResult = {
+      available: true,
+      requested: args.quantity,
+      capacity: Number.MAX_SAFE_INTEGER,
+      capacity_source: 'assets',
+      location_id: effectiveLocationId,
+      currently_booked: 0,
+      shortage_limit: 0,
+      shortage_used: false,
+      applied_buffer_before_hours: 0,
+      applied_buffer_after_hours: 0,
+      conflicts: [],
+      has_downtime_conflict: false,
+      reason: 'service_no_constraint',
+    };
+    if (!isActive) svc.inactive_product = true;
+    return svc;
+  }
+
+  // Bulk (rental OR sale) capacity is per-location stock_levels (Sub-turn 13);
+  // serialized capacity is the window-aware asset count.
+  const isBulk = (productRows[0]!.tracking_method ?? productRows[0]!.tracking_mode) === 'bulk';
+  const isSale = nature === 'sale';
+  const capacity = isBulk ? productRows[0]!.bulk_quantity : productRows[0]!.total_units;
+  const capacitySource: 'assets' | 'stock_quantity' = isBulk ? 'stock_quantity' : 'assets';
 
   // KIT PATH: capacity is derived from the components, not the kit's own assets.
   // Kit-level buffer + shortage fields exist but are IGNORED — each component
@@ -268,43 +322,53 @@ export async function checkAvailability(args: {
   const bufferAfter = clampBuffer(Number(productRows[0]!.buffer_after_hours ?? 0));
   const shortageLimit = Math.max(0, Number(productRows[0]!.shortage_limit ?? 0));
 
-  // Overlapping reserving-status rental lines for this product. The buffer
-  // expands each EXISTING booking's window: a booking effectively blocks
-  // [rental_start - buffer_before, rental_end + buffer_after]. Strict overlap
-  // (`<` / `>`) so a booking whose (buffered) end lands exactly on the window
-  // start does not conflict.
-  const conflicts = await query<AvailabilityConflict>(sql`
-    SELECT
-      o.id            AS order_id,
-      o.order_number,
-      p.display_name  AS customer_name,
-      oi.quantity,
-      o.rental_start  AS start,
-      o.rental_end    AS end,
-      o.status::text  AS status
-    FROM order_items oi
-    JOIN orders o     ON o.id = oi.order_id
-    LEFT JOIN people p ON p.id = o.customer_person_id
-    WHERE oi.workspace_id = ${args.workspaceId}::uuid
-      AND o.workspace_id = ${args.workspaceId}::uuid
-      AND oi.product_id = ${args.productId}::uuid
-      AND oi.item_type = 'rental'
-      AND o.deleted_at IS NULL
-      AND o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
-      -- Item-level release (Sub-turn 12b): a returned/missing line stops
-      -- reserving even while its order is still open (released at RETURN, not
-      -- CLOSE). Same string_to_array trick to dodge the enum-array serialization.
-      AND oi.status::text = ANY(string_to_array(${RESERVING_ITEM_STATUSES.join(',')}::text, ','))
-      AND o.id != COALESCE(${args.excludeOrderId ?? null}::uuid,
-                           '00000000-0000-0000-0000-000000000000'::uuid)
-      -- Tracked products reserve per-location (pickup_location_id); bulk products
-      -- reserve workspace-globally (Phase 2 adds per-location bulk).
-      AND (${isBulk}::boolean OR ${effectiveLocationId}::uuid IS NULL
-           OR o.pickup_location_id = ${effectiveLocationId}::uuid)
-      AND o.rental_start - make_interval(hours => ${bufferBefore}::int) < ${args.end.toISOString()}::timestamptz
-      AND o.rental_end   + make_interval(hours => ${bufferAfter}::int)  > ${args.start.toISOString()}::timestamptz
-    ORDER BY o.rental_start ASC
-  `);
+  // Reservation semantics diverge by nature (Sub-turn 13):
+  //   RENTAL — window overlap. A line reserves [start-buffer, end+buffer]; the
+  //     gear comes back, so dispatch/return never touch capacity.
+  //   SALE   — date-INDEPENDENT quantity on hand. Only PENDING (not-yet-
+  //     dispatched) lines reserve, because dispatch permanently decrements
+  //     stock_levels (bulk) / retires the asset (serialized); a dispatched sale
+  //     line must NOT also reserve, or it double-counts against the decrement.
+  // Both now reserve PER-LOCATION (bulk stock is per-location as of stock_levels).
+  const conflicts = isSale
+    ? await query<AvailabilityConflict>(sql`
+        SELECT o.id AS order_id, o.order_number, p.display_name AS customer_name,
+               oi.quantity, o.rental_start AS start, o.rental_end AS end, o.status::text AS status
+        FROM order_items oi
+        JOIN orders o     ON o.id = oi.order_id
+        LEFT JOIN people p ON p.id = o.customer_person_id
+        WHERE oi.workspace_id = ${args.workspaceId}::uuid
+          AND o.workspace_id = ${args.workspaceId}::uuid
+          AND oi.product_id = ${args.productId}::uuid
+          AND o.deleted_at IS NULL
+          AND o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
+          AND oi.status::text = 'pending_dispatch'   -- pending only (see comment)
+          AND o.id != COALESCE(${args.excludeOrderId ?? null}::uuid,
+                               '00000000-0000-0000-0000-000000000000'::uuid)
+          AND (${effectiveLocationId}::uuid IS NULL OR o.pickup_location_id = ${effectiveLocationId}::uuid)
+        ORDER BY o.created_at ASC
+      `)
+    : await query<AvailabilityConflict>(sql`
+        SELECT o.id AS order_id, o.order_number, p.display_name AS customer_name,
+               oi.quantity, o.rental_start AS start, o.rental_end AS end, o.status::text AS status
+        FROM order_items oi
+        JOIN orders o     ON o.id = oi.order_id
+        LEFT JOIN people p ON p.id = o.customer_person_id
+        WHERE oi.workspace_id = ${args.workspaceId}::uuid
+          AND o.workspace_id = ${args.workspaceId}::uuid
+          AND oi.product_id = ${args.productId}::uuid
+          AND oi.item_type = 'rental'
+          AND o.deleted_at IS NULL
+          AND o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
+          AND oi.status::text = ANY(string_to_array(${RESERVING_ITEM_STATUSES.join(',')}::text, ','))
+          AND o.id != COALESCE(${args.excludeOrderId ?? null}::uuid,
+                               '00000000-0000-0000-0000-000000000000'::uuid)
+          -- Per-location reservation (bulk is per-location now via stock_levels).
+          AND (${effectiveLocationId}::uuid IS NULL OR o.pickup_location_id = ${effectiveLocationId}::uuid)
+          AND o.rental_start - make_interval(hours => ${bufferBefore}::int) < ${args.end.toISOString()}::timestamptz
+          AND o.rental_end   + make_interval(hours => ${bufferAfter}::int)  > ${args.start.toISOString()}::timestamptz
+        ORDER BY o.rental_start ASC
+      `);
 
   const normalized: AvailabilityConflict[] = conflicts.map((cf) => ({
     type: 'booking' as const,
@@ -325,7 +389,7 @@ export async function checkAvailability(args: {
   // ones. If ANY downtime intersects the requested window we treat the whole
   // window as blocked (simple + safe; sub-day precision is a future refinement).
   const downtimeConflicts = await loadDowntimeConflicts(
-    args.workspaceId, args.productId, isBulk ? null : effectiveLocationId,
+    args.workspaceId, args.productId, effectiveLocationId,
     args.start, args.end, capacity,
   );
   const hasDowntimeConflict = downtimeConflicts.length > 0;
@@ -359,7 +423,7 @@ export async function checkAvailability(args: {
     requested: args.quantity,
     capacity,
     capacity_source: capacitySource,
-    location_id: isBulk ? null : effectiveLocationId,
+    location_id: effectiveLocationId,
     currently_booked: currentlyBooked,
     shortage_limit: shortageLimit,
     shortage_used: shortageUsed,
@@ -367,6 +431,7 @@ export async function checkAvailability(args: {
     applied_buffer_after_hours: bufferAfter,
     conflicts: [...normalized, ...downtimeConflicts],
     has_downtime_conflict: hasDowntimeConflict,
+    nature,
   };
   if (!isActive) result.inactive_product = true;
   return result;
