@@ -68,3 +68,33 @@ export function buildResetEmail(displayName: string, resetUrl: string): EmailPay
     text,
   };
 }
+
+/**
+ * Composes the team-invitation email (Sub-turn 10). Sent to an UNVERIFIED
+ * address until the invite is accepted, so it carries no workspace/operational
+ * data — only who invited them, the role, and the tokenized accept link.
+ */
+export function buildInviteEmail(params: {
+  workspaceName: string;
+  inviterName: string;
+  role: string;
+  acceptUrl: string;
+  expiryDays: number;
+}): EmailPayload {
+  const roleLabel = params.role.charAt(0).toUpperCase() + params.role.slice(1);
+  const text = [
+    `${params.inviterName} has invited you to join ${params.workspaceName} on RentalOS as ${roleLabel}.`,
+    '',
+    'Set your password and get started:',
+    '',
+    params.acceptUrl,
+    '',
+    `This link expires in ${params.expiryDays} days.`,
+    "If you weren't expecting this, ignore this email.",
+  ].join('\n');
+  return {
+    to: '', // caller fills
+    subject: `You've been invited to ${params.workspaceName} on RentalOS`,
+    text,
+  };
+}

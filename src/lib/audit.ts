@@ -99,7 +99,10 @@ export type AuditEventType =
   | 'integration.activated'
   | 'integration.deactivated'
   | 'integration.removed'
-  | 'integration.test_run';
+  | 'integration.test_run'
+  | 'invitation.created'
+  | 'invitation.revoked'
+  | 'invitation.accepted';
 
 export type AuditEventInput = {
   workspaceId?: string | null;

@@ -20,6 +20,8 @@ import { downtimes } from './routes/downtimes.js';
 import { tags } from './routes/tags.js';
 import { coupons } from './routes/coupons.js';
 import { recommendations } from './routes/recommendations.js';
+import { invitations } from './routes/invitations.js';
+import { members } from './routes/members.js';
 import { config } from './lib/config.js';
 import { sql } from './db.js';
 export const app = new Hono();
@@ -69,6 +71,8 @@ app.route('/api/downtimes', downtimes);
 app.route('/api/tags', tags);
 app.route('/api/coupons', coupons);
 app.route('/api/recommendations', recommendations);
+app.route('/api/invitations', invitations);
+app.route('/api/members', members);
 // Fallback for unknown /api/* — keep it JSON so clients can parse it.
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) {

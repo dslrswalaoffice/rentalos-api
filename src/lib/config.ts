@@ -25,11 +25,6 @@ export const config = {
   loginMaxFailuresPerIp:    num('LOGIN_MAX_FAILURES_PER_IP', 20),
   passwordResetMaxPerHour:  num('PASSWORD_RESET_MAX_PER_HOUR', 3),
 
-  // Token that gates the browser-hit /api/admin/* bootstrap endpoints.
-  // Empty string = admin endpoints disabled (503). Delete the Vercel env var
-  // after initial setup so migrate/seed can no longer be triggered.
-  adminSetupToken: process.env.ADMIN_SETUP_TOKEN ?? '',
-
   seed: {
     ownerEmail:    str('SEED_OWNER_EMAIL', 'aamir@dslrswala.com'),
     ownerName:     str('SEED_OWNER_NAME', 'Aamir Patel'),
