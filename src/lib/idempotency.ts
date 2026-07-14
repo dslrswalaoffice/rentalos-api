@@ -11,9 +11,13 @@
 //
 // COMPATIBILITY CHOICE: the header is ENFORCED-WHEN-PRESENT, not hard-required.
 // A request without the header passes straight through (no dedup) so existing
-// callers/tests keep working; the new frontend always sends one. A later slice
-// can flip this to hard-required once every client sends the key. GET/HEAD are
+// callers/tests keep working; the new frontend always sends one. GET/HEAD are
 // exempt (they don't mutate).
+//
+// TODO(~Slice 5): flip to HARD-REQUIRED — the `if (!key) return next();` below
+// becomes a 400 IDEMPOTENCY_KEY_REQUIRED. Do this once every mutating caller
+// (Slices 2–4 + cron/server-to-server) sends the key via the shared _lib/api.js
+// client. Tracked in issue #68.
 // ============================================================================
 
 import { createHash, randomUUID } from 'node:crypto';

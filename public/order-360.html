@@ -377,6 +377,9 @@ function card(key,dot,title,badge,meta,bodyFn){
 }
 
 // ------------------------------------------------------------------ cards
+// SLICE 2 HOOK: GET /api/orders/:id will add o.customer = { kyc_status, trust_score,
+// segment } via a JOIN to people. Render a KYC pill + trust bar + segment here when
+// present; absent today, so this card renders gracefully without them (no reference).
 function cardCustomer(){
   const o=S.order;
   return function(){
