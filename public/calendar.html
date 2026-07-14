@@ -614,7 +614,7 @@
     function wireBars(scroll) {
       scroll.querySelectorAll('.booking-bar').forEach((bar) => {
         bar.addEventListener('click', () => {
-          location.href = '/order.html?id=' + encodeURIComponent(bar.dataset.order);
+          location.href = '/order-360.html?id=' + encodeURIComponent(bar.dataset.order);
         });
         bar.addEventListener('mouseenter', (e) => showTooltip(e, bar));
         bar.addEventListener('mousemove', moveTooltip);

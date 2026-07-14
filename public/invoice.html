@@ -419,7 +419,7 @@
         if (newer) btns.push(`<a class="btn primary" href="/invoice.html?id=${encodeURIComponent(newer.id)}&order=${encodeURIComponent(state.orderId)}">View R${nextRevision()}</a>`);
       }
       document.getElementById('action-bar').innerHTML = `
-        <a class="back-link" href="/order.html?id=${encodeURIComponent(state.orderId)}">
+        <a class="back-link" href="/order-360.html?id=${encodeURIComponent(state.orderId)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           Back to Order #${escapeHtml(String(orderNo))}
         </a>
