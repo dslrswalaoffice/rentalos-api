@@ -646,7 +646,7 @@
 
     function renderOrdersCard() {
       const rows = state.orders.map(o => `
-        <tr class="clickable" data-href="/order.html?id=${escapeAttr(o.id)}">
+        <tr class="clickable" data-href="/order-360.html?id=${escapeAttr(o.id)}">
           <td><span class="num">#${escapeHtml(String(o.order_number))}</span></td>
           <td class="muted-cell">${escapeHtml(fmtWindow(o.rental_start, o.rental_end))}</td>
           <td>${statusPill(o.status)}</td>
@@ -661,7 +661,7 @@
 
     function renderPaymentsCard() {
       const rows = state.payments.map(pay => `
-        <tr class="clickable" data-href="/order.html?id=${escapeAttr(pay.order_id)}">
+        <tr class="clickable" data-href="/order-360.html?id=${escapeAttr(pay.order_id)}">
           <td class="muted-cell">${escapeHtml(fmtDate(pay.occurred_at))}</td>
           <td><span class="money">${formatINR(pay.amount_paise)}</span></td>
           <td><span class="dir-${escapeAttr(pay.direction)}">${pay.direction === 'in' ? 'In' : 'Out'}</span></td>
