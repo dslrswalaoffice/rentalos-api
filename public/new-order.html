@@ -117,7 +117,12 @@
   .dt-box .cap{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:#9ca3af}
   .dt-box .val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--head);margin-top:4px}
   .dt-box .tm{font-family:var(--mono);font-size:12px;color:#9ca3af;margin-top:2px}
-  .dt-box input[type=datetime-local]{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:none}
+  /* Slice-1 hotfix: real visible datetime-local (was an opacity:0 overlay whose
+     native picker never opened). Styled to match — JetBrains Mono, in the box. */
+  .dt-box .dt-input{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--head);border:none;background:transparent;padding:5px 0 0;width:100%;outline:none;cursor:pointer}
+  .dt-box .dt-input:focus{outline:none}
+  .dt-box .dt-input::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.6}
+  .dt-box .dt-input::-webkit-calendar-picker-indicator:hover{opacity:1}
   .dur-pill{font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--neutral);background:var(--page);border:1px solid var(--border);border-radius:999px;padding:4px 10px}
   .radio-opt{display:flex;align-items:center;gap:8px;cursor:pointer}
   .radio-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--neutral-border);display:flex;align-items:center;justify-content:center;flex:none}
@@ -342,20 +347,14 @@
           <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
             <div style="flex:1;min-width:300px">
               <div style="display:flex;gap:12px">
-                <label class="dt-box">
+                <div class="dt-box">
                   <div class="cap">START</div>
-                  <div class="val" id="startVal">Not set</div>
-                  <div class="tm" id="startTm">—</div>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.7" style="position:absolute;top:12px;right:12px"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                  <input type="datetime-local" id="startInput">
-                </label>
-                <label class="dt-box">
+                  <input type="datetime-local" id="startInput" class="dt-input">
+                </div>
+                <div class="dt-box">
                   <div class="cap">END</div>
-                  <div class="val" id="endVal">Not set</div>
-                  <div class="tm" id="endTm">—</div>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.7" style="position:absolute;top:12px;right:12px"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                  <input type="datetime-local" id="endInput">
-                </label>
+                  <input type="datetime-local" id="endInput" class="dt-input">
+                </div>
               </div>
               <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
                 <span class="dur-pill" id="durPill">Duration: —</span>
@@ -366,6 +365,11 @@
               <div style="display:flex;align-items:center;gap:22px;margin-top:16px">
                 <label class="radio-opt on" id="optPickup"><span class="radio-dot"></span><span class="rl">Warehouse pickup</span></label>
                 <label class="radio-opt" id="optDelivery"><span class="radio-dot"></span><span class="rl">Delivery</span></label>
+              </div>
+              <!-- Slice-1 hotfix: address reveal on Delivery. -->
+              <div id="deliveryAddrWrap" style="display:none;margin-top:14px">
+                <label for="deliveryAddr" style="font-family:var(--mono);font-size:10px;letter-spacing:.05em;color:#9ca3af;text-transform:uppercase;display:block;margin-bottom:5px">Delivery address</label>
+                <input id="deliveryAddr" type="text" placeholder="Delivery address..." autocomplete="off" style="width:100%;height:38px;border:1px solid var(--border);background:var(--surface-1);border-radius:9px;padding:0 12px;font-family:var(--fp);font-size:13px;color:var(--head);outline:none">
               </div>
             </div>
             <div class="avail-banner neutral" id="windowBanner" style="width:230px;flex:none">
@@ -473,6 +477,7 @@ const state = {
   rental_start: '',        // ISO string (UTC)
   rental_end: '',          // ISO string (UTC)
   dispatch_type: 'pickup', // 'pickup' | 'delivery'
+  delivery_address: '',    // Slice-1 hotfix — persisted when dispatch_type === 'delivery'
   items: [],               // { product_id, name, sku, daily_rate, deposit, quantity, avail, serverItemId }
   notes: '',
   tags: [],                // string tags (client-side only for the composer)
@@ -589,20 +594,24 @@ function renderCustResults(people) {
   `).join('');
   custResults.classList.remove('hidden');
   custResults.querySelectorAll('.result-row').forEach(row => {
-    row.addEventListener('click', () => selectCustomer(row.dataset.id));
+    const found = people.find(x => String(x.id) === row.dataset.id) || null;
+    row.addEventListener('click', () => selectCustomer(row.dataset.id, found));
   });
 }
 
-async function selectCustomer(id) {
+async function selectCustomer(id, fallback) {
   custResults.classList.add('hidden');
+  // Start from the search-result row (already has name/tier/phone) so the card
+  // shows even if the detail fetch fails.
+  let person = fallback || { id, display_name: 'Customer' };
   try {
-    // Fetch the full person to get trust_score / KYC details.
+    // GET /api/people/:id returns { person, orders, ... } — UNWRAP the person
+    // (the previous code read full.id off the wrapper, so nothing selected).
     const full = await api.get(`/api/people/${encodeURIComponent(id)}`);
-    state.customer = full && full.id ? full : null;
-  } catch {
-    // Fall back to whatever the list gave us — a minimal object.
-    state.customer = { id, display_name: 'Customer' };
-  }
+    if (full && full.person && full.person.id) person = full.person;
+    else if (full && full.id) person = full;
+  } catch { /* keep the search-result fallback */ }
+  state.customer = person;
   hideBlocker();
   render();
 }
@@ -863,10 +872,11 @@ const recheckAllAvailability = debounce(async () => {
 // RENTAL WINDOW
 // ============================================================================
 function renderWindow() {
-  document.getElementById('startVal').textContent = state.rental_start ? fmtDate(state.rental_start) : 'Not set';
-  document.getElementById('startTm').textContent  = state.rental_start ? fmtTime(state.rental_start) : '—';
-  document.getElementById('endVal').textContent   = state.rental_end ? fmtDate(state.rental_end) : 'Not set';
-  document.getElementById('endTm').textContent    = state.rental_end ? fmtTime(state.rental_end) : '—';
+  // Reflect state into the (now visible) inputs — but never clobber the field the
+  // user is actively editing.
+  const si = document.getElementById('startInput'), ei = document.getElementById('endInput');
+  if (si && document.activeElement !== si) si.value = isoToLocal(state.rental_start);
+  if (ei && document.activeElement !== ei) ei.value = isoToLocal(state.rental_end);
 
   const days = durationDays();
   document.getElementById('durPill').textContent = days ? `Duration: ${days} day${days === 1 ? '' : 's'}` : 'Duration: —';
@@ -883,9 +893,16 @@ function renderWindow() {
   }
   wk.style.display = weekend ? 'inline-flex' : 'none';
 
-  // dispatch radios
-  document.getElementById('optPickup').classList.toggle('on', state.dispatch_type === 'pickup');
-  document.getElementById('optDelivery').classList.toggle('on', state.dispatch_type === 'delivery');
+  // dispatch radios + delivery address reveal
+  const isDelivery = state.dispatch_type === 'delivery';
+  document.getElementById('optPickup').classList.toggle('on', !isDelivery);
+  document.getElementById('optDelivery').classList.toggle('on', isDelivery);
+  const addrWrap = document.getElementById('deliveryAddrWrap');
+  if (addrWrap) {
+    addrWrap.style.display = isDelivery ? '' : 'none';
+    const addr = document.getElementById('deliveryAddr');
+    if (addr && document.activeElement !== addr) addr.value = state.delivery_address || '';
+  }
 
   renderWindowBanner();
 }
@@ -1010,6 +1027,10 @@ function buildOrderBody() {
   };
   if (state.rental_start) body.rental_start = state.rental_start;
   if (state.rental_end) body.rental_end = state.rental_end;
+  // Slice-1 hotfix: persist the delivery address when delivering.
+  if (state.dispatch_type === 'delivery' && state.delivery_address && state.delivery_address.trim()) {
+    body.delivery_address = state.delivery_address.trim();
+  }
   const noteText = document.getElementById('notesText')?.value?.trim();
   if (noteText) body.internal_notes = noteText;
   return body;
@@ -1117,6 +1138,7 @@ function wireEvents() {
 
   document.getElementById('optPickup').addEventListener('click', () => { state.dispatch_type = 'pickup'; renderWindow(); });
   document.getElementById('optDelivery').addEventListener('click', () => { state.dispatch_type = 'delivery'; renderWindow(); });
+  document.getElementById('deliveryAddr').addEventListener('input', (e) => { state.delivery_address = e.target.value; });
 
   document.getElementById('depPickup').addEventListener('click', () => {
     state.deposit_timing = 'pickup';
