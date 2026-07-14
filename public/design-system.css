@@ -2,7 +2,8 @@
    RentalOS Design System (Sub-turn 9a)
    --------------------------------------------------------------------------
    Token layer + component styles + skeleton loaders.
-   Palette re-tokenized to the DSLRSWALA prototype (navy + orange) in Sub-turn 13-A.
+   Palette re-tokenized to the DSLRSWALA prototype (navy + indigo). Accent corrected
+   from drifted orange to prototype Info-indigo per the Slice 1 design constitution.
 
    Loaded ONLY on settings.html in 9a (proof of concept). Uses standard class
    names (.btn, .card, .input, …) and :root custom properties. Where it is
@@ -28,8 +29,8 @@
   --ink:        #202058;   /* text, sidebar, headers */
   --head:       #26235a;   /* links, emphasis — "accent deep" */
 
-  --accent:     #e88020;   /* PRIMARY ACTIONS, FOCUS — orange (one per view) */
-  --accent-bg:  #fbe9d7;
+  --accent:     #4f46e5;   /* PRIMARY ACTIONS, FOCUS — indigo (one per view) */
+  --accent-bg:  #eef2ff;
 
   --canvas:     #eef0f3;   /* app background — NOT white */
 
@@ -88,7 +89,7 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.10), 0 4px 16px rgba(0, 0, 0, 0.06);
   --shadow-btn:  0 6px 16px -6px rgba(32, 32, 88, 0.50);
   --shadow-card: 0 20px 48px -24px rgba(16, 24, 40, 0.28);
-  --shadow-focus: 0 0 0 3px rgba(232, 128, 32, 0.18);   /* accent glow (legacy soft focus) */
+  --shadow-focus: 0 0 0 3px rgba(79, 70, 229, 0.18);   /* accent glow (legacy soft focus) */
   --transition-fast: 100ms ease-out;
   --transition: 150ms ease-out;
   --transition-slow: 250ms ease-out;
@@ -116,13 +117,14 @@
   /* borders */
   --border-subtle: var(--canvas); --border-default: var(--border);
   --border-focus: var(--head);
-  --border-accent: var(--accent);   /* ← FIX: was periwinkle #c7cdf5 on an orange tint */
+  --border-accent: var(--accent);   /* ← FIX: was periwinkle #c7cdf5 on an accent tint */
   --focus: var(--ink);              /* ← FIX: was periwinkle #b9c0ee; §14 focus is navy */
   --nav-active-bg: var(--accent-bg);
-  /* accent */
+  /* accent — legacy names. --orange/--orange-soft resolve to the INDIGO accent;
+     do NOT set them to an orange literal (that was the Slice-1-corrected drift). */
   --orange: var(--accent); --orange-soft: var(--accent-bg);
   --accent-soft: var(--accent-bg); --accent-soft-2: var(--accent-bg);
-  --accent-hover: #cf6f16; --accent-active: #b25f12; --accent-text: var(--warning-fg);
+  --accent-hover: #4338ca; --accent-active: #3730a3; --accent-text: #3730a3;
   /* semantic — long (9a) + short (page) names */
   --success-soft: var(--success-bg); --success-text: var(--success-fg);
   --ok-solid: var(--success); --ok-soft: var(--success-bg); --ok-strong: var(--success-fg);
