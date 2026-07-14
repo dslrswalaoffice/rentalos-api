@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New Booking · RentalOS</title>
+<meta name="theme-color" content="#4f46e5">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23202058'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='18' fill='white' text-anchor='middle' font-weight='700'%3ER%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#202058; --head:#26235a;
+    --neutral:#6b7280; --neutral-bg:#f3f4f6; --neutral-border:#d1d5db;
+    --info:#4f46e5; --info-bg:#eef2ff; --info-border:#c7d2fe;
+    --progress:#2563eb; --progress-bg:#eff6ff; --progress-border:#bfdbfe;
+    --success:#059669; --success-bg:#ecfdf5; --success-border:#a7f3d0;
+    --attention:#d97706; --attention-bg:#fffbeb; --attention-border:#fde68a;
+    --danger:#dc2626; --danger-bg:#fef2f2; --danger-border:#fecaca;
+    --bg:#ffffff; --surface-1:#faf9f7; --surface-2:#f4f2ee; --border:#ece9e3;
+    --page:#f7f6f3;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --body:'Manrope',system-ui,sans-serif;
+    --display:'Space Grotesk',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);font-family:var(--body);color:var(--head);-webkit-font-smoothing:antialiased}
+  a{color:var(--info);text-decoration:none}
+  a:hover{color:#3730a3}
+  ::selection{background:#e0dfff}
+  button{font-family:var(--body)}
+  input,textarea{font-family:var(--body)}
+  input:focus,textarea:focus{outline:none;border-color:var(--info-border)!important;box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+  .mono{font-family:var(--mono)}
+  @keyframes cbpulse{0%{transform:scale(.6);opacity:.7}70%{transform:scale(1.8);opacity:0}100%{opacity:0}}
+
+  /* layout */
+  .app{min-height:100vh;background:var(--bg);display:flex;font-family:var(--body)}
+  .rail{width:60px;flex:none;background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:14px 0;position:sticky;top:0;height:100vh;gap:6px}
+  .rail-logo{width:32px;height:32px;border-radius:9px;background:var(--ink);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+  .rail-logo span{font-family:var(--display);font-weight:700;color:#fff;font-size:15px}
+  .rail-item{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#9ca3af;background:transparent}
+  .rail-item:hover{background:rgba(32,32,88,.05)}
+  .rail-item.active{background:rgba(32,32,88,.08);color:var(--ink)}
+
+  .col{flex:1;min-width:0;display:flex;flex-direction:column}
+  .topbar{height:56px;flex:none;background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:18px;padding:0 22px;position:sticky;top:0;z-index:20}
+  .burger{width:20px;height:16px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer}
+  .burger span{height:1.5px;background:var(--neutral);border-radius:2px}
+  .searchbar{flex:1;max-width:520px;height:34px;background:var(--page);border:1px solid var(--border);border-radius:9px;display:flex;align-items:center;gap:9px;padding:0 12px;margin:0 auto}
+  .searchbar span.ph{font-size:12.5px;color:#9ca3af}
+  .kbd{margin-left:auto;font-family:var(--mono);font-size:10px;color:#b8b4ac;border:1px solid #e4e1db;border-radius:4px;padding:1px 5px}
+  .topright{display:flex;align-items:center;gap:16px}
+  .bell{position:relative;cursor:pointer}
+  .bell .dot{position:absolute;top:-3px;right:-3px;width:7px;height:7px;border-radius:50%;background:var(--danger);border:1.5px solid #fff}
+  .avatar{width:30px;height:30px;border-radius:8px;background:#e7e4dd;display:flex;align-items:center;justify-content:center}
+  .avatar span{font-family:var(--display);font-weight:600;font-size:12px;color:var(--ink)}
+
+  .subnav{height:44px;flex:none;background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:20px;padding:0 22px;position:sticky;top:56px;z-index:19}
+  .subnav a.cancel{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--info)}
+  .subnav .sep{width:1px;height:16px;background:var(--border)}
+  .crumb{font-family:var(--mono);font-size:11px;color:#9ca3af;letter-spacing:.02em}
+  .crumb .slash{color:#cfccc4}
+  .crumb .cur{color:var(--neutral)}
+
+  .scrollbody{flex:1;overflow:auto;background:var(--page);padding:26px 22px 130px}
+  .wrap{max-width:840px;margin:0 auto}
+
+  .topstrip{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px}
+  .topstrip h1{font-family:var(--display);font-weight:600;font-size:28px;color:var(--ink);margin:0;letter-spacing:-.01em}
+  .booking-pill{display:flex;align-items:center;gap:6px;background:rgba(79,70,229,.08);border:1px solid rgba(79,70,229,.24);border-radius:999px;padding:4px 11px}
+  .booking-pill span{font-size:12px;font-weight:600;color:var(--info)}
+  .topstrip .sub{font-family:var(--body);font-size:13px;color:#9ca3af;margin:7px 0 0}
+
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 3px rgba(38,35,90,.04);padding:20px 22px;margin-bottom:16px}
+  .sechead{display:flex;align-items:center;gap:11px;margin-bottom:18px}
+  .secnum{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;color:#b8b4ac;width:20px;height:20px;flex:none;border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;background:var(--surface-1)}
+  .sectitle{font-family:var(--display);font-weight:600;font-size:14px;color:var(--head)}
+
+  /* customer */
+  .cust-avatar{width:46px;height:46px;flex:none;border-radius:11px;background:#e7e4dd;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:600;font-size:15px;color:var(--ink)}
+  .tier-pill{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.05em;border-radius:5px;padding:2px 6px}
+  .kyc-pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.04em;border-radius:999px;padding:4px 9px}
+  .trust-chip{display:flex;align-items:center;gap:7px;background:var(--page);border:1px solid var(--border);border-radius:999px;padding:4px 10px}
+  .trust-chip .lbl{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--neutral);letter-spacing:.03em}
+  .trust-bar{width:60px;height:2px;background:#e4e1db;border-radius:2px;overflow:hidden;display:block}
+  .trust-bar i{display:block;height:100%;background:var(--success)}
+  .linkbtn{font-size:12px;color:#9ca3af;font-weight:500;background:none;border:none;cursor:pointer;padding:0}
+  .linkbtn:hover{color:var(--info)}
+
+  .search-input{width:100%;height:40px;border:1px solid var(--border);background:var(--surface-1);border-radius:10px;display:flex;align-items:center;gap:10px;padding:0 13px}
+  .search-input input{flex:1;border:none;background:transparent;font-size:13px;color:var(--head)}
+  .search-input input::placeholder{color:#9ca3af}
+  .dropdown{position:relative}
+  .results{position:absolute;left:0;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--border);border-radius:11px;box-shadow:0 8px 28px rgba(38,35,90,.12);z-index:30;max-height:320px;overflow:auto;padding:5px}
+  .results.hidden{display:none}
+  .result-row{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:8px;cursor:pointer}
+  .result-row:hover{background:var(--surface-1)}
+  .result-name{font-size:13.5px;font-weight:600;color:var(--head)}
+  .result-meta{font-family:var(--mono);font-size:10.5px;color:#9ca3af;margin-top:2px}
+  .result-empty{padding:14px 12px;font-size:12.5px;color:#9ca3af;text-align:center}
+  .result-thumb{width:38px;height:38px;flex:none;border-radius:9px;background:#e7e4dd;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:600;font-size:13px;color:var(--ink);overflow:hidden}
+  .result-thumb img{width:100%;height:100%;object-fit:cover}
+
+  .newcust{margin-top:14px;border-top:1px solid var(--border);padding-top:14px;display:flex;flex-direction:column;gap:10px}
+  .newcust.hidden{display:none}
+  .field-row{display:flex;gap:10px;flex-wrap:wrap}
+  .field{flex:1;min-width:160px;display:flex;flex-direction:column;gap:5px}
+  .field label{font-family:var(--mono);font-size:10px;letter-spacing:.05em;color:#9ca3af;text-transform:uppercase}
+  .field input{height:38px;border:1px solid var(--border);background:var(--surface-1);border-radius:9px;padding:0 12px;font-size:13px;color:var(--head)}
+  .field textarea{border:1px solid var(--border);background:var(--surface-1);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--head);resize:vertical;min-height:60px}
+
+  /* rental window */
+  .dt-box{flex:1;border:1px solid var(--border);background:var(--surface-1);border-radius:11px;padding:11px 13px;position:relative;cursor:pointer}
+  .dt-box .cap{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:#9ca3af}
+  .dt-box .val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--head);margin-top:4px}
+  .dt-box .tm{font-family:var(--mono);font-size:12px;color:#9ca3af;margin-top:2px}
+  .dt-box input[type=datetime-local]{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:none}
+  .dur-pill{font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--neutral);background:var(--page);border:1px solid var(--border);border-radius:999px;padding:4px 10px}
+  .radio-opt{display:flex;align-items:center;gap:8px;cursor:pointer}
+  .radio-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--neutral-border);display:flex;align-items:center;justify-content:center;flex:none}
+  .radio-opt.on .radio-dot{border-color:var(--info)}
+  .radio-opt.on .radio-dot::after{content:'';width:7px;height:7px;border-radius:50%;background:var(--info)}
+  .radio-opt .rl{font-size:13px;color:#9ca3af;font-weight:500}
+  .radio-opt.on .rl{color:var(--head)}
+
+  .avail-banner{border-radius:11px;padding:13px 14px;display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.45;font-weight:500}
+  .avail-banner.ok{background:var(--success-bg);border:1px solid var(--success-border);color:#047857}
+  .avail-banner.warn{background:var(--attention-bg);border:1px solid var(--attention-border);color:#b45309}
+  .avail-banner.bad{background:var(--danger-bg);border:1px solid var(--danger-border);color:#b91c1c}
+  .avail-banner.neutral{background:var(--surface-1);border:1px solid var(--border);color:var(--neutral)}
+
+  /* equipment */
+  .eq-row{display:flex;align-items:center;gap:13px;border:1px solid var(--border);background:#fff;border-radius:11px;padding:10px 12px}
+  .eq-thumb{width:48px;height:48px;flex:none;border-radius:9px;background:#f2f0ec;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .eq-thumb img{width:100%;height:100%;object-fit:cover}
+  .eq-name{font-size:13.5px;font-weight:700;color:var(--head)}
+  .eq-meta{font-family:var(--mono);font-size:10.5px;color:#9ca3af;margin-top:3px}
+  .eq-avail{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.03em;border-radius:5px;padding:2px 6px;margin-top:5px;display:inline-block}
+  .eq-avail.ok{color:var(--success);background:rgba(5,150,105,.1)}
+  .eq-avail.warn{color:var(--attention);background:rgba(217,119,6,.1)}
+  .eq-avail.bad{color:var(--danger);background:rgba(220,38,38,.1)}
+  .eq-avail.pend{color:var(--neutral);background:var(--neutral-bg)}
+  .qty-ctl{display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface-1);flex:none}
+  .qty-ctl button{width:26px;height:28px;border:none;background:transparent;color:var(--neutral);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .qty-ctl button:hover{background:#efece6}
+  .qty-ctl .q{width:30px;text-align:center;font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--head)}
+  .eq-price{text-align:right;flex:none}
+  .eq-rate{font-family:var(--mono);font-size:10.5px;color:#9ca3af}
+  .eq-sub{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--head);margin-top:2px}
+  .eq-remove{flex:none;width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:var(--surface-1);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+  .eq-remove:hover{border-color:var(--danger);background:rgba(220,38,38,.06)}
+  .eq-empty{font-size:12.5px;color:#9ca3af;text-align:center;padding:16px;border:1px dashed var(--border);border-radius:11px}
+
+  /* pricing */
+  .price-block{max-width:400px;margin-left:auto;display:flex;flex-direction:column;gap:11px}
+  .price-line{display:flex;justify-content:space-between;align-items:center}
+  .price-line .k{font-size:13px;color:var(--neutral)}
+  .price-line .v{font-family:var(--mono);font-size:13px;color:var(--head)}
+  .price-line .v.dim{color:#c2beb6}
+  .price-total{border-top:1px solid var(--border);margin-top:2px;padding-top:12px;display:flex;justify-content:space-between;align-items:baseline}
+  .price-total .k{font-family:var(--display);font-size:15px;font-weight:600;color:var(--ink)}
+  .price-total .v{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--ink)}
+
+  /* deposit */
+  .dep-req{display:flex;align-items:baseline;gap:8px}
+  .dep-req .k{font-size:13px;color:var(--neutral)}
+  .dep-req .v{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--head)}
+  .dep-select{display:flex;align-items:center;gap:7px;height:34px;border:1px solid var(--border);background:var(--surface-1);border-radius:9px;padding:0 12px}
+  .dep-select select{border:none;background:transparent;font-size:12.5px;color:var(--head);font-weight:500;cursor:pointer}
+  .dep-btn{height:34px;padding:0 14px;border-radius:9px;border:1px solid var(--border);background:#fff;color:var(--neutral);font-size:12.5px;font-weight:500;cursor:pointer}
+  .dep-btn.on{border-color:rgba(79,70,229,.35);background:rgba(79,70,229,.08);color:var(--info);font-weight:600}
+  .dep-note{font-size:11.5px;color:#9ca3af;margin-top:13px}
+
+  /* notes */
+  .notes-toggle{display:flex;align-items:center;gap:13px;cursor:pointer}
+  .notes-toggle .sub{font-size:12px;color:#9ca3af;margin-top:3px}
+  .chev{display:inline-flex;transition:transform .2s;color:#9ca3af}
+  .chev.open{transform:rotate(180deg)}
+  .notes-body{margin-top:16px;border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:12px}
+  .notes-body.hidden{display:none}
+  .tag-chip{font-family:var(--mono);font-size:10.5px;color:var(--neutral);background:#f2f0ec;border-radius:6px;padding:4px 9px;display:inline-flex;align-items:center;gap:6px}
+  .tag-chip button{border:none;background:none;color:#9ca3af;cursor:pointer;padding:0;font-size:12px;line-height:1}
+  .tag-add{font-family:var(--mono);font-size:10.5px;color:var(--info);border:1px dashed rgba(79,70,229,.4);border-radius:6px;padding:4px 9px;cursor:pointer;background:none}
+
+  /* blocker */
+  .blocker{background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:12px;padding:14px 16px;margin-bottom:16px}
+  .blocker.hidden{display:none}
+  .blocker h3{font-family:var(--display);font-size:13px;font-weight:600;color:#b91c1c;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+  .blocker ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px}
+  .blocker li{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:#991b1b;line-height:1.4}
+  .blocker li .sev{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.05em;padding:2px 6px;border-radius:4px;background:rgba(220,38,38,.12);color:#b91c1c;flex:none;text-transform:uppercase}
+
+  /* footer */
+  .footer{flex:none;background:var(--bg);border-top:1px solid var(--border);padding:13px 26px;display:flex;align-items:center;justify-content:space-between;position:sticky;bottom:0;z-index:20;box-shadow:0 -1px 12px rgba(38,35,90,.04)}
+  .footer .cancel{font-size:13px;color:#9ca3af;font-weight:500;background:none;border:none;cursor:pointer}
+  .footer .cancel:hover{color:var(--neutral)}
+  .footer .right{display:flex;align-items:center;gap:12px}
+  .autosave{font-family:var(--mono);font-size:10.5px;color:#b8b4ac;margin-right:4px}
+  .btn-draft{height:40px;padding:0 18px;border-radius:10px;border:1px solid #d9d5cd;background:#fff;color:var(--head);font-size:13px;font-weight:600;cursor:pointer}
+  .btn-draft:hover{background:var(--page)}
+  .btn-confirm{height:40px;padding:0 22px;border-radius:10px;border:none;background:var(--info);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:9px}
+  .btn-confirm:hover{background:#4338ca}
+  .btn-confirm:disabled,.btn-draft:disabled{opacity:.5;cursor:not-allowed}
+  .pulse-wrap{position:relative;width:8px;height:8px;display:flex;align-items:center;justify-content:center}
+  .pulse-wrap .ring{position:absolute;width:16px;height:16px;border-radius:50%;background:rgba(110,231,183,.5);animation:cbpulse 1.8s ease-out infinite}
+  .pulse-wrap .core{position:relative;width:7px;height:7px;border-radius:50%;background:#6ee7b7}
+
+  .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--head);color:#fff;font-size:13px;padding:11px 18px;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.2);z-index:100;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  .toast.err{background:var(--danger)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="rail">
+    <div class="rail-logo"><span>R</span></div>
+    <a class="rail-item" href="/dashboard.html" title="Dashboard"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></a>
+    <a class="rail-item active" href="/orders.html" title="Rentals"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h18M3 12h18M3 17h18"/></svg></a>
+    <a class="rail-item" href="/inventory.html" title="Inventory"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg></a>
+    <a class="rail-item" href="/people.html" title="Customers"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.2a3 3 0 010 5.6M21 20c0-2.5-1.5-4.6-3.6-5.5"/></svg></a>
+    <a class="rail-item" href="/analytics.html" title="Insights"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="M7 14l3-4 3 3 5-7"/></svg></a>
+    <a class="rail-item" href="/settings.html" title="System"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1V21a2 2 0 11-4 0v-.1A1.6 1.6 0 005 19.4a2 2 0 11-2.8-2.8l.1-.1A1.6 1.6 0 003.4 14 2 2 0 013 12a2 2 0 011.4-.6 1.6 1.6 0 001.1-2.7l-.1-.1A2 2 0 118.2 5.7l.1.1A1.6 1.6 0 0011 5.4 2 2 0 0113 5a2 2 0 01.6 1.4 1.6 1.6 0 002.7 1.1l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.4 1.7z"/></svg></a>
+  </aside>
+
+  <!-- MAIN COLUMN -->
+  <div class="col">
+    <!-- TOP BAR -->
+    <header class="topbar">
+      <span class="burger"><span></span><span></span><span></span></span>
+      <div class="searchbar">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <span class="ph">Search orders, customers, inventory…</span>
+        <span class="kbd">⌘K</span>
+      </div>
+      <div class="topright">
+        <div class="bell">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.7"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+          <span class="dot"></span>
+        </div>
+        <div class="avatar"><span id="userInitials">··</span></div>
+      </div>
+    </header>
+
+    <!-- SUB-NAV -->
+    <div class="subnav">
+      <a class="cancel" href="/orders.html">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>Cancel
+      </a>
+      <div class="sep"></div>
+      <div class="crumb">Rentals <span class="slash">/</span> Orders <span class="slash">/</span> <span class="cur">New</span></div>
+    </div>
+
+    <!-- SCROLL BODY -->
+    <main class="scrollbody">
+      <div class="wrap">
+
+        <div class="topstrip">
+          <div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1>NEW BOOKING</h1>
+              <div class="booking-pill">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <span>Booking</span>
+              </div>
+            </div>
+            <p class="sub" id="stripSub">Draft — no availability blocked yet</p>
+          </div>
+        </div>
+
+        <!-- BLOCKER PANEL -->
+        <div class="blocker hidden" id="blocker">
+          <h3>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L14.7 3.9a2 2 0 00-3.4 0z"/></svg>
+            Cannot confirm this booking
+          </h3>
+          <ul id="blockerList"></ul>
+        </div>
+
+        <!-- SECTION 1 — CUSTOMER -->
+        <section class="card">
+          <div class="sechead"><span class="secnum">1</span><span class="sectitle">Customer</span></div>
+
+          <!-- search state -->
+          <div id="custSearchState">
+            <div class="dropdown">
+              <div class="search-input">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+                <input id="custSearch" type="text" placeholder="Search customers by name, phone or company…" autocomplete="off">
+              </div>
+              <div class="results hidden" id="custResults"></div>
+            </div>
+            <div style="margin-top:12px">
+              <button class="linkbtn" id="toggleNewCust" style="color:var(--info)">+ Create new customer</button>
+            </div>
+            <div class="newcust hidden" id="newCustPanel">
+              <div class="field-row">
+                <div class="field"><label>Name</label><input id="ncName" type="text" placeholder="Full name"></div>
+                <div class="field"><label>Phone</label><input id="ncPhone" type="text" placeholder="Phone number"></div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center">
+                <button class="btn-confirm" id="ncCreate" style="height:36px;padding:0 16px;font-size:12.5px">Create &amp; select</button>
+                <span style="font-size:11.5px;color:#9ca3af">Or manage full details in <a href="/people.html">Customers</a></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- selected state -->
+          <div id="custSelectedState" style="display:none">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+              <div style="display:flex;align-items:flex-start;gap:13px;min-width:220px">
+                <div class="cust-avatar" id="custInitials">··</div>
+                <div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="font-family:var(--display);font-weight:600;font-size:16px;color:var(--head)" id="custName">—</span>
+                    <span class="tier-pill" id="custTier" style="display:none"></span>
+                  </div>
+                  <div style="font-size:12.5px;color:#8a8680;margin-top:4px" id="custSubline">—</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span class="kyc-pill" id="custKyc" style="display:none"></span>
+                <div class="trust-chip" id="custTrust" style="display:none">
+                  <span class="lbl" id="custTrustLbl">TRUST —</span>
+                  <span class="trust-bar"><i id="custTrustBar" style="width:0%"></i></span>
+                </div>
+              </div>
+            </div>
+            <div style="text-align:right;margin-top:14px">
+              <button class="linkbtn" id="changeCust">Change customer</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- SECTION 2 — RENTAL WINDOW -->
+        <section class="card">
+          <div class="sechead"><span class="secnum">2</span><span class="sectitle">Rental Window</span></div>
+          <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+            <div style="flex:1;min-width:300px">
+              <div style="display:flex;gap:12px">
+                <label class="dt-box">
+                  <div class="cap">START</div>
+                  <div class="val" id="startVal">Not set</div>
+                  <div class="tm" id="startTm">—</div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.7" style="position:absolute;top:12px;right:12px"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                  <input type="datetime-local" id="startInput">
+                </label>
+                <label class="dt-box">
+                  <div class="cap">END</div>
+                  <div class="val" id="endVal">Not set</div>
+                  <div class="tm" id="endTm">—</div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.7" style="position:absolute;top:12px;right:12px"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                  <input type="datetime-local" id="endInput">
+                </label>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
+                <span class="dur-pill" id="durPill">Duration: —</span>
+                <span id="weekendTag" style="display:none;align-items:center;gap:5px;font-size:12px;color:var(--success);font-weight:500">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg>Weekend rental
+                </span>
+              </div>
+              <div style="display:flex;align-items:center;gap:22px;margin-top:16px">
+                <label class="radio-opt on" id="optPickup"><span class="radio-dot"></span><span class="rl">Warehouse pickup</span></label>
+                <label class="radio-opt" id="optDelivery"><span class="radio-dot"></span><span class="rl">Delivery</span></label>
+              </div>
+            </div>
+            <div class="avail-banner neutral" id="windowBanner" style="width:230px;flex:none">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              <span id="windowBannerText">Set a window and add gear to check availability</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- SECTION 3 — EQUIPMENT -->
+        <section class="card">
+          <div class="sechead"><span class="secnum">3</span><span class="sectitle">Equipment</span></div>
+          <div class="dropdown" style="margin-bottom:14px">
+            <div class="search-input">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+              <input id="prodSearch" type="text" placeholder="Search products to add…" autocomplete="off">
+            </div>
+            <div class="results hidden" id="prodResults"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:9px" id="eqList"></div>
+          <div class="avail-banner ok" id="eqBanner" style="margin-top:13px;display:none"></div>
+        </section>
+
+        <!-- SECTION 4 — PRICING -->
+        <section class="card">
+          <div class="sechead"><span class="secnum">4</span><span class="sectitle">Pricing</span></div>
+          <div class="price-block">
+            <div class="price-line"><span class="k">Subtotal</span><span class="v" id="pSubtotal">₹0</span></div>
+            <div class="price-line"><span class="k">Discounts</span><span class="v dim">—</span></div>
+            <div class="price-line"><span class="k">CGST (9%)</span><span class="v" id="pCgst">₹0</span></div>
+            <div class="price-line"><span class="k">SGST (9%)</span><span class="v" id="pSgst">₹0</span></div>
+            <div class="price-total"><span class="k">Total</span><span class="v" id="pTotal">₹0</span></div>
+          </div>
+          <div style="font-size:11.5px;color:#9ca3af;margin-top:13px;text-align:right">Estimate · GST split 9% + 9% (intra-state). Final pricing computed at confirmation.</div>
+        </section>
+
+        <!-- SECTION 5 — DEPOSIT -->
+        <section class="card">
+          <div class="sechead"><span class="secnum">5</span><span class="sectitle">Deposit</span></div>
+          <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+            <div class="dep-req"><span class="k">Required:</span><span class="v" id="depAmount">₹0</span></div>
+            <div class="dep-select">
+              <select id="depMode">
+                <option value="card_preauth">Card pre-auth</option>
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="bank_transfer">Bank transfer</option>
+              </select>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+            <div style="margin-left:auto;display:flex;gap:8px">
+              <button class="dep-btn on" id="depPickup">Collect at pickup</button>
+              <button class="dep-btn" id="depNow">Collect now</button>
+            </div>
+          </div>
+          <div class="dep-note">Estimated from the deposit value of the selected equipment.</div>
+        </section>
+
+        <!-- SECTION 6 — NOTES & TAGS -->
+        <section class="card">
+          <div class="notes-toggle" id="notesToggle">
+            <span class="secnum">6</span>
+            <div style="flex:1">
+              <div class="sectitle">Notes &amp; Tags</div>
+              <div class="sub">Add internal notes and tags</div>
+            </div>
+            <span class="chev" id="notesChev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>
+          </div>
+          <div class="notes-body hidden" id="notesBody">
+            <textarea id="notesText" placeholder="Internal note (not visible to customer)…"></textarea>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center" id="tagRow">
+              <button class="tag-add" id="tagAdd">+ Add tag</button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- STICKY FOOTER -->
+    <footer class="footer">
+      <button class="cancel" onclick="window.location.href='/orders.html'">Cancel</button>
+      <div class="right">
+        <span class="autosave" id="autosaveLbl"></span>
+        <button class="btn-draft" id="saveDraftBtn">Save Draft</button>
+        <button class="btn-confirm" id="confirmBtn">
+          <span class="pulse-wrap"><span class="ring"></span><span class="core"></span></span>
+          Confirm Booking
+        </button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { api, ensureAuth, formatINR } from '/_lib/api.js';
+
+// ============================================================================
+// State
+// ============================================================================
+const state = {
+  customer: null,          // full person object once selected
+  rental_start: '',        // ISO string (UTC)
+  rental_end: '',          // ISO string (UTC)
+  dispatch_type: 'pickup', // 'pickup' | 'delivery'
+  items: [],               // { product_id, name, sku, daily_rate, deposit, quantity, avail, serverItemId }
+  notes: '',
+  tags: [],                // string tags (client-side only for the composer)
+  deposit_timing: 'pickup',// 'pickup' | 'now'
+  notesOpen: false,
+  draftOrderId: null,      // set once a draft is created (autosave / save)
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+let session = null;
+
+// ============================================================================
+// Boot
+// ============================================================================
+(async function boot() {
+  const auth = await ensureAuth();
+  session = auth;
+  const initials = (auth.user?.display_name || auth.user?.email || '?')
+    .split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
+  document.getElementById('userInitials').textContent = initials || '··';
+  wireEvents();
+  render();
+})();
+
+// ============================================================================
+// Utils
+// ============================================================================
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/`/g,'&#96;'); }
+
+function initialsOf(name) {
+  return String(name || '?').split(/\s+/).filter(Boolean).map(s => s[0]).slice(0, 2).join('').toUpperCase() || '?';
+}
+
+let toastTimer = null;
+function toast(msg, isErr) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, 2600);
+}
+
+function debounce(fn, ms) {
+  let h = null;
+  return (...args) => { clearTimeout(h); h = setTimeout(() => fn(...args), ms); };
+}
+
+// Convert a <input type=datetime-local> local value → ISO (UTC) string.
+function localToIso(localVal) {
+  if (!localVal) return '';
+  const d = new Date(localVal);      // parsed as local time
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
+// Convert an ISO string → value suitable for a datetime-local input (local tz).
+function isoToLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+function fmtTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+}
+
+function durationDays() {
+  if (!state.rental_start || !state.rental_end) return 0;
+  const a = new Date(state.rental_start).getTime();
+  const b = new Date(state.rental_end).getTime();
+  if (isNaN(a) || isNaN(b) || b <= a) return 0;
+  return Math.max(1, Math.round((b - a) / DAY_MS));
+}
+
+// ============================================================================
+// CUSTOMER — typeahead + select + create
+// ============================================================================
+const custSearch = document.getElementById('custSearch');
+const custResults = document.getElementById('custResults');
+
+const doCustSearch = debounce(async (term) => {
+  if (!term || term.trim().length < 1) { custResults.classList.add('hidden'); return; }
+  try {
+    const res = await api.get(`/api/people?search=${encodeURIComponent(term.trim())}`);
+    renderCustResults(res.people || []);
+  } catch {
+    custResults.classList.add('hidden');
+  }
+}, 280);
+
+function renderCustResults(people) {
+  if (!people.length) {
+    custResults.innerHTML = `<div class="result-empty">No customers found. Use “Create new customer”.</div>`;
+    custResults.classList.remove('hidden');
+    return;
+  }
+  custResults.innerHTML = people.slice(0, 12).map(p => `
+    <div class="result-row" data-id="${escapeAttr(p.id)}">
+      <div class="result-thumb">${escapeHtml(initialsOf(p.display_name))}</div>
+      <div style="flex:1;min-width:0">
+        <div class="result-name">${escapeHtml(p.display_name)}${p.tier ? ` · ${escapeHtml(String(p.tier).toUpperCase())}` : ''}</div>
+        <div class="result-meta">${escapeHtml(p.phone || '')}${p.company_name ? ' · ' + escapeHtml(p.company_name) : ''}</div>
+      </div>
+    </div>
+  `).join('');
+  custResults.classList.remove('hidden');
+  custResults.querySelectorAll('.result-row').forEach(row => {
+    row.addEventListener('click', () => selectCustomer(row.dataset.id));
+  });
+}
+
+async function selectCustomer(id) {
+  custResults.classList.add('hidden');
+  try {
+    // Fetch the full person to get trust_score / KYC details.
+    const full = await api.get(`/api/people/${encodeURIComponent(id)}`);
+    state.customer = full && full.id ? full : null;
+  } catch {
+    // Fall back to whatever the list gave us — a minimal object.
+    state.customer = { id, display_name: 'Customer' };
+  }
+  hideBlocker();
+  render();
+}
+
+function renderCustomer() {
+  const searchState = document.getElementById('custSearchState');
+  const selState = document.getElementById('custSelectedState');
+  if (!state.customer) {
+    searchState.style.display = '';
+    selState.style.display = 'none';
+    return;
+  }
+  searchState.style.display = 'none';
+  selState.style.display = '';
+  const c = state.customer;
+  document.getElementById('custInitials').textContent = initialsOf(c.display_name);
+  document.getElementById('custName').textContent = c.display_name || '—';
+
+  // subline: company · notes-ish
+  const subParts = [];
+  if (c.company_name) subParts.push(c.company_name);
+  if (c.phone) subParts.push(c.phone);
+  document.getElementById('custSubline').textContent = subParts.join(' · ') || '—';
+
+  // tier pill
+  const tierEl = document.getElementById('custTier');
+  if (c.tier) {
+    const t = String(c.tier).toUpperCase();
+    const isVip = t === 'VIP' || t === 'PREMIUM';
+    tierEl.textContent = t;
+    tierEl.style.display = '';
+    tierEl.style.color = isVip ? 'var(--success)' : 'var(--info)';
+    tierEl.style.background = isVip ? 'rgba(5,150,105,.1)' : 'rgba(79,70,229,.1)';
+  } else {
+    tierEl.style.display = 'none';
+  }
+
+  // KYC pill (verified when an id proof is on file)
+  const kycEl = document.getElementById('custKyc');
+  if (c.id_proof_type && c.id_proof_number) {
+    kycEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg>KYC VERIFIED`;
+    kycEl.style.display = '';
+    kycEl.style.color = 'var(--success)';
+    kycEl.style.background = 'rgba(5,150,105,.1)';
+  } else {
+    kycEl.innerHTML = `KYC PENDING`;
+    kycEl.style.display = '';
+    kycEl.style.color = 'var(--attention)';
+    kycEl.style.background = 'rgba(217,119,6,.1)';
+  }
+
+  // trust chip
+  const trustEl = document.getElementById('custTrust');
+  if (typeof c.trust_score === 'number') {
+    trustEl.style.display = '';
+    document.getElementById('custTrustLbl').textContent = `TRUST ${c.trust_score}/100`;
+    const bar = document.getElementById('custTrustBar');
+    bar.style.width = Math.max(0, Math.min(100, c.trust_score)) + '%';
+    bar.style.background = c.trust_score >= 70 ? 'var(--success)' : c.trust_score >= 40 ? 'var(--attention)' : 'var(--danger)';
+  } else {
+    trustEl.style.display = 'none';
+  }
+}
+
+// ============================================================================
+// EQUIPMENT — typeahead + rows
+// ============================================================================
+const prodSearch = document.getElementById('prodSearch');
+const prodResults = document.getElementById('prodResults');
+
+const doProdSearch = debounce(async (term) => {
+  if (!term || term.trim().length < 1) { prodResults.classList.add('hidden'); return; }
+  try {
+    const res = await api.get(`/api/inventory/products?search=${encodeURIComponent(term.trim())}`);
+    renderProdResults(res.products || []);
+  } catch {
+    prodResults.classList.add('hidden');
+  }
+}, 280);
+
+function renderProdResults(products) {
+  if (!products.length) {
+    prodResults.innerHTML = `<div class="result-empty">No products found.</div>`;
+    prodResults.classList.remove('hidden');
+    return;
+  }
+  prodResults.innerHTML = products.slice(0, 12).map(p => {
+    const thumb = p.image_url
+      ? `<img src="${escapeAttr(p.image_url)}" alt="">`
+      : escapeHtml(initialsOf(p.name));
+    const rate = formatINR(p.daily_rate || 0);
+    const avail = (typeof p.available_units === 'number') ? `${p.available_units} avail` : '';
+    return `
+      <div class="result-row" data-id="${escapeAttr(p.id)}">
+        <div class="result-thumb">${thumb}</div>
+        <div style="flex:1;min-width:0">
+          <div class="result-name">${escapeHtml(p.name)}</div>
+          <div class="result-meta">${escapeHtml(p.sku || '')}${avail ? ' · ' + escapeHtml(avail) : ''}</div>
+        </div>
+        <div class="mono" style="font-size:11px;color:#9ca3af">${escapeHtml(rate)}/day</div>
+      </div>`;
+  }).join('');
+  prodResults.classList.remove('hidden');
+  prodResults.querySelectorAll('.result-row').forEach(row => {
+    const p = products.find(x => x.id === row.dataset.id);
+    row.addEventListener('click', () => addProduct(p));
+  });
+}
+
+function addProduct(p) {
+  if (!p) return;
+  prodResults.classList.add('hidden');
+  prodSearch.value = '';
+  const existing = state.items.find(it => it.product_id === p.id);
+  if (existing) {
+    existing.quantity += 1;
+  } else {
+    state.items.push({
+      product_id: p.id,
+      name: p.name,
+      sku: p.sku || '',
+      image_url: p.image_url || '',
+      daily_rate: Number(p.daily_rate || 0),
+      deposit: Number(p.deposit || 0),
+      quantity: 1,
+      avail: null,
+      serverItemId: null,
+    });
+  }
+  hideBlocker();
+  render();
+  recheckAllAvailability();
+}
+
+function removeItem(productId) {
+  state.items = state.items.filter(it => it.product_id !== productId);
+  render();
+  recheckAllAvailability();
+}
+function changeQty(productId, delta) {
+  const it = state.items.find(x => x.product_id === productId);
+  if (!it) return;
+  it.quantity = Math.max(1, it.quantity + delta);
+  render();
+  recheckAllAvailability();
+}
+
+function renderEquipment() {
+  const list = document.getElementById('eqList');
+  const days = durationDays();
+  if (!state.items.length) {
+    list.innerHTML = `<div class="eq-empty">No equipment added yet. Search above to add gear.</div>`;
+  } else {
+    list.innerHTML = state.items.map(it => {
+      const lineDays = days || 1;
+      const sub = it.daily_rate * it.quantity * lineDays;
+      const thumb = it.image_url ? `<img src="${escapeAttr(it.image_url)}" alt="">`
+        : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="13" r="3.2"/></svg>`;
+      let availBadge = '';
+      if (it.avail === null) availBadge = `<span class="eq-avail pend">Checking…</span>`;
+      else if (it.avail === 'pending') availBadge = `<span class="eq-avail pend">Set window to check</span>`;
+      else if (it.avail === 'ok') availBadge = `<span class="eq-avail ok">Available</span>`;
+      else if (it.avail === 'warn') availBadge = `<span class="eq-avail warn">Limited — shortage</span>`;
+      else if (it.avail === 'bad') availBadge = `<span class="eq-avail bad">Not available</span>`;
+      return `
+        <div class="eq-row">
+          <div class="eq-thumb">${thumb}</div>
+          <div style="flex:1;min-width:0">
+            <div class="eq-name">${escapeHtml(it.name)}</div>
+            <div class="eq-meta">${escapeHtml(it.sku || '—')} · ${formatINR(it.daily_rate)}/day</div>
+            ${availBadge}
+          </div>
+          <div class="qty-ctl">
+            <button data-act="dec" data-id="${escapeAttr(it.product_id)}">−</button>
+            <span class="q">${it.quantity}</span>
+            <button data-act="inc" data-id="${escapeAttr(it.product_id)}">+</button>
+          </div>
+          <div class="eq-price">
+            <div class="eq-rate">${formatINR(it.daily_rate)} × ${lineDays}d${it.quantity > 1 ? ' × ' + it.quantity : ''}</div>
+            <div class="eq-sub">${formatINR(sub)}</div>
+          </div>
+          <button class="eq-remove" data-act="rm" data-id="${escapeAttr(it.product_id)}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>`;
+    }).join('');
+    list.querySelectorAll('button[data-act]').forEach(b => {
+      const id = b.dataset.id;
+      b.addEventListener('click', () => {
+        if (b.dataset.act === 'inc') changeQty(id, 1);
+        else if (b.dataset.act === 'dec') changeQty(id, -1);
+        else if (b.dataset.act === 'rm') removeItem(id);
+      });
+    });
+  }
+  renderEqBanner();
+}
+
+function renderEqBanner() {
+  const banner = document.getElementById('eqBanner');
+  if (!state.items.length) { banner.style.display = 'none'; return; }
+  banner.style.display = '';
+  const days = durationDays();
+  if (!days) {
+    banner.className = 'avail-banner neutral';
+    banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span>Set a rental window to check availability</span>`;
+    return;
+  }
+  const states = state.items.map(it => it.avail);
+  if (states.some(s => s === 'bad')) {
+    banner.className = 'avail-banner bad';
+    banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L14.7 3.9a2 2 0 00-3.4 0z"/></svg><span>Some items are not available for the selected window</span>`;
+  } else if (states.some(s => s === 'warn')) {
+    banner.className = 'avail-banner warn';
+    banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg><span>Some items are within shortage limits for this window</span>`;
+  } else if (states.some(s => s === null)) {
+    banner.className = 'avail-banner neutral';
+    banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg><span>Checking availability…</span>`;
+  } else {
+    banner.className = 'avail-banner ok';
+    banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg><span>All items available for selected window</span>`;
+  }
+}
+
+// ============================================================================
+// AVAILABILITY (debounced 300ms). Fail-open: any error → treat as available.
+// ============================================================================
+const recheckAllAvailability = debounce(async () => {
+  const days = durationDays();
+  if (!days || !state.rental_start || !state.rental_end) {
+    state.items.forEach(it => { it.avail = 'pending'; });
+    renderEquipment();
+    renderWindowBanner();
+    return;
+  }
+  await Promise.all(state.items.map(async (it) => {
+    try {
+      const res = await api.post('/api/availability/check', {
+        product_id: it.product_id,
+        quantity: it.quantity,
+        start: state.rental_start,
+        end: state.rental_end,
+      });
+      const chk = res && res.check ? res.check : null;
+      if (!chk) { it.avail = 'ok'; return; }
+      if (chk.available === false) it.avail = 'bad';
+      else if (chk.shortage_used || chk.has_downtime_conflict) it.avail = 'warn';
+      else it.avail = 'ok';
+    } catch {
+      it.avail = 'ok'; // fail-open — never block on a check error
+    }
+  }));
+  renderEquipment();
+  renderWindowBanner();
+}, 300);
+
+// ============================================================================
+// RENTAL WINDOW
+// ============================================================================
+function renderWindow() {
+  document.getElementById('startVal').textContent = state.rental_start ? fmtDate(state.rental_start) : 'Not set';
+  document.getElementById('startTm').textContent  = state.rental_start ? fmtTime(state.rental_start) : '—';
+  document.getElementById('endVal').textContent   = state.rental_end ? fmtDate(state.rental_end) : 'Not set';
+  document.getElementById('endTm').textContent    = state.rental_end ? fmtTime(state.rental_end) : '—';
+
+  const days = durationDays();
+  document.getElementById('durPill').textContent = days ? `Duration: ${days} day${days === 1 ? '' : 's'}` : 'Duration: —';
+
+  // weekend tag if window spans a Sat or Sun
+  const wk = document.getElementById('weekendTag');
+  let weekend = false;
+  if (state.rental_start && state.rental_end) {
+    const s = new Date(state.rental_start), e = new Date(state.rental_end);
+    for (let d = new Date(s); d <= e && (d - s) < 8 * DAY_MS; d = new Date(d.getTime() + DAY_MS)) {
+      const day = d.getDay();
+      if (day === 0 || day === 6) { weekend = true; break; }
+    }
+  }
+  wk.style.display = weekend ? 'inline-flex' : 'none';
+
+  // dispatch radios
+  document.getElementById('optPickup').classList.toggle('on', state.dispatch_type === 'pickup');
+  document.getElementById('optDelivery').classList.toggle('on', state.dispatch_type === 'delivery');
+
+  renderWindowBanner();
+}
+
+function renderWindowBanner() {
+  const banner = document.getElementById('windowBanner');
+  const txt = document.getElementById('windowBannerText');
+  const days = durationDays();
+  if (!days) {
+    banner.className = 'avail-banner neutral';
+    banner.style.width = '230px';
+    txt.textContent = 'Set a window and add gear to check availability';
+    return;
+  }
+  if (!state.items.length) {
+    banner.className = 'avail-banner neutral';
+    banner.style.width = '230px';
+    txt.textContent = 'Add equipment to check availability for this window';
+    return;
+  }
+  const states = state.items.map(it => it.avail);
+  if (states.some(s => s === 'bad')) {
+    banner.className = 'avail-banner bad'; banner.style.width = '230px';
+    txt.textContent = 'Conflicts found — some items unavailable in this window';
+  } else if (states.some(s => s === 'warn')) {
+    banner.className = 'avail-banner warn'; banner.style.width = '230px';
+    txt.textContent = 'Within shortage limits for some items in this window';
+  } else if (states.some(s => s === null)) {
+    banner.className = 'avail-banner neutral'; banner.style.width = '230px';
+    txt.textContent = 'Checking availability…';
+  } else {
+    banner.className = 'avail-banner ok'; banner.style.width = '230px';
+    txt.textContent = 'Availability confirmed for all items in this window';
+  }
+}
+
+// ============================================================================
+// PRICING + DEPOSIT
+// ============================================================================
+function renderPricing() {
+  const days = durationDays() || 1;
+  let subtotal = 0;
+  let deposit = 0;
+  for (const it of state.items) {
+    subtotal += it.daily_rate * it.quantity * days;
+    deposit  += (it.deposit || 0) * it.quantity;
+  }
+  const cgst = Math.round(subtotal * 0.09);
+  const sgst = Math.round(subtotal * 0.09);
+  const total = subtotal + cgst + sgst;
+  document.getElementById('pSubtotal').textContent = formatINR(subtotal);
+  document.getElementById('pCgst').textContent = formatINR(cgst);
+  document.getElementById('pSgst').textContent = formatINR(sgst);
+  document.getElementById('pTotal').textContent = formatINR(total);
+  document.getElementById('depAmount').textContent = formatINR(deposit);
+}
+
+// ============================================================================
+// NOTES & TAGS
+// ============================================================================
+function renderTags() {
+  const row = document.getElementById('tagRow');
+  const chips = state.tags.map((t, i) => `
+    <span class="tag-chip">${escapeHtml(t)}<button data-tag="${i}">×</button></span>`).join('');
+  row.innerHTML = chips + `<button class="tag-add" id="tagAdd">+ Add tag</button>`;
+  row.querySelector('#tagAdd').addEventListener('click', () => {
+    const v = prompt('Tag name');
+    if (v && v.trim()) { state.tags.push(v.trim()); renderTags(); }
+  });
+  row.querySelectorAll('button[data-tag]').forEach(b => {
+    b.addEventListener('click', () => { state.tags.splice(Number(b.dataset.tag), 1); renderTags(); });
+  });
+}
+
+// ============================================================================
+// BLOCKER PANEL
+// ============================================================================
+function showBlocker(reasons) {
+  const panel = document.getElementById('blocker');
+  const list = document.getElementById('blockerList');
+  const items = (reasons && reasons.length) ? reasons : [{ message: 'This booking could not be confirmed.', severity: 'error' }];
+  list.innerHTML = items.map(r => {
+    const sev = (r.severity || r.category || 'error');
+    const msg = r.message || r.code || 'Unknown issue';
+    return `<li><span class="sev">${escapeHtml(String(sev))}</span><span>${escapeHtml(String(msg))}</span></li>`;
+  }).join('');
+  panel.classList.remove('hidden');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function hideBlocker() { document.getElementById('blocker').classList.add('hidden'); }
+
+// ============================================================================
+// SAVE / CONFIRM
+// ============================================================================
+let saving = false;
+
+function validateBeforeSave() {
+  if (!state.customer) { toast('Select a customer first', true); return false; }
+  return true;
+}
+
+// Ensure a draft order exists (create once, reuse the id). Returns order id.
+async function ensureOrder() {
+  if (state.draftOrderId) {
+    // keep dates / notes in sync
+    try {
+      await api.patch(`/api/orders/${state.draftOrderId}`, buildOrderBody());
+    } catch { /* best-effort */ }
+    return state.draftOrderId;
+  }
+  const created = await api.post('/api/orders', buildOrderBody());
+  const id = created && (created.id || created.order?.id);
+  if (!id) throw new Error('order_create_failed');
+  state.draftOrderId = id;
+  return id;
+}
+
+function buildOrderBody() {
+  const body = {
+    customer_person_id: state.customer.id,
+    dispatch_type: state.dispatch_type,
+  };
+  if (state.rental_start) body.rental_start = state.rental_start;
+  if (state.rental_end) body.rental_end = state.rental_end;
+  const noteText = document.getElementById('notesText')?.value?.trim();
+  if (noteText) body.internal_notes = noteText;
+  return body;
+}
+
+// Push all not-yet-pushed items to the order (server computes rate).
+async function pushItems(orderId) {
+  for (const it of state.items) {
+    if (it.serverItemId) continue;
+    const res = await api.post(`/api/orders/${orderId}/items`, {
+      item_type: 'rental',
+      product_id: it.product_id,
+      quantity: it.quantity,
+      description: it.name || 'Rental item',
+    });
+    it.serverItemId = (res && (res.id || res.item?.id)) || 'pushed';
+  }
+}
+
+async function saveDraft() {
+  if (saving || !validateBeforeSave()) return;
+  saving = true; setBusy(true); hideBlocker();
+  try {
+    const orderId = await ensureOrder();
+    await pushItems(orderId);
+    toast('Draft saved');
+    window.location.href = `/order-360.html?id=${encodeURIComponent(orderId)}`;
+  } catch (err) {
+    saving = false; setBusy(false);
+    toast(err?.body?.error || err?.message || 'Could not save draft', true);
+  }
+}
+
+async function confirmBooking() {
+  if (saving || !validateBeforeSave()) return;
+  if (!state.items.length) { toast('Add at least one item to confirm', true); return; }
+  saving = true; setBusy(true); hideBlocker();
+  try {
+    const orderId = await ensureOrder();
+    await pushItems(orderId);
+    // transition draft → confirmed
+    try {
+      await api.post(`/api/orders/${orderId}/transitions`, { to: 'confirmed' });
+    } catch (err) {
+      const b = err?.body;
+      const reasons = b?.error?.reasons || b?.reasons;
+      if (reasons) {
+        saving = false; setBusy(false);
+        showBlocker(reasons);
+        return;
+      }
+      throw err;
+    }
+    toast('Booking confirmed');
+    window.location.href = `/order-360.html?id=${encodeURIComponent(orderId)}`;
+  } catch (err) {
+    saving = false; setBusy(false);
+    toast(err?.body?.error || err?.message || 'Could not confirm booking', true);
+  }
+}
+
+function setBusy(b) {
+  document.getElementById('saveDraftBtn').disabled = b;
+  document.getElementById('confirmBtn').disabled = b;
+}
+
+// ============================================================================
+// AUTOSAVE — every 15s once a customer is selected (best-effort, draft only).
+// ============================================================================
+setInterval(async () => {
+  if (saving || !state.customer) return;
+  try {
+    await ensureOrder();
+    document.getElementById('autosaveLbl').textContent = 'Draft auto-saved';
+    setTimeout(() => {
+      const el = document.getElementById('autosaveLbl');
+      if (el.textContent === 'Draft auto-saved') el.textContent = '';
+    }, 3000);
+  } catch { /* silent */ }
+}, 15000);
+
+// ============================================================================
+// Wiring
+// ============================================================================
+function wireEvents() {
+  custSearch.addEventListener('input', (e) => doCustSearch(e.target.value));
+  document.getElementById('toggleNewCust').addEventListener('click', () => {
+    document.getElementById('newCustPanel').classList.toggle('hidden');
+  });
+  document.getElementById('ncCreate').addEventListener('click', createNewCustomer);
+  document.getElementById('changeCust').addEventListener('click', () => {
+    state.customer = null; render();
+  });
+
+  prodSearch.addEventListener('input', (e) => doProdSearch(e.target.value));
+
+  document.getElementById('startInput').addEventListener('change', (e) => {
+    state.rental_start = localToIso(e.target.value);
+    renderWindow(); renderPricing(); renderEquipment(); recheckAllAvailability();
+  });
+  document.getElementById('endInput').addEventListener('change', (e) => {
+    state.rental_end = localToIso(e.target.value);
+    renderWindow(); renderPricing(); renderEquipment(); recheckAllAvailability();
+  });
+
+  document.getElementById('optPickup').addEventListener('click', () => { state.dispatch_type = 'pickup'; renderWindow(); });
+  document.getElementById('optDelivery').addEventListener('click', () => { state.dispatch_type = 'delivery'; renderWindow(); });
+
+  document.getElementById('depPickup').addEventListener('click', () => {
+    state.deposit_timing = 'pickup';
+    document.getElementById('depPickup').classList.add('on');
+    document.getElementById('depNow').classList.remove('on');
+  });
+  document.getElementById('depNow').addEventListener('click', () => {
+    state.deposit_timing = 'now';
+    document.getElementById('depNow').classList.add('on');
+    document.getElementById('depPickup').classList.remove('on');
+  });
+
+  document.getElementById('notesToggle').addEventListener('click', () => {
+    state.notesOpen = !state.notesOpen;
+    document.getElementById('notesBody').classList.toggle('hidden', !state.notesOpen);
+    document.getElementById('notesChev').classList.toggle('open', state.notesOpen);
+    if (state.notesOpen) renderTags();
+  });
+
+  document.getElementById('saveDraftBtn').addEventListener('click', saveDraft);
+  document.getElementById('confirmBtn').addEventListener('click', confirmBooking);
+
+  // close dropdowns on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#custSearchState')) custResults.classList.add('hidden');
+    if (!e.target.closest('#eqList') && !e.target.closest('.dropdown')) prodResults.classList.add('hidden');
+  });
+}
+
+async function createNewCustomer() {
+  const name = document.getElementById('ncName').value.trim();
+  const phone = document.getElementById('ncPhone').value.trim();
+  if (!name || !phone) { toast('Name and phone are required', true); return; }
+  try {
+    const created = await api.post('/api/people', { display_name: name, phone, roles: ['customer'] });
+    const person = created && (created.id ? created : created.person);
+    if (person && person.id) {
+      state.customer = person;
+      document.getElementById('newCustPanel').classList.add('hidden');
+      document.getElementById('ncName').value = '';
+      document.getElementById('ncPhone').value = '';
+      render();
+      toast('Customer created');
+    } else {
+      toast('Customer created — search to select', false);
+    }
+  } catch (err) {
+    if (err?.status === 409 && err?.body?.error === 'phone_taken') toast('A customer with that phone already exists', true);
+    else if (err?.status === 403) toast('You do not have permission to create customers', true);
+    else toast(err?.body?.error || 'Could not create customer', true);
+  }
+}
+
+// ============================================================================
+// Master render
+// ============================================================================
+function render() {
+  renderCustomer();
+  renderWindow();
+  renderEquipment();
+  renderPricing();
+  if (state.notesOpen) renderTags();
+
+  // strip subline
+  const sub = document.getElementById('stripSub');
+  if (state.customer && state.items.length && durationDays()) {
+    sub.textContent = 'Draft — review and confirm to reserve inventory';
+  } else {
+    sub.textContent = 'Draft — no availability blocked yet';
+  }
+}
+</script>
+</body>
+</html>

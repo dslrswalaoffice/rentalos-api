@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orders · RentalOS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#202058; --head:#26235a;
+  --neutral:#6b7280; --neutral-bg:#f3f4f6; --neutral-border:#d1d5db;
+  --info:#4f46e5; --info-bg:#eef2ff; --info-border:#c7d2fe;
+  --progress:#2563eb; --progress-bg:#eff6ff; --progress-border:#bfdbfe;
+  --success:#059669; --success-bg:#ecfdf5; --success-border:#a7f3d0;
+  --attention:#d97706; --attention-bg:#fffbeb; --attention-border:#fde68a;
+  --danger:#dc2626; --danger-bg:#fef2f2; --danger-border:#fecaca;
+  --bg:#ffffff; --surface-1:#faf9f7; --surface-2:#f4f2ee; --border:#ece9e3;
+  --muted-ink:#8a8780; --hair:#f4f1ec; --field-border:#e4e0d9;
+  --avatar-bg:#eef0f4;
+  --row-h:58px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);font-family:'Manrope',sans-serif;color:var(--head);-webkit-font-smoothing:antialiased}
+a{color:var(--info);text-decoration:none}
+button{font-family:inherit}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* ---------- app frame ---------- */
+.app{display:flex;min-height:100vh;background:var(--bg)}
+.rail{width:60px;flex:none;background:var(--surface-1);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;position:sticky;top:0;height:100vh}
+.rail .logo{width:32px;height:32px;border-radius:8px;background:var(--ink);color:#fff;font:600 16px 'Space Grotesk';display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.rail a{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690}
+.rail a.active{background:#eceafb;color:var(--info)}
+.rail a:hover{color:var(--ink)}
+.rail .spacer{flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+
+.topbar{height:56px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;padding:0 22px}
+.topbar .search{flex:1;max-width:520px;height:36px;border:1px solid var(--border);border-radius:9px;background:var(--surface-1);display:flex;align-items:center;gap:9px;padding:0 12px}
+.topbar .search span{color:#9ca3af;font:400 13px 'Manrope'}
+.topbar .kbd{margin-left:auto;font:600 10px 'JetBrains Mono';color:#b6b3ad;border:1px solid var(--field-border);border-radius:5px;padding:2px 6px}
+.topbar .right{margin-left:auto;display:flex;align-items:center;gap:14px}
+.iconbtn{width:34px;height:34px;border-radius:8px;border:none;background:transparent;color:var(--neutral);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+.iconbtn:hover{background:var(--surface-2)}
+.userchip{display:flex;align-items:center;gap:8px;padding:3px 4px 3px 3px;border:1px solid var(--border);border-radius:20px}
+.userchip .av{width:28px;height:28px;border-radius:50%;background:var(--avatar-bg);color:var(--ink);font:600 10px 'Space Grotesk';display:flex;align-items:center;justify-content:center}
+
+.subnav{height:34px;flex:none;border-bottom:1px solid #f0ede8;display:flex;align-items:center;padding:0 24px}
+.subnav span{font:600 10px 'JetBrains Mono';letter-spacing:.08em;color:#9ca3af;text-transform:uppercase}
+
+.scroll{flex:1;padding:24px 32px 96px;position:relative}
+
+/* ---------- region 1 top strip ---------- */
+.topstrip{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;gap:16px}
+.topstrip h1{margin:0;font:600 28px 'Space Grotesk';color:var(--ink);letter-spacing:-.01em}
+.topstrip p{margin:6px 0 0;font:400 13px 'Manrope';color:var(--muted-ink)}
+.btn-primary{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;background:var(--info);color:#fff;border:none;border-radius:9px;font:600 13px 'Manrope';cursor:pointer;box-shadow:0 1px 2px rgba(79,70,229,.25)}
+.btn-primary:hover{background:#3f37c9}
+
+/* ---------- region 2 view switcher ---------- */
+.views{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.view-chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;color:var(--neutral);font:500 12px 'Manrope';cursor:pointer;background:transparent;border:none}
+.view-chip:hover{background:var(--surface-2)}
+.view-chip.active{background:rgba(79,70,229,.1);color:var(--info);font-weight:600}
+.view-chip .cnt{font:600 11px 'JetBrains Mono';opacity:.75}
+
+/* ---------- region 3 filter + search ---------- */
+.filterbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.searchwrap{flex:1;height:40px;border:1px solid var(--border);border-radius:10px;background:#fff;display:flex;align-items:center;gap:10px;padding:0 14px}
+.searchwrap input{flex:1;border:none;outline:none;background:transparent;font:400 13px 'Manrope';color:var(--head)}
+.searchwrap input::placeholder{color:#9ca3af}
+.ctl-btn{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid var(--field-border);background:#fff;border-radius:10px;color:var(--head);font:600 12px 'Manrope';cursor:pointer}
+.ctl-btn:hover{background:var(--surface-1)}
+.dd{position:relative}
+.menu{position:absolute;top:calc(100% + 6px);z-index:40;min-width:200px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(32,32,88,.14);padding:8px;display:none}
+.menu.right{right:0}
+.menu.open{display:block}
+.menu-title{font:600 9px 'JetBrains Mono';letter-spacing:.08em;color:#9ca3af;text-transform:uppercase;padding:4px 8px 6px}
+.menu label{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:7px;font:500 12px 'Manrope';color:var(--head);cursor:pointer}
+.menu label:hover{background:var(--surface-1)}
+.menu .opt{display:block;width:100%;text-align:left;padding:6px 8px;border-radius:7px;border:none;background:transparent;font:500 12px 'Manrope';color:var(--head);cursor:pointer}
+.menu .opt:hover{background:var(--surface-1)}
+.menu .opt.sel{color:var(--info);font-weight:600}
+.menu-foot{display:flex;gap:8px;padding:8px 8px 4px;border-top:1px solid var(--hair);margin-top:6px}
+.menu-foot button{flex:1;height:30px;border-radius:7px;border:1px solid var(--field-border);background:#fff;font:600 11px 'Manrope';color:var(--head);cursor:pointer}
+.menu-foot button.apply{background:var(--info);color:#fff;border-color:var(--info)}
+
+.chips{display:flex;align-items:center;gap:8px;margin-bottom:18px;flex-wrap:wrap;min-height:26px}
+.fchip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid var(--border);background:var(--surface-1);border-radius:7px;font:500 11px 'Manrope';color:#4a4760}
+.fchip .x{color:#9ca3af;cursor:pointer;font-weight:700}
+.fchip .x:hover{color:var(--danger)}
+.clear-all{font:600 11px 'Manrope';color:var(--info);margin-left:2px;cursor:pointer;background:none;border:none}
+
+/* ---------- region 4 control bar ---------- */
+.controlbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.result-count{font:500 12px 'Manrope';color:var(--muted-ink)}
+.controls{display:flex;align-items:center;gap:8px}
+.mini-btn{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 11px;border:1px solid var(--field-border);background:#fff;border-radius:8px;cursor:pointer}
+.mini-btn:hover{background:var(--surface-1)}
+.mini-btn .lbl{font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af;text-transform:uppercase}
+.mini-btn .val{font:600 11px 'Manrope';color:var(--head)}
+.mini-btn svg{stroke:#9ca3af}
+
+/* ---------- table ---------- */
+.table{border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 3px rgba(32,32,88,.04);background:#fff;position:relative}
+.thead{display:grid;align-items:center;background:var(--surface-1);border-bottom:1px solid var(--border);border-radius:14px 14px 0 0;height:42px;padding-left:4px}
+.thead .hcell{padding:0 10px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af}
+.tbody{position:relative}
+.orow{display:grid;align-items:center;min-height:var(--row-h);border-bottom:1px solid var(--hair);border-left:4px solid transparent;cursor:pointer}
+.orow:last-child{border-bottom:none}
+.orow:hover{background:var(--surface-1)}
+.orow.flag-danger{border-left-color:var(--danger)}
+.orow.flag-attention{border-left-color:var(--attention)}
+.orow.cancelled{opacity:.5}
+.cell{padding:0 10px;min-width:0}
+.cell.center{display:flex;justify-content:center;padding:0}
+.cbox{width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:flex;align-items:center;justify-content:center;background:#fff;cursor:pointer;flex:none}
+.cbox.on{background:var(--info);border-color:var(--info)}
+.cbox svg{display:none}
+.cbox.on svg{display:block}
+.ocode{font:600 12px 'JetBrains Mono';color:var(--head);letter-spacing:.01em}
+.cust{display:flex;align-items:center;gap:10px}
+.av{width:30px;height:30px;border-radius:8px;background:var(--avatar-bg);color:var(--ink);font:600 11px 'Space Grotesk';display:inline-flex;align-items:center;justify-content:center;flex:none}
+.cust .nm{font:600 13px 'Manrope';color:var(--head);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vip{font:600 8px 'JetBrains Mono';letter-spacing:.05em;color:var(--attention);background:rgba(217,118,6,.12);padding:2px 5px;border-radius:4px;flex:none}
+.dt-main{font:600 11.5px 'JetBrains Mono';color:var(--head)}
+.dt-sub{font:400 10px 'JetBrains Mono';color:#a7a29a;margin-top:2px}
+.dt-tag{font:600 8px 'JetBrains Mono';letter-spacing:.05em;color:var(--neutral);margin-top:2px}
+.items-main{font:500 12px 'Manrope';color:var(--head)}
+.items-sub{font:500 10px 'Manrope';margin-top:2px}
+.items-sub.progress{color:var(--progress)} .items-sub.attention{color:var(--attention)}
+.money{font:600 12px 'JetBrains Mono';color:var(--ink)}
+.money.zero{color:#a7a29a}
+.dash{color:#c8ccd3;font:500 14px 'Manrope';padding-left:4px}
+.warn-tri{}
+
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:4px;font:600 11px 'JetBrains Mono';letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;border:1px solid}
+.pill .dot{width:5px;height:5px;border-radius:50%;flex:none}
+.pill .div{width:1px;height:9px;opacity:.4;background:currentColor}
+.pill .cnt{opacity:.85;font-weight:700}
+.pill.neutral{color:var(--neutral);background:rgba(107,114,128,.08);border-color:rgba(107,114,128,.3)}
+.pill.neutral .dot{background:var(--neutral)}
+.pill.info{color:var(--info);background:rgba(79,70,229,.08);border-color:rgba(79,70,229,.3)}
+.pill.info .dot{background:var(--info)}
+.pill.progress{color:var(--progress);background:rgba(37,99,235,.08);border-color:rgba(37,99,235,.3)}
+.pill.progress .dot{background:var(--progress)}
+.pill.success{color:var(--success);background:rgba(5,150,105,.08);border-color:rgba(5,150,105,.3)}
+.pill.success .dot{background:var(--success)}
+.pill.attention{color:var(--attention);background:rgba(217,118,6,.08);border-color:rgba(217,118,6,.3)}
+.pill.attention .dot{background:var(--attention)}
+.pill.danger{color:var(--danger);background:rgba(220,38,38,.08);border-color:rgba(220,38,38,.3)}
+.pill.danger .dot{background:var(--danger)}
+
+.act-btn{height:30px;padding:0 13px;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap;border:1px solid var(--field-border);background:#fff;color:var(--head)}
+.act-btn.primary{background:var(--info);color:#fff;border-color:var(--info)}
+.act-btn.primary:hover{background:#3f37c9}
+.act-btn.blocked{color:#a7a29a;background:var(--surface-1);cursor:not-allowed;display:inline-flex;align-items:center;gap:5px}
+.tag-chips{display:inline-flex;gap:4px;margin-left:6px;vertical-align:middle}
+.tag-chip{font:600 8px 'JetBrains Mono';padding:2px 5px;border-radius:4px;letter-spacing:.03em}
+
+.pagination{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-top:1px solid var(--border)}
+.pagination .info{font:500 12px 'Manrope';color:#9ca3af}
+.pagination .info .mono{color:var(--neutral)}
+.loadmore{height:34px;padding:0 16px;border:1px solid var(--field-border);background:#fff;border-radius:9px;color:var(--head);font:600 12px 'Manrope';cursor:pointer}
+.loadmore:hover{background:var(--surface-1)}
+.loadmore:disabled{opacity:.5;cursor:default}
+
+/* ---------- states ---------- */
+.state{padding:64px 24px;text-align:center}
+.state .icon{width:44px;height:44px;border-radius:12px;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;color:#b6b3ad}
+.state .title{font:600 15px 'Space Grotesk';color:var(--head)}
+.state .desc{font:400 12px 'Manrope';color:var(--muted-ink);margin-top:6px}
+.skel{display:grid;align-items:center;min-height:var(--row-h);border-bottom:1px solid var(--hair);border-left:4px solid transparent;padding-left:4px}
+.skel .bar{height:12px;border-radius:6px;background:linear-gradient(90deg,#f0ede8 25%,#f7f5f1 37%,#f0ede8 63%);background-size:400% 100%;animation:sh 1.3s ease-in-out infinite;margin:0 10px}
+@keyframes sh{0%{background-position:100% 0}100%{background-position:0 0}}
+
+/* ---------- smart preview ---------- */
+.preview{position:fixed;width:380px;z-index:60;display:none}
+.preview.show{display:block}
+.preview .card{background:#fff;border:1px solid #e6e2db;border-radius:14px;box-shadow:0 18px 44px rgba(32,32,88,.16);overflow:hidden}
+.pv-head{padding:16px 16px 14px;display:flex;align-items:center;gap:11px;border-bottom:1px solid #f0ede8}
+.pv-head .av{width:38px;height:38px;border-radius:10px;font-size:13px}
+.pv-head .who{flex:1;min-width:0}
+.pv-name{font:600 14px 'Manrope';color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv-sub{font:400 11px 'Manrope';color:#9ca3af;margin-top:1px}
+.pv-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#f0ede8}
+.pv-kv{background:#fff;padding:11px 14px}
+.pv-kv .k{font:600 8px 'JetBrains Mono';letter-spacing:.08em;color:#9ca3af}
+.pv-kv .v{font:600 12px 'JetBrains Mono';color:var(--head);margin-top:3px}
+.pv-tl{padding:16px 16px 12px;border-top:1px solid #f0ede8;display:flex;align-items:flex-start;gap:0}
+.pv-node{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;text-align:center}
+.pv-node .cap{font:600 9px 'JetBrains Mono'}
+.pv-node .sub{font:400 9px 'Manrope';color:#9ca3af}
+.pv-dot{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff}
+.pv-line{height:2px;flex:.6;margin-top:7px;background:#e6e2db}
+.pv-hints{padding:0 16px 12px}
+.pv-hint{display:flex;align-items:center;gap:7px;font:600 11px 'Manrope';padding:8px 10px;border-radius:8px;margin-top:8px}
+.pv-hint.danger{background:var(--danger-bg);color:var(--danger)}
+.pv-hint.attention{background:var(--attention-bg);color:var(--attention)}
+.pv-foot{padding:12px 16px 16px;border-top:1px solid #f0ede8;display:flex;flex-direction:column;gap:8px}
+.pv-foot .row{display:flex;gap:8px}
+.pv-foot .row button, .pv-foot .row a{flex:1;height:36px;border-radius:9px;font:600 12px 'Manrope';cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none}
+.pv-open{background:var(--info);color:#fff;border:none}
+.pv-sec{background:#fff;color:var(--head);border:1px solid var(--field-border)}
+
+/* ---------- bulk toolbar ---------- */
+.bulkbar{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:70;display:none;align-items:center;gap:14px;height:52px;padding:0 18px;background:#fff;border:1px solid var(--border);border-left:4px solid var(--info);border-radius:12px;box-shadow:0 12px 32px rgba(32,32,88,.18)}
+.bulkbar.show{display:flex}
+.bulkbar .sel{font:600 11px 'JetBrains Mono';letter-spacing:.04em;color:var(--info)}
+.bulkbar .clear{font:600 11px 'Manrope';color:var(--neutral);cursor:pointer;background:none;border:none}
+.bulkbar .vdiv{width:1px;height:20px;background:#dcd8f0}
+.bulk-act{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--field-border);background:#fff;border-radius:8px;font:600 11px 'Manrope';color:var(--head);cursor:pointer}
+.bulk-act:hover{background:var(--surface-1)}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:90;background:var(--ink);color:#fff;font:600 12px 'Manrope';padding:10px 16px;border-radius:9px;box-shadow:0 8px 24px rgba(32,32,88,.24);opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="rail">
+    <div class="logo">R</div>
+    <a href="/dashboard.html" title="Dashboard"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1.2"/><rect x="11" y="3" width="6" height="6" rx="1.2"/><rect x="3" y="11" width="6" height="6" rx="1.2"/><rect x="11" y="11" width="6" height="6" rx="1.2"/></svg></a>
+    <a href="/orders.html" class="active" title="Rentals"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.2 17 6v8l-7 3.8L3 14V6z"/><path d="M3 6l7 3.8L17 6"/><path d="M10 9.8V17.8"/></svg></a>
+    <a href="/inventory.html" title="Inventory"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5 17.5 6 10 9.5 2.5 6z"/><path d="M2.5 10 10 13.5 17.5 10"/><path d="M2.5 14 10 17.5 17.5 14"/></svg></a>
+    <a href="/people.html" title="Customers"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3.2"/><path d="M4 17c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2"/></svg></a>
+    <a href="/analytics.html" title="Insights"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17V3"/><path d="M3 17h14"/><rect x="6" y="10" width="2.6" height="4"/><rect x="10.5" y="6.5" width="2.6" height="7.5"/></svg></a>
+    <div class="spacer"></div>
+    <a href="/settings.html" title="System"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M2.5 10h2.2M15.3 10h2.2M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/></svg></a>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <header class="topbar">
+      <div class="search">
+        <svg width="16" height="16" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5"/><path d="M11.5 11.5 15 15"/></svg>
+        <span>Search anything</span>
+        <span class="kbd">⌘K</span>
+      </div>
+      <div class="right">
+        <button class="iconbtn" title="Notifications"><svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5a5 5 0 0 0-5 5c0 4-1.5 5.5-1.5 5.5h13S15 11.5 15 7.5a5 5 0 0 0-5-5z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg></button>
+        <div class="userchip"><span class="av" id="user-initials">··</span><svg width="14" height="14" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l3 3 3-3"/></svg></div>
+      </div>
+    </header>
+    <div class="subnav"><span>Rentals &rsaquo; Orders</span></div>
+
+    <div class="scroll">
+      <!-- REGION 1 -->
+      <div class="topstrip">
+        <div>
+          <h1>ORDERS</h1>
+          <p id="subline">Active operations, quotes, and pipeline</p>
+        </div>
+        <a class="btn-primary" href="/new-order.html">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M7.5 3v9M3 7.5h9"/></svg>
+          New Order
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="margin-left:2px;opacity:.85"><path d="M3.5 5l3 3 3-3"/></svg>
+        </a>
+      </div>
+
+      <!-- REGION 2 -->
+      <div class="views" id="views"></div>
+
+      <!-- REGION 3 -->
+      <div class="filterbar">
+        <div class="searchwrap">
+          <svg width="17" height="17" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5"/><path d="M11.5 11.5 15.5 15.5"/></svg>
+          <input id="q" type="text" placeholder="Search order # / customer" autocomplete="off">
+        </div>
+        <div class="dd">
+          <button class="ctl-btn" id="filters-btn">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h10M4.5 7.5h6M6.5 11h2"/></svg>
+            Filters
+            <svg width="12" height="12" fill="none" stroke="#9ca3af" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5l3 3 3-3"/></svg>
+          </button>
+          <div class="menu" id="filters-menu">
+            <div class="menu-title">Status</div>
+            <div id="status-opts"></div>
+            <div class="menu-foot"><button id="filters-reset">Reset</button><button class="apply" id="filters-apply">Apply</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- APPLIED CHIPS -->
+      <div class="chips" id="chips"></div>
+
+      <!-- REGION 4 -->
+      <div class="controlbar">
+        <span class="result-count" id="result-count">Loading…</span>
+        <div class="controls">
+          <div class="dd">
+            <button class="mini-btn" id="sort-btn"><span class="lbl">Sort</span><span class="val" id="sort-val">Newest</span><svg width="11" height="11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3 3-3"/></svg></button>
+            <div class="menu right" id="sort-menu"></div>
+          </div>
+          <div class="dd">
+            <button class="mini-btn" id="density-btn"><span class="lbl">Density</span><span class="val" id="density-val">Default</span><svg width="11" height="11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3 3-3"/></svg></button>
+            <div class="menu right" id="density-menu"></div>
+          </div>
+          <div class="dd">
+            <button class="mini-btn" id="columns-btn"><span class="lbl">Columns</span><svg width="11" height="11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3 3-3"/></svg></button>
+            <div class="menu right" id="columns-menu"></div>
+          </div>
+          <div class="dd">
+            <button class="mini-btn" id="export-btn"><span class="lbl">Export</span><svg width="11" height="11" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3 3-3"/></svg></button>
+            <div class="menu right" id="export-menu">
+              <div class="menu-title">Export</div>
+              <button class="opt" data-export="csv">Export as CSV</button>
+              <button class="opt" data-export="pdf">Export as PDF</button>
+              <div style="padding:6px 8px;font:400 10px 'Manrope';color:#9ca3af">Coming soon</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TABLE -->
+      <div class="table">
+        <div class="thead" id="thead"></div>
+        <div class="tbody" id="tbody"></div>
+        <div class="pagination" id="pagination" style="display:none">
+          <span class="info" id="page-info"></span>
+          <button class="loadmore" id="loadmore">Load 50 more</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- SMART PREVIEW -->
+<div class="preview" id="preview"><div class="card" id="preview-card"></div></div>
+
+<!-- BULK TOOLBAR -->
+<div class="bulkbar" id="bulkbar">
+  <span class="sel" id="bulk-count">0 SELECTED</span>
+  <button class="clear" id="bulk-clear">✕ Clear</button>
+  <span class="vdiv"></span>
+  <button class="bulk-act" data-bulk="message"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="3" width="10" height="7" rx="1.5"/><path d="m1.5 4 5 3.2L11.5 4"/></svg>Send message</button>
+  <button class="bulk-act" data-bulk="assign"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="4.5" r="2.4"/><path d="M2.5 11.5c0-2.2 1.8-3.4 4-3.4s4 1.2 4 3.4"/></svg>Assign</button>
+  <button class="bulk-act" data-bulk="tags"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h4l6 6-4 4-6-6z"/><circle cx="4.5" cy="4.5" r="1"/></svg>Tags</button>
+  <button class="bulk-act" data-bulk="export"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1.5v7M4 5.5 7 8.5l3-3M2 10.5v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/></svg>Export</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { api, ensureAuth, formatINR } from '/_lib/api.js';
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()); // yyyy-mm-dd
+
+const COARSE_STATUSES = ['draft','quoted','confirmed','dispatched','active','returned','closed','cancelled'];
+
+const VIEW_DEFS = [
+  { key: 'todays_ops',  label: "Today's Ops",       preset: { status: ['confirmed','dispatched','active','returned'], late_only: false, from: TODAY, to: TODAY } },
+  { key: 'attention',   label: 'Attention Required', preset: { status: [], late_only: true,  from: '', to: '' } },
+  { key: 'all_active',  label: 'All Active',         preset: { status: ['confirmed','dispatched','active','returned'], late_only: false, from: '', to: '' } },
+  { key: 'pipeline',    label: 'Pipeline',           preset: { status: ['draft','quoted'], late_only: false, from: '', to: '' } },
+  { key: 'overdue',     label: 'Overdue',            preset: { status: [], late_only: true,  from: '', to: '' } },
+  { key: 'my_assigned', label: 'My Assigned',        preset: { status: ['confirmed','dispatched','active','returned'], late_only: false, from: '', to: '' } },
+  { key: 'archived',    label: 'Archived',           preset: { status: ['closed','cancelled'], late_only: false, from: '', to: '' } },
+];
+
+const SORTS = [
+  { key: 'created_at_desc',   label: 'Newest' },
+  { key: 'created_at_asc',    label: 'Oldest' },
+  { key: 'rental_start_asc',  label: 'Rental start ↑' },
+  { key: 'rental_start_desc', label: 'Rental start ↓' },
+  { key: 'order_number_desc', label: 'Order # ↓' },
+  { key: 'total_paise_desc',  label: 'Total ↓' },
+];
+
+const DENSITIES = [
+  { key: 'compact', label: 'Compact', h: '40px' },
+  { key: 'cozy',    label: 'Cozy',    h: '48px' },
+  { key: 'default', label: 'Default', h: '58px' },
+];
+
+const ALL_COLUMNS = [
+  { key: 'select',   w: '40px',                optional: false },
+  { key: 'order',    w: '96px',                optional: false, label: 'ORDER #' },
+  { key: 'customer', w: 'minmax(180px,1.25fr)',optional: false, label: 'CUSTOMER' },
+  { key: 'status',   w: '176px',               optional: false, label: 'STATUS' },
+  { key: 'pickup',   w: '116px',               optional: true,  label: 'PICKUP' },
+  { key: 'return',   w: '116px',               optional: true,  label: 'RETURN' },
+  { key: 'items',    w: '128px',               optional: true,  label: 'ITEMS' },
+  { key: 'total',    w: '104px',               optional: false, label: 'TOTAL' },
+  { key: 'payment',  w: '148px',               optional: true,  label: 'PAYMENT' },
+  { key: 'action',   w: '156px',               optional: true,  label: 'NEXT ACTION' },
+  { key: 'warn',     w: '44px',                optional: false },
+];
+
+const state = {
+  view: 'all_active',
+  q: '',
+  status: ['confirmed','dispatched','active','returned'],
+  from: '', to: '',
+  sort: 'created_at_desc',
+  late_only: false,
+  tag_ids: [],
+  page: 1,
+  limit: 50,
+  density: 'default',
+  hiddenCols: new Set(),
+};
+
+let orders = [];               // accumulated across load-more
+let pagination = { page: 1, limit: 50, total: 0, total_pages: 0 };
+const selected = new Set();
+let loading = false;
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+(async () => {
+  try {
+    const { user } = await ensureAuth();
+    document.getElementById('user-initials').textContent = initials(user?.name || user?.email || '');
+  } catch { return; }
+  buildViews();
+  buildStatusOpts();
+  buildSortMenu();
+  buildDensityMenu();
+  buildColumnsMenu();
+  wireDropdowns();
+  wireSearch();
+  wireBulk();
+  wirePreviewDismiss();
+  renderHeader();
+  load(true);
+})();
+
+// ---------------------------------------------------------------------------
+// Params + fetch
+// ---------------------------------------------------------------------------
+function buildParams() {
+  const p = new URLSearchParams();
+  if (state.q) p.set('q', state.q);
+  if (state.status.length) p.set('status', state.status.join(','));
+  if (state.from) p.set('from', state.from);
+  if (state.to) p.set('to', state.to);
+  if (state.sort) p.set('sort', state.sort);
+  if (state.late_only) p.set('late_only', '1');
+  p.set('page', String(state.page));
+  p.set('limit', String(state.limit));
+  for (const t of state.tag_ids) p.append('tag_ids', t);
+  return p;
+}
+
+async function load(reset) {
+  if (loading) return;
+  loading = true;
+  if (reset) { state.page = 1; orders = []; selected.clear(); renderBulk(); renderSkeleton(); }
+  document.getElementById('result-count').textContent = reset ? 'Loading…' : document.getElementById('result-count').textContent;
+  try {
+    const data = await api.get('/api/orders?' + buildParams().toString());
+    pagination = data.pagination || pagination;
+    orders = reset ? (data.orders || []) : orders.concat(data.orders || []);
+    renderRows();
+    renderPagination();
+    renderResultCount();
+    renderSubline();
+  } catch (err) {
+    renderError(err);
+  } finally {
+    loading = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Region 2 — views
+// ---------------------------------------------------------------------------
+function buildViews() {
+  const el = document.getElementById('views');
+  el.innerHTML = VIEW_DEFS.map(v =>
+    `<button class="view-chip${v.key === state.view ? ' active' : ''}" data-view="${v.key}">${escapeHtml(v.label)}</button>`
+  ).join('');
+  el.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => applyView(b.dataset.view)));
+}
+
+function applyView(key) {
+  const def = VIEW_DEFS.find(v => v.key === key);
+  if (!def) return;
+  state.view = key;
+  state.status = [...def.preset.status];
+  state.late_only = def.preset.late_only;
+  state.from = def.preset.from;
+  state.to = def.preset.to;
+  document.querySelectorAll('#views .view-chip').forEach(c => c.classList.toggle('active', c.dataset.view === key));
+  syncStatusOpts();
+  renderChips();
+  load(true);
+}
+
+// ---------------------------------------------------------------------------
+// Region 3 — filters / search / chips
+// ---------------------------------------------------------------------------
+function buildStatusOpts() {
+  document.getElementById('status-opts').innerHTML = COARSE_STATUSES.map(s =>
+    `<label><input type="checkbox" value="${s}"> ${escapeHtml(cap(s))}</label>`
+  ).join('');
+  syncStatusOpts();
+}
+function syncStatusOpts() {
+  document.querySelectorAll('#status-opts input').forEach(i => { i.checked = state.status.includes(i.value); });
+}
+function wireSearch() {
+  const input = document.getElementById('q');
+  let t = null;
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => { state.q = input.value.trim(); load(true); }, 300);
+  });
+}
+
+function renderChips() {
+  const el = document.getElementById('chips');
+  const chips = [];
+  for (const s of state.status) chips.push(`<span class="fchip"><span class="x" data-rm-status="${s}">✕</span> Status: ${escapeHtml(cap(s))}</span>`);
+  if (state.late_only) chips.push(`<span class="fchip"><span class="x" data-rm="late">✕</span> Overdue only</span>`);
+  if (state.from || state.to) chips.push(`<span class="fchip"><span class="x" data-rm="dates">✕</span> Dates: ${escapeHtml(state.from || '…')} → ${escapeHtml(state.to || '…')}</span>`);
+  if (state.q) chips.push(`<span class="fchip"><span class="x" data-rm="q">✕</span> “${escapeHtml(state.q)}”</span>`);
+  if (chips.length) chips.push(`<button class="clear-all" id="clear-all">Clear all filters</button>`);
+  el.innerHTML = chips.join('');
+  el.querySelectorAll('[data-rm-status]').forEach(x => x.addEventListener('click', () => {
+    state.status = state.status.filter(s => s !== x.dataset.rmStatus); syncStatusOpts(); renderChips(); load(true);
+  }));
+  el.querySelectorAll('[data-rm]').forEach(x => x.addEventListener('click', () => {
+    const k = x.dataset.rm;
+    if (k === 'late') state.late_only = false;
+    if (k === 'dates') { state.from = ''; state.to = ''; }
+    if (k === 'q') { state.q = ''; document.getElementById('q').value = ''; }
+    renderChips(); load(true);
+  }));
+  const ca = document.getElementById('clear-all');
+  if (ca) ca.addEventListener('click', () => {
+    state.status = []; state.late_only = false; state.from = ''; state.to = '';
+    state.q = ''; document.getElementById('q').value = '';
+    syncStatusOpts(); renderChips(); load(true);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Region 4 — control dropdowns
+// ---------------------------------------------------------------------------
+function buildSortMenu() {
+  document.getElementById('sort-menu').innerHTML =
+    `<div class="menu-title">Sort by</div>` +
+    SORTS.map(s => `<button class="opt${s.key === state.sort ? ' sel' : ''}" data-sort="${s.key}">${escapeHtml(s.label)}</button>`).join('');
+  document.querySelectorAll('#sort-menu [data-sort]').forEach(b => b.addEventListener('click', () => {
+    state.sort = b.dataset.sort;
+    document.getElementById('sort-val').textContent = SORTS.find(s => s.key === state.sort).label;
+    buildSortMenu(); closeMenus(); load(true);
+  }));
+}
+function buildDensityMenu() {
+  document.getElementById('density-menu').innerHTML =
+    `<div class="menu-title">Row height</div>` +
+    DENSITIES.map(d => `<button class="opt${d.key === state.density ? ' sel' : ''}" data-density="${d.key}">${escapeHtml(d.label)}</button>`).join('');
+  document.querySelectorAll('#density-menu [data-density]').forEach(b => b.addEventListener('click', () => {
+    state.density = b.dataset.density;
+    const d = DENSITIES.find(x => x.key === state.density);
+    document.documentElement.style.setProperty('--row-h', d.h);
+    document.getElementById('density-val').textContent = d.label;
+    buildDensityMenu(); closeMenus();
+  }));
+}
+function buildColumnsMenu() {
+  const optional = ALL_COLUMNS.filter(c => c.optional);
+  document.getElementById('columns-menu').innerHTML =
+    `<div class="menu-title">Show columns</div>` +
+    optional.map(c => `<label><input type="checkbox" data-col="${c.key}" ${state.hiddenCols.has(c.key) ? '' : 'checked'}> ${escapeHtml(c.label)}</label>`).join('');
+  document.querySelectorAll('#columns-menu [data-col]').forEach(cb => cb.addEventListener('change', () => {
+    if (cb.checked) state.hiddenCols.delete(cb.dataset.col); else state.hiddenCols.add(cb.dataset.col);
+    renderHeader(); renderRows();
+  }));
+}
+function wireDropdowns() {
+  const map = [
+    ['filters-btn', 'filters-menu'],
+    ['sort-btn', 'sort-menu'],
+    ['density-btn', 'density-menu'],
+    ['columns-btn', 'columns-menu'],
+    ['export-btn', 'export-menu'],
+  ];
+  for (const [btn, menu] of map) {
+    document.getElementById(btn).addEventListener('click', (e) => {
+      e.stopPropagation();
+      const m = document.getElementById(menu);
+      const wasOpen = m.classList.contains('open');
+      closeMenus();
+      if (!wasOpen) m.classList.add('open');
+    });
+  }
+  document.getElementById('filters-apply').addEventListener('click', () => {
+    state.status = [...document.querySelectorAll('#status-opts input:checked')].map(i => i.value);
+    closeMenus(); renderChips(); load(true);
+  });
+  document.getElementById('filters-reset').addEventListener('click', () => {
+    document.querySelectorAll('#status-opts input').forEach(i => { i.checked = false; });
+  });
+  document.querySelectorAll('#export-menu [data-export]').forEach(b => b.addEventListener('click', () => {
+    closeMenus(); toast('Export is coming soon');
+  }));
+  document.addEventListener('click', closeMenus);
+}
+function closeMenus() { document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open')); }
+document.querySelectorAll('.menu').forEach(m => m.addEventListener('click', e => e.stopPropagation()));
+
+// ---------------------------------------------------------------------------
+// Table rendering
+// ---------------------------------------------------------------------------
+function enabledCols() { return ALL_COLUMNS.filter(c => !state.hiddenCols.has(c.key)); }
+function gridTemplate() { return enabledCols().map(c => c.w).join(' '); }
+
+function renderHeader() {
+  const el = document.getElementById('thead');
+  el.style.gridTemplateColumns = gridTemplate();
+  el.innerHTML = enabledCols().map(c => {
+    if (c.key === 'select') {
+      return `<div class="cell center"><span class="cbox" id="select-all"><svg width="10" height="10" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 5l2.5 2.5 4.5-5"/></svg></span></div>`;
+    }
+    if (c.key === 'warn') {
+      return `<div class="cell center"><svg width="14" height="14" fill="none" stroke="#cfcbc3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2 13 12H1z"/><path d="M7 6v3M7 11v.1"/></svg></div>`;
+    }
+    return `<div class="hcell">${escapeHtml(c.label || '')}</div>`;
+  }).join('');
+  const sa = document.getElementById('select-all');
+  if (sa) sa.addEventListener('click', toggleSelectAll);
+  syncSelectAll();
+}
+
+function renderSkeleton() {
+  const el = document.getElementById('tbody');
+  const cols = enabledCols().length;
+  el.innerHTML = Array.from({ length: 8 }).map(() =>
+    `<div class="skel" style="grid-template-columns:${gridTemplate()}">` +
+    Array.from({ length: cols }).map(() => `<div class="bar" style="width:${40 + Math.floor(Math.random() * 45)}%"></div>`).join('') +
+    `</div>`
+  ).join('');
+  document.getElementById('pagination').style.display = 'none';
+}
+
+function renderRows() {
+  const el = document.getElementById('tbody');
+  if (!orders.length) { renderEmpty(); return; }
+  const tmpl = gridTemplate();
+  el.innerHTML = orders.map(o => rowHtml(o, tmpl)).join('');
+  // Row click → detail
+  el.querySelectorAll('.orow').forEach(row => {
+    const id = row.dataset.id;
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('[data-stop]')) return;
+      window.location.href = `/order-360.html?id=${encodeURIComponent(id)}`;
+    });
+    row.addEventListener('mouseenter', () => previewEnter(id, row));
+    row.addEventListener('mouseleave', previewLeave);
+  });
+  // checkboxes
+  el.querySelectorAll('.row-check').forEach(cb => cb.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const id = cb.dataset.id;
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    cb.classList.toggle('on', selected.has(id));
+    renderBulk(); syncSelectAll();
+  }));
+  // next-action buttons
+  el.querySelectorAll('.act-btn:not(.blocked)').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    window.location.href = `/order-360.html?id=${encodeURIComponent(b.dataset.id)}`;
+  }));
+  el.querySelectorAll('.act-btn.blocked').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); toast(b.dataset.reason || 'Action unavailable'); }));
+}
+
+function rowHtml(o, tmpl) {
+  const flag = rowFlag(o);
+  const cancelled = o.aggregate_status === 'cancelled';
+  const cells = enabledCols().map(c => cellHtml(c.key, o)).join('');
+  return `<div class="orow${flag ? ' flag-' + flag : ''}${cancelled ? ' cancelled' : ''}" data-id="${escapeAttr(o.id)}" style="grid-template-columns:${tmpl}">${cells}</div>`;
+}
+
+function cellHtml(key, o) {
+  switch (key) {
+    case 'select': {
+      const on = selected.has(o.id);
+      return `<div class="cell center"><span class="cbox row-check${on ? ' on' : ''}" data-stop data-id="${escapeAttr(o.id)}"><svg width="10" height="10" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 5l2.5 2.5 4.5-5"/></svg></span></div>`;
+    }
+    case 'order':
+      return `<div class="cell"><span class="ocode">#${escapeHtml(String(o.order_number))}</span></div>`;
+    case 'customer': {
+      const tags = Array.isArray(o.tags) ? o.tags : [];
+      const isVip = tags.some(t => /vip/i.test(t.name || ''));
+      const tagChips = tags.filter(t => !/vip/i.test(t.name || '')).slice(0, 2).map(t =>
+        `<span class="tag-chip" style="color:${tagColor(t.color)};background:${tagColor(t.color)}22">${escapeHtml(t.name)}</span>`).join('');
+      return `<div class="cell"><div class="cust">` +
+        `<span class="av">${escapeHtml(initials(o.customer_name))}</span>` +
+        `<span class="nm">${escapeHtml(o.customer_name || 'Unknown')}</span>` +
+        (isVip ? `<span class="vip">VIP</span>` : '') +
+        (tagChips ? `<span class="tag-chips">${tagChips}</span>` : '') +
+        `</div></div>`;
+    }
+    case 'status':
+      return `<div class="cell">${statusPill(o)}</div>`;
+    case 'pickup':
+      return `<div class="cell">${dateCell(o.rental_start, o.dispatch_type === 'delivery' ? 'DELIVERY' : '')}</div>`;
+    case 'return':
+      return `<div class="cell">${dateCell(o.rental_end, '')}</div>`;
+    case 'items': {
+      const n = Number(o.item_count || 0);
+      const sub = itemsSub(o);
+      return `<div class="cell"><div class="items-main">${n ? n + (n === 1 ? ' item' : ' items') : '—'}</div>` +
+        (sub ? `<div class="items-sub ${sub.color}">${escapeHtml(sub.text)}</div>` : '') + `</div>`;
+    }
+    case 'total': {
+      const zero = Number(o.total_paise || 0) <= 0;
+      return `<div class="cell"><span class="money${zero ? ' zero' : ''}">${formatINR(o.total_paise || 0)}</span></div>`;
+    }
+    case 'payment': {
+      const p = payment(o);
+      return `<div class="cell">${p ? `<span class="pill ${p.cat}"><span class="dot"></span>${escapeHtml(p.label)}</span>` : `<span class="dash">—</span>`}</div>`;
+    }
+    case 'action': {
+      const a = nextAction(o);
+      if (!a) return `<div class="cell"><span class="dash">—</span></div>`;
+      if (a.blocked) return `<div class="cell"><button class="act-btn blocked" data-stop data-reason="${escapeAttr(a.reason)}">${escapeHtml(a.label)} <span aria-hidden="true">ⓘ</span></button></div>`;
+      return `<div class="cell"><button class="act-btn${a.kind === 'primary' ? ' primary' : ''}" data-stop data-id="${escapeAttr(o.id)}">${escapeHtml(a.label)}</button></div>`;
+    }
+    case 'warn': {
+      const flag = rowFlag(o);
+      if (!flag) return `<div class="cell center"></div>`;
+      const col = flag === 'danger' ? 'var(--danger)' : 'var(--attention)';
+      return `<div class="cell center"><svg width="15" height="15" fill="none" stroke="${col}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 2 14 13H1z"/><path d="M7.5 6.5v3M7.5 11.4v.1"/></svg></div>`;
+    }
+    default:
+      return `<div class="cell"></div>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Derivations
+// ---------------------------------------------------------------------------
+const STATUS_CAT = {
+  draft: 'neutral', quoted: 'info', confirmed: 'success',
+  allocated: 'progress', partially_dispatched: 'progress', fully_dispatched: 'progress',
+  partial_return: 'progress', awaiting_inspection: 'progress',
+  ready_to_close: 'success', closed: 'success', cancelled: 'danger',
+};
+const STATUS_LABEL = {
+  fully_dispatched: 'FULLY ON RENT',
+  partially_dispatched: 'PARTIALLY DISPATCHED',
+  awaiting_inspection: 'AWAITING INSPECTION',
+  ready_to_close: 'READY TO CLOSE',
+  partial_return: 'PARTIAL RETURN',
+};
+function statusPill(o) {
+  const st = o.aggregate_status || o.status || 'draft';
+  const cat = STATUS_CAT[st] || 'neutral';
+  const label = STATUS_LABEL[st] || st.replace(/_/g, ' ').toUpperCase();
+  const c = o.aggregate_status_context;
+  let count = null;
+  if (c) count = (c.dispatched != null ? c.dispatched : (c.returned != null ? c.returned : null));
+  const showCount = c && count != null && c.total && count < c.total;
+  return `<span class="pill ${cat}"><span class="dot"></span>${escapeHtml(label)}` +
+    (showCount ? `<span class="div"></span><span class="cnt">${count}/${c.total}</span>` : '') + `</span>`;
+}
+
+function itemsSub(o) {
+  const c = o.aggregate_status_context;
+  if (!c) return null;
+  const st = o.aggregate_status;
+  if ((st === 'partially_dispatched' || st === 'fully_dispatched') && c.dispatched != null)
+    return { text: `${c.dispatched} dispatched`, color: 'progress' };
+  if (st === 'partial_return' && c.total != null && c.returned != null)
+    return { text: `${Math.max(0, c.total - c.returned)} pending return`, color: 'attention' };
+  if (st === 'awaiting_inspection' && c.returned != null)
+    return { text: `${c.returned} to inspect`, color: 'attention' };
+  return null;
+}
+
+function payment(o) {
+  const total = Number(o.total_paise || 0);
+  const paid = Number(o.paid_paise || 0);
+  const bal = Number(o.balance_paise || 0);
+  if (total <= 0) return null;
+  if (bal <= 0) return { label: 'PAID', cat: 'success' };
+  if (paid > 0) return { label: `PARTIAL ${Math.round((paid / total) * 100)}%`, cat: 'info' };
+  return { label: 'PENDING', cat: 'attention' };
+}
+
+const NEXT_ACTION = {
+  draft: { label: 'Edit', kind: 'secondary' },
+  quoted: { label: 'Send Reminder', kind: 'secondary' },
+  confirmed: { label: 'Prepare Dispatch', kind: 'primary', needsItems: true },
+  allocated: { label: 'Dispatch', kind: 'primary', needsItems: true },
+  partially_dispatched: { label: 'Dispatch rest', kind: 'primary' },
+  fully_dispatched: { label: 'Mark Returned', kind: 'secondary' },
+  partial_return: { label: 'Return remaining', kind: 'secondary' },
+  awaiting_inspection: { label: 'Inspect', kind: 'primary' },
+  ready_to_close: { label: 'Generate Invoice', kind: 'primary' },
+  closed: null, cancelled: null,
+};
+function nextAction(o) {
+  const def = NEXT_ACTION[o.aggregate_status];
+  if (def === null || def === undefined) return null;
+  if (def.needsItems && Number(o.item_count || 0) === 0)
+    return { label: 'Add items', kind: 'secondary', blocked: true, reason: 'Add line items before dispatch' };
+  return def;
+}
+
+function rowFlag(o) {
+  if (o.is_late) return 'danger';
+  const bal = Number(o.balance_paise || 0);
+  if (o.aggregate_status === 'awaiting_inspection' || o.aggregate_status === 'partial_return') return 'attention';
+  if (bal > 0 && o.rental_end && new Date(o.rental_end) < new Date()) return 'attention';
+  return '';
+}
+
+// ---------------------------------------------------------------------------
+// Pagination / counts / states
+// ---------------------------------------------------------------------------
+function renderPagination() {
+  const el = document.getElementById('pagination');
+  if (!orders.length) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  const shown = orders.length;
+  document.getElementById('page-info').innerHTML =
+    `Showing <span class="mono">1-${shown}</span> of <span class="mono">${pagination.total}</span>`;
+  const btn = document.getElementById('loadmore');
+  const more = shown < pagination.total;
+  btn.style.display = more ? '' : 'none';
+  btn.onclick = () => { if (loading) return; state.page += 1; btn.disabled = true; load(false).then(() => { btn.disabled = false; }); };
+}
+function renderResultCount() {
+  const n = pagination.total;
+  document.getElementById('result-count').textContent = `${n} order${n === 1 ? '' : 's'}`;
+}
+function renderSubline() {
+  const v = VIEW_DEFS.find(x => x.key === state.view);
+  document.getElementById('subline').textContent = `${pagination.total} order${pagination.total === 1 ? '' : 's'} · ${v ? v.label : 'All Active'}`;
+}
+function renderEmpty() {
+  document.getElementById('tbody').innerHTML =
+    `<div class="state"><div class="icon"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="16" height="15" rx="2"/><path d="M3 8h16M8 2v4M14 2v4"/></svg></div>` +
+    `<div class="title">No orders found</div><div class="desc">Try a different view or clear your filters.</div></div>`;
+  document.getElementById('pagination').style.display = 'none';
+}
+function renderError(err) {
+  document.getElementById('tbody').innerHTML =
+    `<div class="state"><div class="icon" style="color:var(--danger)"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3 20 19H2z"/><path d="M11 9v4M11 16v.1"/></svg></div>` +
+    `<div class="title">Couldn’t load orders</div><div class="desc">${escapeHtml(err?.body?.error || err?.message || 'Something went wrong')}</div></div>`;
+  document.getElementById('result-count').textContent = 'Error';
+  document.getElementById('pagination').style.display = 'none';
+}
+
+// ---------------------------------------------------------------------------
+// Bulk selection
+// ---------------------------------------------------------------------------
+function wireBulk() {
+  document.getElementById('bulk-clear').addEventListener('click', () => {
+    selected.clear();
+    document.querySelectorAll('.row-check.on').forEach(c => c.classList.remove('on'));
+    renderBulk(); syncSelectAll();
+  });
+  document.querySelectorAll('#bulkbar [data-bulk]').forEach(b => b.addEventListener('click', () =>
+    toast(`${cap(b.dataset.bulk)} for ${selected.size} order${selected.size === 1 ? '' : 's'} — coming soon`)));
+}
+function toggleSelectAll() {
+  const all = orders.length > 0 && orders.every(o => selected.has(o.id));
+  if (all) orders.forEach(o => selected.delete(o.id));
+  else orders.forEach(o => selected.add(o.id));
+  document.querySelectorAll('.row-check').forEach(cb => cb.classList.toggle('on', selected.has(cb.dataset.id)));
+  renderBulk(); syncSelectAll();
+}
+function syncSelectAll() {
+  const sa = document.getElementById('select-all');
+  if (!sa) return;
+  sa.classList.toggle('on', orders.length > 0 && orders.every(o => selected.has(o.id)));
+}
+function renderBulk() {
+  const bar = document.getElementById('bulkbar');
+  document.getElementById('bulk-count').textContent = `${selected.size} SELECTED`;
+  bar.classList.toggle('show', selected.size > 0);
+}
+
+// ---------------------------------------------------------------------------
+// Smart preview
+// ---------------------------------------------------------------------------
+let pvEnterTimer = null, pvLeaveTimer = null, pvOverPanel = false;
+function wirePreviewDismiss() {
+  const pv = document.getElementById('preview');
+  pv.addEventListener('mouseenter', () => { pvOverPanel = true; clearTimeout(pvLeaveTimer); });
+  pv.addEventListener('mouseleave', () => { pvOverPanel = false; previewLeave(); });
+  document.querySelector('.scroll').addEventListener('scroll', hidePreview, true);
+  window.addEventListener('scroll', hidePreview, true);
+}
+function previewEnter(id, row) {
+  clearTimeout(pvLeaveTimer);
+  clearTimeout(pvEnterTimer);
+  pvEnterTimer = setTimeout(() => {
+    const o = orders.find(x => x.id === id);
+    if (!o) return;
+    showPreview(o, row);
+  }, 400);
+}
+function previewLeave() {
+  clearTimeout(pvEnterTimer);
+  clearTimeout(pvLeaveTimer);
+  pvLeaveTimer = setTimeout(() => { if (!pvOverPanel) hidePreview(); }, 200);
+}
+function hidePreview() { document.getElementById('preview').classList.remove('show'); }
+
+function showPreview(o, row) {
+  const pv = document.getElementById('preview');
+  document.getElementById('preview-card').innerHTML = previewHtml(o);
+  pv.classList.add('show');
+  // position: to the right of the row, flip if near edge
+  const r = row.getBoundingClientRect();
+  const w = 380, h = pv.offsetHeight || 340;
+  let left = r.right + 12;
+  if (left + w > window.innerWidth - 12) left = r.left - w - 12;
+  if (left < 12) left = 12;
+  let top = r.top;
+  if (top + h > window.innerHeight - 12) top = window.innerHeight - h - 12;
+  if (top < 12) top = 12;
+  pv.style.left = left + 'px';
+  pv.style.top = top + 'px';
+}
+
+function previewHtml(o) {
+  const st = o.aggregate_status || o.status;
+  const cat = STATUS_CAT[st] || 'neutral';
+  const label = STATUS_LABEL[st] || st.replace(/_/g, ' ').toUpperCase();
+  const p = payment(o);
+  const depMap = { held: 'HELD', pending: 'PENDING', released: 'RELEASED', partial_forfeited: 'PART. FORFEIT', fully_forfeited: 'FORFEITED', none: '—' };
+  const dep = depMap[o.deposit_status] || '—';
+  const hints = [];
+  if (o.is_late) hints.push(`<div class="pv-hint danger"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1.5 12.5 11H.5z"/><path d="M6.5 5v3M6.5 9.5v.1"/></svg>Return overdue — follow up now</div>`);
+  const bal = Number(o.balance_paise || 0);
+  if (bal > 0) hints.push(`<div class="pv-hint attention"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="6.5" r="5.5"/><path d="M6.5 4v3M6.5 9.5v.1"/></svg>Balance due ${formatINR(bal)}</div>`);
+  // micro-timeline nodes
+  const na = nextAction(o);
+  const tl = `<div class="pv-tl">
+      <div class="pv-node"><span class="pv-dot" style="background:var(--success)">✓</span><span class="cap" style="color:var(--success)">CREATED</span><span class="sub">${escapeHtml(fmtDate(o.created_at) || '—')}</span></div>
+      <div class="pv-line" style="background:var(--${cat})"></div>
+      <div class="pv-node"><span class="pv-dot" style="background:var(--${cat})"></span><span class="cap" style="color:var(--${cat})">${escapeHtml(label)}</span><span class="sub">current</span></div>
+      <div class="pv-line"></div>
+      <div class="pv-node"><span class="pv-dot" style="background:#fff;border:2px solid #d2cec6"></span><span class="cap" style="color:#9ca3af">${escapeHtml(na ? na.label.toUpperCase() : 'CLOSE')}</span><span class="sub">next</span></div>
+    </div>`;
+  return `
+    <div class="pv-head">
+      <span class="av">${escapeHtml(initials(o.customer_name))}</span>
+      <div class="who"><div class="pv-name">${escapeHtml(o.customer_name || 'Unknown')}</div><div class="pv-sub">${escapeHtml(o.customer_phone || 'No phone on file')}</div></div>
+      <span class="pill ${cat}"><span class="dot"></span>${escapeHtml(label)}</span>
+    </div>
+    <div class="pv-grid">
+      <div class="pv-kv"><div class="k">RENTAL</div><div class="v">${escapeHtml(fmtDate(o.rental_start) || '—')} → ${escapeHtml(fmtDate(o.rental_end) || '—')}</div></div>
+      <div class="pv-kv"><div class="k">TOTAL</div><div class="v">${formatINR(o.total_paise || 0)}</div></div>
+      <div class="pv-kv"><div class="k">PAYMENT</div><div class="v" style="color:${p ? 'var(--' + p.cat + ')' : 'var(--head)'}">${p ? escapeHtml(p.label) : '—'}</div></div>
+      <div class="pv-kv"><div class="k">DEPOSIT</div><div class="v">${escapeHtml(dep)}</div></div>
+    </div>
+    ${tl}
+    ${hints.length ? `<div class="pv-hints">${hints.join('')}</div>` : ''}
+    <div class="pv-foot">
+      <div class="row">
+        ${o.customer_phone ? `<a class="pv-sec" href="tel:${escapeAttr(o.customer_phone)}">Call customer</a>` : `<a class="pv-sec" href="/order-360.html?id=${escapeAttr(o.id)}">View items</a>`}
+        <a class="pv-open" href="/order-360.html?id=${escapeAttr(o.id)}">Open order</a>
+      </div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Toast
+// ---------------------------------------------------------------------------
+let toastTimer = null;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ---------------------------------------------------------------------------
+// Formatters + utils
+// ---------------------------------------------------------------------------
+const _fmtDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' });
+const _fmtTime = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+function fmtDate(iso) { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : _fmtDate.format(d); }
+function fmtTime(iso) { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : _fmtTime.format(d); }
+function dateCell(iso, tag) {
+  const d = fmtDate(iso), t = fmtTime(iso);
+  if (!d) return `<div class="dt-main">—</div>`;
+  return `<div class="dt-main">${escapeHtml(d)}</div><div class="dt-sub">${escapeHtml(t)}</div>` +
+    (tag ? `<div class="dt-tag">${escapeHtml(tag)}</div>` : '');
+}
+function initials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '??';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+function cap(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' '); }
+const TAG_COLORS = { red: '#dc2626', orange: '#d97706', yellow: '#ca8a04', green: '#059669', blue: '#2563eb', pink: '#be185d', gray: '#6b7280' };
+function tagColor(c) { return TAG_COLORS[c] || '#6b7280'; }
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function escapeAttr(s) { return escapeHtml(s); }
+</script>
+</body>
+</html>
