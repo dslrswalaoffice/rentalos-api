@@ -40,12 +40,22 @@ async function request(path, opts = {}) {
   return body;
 }
 
+// Slice 1 — a UUID-v4 Idempotency-Key per mutating call so a double-tap / retry
+// on a flaky network never duplicates a dispatch/return/payment. Pass an explicit
+// `key` to keep it stable across retries of the SAME user action.
+export const newIdempotencyKey = () =>
+  (crypto?.randomUUID ? crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0; return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+      }));
+const idem = (key) => ({ 'Idempotency-Key': key || newIdempotencyKey() });
+
 export const api = {
-  get:    (path)         => request(path, { method: 'GET' }),
-  post:   (path, body)   => request(path, { method: 'POST',   body: JSON.stringify(body) }),
-  patch:  (path, body)   => request(path, { method: 'PATCH',  body: JSON.stringify(body) }),
-  put:    (path, body)   => request(path, { method: 'PUT',    body: JSON.stringify(body) }),
-  del:    (path)         => request(path, { method: 'DELETE' }),
+  get:    (path)              => request(path, { method: 'GET' }),
+  post:   (path, body, o = {}) => request(path, { method: 'POST',   body: JSON.stringify(body), headers: idem(o.key) }),
+  patch:  (path, body, o = {}) => request(path, { method: 'PATCH',  body: JSON.stringify(body), headers: idem(o.key) }),
+  put:    (path, body, o = {}) => request(path, { method: 'PUT',    body: JSON.stringify(body), headers: idem(o.key) }),
+  del:    (path, o = {})        => request(path, { method: 'DELETE', headers: idem(o.key) }),
 };
 
 /**

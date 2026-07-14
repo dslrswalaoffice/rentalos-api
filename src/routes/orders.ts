@@ -23,6 +23,9 @@ import {
   type SessionWorkspace,
 } from '../middleware/session.js';
 import { requirePermission, can } from '../lib/permissions.js';
+import { deriveAggregateStatus, aggregateInputFromLoaded } from '../lib/aggregate_status.js';
+import { orderBlock, reason as reasonB } from '../lib/blocked_action.js';
+import { idempotencyMiddleware } from '../lib/idempotency.js';
 
 // ============================================================================
 // src/routes/orders.ts
@@ -57,6 +60,9 @@ type Env = {
 
 export const orders = new Hono<Env>();
 orders.use('*', sessionMiddleware, requireAuth);
+// Slice 1 — idempotency for mutating routes (enforced-when-present; GET exempt).
+// Runs after the session is established so it can scope records by workspace+user.
+orders.use('*', idempotencyMiddleware);
 
 // ----------------------------------------------------------------------------
 // State machine (advisory — recorded, not enforced)
@@ -660,9 +666,25 @@ orders.get('/', async (c) => {
           AND oi.workspace_id = o.workspace_id
           AND oi.status::text = 'dispatched'
       )) AS is_late,
+      -- Slice 1 — per-order item-status counts for aggregate_status derivation.
+      ic.total_rental, ic.pending_dispatch, ic.dispatched_cnt, ic.returned_cnt, ic.terminal_cnt,
+      ic.item_count,
+      EXISTS (SELECT 1 FROM order_assets oa
+              WHERE oa.order_id = o.id AND oa.workspace_id = o.workspace_id) AS has_assets,
       COUNT(*) OVER()::int AS full_total
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*)::int AS item_count,
+        COUNT(*) FILTER (WHERE oi.item_type = 'rental')::int AS total_rental,
+        COUNT(*) FILTER (WHERE oi.item_type = 'rental' AND oi.status::text = 'pending_dispatch')::int AS pending_dispatch,
+        COUNT(*) FILTER (WHERE oi.item_type = 'rental' AND oi.status::text = 'dispatched')::int AS dispatched_cnt,
+        COUNT(*) FILTER (WHERE oi.item_type = 'rental' AND oi.status::text IN ('returned','returned_with_damage'))::int AS returned_cnt,
+        COUNT(*) FILTER (WHERE oi.item_type = 'rental' AND oi.status::text IN ('returned','returned_with_damage','not_returned_chargeable','not_returned_non_chargeable','missing'))::int AS terminal_cnt
+      FROM order_items oi
+      WHERE oi.order_id = o.id AND oi.workspace_id = o.workspace_id
+    ) ic ON true
     WHERE o.workspace_id = ${session.workspace.id}
       AND o.deleted_at IS NULL
       AND (${statusCsv}::text IS NULL
@@ -735,6 +757,34 @@ orders.get('/', async (c) => {
   for (const r of rows) delete (r as Partial<{ full_total: number }>).full_total;
   const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
+  // Slice 1 — derive aggregate_status per row from the LATERAL counts, then strip
+  // the raw count columns (keep item_count, which the list UI shows).
+  type CountedRow = OrderRow & {
+    total_rental: number; pending_dispatch: number; dispatched_cnt: number;
+    returned_cnt: number; terminal_cnt: number; has_assets: boolean; item_count: number;
+    aggregate_status?: string; aggregate_status_context?: unknown;
+  };
+  for (const r of rows as CountedRow[]) {
+    const agg = deriveAggregateStatus({
+      order_status: r.status,
+      total_rental: Number(r.total_rental ?? 0),
+      pending_dispatch: Number(r.pending_dispatch ?? 0),
+      dispatched: Number(r.dispatched_cnt ?? 0),
+      returned: Number(r.returned_cnt ?? 0),
+      terminal: Number(r.terminal_cnt ?? 0),
+      has_assets: !!r.has_assets,
+      payment_complete: Number(r.balance_paise ?? 0) <= 0,
+    });
+    r.aggregate_status = agg.aggregate_status;
+    r.aggregate_status_context = agg.aggregate_status_context;
+    delete (r as Partial<CountedRow>).total_rental;
+    delete (r as Partial<CountedRow>).pending_dispatch;
+    delete (r as Partial<CountedRow>).dispatched_cnt;
+    delete (r as Partial<CountedRow>).returned_cnt;
+    delete (r as Partial<CountedRow>).terminal_cnt;
+    delete (r as Partial<CountedRow>).has_assets;
+  }
+
   // Batch-load tag chips for this page (Sub-turn 8a).
   const tagMap = await loadTagsForEntities(session.workspace.id, 'order', rows.map((r) => r.id));
   for (const r of rows) (r as OrderRow & { tags: unknown }).tags = tagMap.get(r.id) ?? [];
@@ -787,10 +837,16 @@ orders.get('/:id', async (c) => {
   const canFinalize = deriveCanFinalize(items);
   // Physical units pinned to this order (Sub-turn 12b) — empty until dispatch.
   const orderAssets = await loadOrderAssets(id, session.workspace.id);
+  // Slice 1 — aggregate status derived from item micro-lifecycle counts.
+  const aggregate = deriveAggregateStatus(
+    aggregateInputFromLoaded(order, items as { item_type: string; status: string }[], orderAssets.length > 0),
+  );
   return c.json({
     order, items, events, can_finalize: canFinalize, custom_fields: customFields, tags,
     coupon_redemption: redemption[0] ?? null,
     assets: orderAssets,
+    aggregate_status: aggregate.aggregate_status,
+    aggregate_status_context: aggregate.aggregate_status_context,
   });
 });
 
@@ -1695,10 +1751,15 @@ orders.post('/:id/extend', requirePermission('orders.edit'), async (c) => {
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
   if (!EXTENDABLE_STATUSES.includes(order.status)) {
-    return c.json({ error: 'not_extendable', status: order.status }, 409);
+    return c.json(orderBlock('EXTEND_BLOCKED', 'Cannot extend this order', [
+      reasonB('lifecycle_state', 'NOT_EXTENDABLE',
+        `An order in "${order.status}" can't be extended (allowed: ${EXTENDABLE_STATUSES.join(', ')})`),
+    ]), 409);
   }
   if (!order.rental_end) {
-    return c.json({ error: 'not_extendable', reason: 'no_rental_end' }, 409);
+    return c.json(orderBlock('EXTEND_BLOCKED', 'Cannot extend this order', [
+      reasonB('data_prerequisite', 'NO_RENTAL_END', 'This order has no rental end date to extend from'),
+    ]), 409);
   }
 
   const oldEnd = new Date(order.rental_end);
@@ -1984,7 +2045,9 @@ orders.post('/:id/transitions', async (c) => {
         ? 'orders.revert_status'
         : 'orders.edit';
   if (!can(session, neededPerm)) {
-    return c.json({ error: 'forbidden', required_permission: [neededPerm] }, 403);
+    return c.json(orderBlock('TRANSITION_BLOCKED', `Cannot move this order to "${to}"`, [
+      reasonB('permission', 'PERMISSION_DENIED', `Your role can't perform this transition (needs ${neededPerm})`),
+    ]), 403);
   }
 
   let canonical = isCanonical(order.status, to);
@@ -2148,7 +2211,9 @@ orders.post('/:id/dispatch', requirePermission('dispatch.execute'), async (c) =>
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
   if (order.status === 'closed' || order.status === 'cancelled') {
-    return c.json({ error: 'order_locked' }, 409);
+    return c.json(orderBlock('DISPATCH_BLOCKED', 'Cannot dispatch this order', [
+      reasonB('terminal_state', 'ORDER_LOCKED', `This order is ${order.status} and can no longer be dispatched`),
+    ]), 409);
   }
 
   const allItems = await loadItems(id);
@@ -2487,7 +2552,9 @@ orders.post('/:id/return', requirePermission('returns.execute'), async (c) => {
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
   if (order.status === 'closed' || order.status === 'cancelled') {
-    return c.json({ error: 'order_locked' }, 409);
+    return c.json(orderBlock('RETURN_BLOCKED', 'Cannot process a return for this order', [
+      reasonB('terminal_state', 'ORDER_LOCKED', `This order is ${order.status} and can no longer accept returns`),
+    ]), 409);
   }
 
   const allItems = await loadItems(id);
