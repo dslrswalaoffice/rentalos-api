@@ -50,6 +50,9 @@ async function loadStandby(id: string, workspaceId: string) {
 // ----------------------------------------------------------------------------
 // POST /api/standbys — create a standby (backing order + soft-reserved lines).
 // ----------------------------------------------------------------------------
+// CANONICAL contract (Orders Module Pack shape). This is the source of truth —
+// contract tests assert against it directly, and it deliberately does NOT accept
+// the core-order aliases (see TECH_DEBT.md → "Order field-name convention drift").
 export const standbyCreateSchema = z.object({
   customer_id: z.string().uuid(),
   rental_start_at: z.string().datetime(),
@@ -62,11 +65,33 @@ export const standbyCreateSchema = z.object({
   pickup_location_id: z.string().uuid().optional(),
 });
 
+// COMPATIBILITY NET (TECH_DEBT.md): the rest of the app speaks the core-order
+// shape (customer_person_id / rental_start / rental_end / internal_notes). This
+// preprocess maps those aliases onto the canonical keys BEFORE validation, but
+// only when the canonical key is absent — an explicit canonical value always
+// wins. Mirrors what POST /api/orders/:id/extend already does with
+// new_rental_end / new_rental_end_at. Remove once the drift is reconciled.
+const CORE_ALIASES: Record<string, string> = {
+  customer_person_id: 'customer_id',
+  rental_start: 'rental_start_at',
+  rental_end: 'rental_end_at',
+  internal_notes: 'reason_notes',
+};
+export const standbyCreateBodySchema = z.preprocess((raw) => {
+  if (!raw || typeof raw !== 'object') return raw;
+  const b: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  for (const [alias, canonical] of Object.entries(CORE_ALIASES)) {
+    if (b[canonical] === undefined && b[alias] !== undefined) b[canonical] = b[alias];
+    delete b[alias];
+  }
+  return b;
+}, standbyCreateSchema);
+
 standbys.post('/', requirePermission('orders.create'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const body = await c.req.json().catch(() => null);
-  const parsed = standbyCreateSchema.safeParse(body);
+  const parsed = standbyCreateBodySchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   const p = parsed.data;
 
