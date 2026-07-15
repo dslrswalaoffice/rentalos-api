@@ -59,7 +59,7 @@ quoteVersions.get('/:id/quote-versions/:vid', async (c) => {
 });
 
 // POST create draft version
-const createSchema = z.object({
+export const quoteCreateSchema = z.object({
   revision_reason_tag: z.string().max(50).optional(),
   revision_reason_notes: z.string().max(2000).optional(),
 });
@@ -68,7 +68,7 @@ quoteVersions.post('/:id/quote-versions', requirePermission('orders.edit'), asyn
   const id = c.req.param('id');
   if (!(await orderExists(id, session.workspace.id))) return c.json({ error: 'not_found' }, 404);
   const body = await c.req.json().catch(() => ({}));
-  const parsed = createSchema.safeParse(body ?? {});
+  const parsed = quoteCreateSchema.safeParse(body ?? {});
   if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
 
   // Revision reason required by policy once a prior version exists.
@@ -112,12 +112,12 @@ quoteVersions.post('/:id/quote-versions/:vid/send', requirePermission('orders.ed
 });
 
 // POST accept (staff_confirmed)
-const acceptSchema = z.object({ acceptance_notes: z.string().max(2000).optional(), acceptance_source: z.enum(['staff_confirmed', 'in_person_signature', 'email_reply', 'whatsapp']).default('staff_confirmed'), signature_url: z.string().max(500000).optional() });
+export const quoteAcceptSchema = z.object({ acceptance_notes: z.string().max(2000).optional(), acceptance_source: z.enum(['staff_confirmed', 'in_person_signature', 'email_reply', 'whatsapp']).default('staff_confirmed'), signature_url: z.string().max(500000).optional() });
 quoteVersions.post('/:id/quote-versions/:vid/accept', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress } = clientCtx(c);
   const body = await c.req.json().catch(() => ({}));
-  const parsed = acceptSchema.safeParse(body ?? {});
+  const parsed = quoteAcceptSchema.safeParse(body ?? {});
   if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   const r = await acceptQuoteVersion({ workspaceId: session.workspace.id, orderId: c.req.param('id'), versionId: c.req.param('vid'), actorUserId: session.user.id, source: parsed.data.acceptance_source, ip: ipAddress, notes: parsed.data.acceptance_notes ?? null, signatureUrl: parsed.data.signature_url ?? null });
   if (!r.ok) return c.json(orderBlock('QUOTE_BLOCKED', 'Cannot accept this quote', [reasonB('lifecycle_state', 'NOT_ACCEPTABLE', r.error ?? 'not acceptable')]), 409);
@@ -125,13 +125,13 @@ quoteVersions.post('/:id/quote-versions/:vid/accept', requirePermission('orders.
 });
 
 // POST withdraw
-const withdrawSchema = z.object({ reason: z.string().max(2000).optional() });
+export const quoteWithdrawSchema = z.object({ reason: z.string().max(2000).optional() });
 quoteVersions.post('/:id/quote-versions/:vid/withdraw', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id'); const vid = c.req.param('vid');
   const body = await c.req.json().catch(() => ({}));
-  const parsed = withdrawSchema.safeParse(body ?? {});
+  const parsed = quoteWithdrawSchema.safeParse(body ?? {});
   const v = (await query<{ status: string }>(sql`SELECT status FROM quote_versions WHERE id = ${vid}::uuid AND order_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid LIMIT 1`))[0];
   if (!v) return c.json({ error: 'not_found' }, 404);
 
@@ -155,13 +155,13 @@ quoteVersions.post('/:id/quote-versions/:vid/withdraw', requirePermission('order
 });
 
 // POST reject (staff records a customer rejection)
-const rejectSchema = z.object({ reason: z.string().max(2000).optional() });
+export const quoteRejectSchema = z.object({ reason: z.string().max(2000).optional() });
 quoteVersions.post('/:id/quote-versions/:vid/reject', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id'); const vid = c.req.param('vid');
   const body = await c.req.json().catch(() => ({}));
-  const parsed = rejectSchema.safeParse(body ?? {});
+  const parsed = quoteRejectSchema.safeParse(body ?? {});
   const v = (await query<{ status: string }>(sql`SELECT status FROM quote_versions WHERE id = ${vid}::uuid AND order_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid LIMIT 1`))[0];
   if (!v) return c.json({ error: 'not_found' }, 404);
   if (!['sent', 'viewed'].includes(v.status)) return c.json(orderBlock('QUOTE_BLOCKED', 'Cannot reject this quote', [reasonB('lifecycle_state', 'NOT_REJECTABLE', `Version is ${v.status}.`)]), 409);

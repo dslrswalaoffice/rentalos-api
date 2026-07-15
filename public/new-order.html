@@ -1105,17 +1105,20 @@ async function createStandby() {
   if (!state.rental_start || !state.rental_end) { toast('Set the rental window first', true); return; }
   saving = true; setBusy(true); hideBlocker();
   try {
+    // Field names match the POST /api/standbys Zod schema exactly (the Orders
+    // Module Pack convention: customer_id + rental_*_at, NOT the core order
+    // create shape customer_person_id + rental_start/end). See standbys.ts.
     const body = {
-      customer_person_id: state.customer.id,
-      rental_start: state.rental_start,
-      rental_end: state.rental_end,
+      customer_id: state.customer.id,
+      rental_start_at: state.rental_start,
+      rental_end_at: state.rental_end,
       requested_via: 'walk_in',
       reason_tag: state.standby_reason,
       hold_duration_minutes: Number(state.hold_minutes),
       line_items: state.items.map(it => ({ product_id: it.product_id, quantity: it.quantity })),
     };
     const noteText = document.getElementById('notesText')?.value?.trim();
-    if (noteText) body.internal_notes = noteText;
+    if (noteText) body.reason_notes = noteText;
     const res = await api.post('/api/standbys', body);
     const orderId = res && (res.order_id || res.standby?.order_id);
     toast(res?.requires_approval ? 'Standby submitted for approval' : 'Standby hold created');

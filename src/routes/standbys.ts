@@ -50,7 +50,7 @@ async function loadStandby(id: string, workspaceId: string) {
 // ----------------------------------------------------------------------------
 // POST /api/standbys — create a standby (backing order + soft-reserved lines).
 // ----------------------------------------------------------------------------
-const createSchema = z.object({
+export const standbyCreateSchema = z.object({
   customer_id: z.string().uuid(),
   rental_start_at: z.string().datetime(),
   rental_end_at: z.string().datetime(),
@@ -66,7 +66,7 @@ standbys.post('/', requirePermission('orders.create'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const body = await c.req.json().catch(() => null);
-  const parsed = createSchema.safeParse(body);
+  const parsed = standbyCreateSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   const p = parsed.data;
 
@@ -301,13 +301,13 @@ standbys.post('/:id/release', requirePermission('orders.edit'), async (c) => {
 // ----------------------------------------------------------------------------
 // POST /:id/extend — extend the hold window.
 // ----------------------------------------------------------------------------
-const extendSchema = z.object({ additional_minutes: z.number().int().positive().max(4320) });
+export const standbyExtendSchema = z.object({ additional_minutes: z.number().int().positive().max(4320) });
 standbys.post('/:id/extend', requirePermission('orders.edit'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
   const id = c.req.param('id');
   const body = await c.req.json().catch(() => null);
-  const parsed = extendSchema.safeParse(body);
+  const parsed = standbyExtendSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   const s = await loadStandby(id, session.workspace.id);
   if (!s) return c.json({ error: 'not_found' }, 404);
