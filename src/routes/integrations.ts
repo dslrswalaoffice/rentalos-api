@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
-import { encryptJson, decryptJson, EncKeyMissingError } from '../lib/crypto.js';
+import { encryptJson, decryptJson, EncKeyMissingError, encKeyAvailable } from '../lib/crypto.js';
 import { orderBlock, reason as reasonB, type BlockedErrorBody } from '../lib/blocked_action.js';
 import { ADAPTER_METADATA, findAdapter, findMetadata } from '../lib/adapters/registry.js';
 import {
@@ -113,7 +113,10 @@ integrations.get('/', async (c) => {
     };
   });
 
-  return c.json({ adapters });
+  // Diagnostic: whether the server's credential-encryption key is present AND
+  // well-formed (64-char hex). Surfaces a config problem PROACTIVELY — the UI
+  // shows a banner before an operator wastes a save. Never leaks the key itself.
+  return c.json({ adapters, enc_key_ok: encKeyAvailable() });
 });
 
 // ============================================================================

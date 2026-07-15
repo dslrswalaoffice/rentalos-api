@@ -38,6 +38,17 @@ test('encryptJson throws on a wrong-length or non-hex key', () => {
   assert.throws(() => encryptJson({}), EncKeyMissingError);
 });
 
+test('ACTUAL PROD CAUSE: a 64-char NON-hex key (e.g. base64) is rejected cleanly', () => {
+  // Old code checked only length===64, so a base64-style key slipped through and
+  // decoded to a short/empty buffer → createCipheriv "Invalid key length" →
+  // uncaught → internal_error. encKeyAvailable + getKey now hex-validate it.
+  const base64ish = 'Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFla'; // 64 chars, not hex
+  assert.equal(base64ish.length, 64);
+  process.env.INTEGRATION_ENC_KEY = base64ish;
+  assert.equal(encKeyAvailable(), false);
+  assert.throws(() => encryptJson({ password: 'x' }), EncKeyMissingError);
+});
+
 test('fresh save round-trips the exact credentials with a valid key', () => {
   process.env.INTEGRATION_ENC_KEY = VALID_KEY;
   assert.equal(encKeyAvailable(), true);
