@@ -15,6 +15,20 @@ import { emitNotification, emitCustomerNotification } from './notify.js';
 
 const MS_PER_DAY = 86_400_000;
 
+/**
+ * True when an error is a UNIQUE-violation on quote_versions' (order_id,
+ * version_number) index — i.e. a concurrent create raced us to the same version
+ * number. Postgres SQLSTATE 23505; the Neon driver surfaces `.code`, and we also
+ * match the message/constraint name defensively (driver versions vary).
+ */
+export function isVersionNumberConflict(e: unknown): boolean {
+  const err = e as { code?: string; message?: string; constraint?: string } | null;
+  if (!err) return false;
+  if (err.code === '23505') return true;
+  const hay = `${err.constraint ?? ''} ${err.message ?? ''}`.toLowerCase();
+  return hay.includes('version_number') && (hay.includes('unique') || hay.includes('duplicate key'));
+}
+
 /** 48-hex-char cryptographically-random tracking token (unique index enforced). */
 export function generateTrackingToken(): string {
   return randomBytes(24).toString('hex');
@@ -133,33 +147,49 @@ export async function createQuoteVersionFromOrder(args: {
   const built = await buildOrderContentSnapshot(args.orderId, args.workspaceId);
   if (!built) throw new Error('order_not_found');
   const settings = (await query<{ settings: Record<string, any> | null }>(sql`SELECT settings FROM workspaces WHERE id = ${args.workspaceId}::uuid LIMIT 1`))[0]?.settings ?? {};
-  const prev = (await query<{ id: string; version_number: number; content_snapshot: Record<string, any> }>(sql`
-    SELECT id, version_number, content_snapshot FROM quote_versions
-    WHERE order_id = ${args.orderId}::uuid AND workspace_id = ${args.workspaceId}::uuid
-    ORDER BY version_number DESC LIMIT 1
-  `))[0];
-  const versionNumber = (prev?.version_number ?? 0) + 1;
   const orderNumber = built.snapshot.order_number;
   const fmt = String(settings?.quote_policy?.quote_document_number_format ?? 'QT-{year}-{sequence}-v{version}');
-  const quoteNumber = fmt
-    .replaceAll('{year}', String(new Date().getUTCFullYear()))
-    .replaceAll('{sequence}', String(orderNumber).padStart(4, '0'))
-    .replaceAll('{version}', String(versionNumber));
-  const diff = computeDiff(prev?.content_snapshot ?? null, built.snapshot);
   const policySnapshot = { quote_policy: settings?.quote_policy ?? {} };
 
-  const row = (await query<{ id: string }>(sql`
-    INSERT INTO quote_versions (workspace_id, order_id, version_number, quote_number, content_snapshot,
-      total_paise, deposit_paise, rental_start_at, rental_end_at, status, created_by_user_id,
-      parent_version_id, diff_from_parent, revision_reason_tag, revision_reason_notes, policy_applied_snapshot)
-    VALUES (${args.workspaceId}::uuid, ${args.orderId}::uuid, ${versionNumber}::int, ${quoteNumber}::text, ${JSON.stringify(built.snapshot)}::jsonb,
-      ${built.total_paise}::bigint, ${built.deposit_paise}::bigint, ${built.rental_start_at}::timestamptz, ${built.rental_end_at}::timestamptz,
-      'draft', ${args.actorUserId}::uuid, ${prev?.id ?? null}::uuid, ${JSON.stringify(diff)}::jsonb,
-      ${args.revisionReasonTag ?? null}::text, ${args.revisionReasonNotes ?? null}::text, ${JSON.stringify(policySnapshot)}::jsonb)
-    RETURNING id
-  `))[0]!;
-  await audit({ workspaceId: args.workspaceId, actorUserId: args.actorUserId, eventType: 'quotes.created', targetType: 'quote_version', targetId: row.id, payload: { order_id: args.orderId, version_number: versionNumber, quote_number: quoteNumber }, ipAddress: null, userAgent: null });
-  return { id: row.id, version_number: versionNumber, quote_number: quoteNumber };
+  // Version numbering is "prev max + 1", which races: two concurrent creates
+  // both read the same max and both try the same version_number, and the loser
+  // hits the UNIQUE (order_id, version_number) index (SQLSTATE 23505). Rather
+  // than surface that as a 500 (which orphans the caller's idempotency record
+  // and shows a misleading "identical request" error on the next same-key
+  // retry), recompute and retry a few times so a genuine double-submit produces
+  // v1 + v2 cleanly. Each attempt re-reads the latest version so the numbering
+  // stays gap-free.
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 1; ; attempt++) {
+    const prev = (await query<{ id: string; version_number: number; content_snapshot: Record<string, any> }>(sql`
+      SELECT id, version_number, content_snapshot FROM quote_versions
+      WHERE order_id = ${args.orderId}::uuid AND workspace_id = ${args.workspaceId}::uuid
+      ORDER BY version_number DESC LIMIT 1
+    `))[0];
+    const versionNumber = (prev?.version_number ?? 0) + 1;
+    const quoteNumber = fmt
+      .replaceAll('{year}', String(new Date().getUTCFullYear()))
+      .replaceAll('{sequence}', String(orderNumber).padStart(4, '0'))
+      .replaceAll('{version}', String(versionNumber));
+    const diff = computeDiff(prev?.content_snapshot ?? null, built.snapshot);
+    try {
+      const row = (await query<{ id: string }>(sql`
+        INSERT INTO quote_versions (workspace_id, order_id, version_number, quote_number, content_snapshot,
+          total_paise, deposit_paise, rental_start_at, rental_end_at, status, created_by_user_id,
+          parent_version_id, diff_from_parent, revision_reason_tag, revision_reason_notes, policy_applied_snapshot)
+        VALUES (${args.workspaceId}::uuid, ${args.orderId}::uuid, ${versionNumber}::int, ${quoteNumber}::text, ${JSON.stringify(built.snapshot)}::jsonb,
+          ${built.total_paise}::bigint, ${built.deposit_paise}::bigint, ${built.rental_start_at}::timestamptz, ${built.rental_end_at}::timestamptz,
+          'draft', ${args.actorUserId}::uuid, ${prev?.id ?? null}::uuid, ${JSON.stringify(diff)}::jsonb,
+          ${args.revisionReasonTag ?? null}::text, ${args.revisionReasonNotes ?? null}::text, ${JSON.stringify(policySnapshot)}::jsonb)
+        RETURNING id
+      `))[0]!;
+      await audit({ workspaceId: args.workspaceId, actorUserId: args.actorUserId, eventType: 'quotes.created', targetType: 'quote_version', targetId: row.id, payload: { order_id: args.orderId, version_number: versionNumber, quote_number: quoteNumber }, ipAddress: null, userAgent: null });
+      return { id: row.id, version_number: versionNumber, quote_number: quoteNumber };
+    } catch (e) {
+      if (isVersionNumberConflict(e) && attempt < MAX_ATTEMPTS) continue; // a concurrent create won this number — recompute + retry
+      throw e;
+    }
+  }
 }
 
 /** Freeze + send a draft version: token, valid_until, supersede prior sent, notify. */

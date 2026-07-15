@@ -1254,7 +1254,14 @@ async function handleStandby(kind){
     await load();
   }catch(err){showModalError(err);}
 }
+let quoteBusy=false;
 async function handleQuote(kind,qid){
+  // Guard against a double-submit (rapid double-click on Create v1 / Send /
+  // Accept). Two concurrent creates would race the (order_id, version_number)
+  // unique index; the backend now also retries that race, but stopping it here
+  // avoids the wasted round trip and the confusing mid-flight state. copylink is
+  // a read, so it's exempt.
+  if(kind!=='copylink'){ if(quoteBusy) return; quoteBusy=true; }
   try{
     if(kind==='send'){await api.post('/api/orders/'+S.id+'/quote-versions/'+qid+'/send',{});toast('Quote sent','ok');}
     else if(kind==='resend'){await api.post('/api/orders/'+S.id+'/quote-versions/'+qid+'/send',{});toast('Quote resent','ok');}
@@ -1269,6 +1276,7 @@ async function handleQuote(kind,qid){
     }
     await load();
   }catch(err){showModalError(err);}
+  finally{ quoteBusy=false; }
 }
 
 // ------------------------------------------------------------------ boot
