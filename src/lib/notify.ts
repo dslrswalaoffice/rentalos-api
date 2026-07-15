@@ -12,7 +12,7 @@ import type { EmailAdapter } from './adapters/types.js';
 // future WATI slice. Every path is fail-open: a send error is logged on the
 // delivery row and never breaks the business action.
 // ============================================================================
-type LoadedEmail = { provider: string; adapter: EmailAdapter; credentials: Record<string, string>; config: Record<string, unknown> };
+type LoadedEmail = { provider: string; adapter: EmailAdapter; credentials: Record<string, string>; config: Record<string, unknown>; credentialError?: string };
 
 async function loadActiveEmailAdapter(workspaceId: string): Promise<LoadedEmail | null> {
   try {
@@ -27,11 +27,18 @@ async function loadActiveEmailAdapter(workspaceId: string): Promise<LoadedEmail 
     const adapter = findAdapter('email', row.provider) as EmailAdapter | null;
     if (!adapter) return null;
     let credentials: Record<string, string> = {};
+    let credentialError: string | undefined;
     if (row.credentials_b64) {
+      // Do NOT silently fall through with empty credentials on a decrypt failure —
+      // that produces a confusing downstream auth error. Flag it so the send is
+      // recorded with an explicit, actionable message.
       try { credentials = (decryptJson(Buffer.from(row.credentials_b64, 'base64')) as Record<string, string>) ?? {}; }
-      catch (err) { console.error('[notify] credential decrypt failed', err); }
+      catch (err) {
+        console.error('[notify] credential decrypt failed', err);
+        credentialError = 'SMTP_DECRYPTION_FAILED: encryption key mismatch or corrupted credentials — re-save the integration (INTEGRATION_ENC_KEY may have changed).';
+      }
     }
-    return { provider: row.provider, adapter, credentials, config: row.config ?? {} };
+    return { provider: row.provider, adapter, credentials, config: row.config ?? {}, credentialError };
   } catch (err) {
     console.error('[notify] loadActiveEmailAdapter failed', err);
     return null;
@@ -63,6 +70,8 @@ async function loadWorkspaceInfo(workspaceId: string): Promise<WsInfo> {
 
 /** Send one email via the active adapter. Returns the adapter result (never throws). */
 async function sendEmail(loaded: LoadedEmail, args: { to: string; subject: string; body: string; ws: WsInfo }): Promise<{ status: 'sent' | 'failed'; messageId?: string; error?: string }> {
+  // A decrypt failure is surfaced explicitly, never sent with empty credentials.
+  if (loaded.credentialError) return { status: 'failed', error: loaded.credentialError };
   try {
     const html = `<pre style="font-family:inherit;white-space:pre-wrap;margin:0;">${escapeHtml(args.body)}</pre>`;
     return await loaded.adapter.send({
