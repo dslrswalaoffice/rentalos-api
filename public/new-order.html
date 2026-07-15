@@ -280,7 +280,8 @@
               <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
                 <div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:#9ca3af;text-transform:uppercase;margin-bottom:5px">Hold duration</div>
                   <select id="holdMinutes" style="font-family:'JetBrains Mono',monospace;font-size:13px;border:1px solid #d7d3ca;border-radius:8px;padding:7px 10px;background:#fff;color:#26235a">
-                    <option value="120">2 hours</option><option value="240" selected>4 hours</option><option value="480">8 hours</option><option value="1440">24 hours</option></select></div>
+                    <option value="120">2 hours</option><option value="240" selected>4 hours</option><option value="480">8 hours</option><option value="1440">24 hours</option></select>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#b0aaa0;margin-top:4px">Default from workspace settings</div></div>
                 <div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:#9ca3af;text-transform:uppercase;margin-bottom:5px">Reason</div>
                   <select id="standbyReason" style="font-family:'JetBrains Mono',monospace;font-size:13px;border:1px solid #d7d3ca;border-radius:8px;padding:7px 10px;background:#fff;color:#26235a">
                     <option value="customer_deciding">customer_deciding</option><option value="awaiting_client_approval">awaiting_client_approval</option><option value="shoot_dates_tentative">shoot_dates_tentative</option><option value="budget_pending">budget_pending</option><option value="comparing_options">comparing_options</option><option value="other">other</option></select></div>
@@ -481,6 +482,7 @@
 
 <script type="module">
 import { api, ensureAuth, formatINR } from '/_lib/api.js';
+import { standbyHoldDefaultMinutes, holdLabel } from '/_lib/standby-defaults.js';
 
 // ============================================================================
 // State
@@ -498,7 +500,7 @@ const state = {
   notesOpen: false,
   draftOrderId: null,      // set once a draft is created (autosave / save)
   mode: 'booking',         // Sub-slice 2.2: 'booking' | 'standby'
-  hold_minutes: 240,       // standby hold duration (minutes)
+  hold_minutes: 240,       // fallback only — overwritten by workspace.settings.standby_policy.default_hold_duration_minutes on boot
   standby_reason: 'customer_deciding',
 };
 
@@ -516,7 +518,37 @@ let session = null;
   document.getElementById('userInitials').textContent = initials || '··';
   wireEvents();
   render();
+  // Configurability rule: standby defaults come from workspace.settings, never
+  // hardcoded. Load them (non-blocking — the composer already rendered with the
+  // fallback) and reconcile the Hold Duration control to the workspace value.
+  try {
+    const ws = await api.get('/api/workspace');
+    applyStandbyDefaults(ws && ws.settings);
+  } catch { /* fall back to the built-in defaults already in state/UI */ }
 })();
+
+// Reconcile the Standby controls to workspace.settings.standby_policy. The
+// settings-reading + labeling logic lives in /_lib/standby-defaults.js (pure,
+// unit-tested); this only does the DOM wiring.
+function applyStandbyDefaults(settings) {
+  const def = standbyHoldDefaultMinutes(settings);
+  if (def == null) return;
+  state.hold_minutes = def;
+  const sel = document.getElementById('holdMinutes');
+  if (!sel) return;
+  // Ensure an option for the workspace default exists, then select it.
+  if (![...sel.options].some(o => Number(o.value) === def)) {
+    const opt = document.createElement('option');
+    opt.value = String(def);
+    opt.textContent = holdLabel(def);
+    const after = [...sel.options].find(o => Number(o.value) > def); // keep ascending
+    sel.insertBefore(opt, after || null);
+  }
+  // Reflect the default in both the property (live selection) and the attribute
+  // (so the chosen default is visible in the serialized DOM).
+  [...sel.options].forEach(o => o.toggleAttribute('selected', Number(o.value) === def));
+  sel.value = String(def);
+}
 
 // ============================================================================
 // Utils
