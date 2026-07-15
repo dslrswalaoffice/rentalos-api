@@ -306,8 +306,8 @@ const ITEM_STATUS={pending_dispatch:{label:'ALLOCATED',tone:'neutral'},dispatche
 
 // ------------------------------------------------------------------ state
 const S={id:null,order:null,items:[],events:[],assets:[],tags:[],cf:[],coupon:null,agg:null,aggCtx:null,
-  settings:{},extensions:[],cancellation:null,approvals:[],customer:null,comms:[],
-  open:{customer:true,rental:true,equipment:true,pricing:true,payments:true,deposits:true,events:true,documents:false,communications:false,notes:true},
+  settings:{},extensions:[],cancellation:null,approvals:[],customer:null,comms:[],standby:null,quotes:[],activeQuoteTab:null,
+  open:{customer:true,rental:true,equipment:true,pricing:true,payments:true,deposits:true,events:true,quotes:true,documents:false,communications:false,notes:true},
   overflow:false,blocker:null,filters:new Set(['All'])};
 // module-scoped modal state (no localStorage — per RentalOS phase rules)
 const M={kind:null,data:null,decide:null,busy:false};
@@ -758,6 +758,7 @@ function render(){
   const o=S.order;const bal=Number(o.balance_paise!=null?o.balance_paise:(o.total_paise-o.paid_paise));
   const nRel=(S.extensions?S.extensions.length:0)+(S.cancellation?1:0);
   let main='';
+  main+=renderStandbyBanner();
   main+=renderStepper();
   main+='<div class="body-grid"><div class="col-main">';
   main+=card('customer',DOT.customer,'Customer',null,null,cardCustomer());
@@ -767,11 +768,61 @@ function render(){
   main+=card('payments',DOT.payments,'Payments',null,(bal>0?'<span style="color:var(--attention)">'+formatINR(bal)+' due</span>':'<span style="color:var(--success)">Paid</span>'),cardPayments());
   main+=card('deposits',DOT.deposits,'Deposits',null,'<span style="color:var(--neutral)">'+escapeHtml(String(o.deposit_status||'none').replace(/_/g,' '))+'</span>',cardDeposits());
   main+=card('events',DOT.events,'Related Events',String(nRel),null,cardEvents());
+  if(S.quotes&&S.quotes.length)main+=card('quotes',DOT.events,'Quote Versions',String(S.quotes.length),null,cardQuotes());
   main+=card('documents',DOT.documents,'Documents',null,null,cardDocuments());
   main+=card('communications',DOT.communications,'Communications',null,null,cardComms());
   main+=card('notes',DOT.notes,'Notes',null,null,cardNotes());
   main+='</div><div class="col-side">'+renderSidebar()+'</div></div>';
   document.getElementById('app').innerHTML=main;
+}
+
+// ------------------------------------------------------------------ standby banner (Sub-slice 2.2)
+function fmtCountdown(sec){sec=Math.max(0,Number(sec||0));const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60);return h>0?(h+'h '+m+'m'):(m+'m');}
+function renderStandbyBanner(){
+  const s=S.standby;if(!s)return '';
+  const pending=s.status==='pending_approval';
+  const cd=fmtCountdown(s.seconds_to_expiry);
+  return '<div style="background:var(--attention-bg);border:1px solid var(--attention-border);border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
+    +'<span style="width:34px;height:34px;border-radius:9px;background:#fff;color:var(--attention);display:flex;align-items:center;justify-content:center;flex:none">'+I('clock',18)+'</span>'
+    +'<div style="flex:1;min-width:180px"><div style="font-family:var(--head-font);font-weight:600;font-size:14px;color:var(--head)">'
+      +(pending?'Standby '+escapeHtml(s.standby_number)+' — awaiting approval':'Standby '+escapeHtml(s.standby_number)+' · expires in '+cd)+'</div>'
+      +'<div class="mono" style="font-size:11px;color:var(--neutral);margin-top:3px">'+escapeHtml(String(s.reason_tag||'').replace(/_/g,' '))+' · est. '+formatINR(s.estimated_value_paise)+'</div></div>'
+    +(pending?'':'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+      +'<button class="btn btn-tiny btn-primary" data-sb="convert-booking">Convert to Booking</button>'
+      +'<button class="btn btn-tiny btn-secondary" data-sb="convert-quote">Convert to Quote</button>'
+      +'<button class="btn btn-tiny btn-secondary" data-sb="release">Release</button></div>')
+  +'</div>';
+}
+
+// ------------------------------------------------------------------ quote versions card (Sub-slice 2.2)
+const QV_TONE={draft:'neutral',sent:'info',viewed:'progress',accepted:'success',superseded:'neutral',expired:'attention',withdrawn:'neutral',rejected:'danger'};
+function cardQuotes(){
+  const qs=S.quotes||[];const activeId=S.activeQuoteTab||(qs[qs.length-1]&&qs[qs.length-1].id);
+  const active=qs.find(q=>q.id===activeId)||qs[qs.length-1];
+  return function(){
+    let h='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">';
+    for(const q of qs){const on=q.id===active.id;h+='<button class="btn btn-tiny '+(on?'btn-primary':'btn-secondary')+'" data-qtab="'+escapeAttr(q.id)+'">v'+escapeHtml(q.version_number)+' · '+escapeHtml(String(q.status).toUpperCase())+'</button>';}
+    h+='</div>';
+    if(!active)return h+'<div class="empty">No quote versions.</div>';
+    h+='<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">'
+      +'<div><div style="font-family:var(--head-font);font-weight:600;font-size:14px;color:var(--ink)">'+escapeHtml(active.quote_number)+'</div>'
+      +'<div class="mono" style="font-size:11px;color:var(--neutral);margin-top:3px">'+formatINR(active.total_paise)+(active.valid_until?' · valid until '+fmtDate(active.valid_until):'')+(active.view_count?' · '+active.view_count+' view'+(active.view_count===1?'':'s'):'')+'</div></div>'
+      +'<span class="pill '+toneClass(QV_TONE[active.status]||'neutral')+'"><span class="pdot"></span>'+escapeHtml(String(active.status).toUpperCase())+'</span></div>';
+    // diff summary
+    const d=active.diff_from_parent;
+    if(d&&!d.is_first_version){
+      const parts=[];(d.added_items||[]).forEach(i=>parts.push('+ '+escapeHtml(i.description)));(d.removed_items||[]).forEach(i=>parts.push('− '+escapeHtml(i.description)));(d.changed_items||[]).forEach(i=>parts.push('~ '+escapeHtml(i.description)));if(d.date_changed)parts.push('dates changed');
+      if(parts.length)h+='<div style="margin-top:12px;border:1px solid var(--attention-border);background:var(--attention-bg);border-radius:9px;padding:10px 12px"><div class="microlabel" style="margin-bottom:5px">Changes from v'+(active.version_number-1)+'</div><div style="font-size:12px;color:var(--head);line-height:1.6">'+parts.join(' · ')+(typeof d.total_change_paise==='number'&&d.total_change_paise!==0?' · total '+(d.total_change_paise>0?'+':'−')+formatINR(Math.abs(d.total_change_paise)):'')+'</div></div>';
+    }
+    // per-version actions
+    let acts='';const st=active.status;
+    if(st==='draft')acts='<button class="btn btn-tiny btn-primary" data-qact="send" data-qid="'+escapeAttr(active.id)+'">Send</button>';
+    else if(st==='sent'||st==='viewed')acts='<button class="btn btn-tiny btn-primary" data-qact="accept" data-qid="'+escapeAttr(active.id)+'">Mark Accepted</button><button class="btn btn-tiny btn-secondary" data-qact="resend" data-qid="'+escapeAttr(active.id)+'">Resend</button><button class="btn btn-tiny btn-secondary" data-qact="withdraw" data-qid="'+escapeAttr(active.id)+'">Withdraw</button>'+(active.has_tracking_link?'<button class="btn btn-tiny btn-ghost" data-qact="copylink" data-qid="'+escapeAttr(active.id)+'">Copy link</button>':'');
+    else if(st==='accepted')acts='<span class="mono" style="font-size:11px;color:var(--success)">Accepted'+(active.accepted_at?' · '+fmtDate(active.accepted_at):'')+'</span>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">'+acts+'</div>';
+    h+='<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px"><button class="btn btn-tiny btn-ghost" data-qact="revise">'+I('plus',14)+'Create new version</button></div>';
+    return h;
+  };
 }
 
 // ------------------------------------------------------------------ actions
@@ -829,6 +880,9 @@ document.addEventListener('click',(ev)=>{
   const ov=t.closest('[data-ov]');if(ov){handleOverflow(ov.getAttribute('data-ov'),ov.classList.contains('disabled'));return;}
   const act=t.closest('[data-act]');if(act){handleAct(act.getAttribute('data-act'),act);return;}
   const sec=t.closest('[data-secondary]');if(sec){handleAct('contact',sec);return;}
+  const sb=t.closest('[data-sb]');if(sb){handleStandby(sb.getAttribute('data-sb'));return;}
+  const qtab=t.closest('[data-qtab]');if(qtab){S.activeQuoteTab=qtab.getAttribute('data-qtab');render();return;}
+  const qact=t.closest('[data-qact]');if(qact){handleQuote(qact.getAttribute('data-qact'),qact.getAttribute('data-qid'));return;}
   const mact=t.closest('[data-m]');if(mact){handleModal(mact.getAttribute('data-m'),mact);return;}
 });
 
@@ -872,6 +926,8 @@ async function load(){
   S.agg=data.aggregate_status||null;S.aggCtx=data.aggregate_status_context||null;
   S.extensions=data.extensions||[];S.cancellation=data.cancellation||null;
   S.approvals=data.active_approvals||[];S.customer=data.customer||null;
+  S.standby=data.standby||null;S.quotes=data.quote_versions||[];
+  if(S.quotes.length&&!S.activeQuoteTab)S.activeQuoteTab=S.quotes[S.quotes.length-1].id;
   document.getElementById('crumb-order').textContent='#'+data.order.order_number;
   // Communications (customer-facing deliveries) — best-effort, non-blocking.
   api.get('/api/orders/'+S.id+'/communications').then(r=>{S.comms=r.communications||[];render();}).catch(()=>{});
@@ -1184,6 +1240,33 @@ function showModalError(err,rerender){
 }
 // close modal on mask click
 document.addEventListener('click',(e)=>{if(e.target&&e.target.hasAttribute&&e.target.hasAttribute('data-mask'))mclose();});
+
+// ------------------------------------------------------------------ standby + quote actions (Sub-slice 2.2)
+async function handleStandby(kind){
+  const s=S.standby;if(!s)return;
+  try{
+    if(kind==='convert-booking'){await api.post('/api/standbys/'+s.id+'/convert-to-booking',{});toast('Converted to booking','ok');}
+    else if(kind==='convert-quote'){const r=await api.post('/api/standbys/'+s.id+'/convert-to-quote',{});toast('Quote v'+r.version_number+' created','ok');}
+    else if(kind==='release'){if(!confirm('Release this standby hold?'))return;await api.post('/api/standbys/'+s.id+'/release',{});toast('Hold released','ok');}
+    await load();
+  }catch(err){showModalError(err);}
+}
+async function handleQuote(kind,qid){
+  try{
+    if(kind==='send'){await api.post('/api/orders/'+S.id+'/quote-versions/'+qid+'/send',{});toast('Quote sent','ok');}
+    else if(kind==='resend'){await api.post('/api/orders/'+S.id+'/quote-versions/'+qid+'/send',{});toast('Quote resent','ok');}
+    else if(kind==='accept'){if(!confirm('Mark this quote accepted (staff-confirmed)? The order will be confirmed.'))return;await api.post('/api/orders/'+S.id+'/quote-versions/'+qid+'/accept',{acceptance_source:'staff_confirmed'});toast('Quote accepted','ok');}
+    else if(kind==='withdraw'){const reason=prompt('Withdraw reason (optional):')||undefined;const r=await api.post('/api/orders/'+S.id+'/quote-versions/'+qid+'/withdraw',{reason});toast(r&&r.requires_approval?'Withdrawal sent for approval':'Quote withdrawn','ok');}
+    else if(kind==='revise'){const tag=S.quotes.length?(prompt('Revision reason tag (e.g. customer_requested_change, pricing_correction, date_change):','customer_requested_change')||undefined):undefined;if(S.quotes.length&&!tag)return;const r=await api.post('/api/orders/'+S.id+'/quote-versions',tag?{revision_reason_tag:tag}:{});S.activeQuoteTab=r.quote_version.id;toast('Draft v'+r.quote_version.version_number+' created','ok');}
+    else if(kind==='copylink'){
+      const v=(await api.get('/api/orders/'+S.id+'/quote-versions/'+qid)).quote_version;
+      const url=location.origin+'/quote-view.html?token='+(v.tracking_link_url||'');
+      try{await navigator.clipboard.writeText(url);toast('Tracking link copied','ok');}catch{prompt('Tracking link:',url);}
+      return;
+    }
+    await load();
+  }catch(err){showModalError(err);}
+}
 
 // ------------------------------------------------------------------ boot
 (async function(){

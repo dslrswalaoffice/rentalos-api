@@ -277,11 +277,13 @@ const patchSchema = z.object({
     cancellation_policy: z.record(z.string(), z.any()).optional(),
     approval_routing:    z.record(z.string(), z.any()).optional(),
     notification_policy: z.record(z.string(), z.any()).optional(),
+    standby_policy:      z.record(z.string(), z.any()).optional(),
+    quote_policy:        z.record(z.string(), z.any()).optional(),
   }).optional(),
 });
 
-// Sub-slice 2.1 — order policy sub-objects the settings page may write.
-const ORDER_POLICY_KEYS = ['extension_policy', 'cancellation_policy', 'approval_routing', 'notification_policy'] as const;
+// Sub-slice 2.1/2.2 — order policy sub-objects the settings page may write.
+const ORDER_POLICY_KEYS = ['extension_policy', 'cancellation_policy', 'approval_routing', 'notification_policy', 'standby_policy', 'quote_policy'] as const;
 
 workspace.patch('/settings', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;

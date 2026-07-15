@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Quote · RentalOS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="/vendor/signature_pad.min.js"></script>
+<style>
+:root{
+  --ink:#202058;--head:#26235a;--neutral:#6b7280;--border:#ece9e3;--surface:#faf9f7;
+  --info:#4f46e5;--info-bg:#eef2ff;--info-hover:#4338ca;--success:#059669;--success-bg:#ecfdf5;--attention:#d97706;--attention-bg:#fffbeb;--danger:#dc2626;
+  --head-font:'Space Grotesk',system-ui,sans-serif;--body-font:'Manrope',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:#f0f2f5;font-family:var(--body-font);color:var(--ink);-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:32px 18px 80px}
+.sheet{background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 4px 20px rgba(32,32,88,.06);overflow:hidden}
+.brandbar{background:var(--ink);color:#fff;padding:20px 28px;display:flex;align-items:center;justify-content:space-between}
+.brandbar .n{font-family:var(--head-font);font-weight:700;font-size:18px}
+.brandbar .q{font-family:var(--mono);font-size:12px;opacity:.85}
+.body{padding:26px 28px}
+.hd{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:flex-start;margin-bottom:6px}
+.hd h1{font-family:var(--head-font);font-weight:600;font-size:22px;margin:0;color:var(--ink)}
+.sub{font-size:13px;color:var(--neutral);margin-top:6px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-family:var(--mono);font-size:11px;font-weight:600}
+.pill.valid{background:var(--info-bg);color:var(--info)}
+.pill.accepted{background:var(--success-bg);color:var(--success)}
+.pill.expired{background:#fef2f2;color:var(--danger)}
+.changed{margin:18px 0;border:1px solid #fde68a;background:var(--attention-bg);border-radius:12px;padding:14px 16px}
+.changed .t{font-weight:700;font-size:13.5px;color:var(--head);margin-bottom:8px}
+.changed ul{margin:0;padding-left:18px;font-size:13px;color:var(--head);line-height:1.6}
+.sec{margin-top:24px}
+.sec .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--neutral);margin-bottom:10px}
+.line{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-top:1px solid var(--border)}
+.line:first-child{border-top:none}
+.line .nm{font-size:13.5px;color:var(--head)}
+.line .meta{font-family:var(--mono);font-size:11px;color:var(--neutral)}
+.line .amt{font-family:var(--mono);font-size:13.5px;color:var(--head)}
+.totrow{display:flex;justify-content:space-between;padding:7px 0;font-size:13px;color:var(--neutral)}
+.totrow .v{font-family:var(--mono);color:var(--head)}
+.total{display:flex;justify-content:space-between;align-items:baseline;border-top:2px solid var(--border);margin-top:8px;padding-top:12px}
+.total .l{font-family:var(--head-font);font-weight:600;font-size:16px;color:var(--ink)}
+.total .v{font-family:var(--mono);font-weight:700;font-size:22px;color:var(--ink)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}
+.btn{border:none;cursor:pointer;font-family:var(--body-font);font-size:14px;font-weight:600;padding:12px 22px;border-radius:10px}
+.btn.primary{background:var(--info);color:#fff;box-shadow:0 2px 8px rgba(79,70,229,.28)}
+.btn.primary:hover{background:var(--info-hover)}
+.btn.ghost{background:#fff;color:var(--head);border:1px solid var(--border)}
+.btn.ghost:hover{background:var(--surface)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.modalmask{position:fixed;inset:0;background:rgba(38,35,90,.32);display:flex;align-items:center;justify-content:center;padding:18px;z-index:50}
+.modal{background:#fff;border-radius:14px;max-width:460px;width:100%;padding:24px;box-shadow:0 24px 60px rgba(24,22,60,.4)}
+.modal h3{font-family:var(--head-font);margin:0 0 6px;font-size:18px;color:var(--ink)}
+.modal p{font-size:13px;color:var(--neutral);margin:0 0 16px}
+textarea,input{width:100%;border:1px solid #d7d3ca;border-radius:9px;padding:10px 12px;font-family:var(--body-font);font-size:13px;color:var(--head);outline:none}
+textarea:focus,input:focus{border-color:var(--info)}
+canvas{border:1px solid #d7d3ca;border-radius:9px;width:100%;height:130px;touch-action:none;background:var(--surface)}
+.mut{font-size:11.5px;color:var(--neutral)}
+.center{text-align:center;padding:60px 20px;color:var(--neutral)}
+.confirm{background:var(--success-bg);border:1px solid #a7f3d0;border-radius:12px;padding:18px;text-align:center;color:var(--success);font-weight:600;margin-top:24px}
+a{color:var(--info)}
+</style>
+</head>
+<body>
+<div class="wrap"><div id="app"><div class="center">Loading your quote…</div></div></div>
+<div id="modalRoot"></div>
+<script>
+const token = new URLSearchParams(location.search).get('token') || '';
+const app = document.getElementById('app');
+const inr = p => '₹' + new Intl.NumberFormat('en-IN',{maximumFractionDigits:0}).format(Math.round(Number(p||0)/100));
+const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmtDate = iso => { if(!iso) return '—'; const t=new Date(iso); return isNaN(t)?'—':t.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}); };
+let QUOTE=null;
+
+async function load(){
+  if(!/^[0-9a-f]{16,}$/.test(token)){ app.innerHTML='<div class="sheet"><div class="body center">This quote link is invalid.</div></div>'; return; }
+  let res;
+  try{ res = await fetch('/api/quote-versions/tracking/'+encodeURIComponent(token)); }
+  catch{ app.innerHTML='<div class="sheet"><div class="body center">Could not load this quote. Please try again.</div></div>'; return; }
+  if(res.status===429){ app.innerHTML='<div class="sheet"><div class="body center">Too many requests — please wait a moment and refresh.</div></div>'; return; }
+  if(!res.ok){ app.innerHTML='<div class="sheet"><div class="body center">This quote is no longer available.<br><span class="mut">The link may have expired or been superseded by a newer version.</span></div></div>'; return; }
+  const data = await res.json();
+  QUOTE = data.quote; render();
+}
+
+function changedBlock(diff){
+  if(!diff || diff.is_first_version) return '';
+  const parts=[];
+  (diff.added_items||[]).forEach(i=>parts.push('Added '+esc(i.description)+' ('+inr(i.total_amount_paise)+')'));
+  (diff.removed_items||[]).forEach(i=>parts.push('Removed '+esc(i.description)));
+  (diff.changed_items||[]).forEach(i=>parts.push('Updated '+esc(i.description)+' → '+inr(i.to.total_amount_paise)));
+  if(diff.date_changed) parts.push('Rental dates updated');
+  if(typeof diff.total_change_paise==='number' && diff.total_change_paise!==0) parts.push('Total '+(diff.total_change_paise>0?'increased':'decreased')+' by '+inr(Math.abs(diff.total_change_paise)));
+  if(!parts.length) return '';
+  return '<div class="changed"><div class="t">What’s changed in this version</div><ul>'+parts.map(p=>'<li>'+p+'</li>').join('')+'</ul></div>';
+}
+
+function render(){
+  const q=QUOTE; const c=q.content||{}; const items=(c.line_items||[]).filter(li=>li.item_type!=='tax');
+  const accepted = q.status==='accepted';
+  const statusPill = accepted ? '<span class="pill accepted">● ACCEPTED</span>' : '<span class="pill valid">Valid until '+fmtDate(q.valid_until)+'</span>';
+  let h='<div class="sheet"><div class="brandbar"><div class="n">'+esc(q.workspace_name||'RentalOS')+'</div><div class="q">'+esc(q.quote_number)+'</div></div><div class="body">';
+  h+='<div class="hd"><div><h1>Quote '+esc(q.quote_number)+'</h1><div class="sub">Prepared for '+esc((c.customer&&c.customer.name)||'you')+' · Rental '+fmtDate(c.rental_start)+' → '+fmtDate(c.rental_end)+'</div></div>'+statusPill+'</div>';
+  h+=changedBlock(q.diff);
+  h+='<div class="sec"><div class="lbl">Equipment</div>';
+  for(const li of items){ h+='<div class="line"><div><div class="nm">'+esc(li.description)+'</div><div class="meta">Qty '+esc(li.quantity)+(li.daily_rate_paise?(' · '+inr(li.daily_rate_paise)+'/day'):'')+'</div></div><div class="amt">'+inr(li.total_amount_paise)+'</div></div>'; }
+  if(!items.length) h+='<div class="mut">No line items.</div>';
+  h+='</div>';
+  h+='<div class="sec"><div class="lbl">Summary</div>';
+  if(c.subtotal_paise!=null) h+='<div class="totrow"><span>Subtotal</span><span class="v">'+inr(c.subtotal_paise)+'</span></div>';
+  if(Number(c.discount_paise)>0) h+='<div class="totrow"><span>Discount</span><span class="v" style="color:var(--success)">− '+inr(c.discount_paise)+'</span></div>';
+  if(Number(c.tax_paise)>0) h+='<div class="totrow"><span>GST</span><span class="v">'+inr(c.tax_paise)+'</span></div>';
+  h+='<div class="total"><span class="l">Total</span><span class="v">'+inr(q.total_paise)+'</span></div>';
+  if(Number(q.deposit_paise)>0) h+='<div class="totrow" style="margin-top:8px"><span>Security deposit</span><span class="v">'+inr(q.deposit_paise)+'</span></div>';
+  h+='</div>';
+  if(accepted){
+    h+='<div class="confirm">✓ Accepted on '+fmtDate(q.accepted_at)+'. Thank you — your booking is confirmed.</div>';
+  } else {
+    h+='<div class="actions"><button class="btn primary" id="acceptBtn">Accept Quote</button><button class="btn ghost" id="changesBtn">Request Changes</button><button class="btn ghost" id="rejectBtn">Decline</button></div>';
+    h+='<div class="mut" style="margin-top:14px">By accepting, you confirm the equipment, dates and total above.</div>';
+  }
+  h+='</div></div>';
+  app.innerHTML=h;
+  if(!accepted){
+    document.getElementById('acceptBtn').onclick=openAccept;
+    document.getElementById('changesBtn').onclick=()=>openContact('Request changes','Tell us what you’d like to change and we’ll send a revised quote.');
+    document.getElementById('rejectBtn').onclick=()=>openContact('Decline quote','Let us know why (optional). This just tells our team — it doesn’t send anything automatically.');
+  }
+}
+
+let sigPad=null;
+function openAccept(){
+  document.getElementById('modalRoot').innerHTML='<div class="modalmask" id="mm"><div class="modal"><h3>Accept quote '+esc(QUOTE.quote_number)+'</h3><p>Optionally sign and add a note. Accepting confirms your booking.</p>'
+    +'<div class="lbl mut" style="margin-bottom:6px">Signature (optional)</div><canvas id="sig"></canvas>'
+    +'<div style="display:flex;justify-content:flex-end;margin:6px 0 12px"><button class="btn ghost" id="clrSig" style="padding:6px 12px;font-size:12px">Clear</button></div>'
+    +'<textarea id="acceptNotes" placeholder="Notes (optional)…" style="min-height:60px"></textarea>'
+    +'<div class="actions" style="margin-top:16px"><button class="btn primary" id="doAccept">Accept &amp; Confirm</button><button class="btn ghost" id="cancelAccept">Cancel</button></div></div></div>';
+  const canvas=document.getElementById('sig');
+  const ratio=Math.max(window.devicePixelRatio||1,1); canvas.width=canvas.offsetWidth*ratio; canvas.height=canvas.offsetHeight*ratio; canvas.getContext('2d').scale(ratio,ratio);
+  try{ sigPad=new SignaturePad(canvas,{backgroundColor:'rgba(0,0,0,0)',penColor:'#202058'}); }catch{ sigPad=null; }
+  document.getElementById('clrSig').onclick=()=>sigPad&&sigPad.clear();
+  document.getElementById('cancelAccept').onclick=closeModal;
+  document.getElementById('mm').onclick=e=>{ if(e.target.id==='mm') closeModal(); };
+  document.getElementById('doAccept').onclick=doAccept;
+}
+async function doAccept(){
+  const btn=document.getElementById('doAccept'); btn.disabled=true; btn.textContent='Confirming…';
+  const body={ notes: (document.getElementById('acceptNotes').value||'').trim()||undefined };
+  if(sigPad && !sigPad.isEmpty()){ try{ body.signature_data_url=sigPad.toDataURL(); }catch{} }
+  try{
+    const r=await fetch('/api/quote-versions/tracking/'+encodeURIComponent(token)+'/accept',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){ const e=await r.json().catch(()=>({})); btn.disabled=false; btn.textContent='Accept & Confirm'; alert(e.error==='expired'?'This quote has expired.':'Could not accept — please contact us.'); return; }
+    closeModal(); await load();
+  }catch{ btn.disabled=false; btn.textContent='Accept & Confirm'; alert('Network error — please try again.'); }
+}
+function openContact(title,desc){
+  document.getElementById('modalRoot').innerHTML='<div class="modalmask" id="mm"><div class="modal"><h3>'+esc(title)+'</h3><p>'+esc(desc)+'</p>'
+    +'<textarea id="cnotes" placeholder="Your message…" style="min-height:90px"></textarea>'
+    +'<div class="actions" style="margin-top:16px"><button class="btn primary" id="cok">Send to team</button><button class="btn ghost" id="ccancel">Cancel</button></div>'
+    +'<div class="mut" style="margin-top:10px">Or call/WhatsApp us directly — we’ll get right back to you.</div></div></div>';
+  document.getElementById('ccancel').onclick=closeModal;
+  document.getElementById('mm').onclick=e=>{ if(e.target.id==='mm') closeModal(); };
+  document.getElementById('cok').onclick=()=>{ closeModal(); document.getElementById('modalRoot').innerHTML='<div class="modalmask" id="mm2"><div class="modal"><h3>Thanks!</h3><p>Your message has been noted. Our team will follow up shortly.</p><div class="actions"><button class="btn primary" onclick="document.getElementById(\'modalRoot\').innerHTML=\'\'">Close</button></div></div></div>'; };
+  // Note: contact requests are a lightweight, no-op acknowledgement in v1 (no
+  // public write endpoint) — the customer is nudged to call/WhatsApp. Staff act on
+  // the quote from Order 360.
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; sigPad=null; }
+load();
+</script>
+</body>
+</html>

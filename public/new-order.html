@@ -267,13 +267,26 @@
         <div class="topstrip">
           <div>
             <div style="display:flex;align-items:center;gap:12px">
-              <h1>NEW BOOKING</h1>
-              <div class="booking-pill">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                <span>Booking</span>
+              <h1 id="composerTitle">NEW BOOKING</h1>
+              <!-- Sub-slice 2.2: Booking / Standby mode switch -->
+              <div style="display:inline-flex;border:1px solid var(--border,#ece9e3);border-radius:999px;overflow:hidden">
+                <button id="modeBooking" type="button" style="border:none;background:#4f46e5;color:#fff;font-family:inherit;font-size:12px;font-weight:600;padding:6px 14px;cursor:pointer">Booking</button>
+                <button id="modeStandby" type="button" style="border:none;background:#fff;color:#6b7280;font-family:inherit;font-size:12px;font-weight:600;padding:6px 14px;cursor:pointer">Standby</button>
               </div>
             </div>
             <p class="sub" id="stripSub">Draft — no availability blocked yet</p>
+            <!-- Standby hold-duration bar (shown only in Standby mode) -->
+            <div id="standbyBar" style="display:none;margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:11px;padding:12px 14px">
+              <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+                <div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:#9ca3af;text-transform:uppercase;margin-bottom:5px">Hold duration</div>
+                  <select id="holdMinutes" style="font-family:'JetBrains Mono',monospace;font-size:13px;border:1px solid #d7d3ca;border-radius:8px;padding:7px 10px;background:#fff;color:#26235a">
+                    <option value="120">2 hours</option><option value="240" selected>4 hours</option><option value="480">8 hours</option><option value="1440">24 hours</option></select></div>
+                <div><div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:#9ca3af;text-transform:uppercase;margin-bottom:5px">Reason</div>
+                  <select id="standbyReason" style="font-family:'JetBrains Mono',monospace;font-size:13px;border:1px solid #d7d3ca;border-radius:8px;padding:7px 10px;background:#fff;color:#26235a">
+                    <option value="customer_deciding">customer_deciding</option><option value="awaiting_client_approval">awaiting_client_approval</option><option value="shoot_dates_tentative">shoot_dates_tentative</option><option value="budget_pending">budget_pending</option><option value="comparing_options">comparing_options</option><option value="other">other</option></select></div>
+                <div style="flex:1;min-width:160px;font-size:12px;color:#92400e;line-height:1.5">A standby holds the equipment for the window without committing. It auto-expires when the hold ends.</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -484,6 +497,9 @@ const state = {
   deposit_timing: 'pickup',// 'pickup' | 'now'
   notesOpen: false,
   draftOrderId: null,      // set once a draft is created (autosave / save)
+  mode: 'booking',         // Sub-slice 2.2: 'booking' | 'standby'
+  hold_minutes: 240,       // standby hold duration (minutes)
+  standby_reason: 'customer_deciding',
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -1064,7 +1080,61 @@ async function saveDraft() {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Sub-slice 2.2 — Standby mode
+// ----------------------------------------------------------------------------
+function setMode(mode) {
+  state.mode = mode;
+  const isStandby = mode === 'standby';
+  const bk = document.getElementById('modeBooking');
+  const sb = document.getElementById('modeStandby');
+  bk.style.background = isStandby ? '#fff' : '#4f46e5';
+  bk.style.color      = isStandby ? '#6b7280' : '#fff';
+  sb.style.background = isStandby ? '#d97706' : '#fff';
+  sb.style.color      = isStandby ? '#fff' : '#6b7280';
+  document.getElementById('standbyBar').style.display = isStandby ? 'block' : 'none';
+  document.getElementById('composerTitle').textContent = isStandby ? 'NEW STANDBY' : 'NEW BOOKING';
+  const confirmBtn = document.getElementById('confirmBtn');
+  // keep the pulse element, swap only the trailing text node
+  confirmBtn.lastChild.textContent = isStandby ? ' Create Standby' : ' Confirm Booking';
+}
+
+async function createStandby() {
+  if (saving || !validateBeforeSave()) return;
+  if (!state.items.length) { toast('Add at least one item to hold', true); return; }
+  if (!state.rental_start || !state.rental_end) { toast('Set the rental window first', true); return; }
+  saving = true; setBusy(true); hideBlocker();
+  try {
+    const body = {
+      customer_person_id: state.customer.id,
+      rental_start: state.rental_start,
+      rental_end: state.rental_end,
+      requested_via: 'walk_in',
+      reason_tag: state.standby_reason,
+      hold_duration_minutes: Number(state.hold_minutes),
+      line_items: state.items.map(it => ({ product_id: it.product_id, quantity: it.quantity })),
+    };
+    const noteText = document.getElementById('notesText')?.value?.trim();
+    if (noteText) body.internal_notes = noteText;
+    const res = await api.post('/api/standbys', body);
+    const orderId = res && (res.order_id || res.standby?.order_id);
+    toast(res?.requires_approval ? 'Standby submitted for approval' : 'Standby hold created');
+    if (orderId) {
+      window.location.href = `/order-360.html?id=${encodeURIComponent(orderId)}`;
+    } else {
+      window.location.href = '/orders.html';
+    }
+  } catch (err) {
+    saving = false; setBusy(false);
+    const b = err?.body;
+    const reasons = b?.error?.reasons || b?.reasons;
+    if (reasons) { showBlocker(reasons); return; }
+    toast(b?.error?.message || b?.error || err?.message || 'Could not create standby', true);
+  }
+}
+
 async function confirmBooking() {
+  if (state.mode === 'standby') return createStandby();
   if (saving || !validateBeforeSave()) return;
   if (!state.items.length) { toast('Add at least one item to confirm', true); return; }
   saving = true; setBusy(true); hideBlocker();
@@ -1160,6 +1230,12 @@ function wireEvents() {
 
   document.getElementById('saveDraftBtn').addEventListener('click', saveDraft);
   document.getElementById('confirmBtn').addEventListener('click', confirmBooking);
+
+  // Sub-slice 2.2 — Booking / Standby mode toggle
+  document.getElementById('modeBooking').addEventListener('click', () => setMode('booking'));
+  document.getElementById('modeStandby').addEventListener('click', () => setMode('standby'));
+  document.getElementById('holdMinutes').addEventListener('change', (e) => { state.hold_minutes = e.target.value; });
+  document.getElementById('standbyReason').addEventListener('change', (e) => { state.standby_reason = e.target.value; });
 
   // close dropdowns on outside click
   document.addEventListener('click', (e) => {

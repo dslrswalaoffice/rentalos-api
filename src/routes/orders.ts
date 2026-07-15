@@ -85,6 +85,14 @@ const ORDER_STATUSES = [
 ] as const;
 type OrderStatus = typeof ORDER_STATUSES[number];
 
+// Sub-slice 2.2 — statuses that are valid as a LIST FILTER but never a manual
+// transition target (standby lifecycle is driven by /api/standbys, not the
+// generic transitions endpoint). Kept separate from ORDER_STATUSES so the
+// transition Zod enum stays constrained.
+const FILTERABLE_STATUSES = [
+  ...ORDER_STATUSES, 'standby', 'standby_expired', 'standby_released',
+] as const;
+
 const CANONICAL_NEXT: Record<OrderStatus, OrderStatus[]> = {
   draft:      ['quoted', 'confirmed', 'cancelled'],
   quoted:     ['confirmed', 'draft', 'cancelled'],
@@ -618,7 +626,7 @@ orders.get('/', async (c) => {
   if (qp.status && qp.status.trim()) {
     statusArr = qp.status.split(',').map((s) => s.trim()).filter(Boolean);
     for (const s of statusArr) {
-      if (!(ORDER_STATUSES as readonly string[]).includes(s)) {
+      if (!(FILTERABLE_STATUSES as readonly string[]).includes(s)) {
         return c.json({ error: 'invalid_request', reason: 'unknown_status', value: s }, 400);
       }
     }
