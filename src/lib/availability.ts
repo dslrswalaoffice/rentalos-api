@@ -366,8 +366,16 @@ export async function checkAvailability(args: {
           AND oi.product_id = ${args.productId}::uuid
           AND oi.item_type = 'rental'
           AND o.deleted_at IS NULL
-          AND o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
-          AND oi.status::text = ANY(string_to_array(${RESERVING_ITEM_STATUSES.join(',')}::text, ','))
+          -- A line reserves capacity when EITHER its order+item statuses are in the
+          -- reserving sets, OR it's a standby SOFT reservation (Sub-slice 2.2). A
+          -- standby order sits in the 'standby' lifecycle state (outside
+          -- RESERVING_STATUSES), so soft-reserved items would otherwise be invisible
+          -- to availability — the hold must still block the window.
+          AND (
+            (o.status::text = ANY(string_to_array(${RESERVING_STATUSES.join(',')}::text, ','))
+             AND oi.status::text = ANY(string_to_array(${RESERVING_ITEM_STATUSES.join(',')}::text, ',')))
+            OR oi.is_soft_reserved = true
+          )
           AND o.id != COALESCE(${args.excludeOrderId ?? null}::uuid,
                                '00000000-0000-0000-0000-000000000000'::uuid)
           -- Per-location reservation (bulk is per-location now via stock_levels).

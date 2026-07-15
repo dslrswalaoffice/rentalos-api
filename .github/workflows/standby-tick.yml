@@ -1,0 +1,27 @@
+name: Standby expiry + reminders
+
+# Every 15 minutes: expire overdue standby holds (release availability + notify)
+# and fire customer/staff expiry reminders. The endpoint is idempotent and
+# self-throttling (per-row sent-at flags), so re-running is safe.
+# REMINDER_TRIGGER_SECRET must be a GitHub Actions secret AND a Vercel env var.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping standby-tick
+        run: |
+          RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X POST https://rentalos-api.vercel.app/api/cron/standby-tick \
+            -H "X-Reminder-Secret: ${{ secrets.REMINDER_TRIGGER_SECRET }}")
+          echo "HTTP $RESPONSE"
+          cat /tmp/response.json || true
+          echo
+          if [ "$RESPONSE" != "200" ]; then
+            echo "standby-tick failed with HTTP $RESPONSE"
+            exit 1
+          fi

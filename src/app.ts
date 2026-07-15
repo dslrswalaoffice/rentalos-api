@@ -24,6 +24,10 @@ import { recommendations } from './routes/recommendations.js';
 import { invitations } from './routes/invitations.js';
 import { members } from './routes/members.js';
 import { approvals } from './routes/approvals.js';
+import { standbys } from './routes/standbys.js';
+import { quoteVersions } from './routes/quote_versions.js';
+import { publicQuotes } from './routes/public_quotes.js';
+import { cron } from './routes/cron.js';
 import { config } from './lib/config.js';
 import { sql } from './db.js';
 import { analyticsMiddleware } from './middleware/analytics.js';
@@ -80,6 +84,14 @@ app.route('/api/recommendations', recommendations);
 app.route('/api/invitations', invitations);
 app.route('/api/members', members);
 app.route('/api/approvals', approvals);
+app.route('/api/standbys', standbys);
+// Quote-version routes live under /api/orders/:id/quote-versions — mounted at the
+// same prefix as the orders router; Hono matches by full path so they coexist.
+app.route('/api/orders', quoteVersions);
+// PUBLIC (unauthenticated) customer quote tracking — no session middleware.
+app.route('/api/quote-versions', publicQuotes);
+// Background jobs (secret-header auth) — standby expiry/reminders + quote monitor.
+app.route('/api/cron', cron);
 // Fallback for unknown /api/* — keep it JSON so clients can parse it.
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) {

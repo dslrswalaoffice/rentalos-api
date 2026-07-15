@@ -12,6 +12,7 @@ import { idempotencyMiddleware } from '../lib/idempotency.js';
 import { orderBlock, reason as reasonB } from '../lib/blocked_action.js';
 import { roleSatisfies, loadWorkspaceSettings, type ApproverRole } from '../lib/approvals.js';
 import { applyExtensionEffects, applyCancellationEffects } from '../lib/order_actions.js';
+import { activateStandby, releaseStandbyHold } from '../lib/standby.js';
 
 // ============================================================================
 // src/routes/approvals.ts (Sub-slice 2.1) — approval inbox + decisions
@@ -40,6 +41,8 @@ function clientCtx(c: Context) {
 const RESOURCE_LABEL: Record<string, string> = {
   order_extension: 'Extension',
   order_cancellation: 'Cancellation',
+  standby: 'Standby',
+  quote_withdrawal: 'Quote withdrawal',
 };
 
 type ApprovalRow = {
@@ -179,6 +182,16 @@ approvals.post('/:id/decide', async (c) => {
         cancellationId: ap.resource_id, approvedByUserId: session.user.id, settings,
         ctx: { ipAddress, userAgent },
       });
+    } else if (ap.resource_type === 'standby') {
+      // Sub-slice 2.2 — approving a standby activates the hold.
+      await activateStandby({ workspaceId: session.workspace.id, standbyId: ap.resource_id, actorUserId: session.user.id });
+      resourceResult = { activated: true };
+    } else if (ap.resource_type === 'quote_withdrawal') {
+      // Approving a post-acceptance withdrawal withdraws the accepted quote.
+      await sql`UPDATE quote_versions SET status = 'withdrawn', withdrawn_at = now(), withdrawn_by_user_id = ${session.user.id}::uuid,
+                  withdrawn_reason = ${reason_notes ?? null}::text, tracking_link_url = NULL, updated_at = now()
+                WHERE id = ${ap.resource_id}::uuid AND workspace_id = ${session.workspace.id}::uuid`;
+      resourceResult = { withdrawn: true };
     }
   } else {
     // Rejected → mark the resource rejected so it's not left dangling.
@@ -188,6 +201,9 @@ approvals.post('/:id/decide', async (c) => {
     } else if (ap.resource_type === 'order_cancellation') {
       await sql`UPDATE order_cancellations SET status = 'rejected', status_reason = ${reason_notes ?? null}::text, updated_at = now()
                 WHERE id = ${ap.resource_id}::uuid AND workspace_id = ${session.workspace.id}::uuid`;
+    } else if (ap.resource_type === 'standby') {
+      // Rejecting a standby releases its hold.
+      await releaseStandbyHold({ workspaceId: session.workspace.id, standbyId: ap.resource_id, actorUserId: session.user.id, newStatus: 'rejected', orderStatus: 'cancelled', outcomeReason: 'approval_rejected' });
     }
   }
 
