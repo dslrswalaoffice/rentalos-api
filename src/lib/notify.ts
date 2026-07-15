@@ -46,7 +46,7 @@ async function loadActiveEmailAdapter(workspaceId: string): Promise<LoadedEmail 
 }
 
 /** {var} substitution — unknown tokens are left literal so a typo is visible. */
-function substitute(text: string, vars: Record<string, unknown>): string {
+export function substitute(text: string, vars: Record<string, unknown>): string {
   return String(text).replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k] ?? '') : `{${k}}`));
 }
 function escapeHtml(s: string): string {
@@ -235,6 +235,15 @@ const TEMPLATES: Record<string, { title: string; body?: string }> = {
   'approval_rejected': {
     title: 'Rejected: {resource_label} · Order #{order_number}',
     body: 'Rejected by {actor_name}.{reason_suffix}',
+  },
+  // Sub-slice 2.2 — internal staff feed.
+  'standby_staff_reminder': {
+    title: 'Standby {standby_number} expiring soon',
+    body: 'Order #{order_number} — the customer hold is about to expire.',
+  },
+  'quote_accepted_internal': {
+    title: 'Quote {quote_number} accepted · Order #{order_number}',
+    body: '{customer_name} accepted — {total_amount}. Order confirmed.',
   },
 };
 

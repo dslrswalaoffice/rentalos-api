@@ -153,6 +153,9 @@ button{font-family:inherit}
 .pill.attention .dot{background:var(--attention)}
 .pill.danger{color:var(--danger);background:rgba(220,38,38,.08);border-color:rgba(220,38,38,.3)}
 .pill.danger .dot{background:var(--danger)}
+/* Sub-slice 2.2 — standby countdown pill */
+.sb-countdown{display:inline-flex;align-items:center;gap:4px;margin-top:4px;height:20px;padding:0 7px;border-radius:4px;font:600 10px 'JetBrains Mono';letter-spacing:.03em;white-space:nowrap;color:var(--attention);background:var(--attention-bg);border:1px solid var(--attention-border)}
+.sb-countdown.urgent{color:var(--danger);background:var(--danger-bg);border-color:var(--danger-border)}
 
 .act-btn{height:30px;padding:0 13px;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap;border:1px solid var(--field-border);background:#fff;color:var(--head)}
 .act-btn.primary{background:var(--info);color:#fff;border-color:var(--info)}
@@ -354,13 +357,14 @@ import { api, ensureAuth, formatINR } from '/_lib/api.js';
 // ---------------------------------------------------------------------------
 const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()); // yyyy-mm-dd
 
-const COARSE_STATUSES = ['draft','quoted','confirmed','dispatched','active','returned','closed','cancelled'];
+const COARSE_STATUSES = ['draft','quoted','standby','confirmed','dispatched','active','returned','closed','cancelled'];
 
 const VIEW_DEFS = [
   { key: 'todays_ops',  label: "Today's Ops",       preset: { status: ['confirmed','dispatched','active','returned'], late_only: false, from: TODAY, to: TODAY } },
   { key: 'attention',   label: 'Attention Required', preset: { status: [], late_only: true,  from: '', to: '' } },
   { key: 'all_active',  label: 'All Active',         preset: { status: ['confirmed','dispatched','active','returned'], late_only: false, from: '', to: '' } },
   { key: 'pipeline',    label: 'Pipeline',           preset: { status: ['draft','quoted'], late_only: false, from: '', to: '' } },
+  { key: 'standby',     label: 'Standby',            preset: { status: ['standby'], late_only: false, from: '', to: '' } },
   { key: 'overdue',     label: 'Overdue',            preset: { status: [], late_only: true,  from: '', to: '' } },
   { key: 'my_assigned', label: 'My Assigned',        preset: { status: ['confirmed','dispatched','active','returned'], late_only: false, from: '', to: '' } },
   { key: 'archived',    label: 'Archived',           preset: { status: ['closed','cancelled'], late_only: false, from: '', to: '' } },
@@ -705,7 +709,7 @@ function cellHtml(key, o) {
         `</div></div>`;
     }
     case 'status':
-      return `<div class="cell">${statusPill(o)}</div>`;
+      return `<div class="cell">${statusPill(o)}${standbyCountdown(o)}</div>`;
     case 'pickup':
       return `<div class="cell">${dateCell(o.rental_start, o.dispatch_type === 'delivery' ? 'DELIVERY' : '')}</div>`;
     case 'return':
@@ -749,6 +753,7 @@ const STATUS_CAT = {
   allocated: 'progress', partially_dispatched: 'progress', fully_dispatched: 'progress',
   partial_return: 'progress', awaiting_inspection: 'progress',
   ready_to_close: 'success', closed: 'success', cancelled: 'danger',
+  standby: 'attention', standby_expired: 'neutral', standby_released: 'neutral',
 };
 const STATUS_LABEL = {
   fully_dispatched: 'FULLY ON RENT',
@@ -756,6 +761,9 @@ const STATUS_LABEL = {
   awaiting_inspection: 'AWAITING INSPECTION',
   ready_to_close: 'READY TO CLOSE',
   partial_return: 'PARTIAL RETURN',
+  standby: 'STANDBY',
+  standby_expired: 'STANDBY EXPIRED',
+  standby_released: 'STANDBY RELEASED',
 };
 function statusPill(o) {
   const st = o.aggregate_status || o.status || 'draft';
@@ -767,6 +775,20 @@ function statusPill(o) {
   const showCount = c && count != null && c.total && count < c.total;
   return `<span class="pill ${cat}"><span class="dot"></span>${escapeHtml(label)}` +
     (showCount ? `<span class="div"></span><span class="cnt">${count}/${c.total}</span>` : '') + `</span>`;
+}
+
+// Sub-slice 2.2 — live "hold expires in" pill for active standbys.
+function standbyCountdown(o) {
+  const secs = o.standby_seconds_to_expiry;
+  if (secs == null || o.aggregate_status !== 'standby') return '';
+  const s = Math.max(0, Math.floor(Number(secs)));
+  let label;
+  if (s <= 0) label = 'expiring';
+  else if (s < 3600) label = `${Math.ceil(s / 60)}m left`;
+  else if (s < 86400) label = `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m left`;
+  else label = `${Math.floor(s / 86400)}d left`;
+  const urgent = s < 3600;
+  return `<span class="sb-countdown${urgent ? ' urgent' : ''}" title="Standby hold expires">⏳ ${escapeHtml(label)}</span>`;
 }
 
 function itemsSub(o) {
@@ -814,6 +836,8 @@ function nextAction(o) {
 
 function rowFlag(o) {
   if (o.is_late) return 'danger';
+  // Sub-slice 2.2 — an active standby hold gets the amber attention rail.
+  if (o.aggregate_status === 'standby' && o.standby_seconds_to_expiry != null) return 'attention';
   const bal = Number(o.balance_paise || 0);
   if (o.aggregate_status === 'awaiting_inspection' || o.aggregate_status === 'partial_return') return 'attention';
   if (bal > 0 && o.rental_end && new Date(o.rental_end) < new Date()) return 'attention';

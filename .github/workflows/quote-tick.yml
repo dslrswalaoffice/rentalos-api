@@ -1,0 +1,27 @@
+name: Quote expiry monitor
+
+# Daily: fire "expiring soon" reminders (N days before valid_until, per policy)
+# and expire quotes past valid_until. Idempotent + self-throttling (expiry_notified_at
+# flag + status guard). REMINDER_TRIGGER_SECRET must be a GitHub Actions secret AND
+# a Vercel env var.
+on:
+  schedule:
+    - cron: '0 4 * * *'   # 04:00 UTC ≈ 09:30 IST
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping quote-tick
+        run: |
+          RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X POST https://rentalos-api.vercel.app/api/cron/quote-tick \
+            -H "X-Reminder-Secret: ${{ secrets.REMINDER_TRIGGER_SECRET }}")
+          echo "HTTP $RESPONSE"
+          cat /tmp/response.json || true
+          echo
+          if [ "$RESPONSE" != "200" ]; then
+            echo "quote-tick failed with HTTP $RESPONSE"
+            exit 1
+          fi

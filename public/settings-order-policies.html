@@ -129,6 +129,38 @@ function render(){
     +frow('Auto-expire after','A pending approval expires after this many hours.',numInput('a_expire',n(a.auto_expire_hours,72),'hours'))
     +frow('Remind after','Remind the approver after this many hours.',numInput('a_remind',n(a.remind_after_hours,24),'hours'))
   +'</div></div>';
+  // Standby policy (Sub-slice 2.2)
+  const sp=SET.standby_policy||{};const spc=sp.concurrent_holds_cap_by_segment||{};const spr=sp.reminders||{};const spa=sp.requires_approval||{};
+  h+='<div class="card"><div class="card-hd"><span class="sec-dot" style="background:var(--info)"></span><span class="t">Standby Policy</span></div><div class="card-bd">'
+    +frow('Default hold duration','How long a hold lasts by default.',numInput('sb_hold',n(sp.default_hold_duration_minutes,240),'minutes'))
+    +frow('Grace period','Extra minutes after expiry before final release.',numInput('sb_grace',n(sp.grace_period_minutes,30),'minutes'))
+    +'<div class="grouplbl">Concurrent holds cap by segment</div>'
+    +frow('New customer','',numInput('sb_cap_new',n(spc.new_customer,1),'holds'))
+    +frow('Repeat','',numInput('sb_cap_repeat',n(spc.repeat,2),'holds'))
+    +frow('Loyal','',numInput('sb_cap_loyal',n(spc.loyal,3),'holds'))
+    +frow('VIP','',numInput('sb_cap_vip',n(spc.vip,999),'holds'))
+    +'<div class="grouplbl">Reminders</div>'
+    +frow('Customer reminder before expiry','',numInput('sb_rem_cust',n(spr.customer_before_expiry_minutes,60),'minutes'))
+    +frow('Staff reminder before expiry','',numInput('sb_rem_staff',n(spr.staff_before_expiry_minutes,15),'minutes'))
+    +'<div class="grouplbl">Approval triggers</div>'
+    +frow('Approval over value','',numInput('sb_ap_value',paiseToR(spa.value_over_paise),'₹'))
+    +frow('Approval over duration','',numInput('sb_ap_dur',n(spa.duration_over_minutes,1440),'minutes'))
+  +'</div></div>';
+  // Quote policy (Sub-slice 2.2)
+  const qp=SET.quote_policy||{};const qvs=qp.validity_by_customer_segment||{};
+  h+='<div class="card"><div class="card-hd"><span class="sec-dot" style="background:var(--progress)"></span><span class="t">Quote Policy</span></div><div class="card-bd">'
+    +frow('Default validity','How long a sent quote stays valid.',numInput('q_valid',n(qp.default_validity_days,7),'days'))
+    +'<div class="grouplbl">Validity by customer segment</div>'
+    +frow('New customer','',numInput('q_valid_new',n(qvs.new_customer,3),'days'))
+    +frow('Repeat','',numInput('q_valid_repeat',n(qvs.repeat,7),'days'))
+    +frow('VIP','',numInput('q_valid_vip',n(qvs.vip,14),'days'))
+    +'<div class="grouplbl">Rules</div>'
+    +frow('Auto-expire on validity date','',toggle('q_autoexp',qp.auto_expire_on_valid_until!==false))
+    +frow('Notify customer before expiry','',numInput('q_notify_before',n(qp.notify_customer_before_expiry_days,2),'days'))
+    +frow('Require reason tag on revision','',toggle('q_reason',qp.require_reason_tag_on_revision!==false))
+    +frow('Invalidate superseded tracking links','',toggle('q_invalidate',qp.invalidate_superseded_tracking_links!==false))
+    +frow('Require signature over amount','',numInput('q_sig',paiseToR(qp.require_customer_signature_over_paise),'₹'))
+  +'</div></div>';
   // Email templates (Sub-slice 2.1.5)
   h+='<div class="card"><div class="card-hd"><span class="sec-dot" style="background:var(--success)"></span><span class="t">Email Templates</span><span class="d">Sent to customers &amp; approvers · WhatsApp stays manual</span></div><div class="card-bd">'
     +'<div class="grouplbl">Customer emails</div>'
@@ -191,7 +223,26 @@ function collect(){
   }
   // Shallow-merge under notification_policy preserves any `events` modes server-side.
   const notification_policy={templates};
-  return {extension_policy,cancellation_policy,approval_routing,notification_policy};
+  // Standby + quote policy (Sub-slice 2.2) — send complete objects (shallow-merge).
+  const sp=SET.standby_policy||{};
+  const standby_policy={...sp,
+    default_hold_duration_minutes:numVal('sb_hold',240),
+    grace_period_minutes:numVal('sb_grace',30),
+    concurrent_holds_cap_by_segment:{new_customer:numVal('sb_cap_new',1),repeat:numVal('sb_cap_repeat',2),loyal:numVal('sb_cap_loyal',3),vip:numVal('sb_cap_vip',999)},
+    reminders:{customer_before_expiry_minutes:numVal('sb_rem_cust',60),staff_before_expiry_minutes:numVal('sb_rem_staff',15)},
+    requires_approval:{...(sp.requires_approval||{}),value_over_paise:rToPaise(numVal('sb_ap_value',0)),duration_over_minutes:numVal('sb_ap_dur',1440)},
+  };
+  const qp=SET.quote_policy||{};
+  const quote_policy={...qp,
+    default_validity_days:numVal('q_valid',7),
+    validity_by_customer_segment:{new_customer:numVal('q_valid_new',3),repeat:numVal('q_valid_repeat',7),vip:numVal('q_valid_vip',14)},
+    auto_expire_on_valid_until:togOn('q_autoexp'),
+    notify_customer_before_expiry_days:numVal('q_notify_before',2),
+    require_reason_tag_on_revision:togOn('q_reason'),
+    invalidate_superseded_tracking_links:togOn('q_invalidate'),
+    require_customer_signature_over_paise:rToPaise(numVal('q_sig',0)),
+  };
+  return {extension_policy,cancellation_policy,approval_routing,notification_policy,standby_policy,quote_policy};
 }
 
 document.getElementById('saveBtn').addEventListener('click',async()=>{

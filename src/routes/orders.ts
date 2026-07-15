@@ -85,6 +85,14 @@ const ORDER_STATUSES = [
 ] as const;
 type OrderStatus = typeof ORDER_STATUSES[number];
 
+// Sub-slice 2.2 — statuses that are valid as a LIST FILTER but never a manual
+// transition target (standby lifecycle is driven by /api/standbys, not the
+// generic transitions endpoint). Kept separate from ORDER_STATUSES so the
+// transition Zod enum stays constrained.
+const FILTERABLE_STATUSES = [
+  ...ORDER_STATUSES, 'standby', 'standby_expired', 'standby_released',
+] as const;
+
 const CANONICAL_NEXT: Record<OrderStatus, OrderStatus[]> = {
   draft:      ['quoted', 'confirmed', 'cancelled'],
   quoted:     ['confirmed', 'draft', 'cancelled'],
@@ -618,7 +626,7 @@ orders.get('/', async (c) => {
   if (qp.status && qp.status.trim()) {
     statusArr = qp.status.split(',').map((s) => s.trim()).filter(Boolean);
     for (const s of statusArr) {
-      if (!(ORDER_STATUSES as readonly string[]).includes(s)) {
+      if (!(FILTERABLE_STATUSES as readonly string[]).includes(s)) {
         return c.json({ error: 'invalid_request', reason: 'unknown_status', value: s }, 400);
       }
     }
@@ -678,6 +686,9 @@ orders.get('/', async (c) => {
       ic.item_count,
       EXISTS (SELECT 1 FROM order_assets oa
               WHERE oa.order_id = o.id AND oa.workspace_id = o.workspace_id) AS has_assets,
+      -- Sub-slice 2.2 — live standby countdown for the standby view / amber rows.
+      (SELECT GREATEST(0, EXTRACT(EPOCH FROM (s.expires_at - now())))::bigint
+         FROM standbys s WHERE s.order_id = o.id AND s.status = 'active' LIMIT 1) AS standby_seconds_to_expiry,
       COUNT(*) OVER()::int AS full_total
     FROM orders o
     JOIN people p ON p.id = o.customer_person_id
@@ -917,6 +928,24 @@ orders.get('/:id', async (c) => {
     outstanding_paise: Number(ce?.outstanding_paise ?? 0),
   };
 
+  // Sub-slice 2.2 — standby (with live countdown) + quote versions for this order.
+  const [standbyRows, quoteRows] = await Promise.all([
+    query(sql`
+      SELECT id, standby_number, status, reason_tag, expires_at, hold_duration_minutes,
+             estimated_value_paise, requires_approval,
+             GREATEST(0, EXTRACT(EPOCH FROM (expires_at - now())))::bigint AS seconds_to_expiry
+      FROM standbys WHERE order_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+        AND status IN ('active','pending_approval') ORDER BY created_at DESC LIMIT 1
+    `),
+    query(sql`
+      SELECT id, version_number, quote_number, status, total_paise, valid_until, sent_at,
+             first_viewed_at, view_count, accepted_at, revision_reason_tag,
+             tracking_link_url IS NOT NULL AS has_tracking_link, diff_from_parent
+      FROM quote_versions WHERE order_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+      ORDER BY version_number ASC
+    `),
+  ]);
+
   return c.json({
     order, items, events, can_finalize: canFinalize, custom_fields: customFields, tags,
     coupon_redemption: redemption[0] ?? null,
@@ -927,6 +956,8 @@ orders.get('/:id', async (c) => {
     cancellation: cancellationRows[0] ?? null,
     active_approvals: activeApprovals,
     customer,
+    standby: standbyRows[0] ?? null,
+    quote_versions: quoteRows,
   });
 });
 
