@@ -103,6 +103,12 @@ export type NotifyArgs = {
   targetId?: string;
   linkUrl?: string;
   metadata?: Record<string, unknown>;
+  // Sub-slice 2.1.5 follow-up — when set, the EMAIL for this event goes ONLY to
+  // this user (approver for *_pending_approval, requester for approval_*), not to
+  // every member. In-product bell notifications still fan out to all members.
+  // When null/undefined, email falls back to all template-eligible recipients
+  // (e.g. a role-gated approval with no specific approver routed).
+  emailRecipientUserId?: string | null;
 };
 
 type ActiveIntegration = {
@@ -474,7 +480,12 @@ export async function emitNotification(args: NotifyArgs): Promise<void> {
 
       // Email: actually dispatch via SMTP when a real adapter + template + the
       // recipient's address are all present. Otherwise record intent (skipped).
-      if (emailLoaded) {
+      // Targeting: when emailRecipientUserId is set, email ONLY that user (no CC
+      // to other members) — approver for *_pending_approval, requester for
+      // approval_*. Others are skipped silently (no email row, no alert fatigue).
+      const emailTargeted = args.emailRecipientUserId ?? null;
+      const emailThisRecipient = !emailTargeted || r.user_id === emailTargeted;
+      if (emailLoaded && emailThisRecipient) {
         let status: 'pending' | 'skipped' | 'sent' | 'failed' = 'skipped';
         let reason: string | null = null;
         let providerRef: string | null = null;

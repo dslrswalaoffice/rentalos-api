@@ -214,6 +214,7 @@ approvals.post('/:id/decide', async (c) => {
     eventType: decision === 'approved' ? 'approval_approved' : 'approval_rejected',
     targetType: 'approval_request', targetId: id,
     linkUrl: ap.order_id ? `/order-360.html?id=${ap.order_id}` : undefined,
+    emailRecipientUserId: ap.requester_user_id, // email ONLY the original requester
     metadata: {
       order_number: ap.order_number ?? '', resource_label: RESOURCE_LABEL[ap.resource_type] ?? ap.resource_type,
       actor_name: session.user.displayName ?? '', reason_suffix: reason_notes ? ` Reason: ${reason_notes}` : '',
