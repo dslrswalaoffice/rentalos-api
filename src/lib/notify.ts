@@ -1,4 +1,84 @@
 import { sql, query } from '../db.js';
+import { decryptJson } from './crypto.js';
+import { findAdapter } from './adapters/registry.js';
+import type { EmailAdapter } from './adapters/types.js';
+
+// ============================================================================
+// Email dispatch (Sub-slice 2.1.5)
+// ----------------------------------------------------------------------------
+// Wires the SMTP adapter into the emit pipeline so notifications actually SEND
+// (2.1 only recorded delivery intent). Same loader/render pattern as reminders.ts.
+// WhatsApp is deliberately NOT wired here — it stays delivery-intent-only until a
+// future WATI slice. Every path is fail-open: a send error is logged on the
+// delivery row and never breaks the business action.
+// ============================================================================
+type LoadedEmail = { provider: string; adapter: EmailAdapter; credentials: Record<string, string>; config: Record<string, unknown> };
+
+async function loadActiveEmailAdapter(workspaceId: string): Promise<LoadedEmail | null> {
+  try {
+    const rows = await query<{ provider: string; credentials_b64: string | null; config: Record<string, unknown> }>(sql`
+      SELECT provider, encode(credentials_encrypted, 'base64') AS credentials_b64, config
+      FROM workspace_integrations
+      WHERE workspace_id = ${workspaceId}::uuid AND category = 'email' AND is_active = true
+      LIMIT 1
+    `);
+    const row = rows[0];
+    if (!row) return null;
+    const adapter = findAdapter('email', row.provider) as EmailAdapter | null;
+    if (!adapter) return null;
+    let credentials: Record<string, string> = {};
+    if (row.credentials_b64) {
+      try { credentials = (decryptJson(Buffer.from(row.credentials_b64, 'base64')) as Record<string, string>) ?? {}; }
+      catch (err) { console.error('[notify] credential decrypt failed', err); }
+    }
+    return { provider: row.provider, adapter, credentials, config: row.config ?? {} };
+  } catch (err) {
+    console.error('[notify] loadActiveEmailAdapter failed', err);
+    return null;
+  }
+}
+
+/** {var} substitution — unknown tokens are left literal so a typo is visible. */
+function substitute(text: string, vars: Record<string, unknown>): string {
+  return String(text).replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k] ?? '') : `{${k}}`));
+}
+function escapeHtml(s: string): string {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Resolve the email template (subject/body) for an event from workspace settings. */
+function emailTemplateFor(settings: Record<string, any> | null | undefined, eventType: string): { subject: string; body: string } | null {
+  const t = settings?.notification_policy?.templates?.[eventType]?.email;
+  if (t && (t.subject || t.body)) return { subject: String(t.subject ?? ''), body: String(t.body ?? '') };
+  return null;
+}
+
+type WsInfo = { name: string; business_email: string | null };
+async function loadWorkspaceInfo(workspaceId: string): Promise<WsInfo> {
+  try {
+    const rows = await query<WsInfo>(sql`SELECT name, business_email FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1`);
+    return rows[0] ?? { name: 'RentalOS', business_email: null };
+  } catch { return { name: 'RentalOS', business_email: null }; }
+}
+
+/** Send one email via the active adapter. Returns the adapter result (never throws). */
+async function sendEmail(loaded: LoadedEmail, args: { to: string; subject: string; body: string; ws: WsInfo }): Promise<{ status: 'sent' | 'failed'; messageId?: string; error?: string }> {
+  try {
+    const html = `<pre style="font-family:inherit;white-space:pre-wrap;margin:0;">${escapeHtml(args.body)}</pre>`;
+    return await loaded.adapter.send({
+      to: args.to,
+      from: String(loaded.config.from_email || args.ws.business_email || ''),
+      fromName: args.ws.name,
+      subject: args.subject,
+      html,
+      text: args.body,
+      credentials: loaded.credentials,
+      config: loaded.config,
+    });
+  } catch (err: any) {
+    return { status: 'failed', error: err?.message || String(err) };
+  }
+}
 
 // ============================================================================
 // src/lib/notify.ts  (Sub-turn 5d)
@@ -165,7 +245,7 @@ export type CustomerChannel = 'whatsapp' | 'email';
 
 export type CustomerNotifyResult = {
   mode: string;
-  deliveries: Array<{ channel: CustomerChannel; status: 'pending' | 'skipped' | 'sent'; reason?: string }>;
+  deliveries: Array<{ channel: CustomerChannel; status: 'pending' | 'skipped' | 'sent' | 'failed'; reason?: string; provider_ref?: string | null }>;
 };
 
 function notificationMode(settings: Record<string, any> | null | undefined, eventType: string): string {
@@ -179,21 +259,24 @@ async function recordCustomerDelivery(args: {
   orderId: string;
   personId: string | null;
   channel: CustomerChannel;
-  status: 'pending' | 'skipped' | 'sent';
+  status: 'pending' | 'skipped' | 'sent' | 'failed';
   address: string | null;
   message: string;
   eventType: string;
   errorMessage?: string | null;
+  providerRef?: string | null;
 }): Promise<void> {
+  const deliveredAt = args.status === 'sent' ? new Date().toISOString() : null;
   await sql`
     INSERT INTO notification_deliveries (
       workspace_id, notification_id, channel, status,
-      target_user_id, target_person_id, target_address, payload_snapshot, error_message
+      target_user_id, target_person_id, target_address, payload_snapshot,
+      error_message, provider_ref, delivered_at
     ) VALUES (
       ${args.workspaceId}::uuid, NULL, ${args.channel}::text, ${args.status}::text,
       NULL, ${args.personId ?? null}::uuid, ${args.address ?? null}::text,
       ${JSON.stringify({ order_id: args.orderId, event_type: args.eventType, message: args.message })}::jsonb,
-      ${args.errorMessage ?? null}::text
+      ${args.errorMessage ?? null}::text, ${args.providerRef ?? null}::text, ${deliveredAt}::timestamptz
     )
   `;
 }
@@ -215,6 +298,8 @@ export async function emitCustomerNotification(args: {
   contact: { phone?: string | null; email?: string | null };
   settings?: Record<string, any> | null;
   bypassPolicy?: boolean;
+  // Sub-slice 2.1.5 — merge fields for the email template (falls back to `message`).
+  variables?: Record<string, unknown>;
 }): Promise<CustomerNotifyResult> {
   const result: CustomerNotifyResult = { mode: 'auto', deliveries: [] };
   try {
@@ -223,41 +308,49 @@ export async function emitCustomerNotification(args: {
     result.mode = mode;
     if (!args.bypassPolicy && (mode === 'off' || mode === 'manual_only')) return result;
 
-    const [wa, email] = await Promise.all([
+    // Sub-slice 2.1.5: the EMAIL channel now actually dispatches via SMTP. WhatsApp
+    // stays delivery-intent-only (recorded, not sent) until the WATI slice.
+    const [wa, emailLoaded, wsInfo] = await Promise.all([
       loadActiveIntegration(args.workspaceId, 'whatsapp'),
-      loadActiveIntegration(args.workspaceId, 'email'),
+      loadActiveEmailAdapter(args.workspaceId),
+      loadWorkspaceInfo(args.workspaceId),
     ]);
-    const pendingOrSent: 'pending' | 'sent' = mode === 'auto' || mode === 'manual' ? 'pending' : 'pending';
+    const vars: Record<string, unknown> = { workspace_name: wsInfo.name, ...(args.variables ?? {}) };
+    const tpl = emailTemplateFor(settings, args.eventType);
 
     for (const channel of args.channels) {
-      const adapter = channel === 'whatsapp' ? wa : email;
       const address = channel === 'whatsapp' ? args.contact.phone ?? null : args.contact.email ?? null;
-      let status: 'pending' | 'skipped' | 'sent';
+      let status: 'pending' | 'skipped' | 'sent' | 'failed' = 'skipped';
       let reason: string | undefined;
-      if (!address) {
-        status = 'skipped';
-        reason = 'no_contact_method';
-      } else if (!adapter) {
-        status = 'skipped';
-        reason = 'no_active_adapter';
-      } else if (adapter.provider === 'noop') {
-        status = 'skipped';
-        reason = 'noop_adapter';
+      let providerRef: string | null = null;
+
+      if (channel === 'email') {
+        if (!address) { status = 'skipped'; reason = 'no_contact_method'; }
+        else if (!emailLoaded) { status = 'skipped'; reason = 'no_active_adapter'; }
+        else if (emailLoaded.provider === 'noop') { status = 'skipped'; reason = 'noop_adapter'; }
+        else if (mode === 'auto_with_review') { status = 'pending'; reason = 'awaiting_review'; }
+        else {
+          const subject = tpl ? substitute(tpl.subject, vars) : `Update on your order #${vars.order_number ?? ''}`;
+          const body = tpl ? substitute(tpl.body, vars) : args.message;
+          const r = await sendEmail(emailLoaded, { to: address, subject, body, ws: wsInfo });
+          status = r.status === 'sent' ? 'sent' : 'failed';
+          providerRef = r.messageId ?? null;
+          reason = r.error ?? undefined;
+        }
       } else {
-        status = pendingOrSent;
+        // whatsapp — record intent only.
+        if (!address) { status = 'skipped'; reason = 'no_contact_method'; }
+        else if (!wa) { status = 'skipped'; reason = 'no_active_adapter'; }
+        else if (wa.provider === 'noop') { status = 'skipped'; reason = 'noop_adapter'; }
+        else { status = 'pending'; reason = 'whatsapp_not_wired'; }
       }
+
       await recordCustomerDelivery({
-        workspaceId: args.workspaceId,
-        orderId: args.orderId,
-        personId: args.personId,
-        channel,
-        status,
-        address,
-        message: args.message,
-        eventType: args.eventType,
-        errorMessage: reason ?? null,
+        workspaceId: args.workspaceId, orderId: args.orderId, personId: args.personId,
+        channel, status, address, message: args.message, eventType: args.eventType,
+        errorMessage: reason ?? null, providerRef,
       });
-      result.deliveries.push({ channel, status, reason });
+      result.deliveries.push({ channel, status, reason, provider_ref: providerRef });
     }
   } catch (err) {
     console.error('emitCustomerNotification failed:', err, args.eventType);
@@ -300,9 +393,9 @@ export async function emitNotification(args: NotifyArgs): Promise<void> {
     const { title, body } = renderTemplate(args.eventType, metadata);
     const metaJson = JSON.stringify(metadata);
 
-    // Active members except the actor.
-    const recipients = await query<{ user_id: string }>(sql`
-      SELECT m.user_id
+    // Active members except the actor (with their email for SMTP dispatch).
+    const recipients = await query<{ user_id: string; email: string | null; display_name: string | null }>(sql`
+      SELECT m.user_id, u.email, u.display_name
       FROM workspace_memberships m
       JOIN users u ON u.id = m.user_id
       WHERE m.workspace_id = ${args.workspaceId}::uuid
@@ -311,22 +404,23 @@ export async function emitNotification(args: NotifyArgs): Promise<void> {
         AND (${args.actorUserId ?? null}::uuid IS NULL OR m.user_id != ${args.actorUserId ?? null}::uuid)
     `);
 
-    // Which external channels have an active adapter this workspace? Loaded once
-    // per emit (not per recipient). Sub-turn 6a only *records* the delivery
-    // intent — it does not actually send. A configured noop adapter records
-    // 'skipped'; a real (future) adapter records 'pending' for a sender to pick
-    // up. No active adapter → no external row at all.
-    const [waIntegration, emailIntegration] = await Promise.all([
-      loadActiveIntegration(args.workspaceId, 'whatsapp'),
-      loadActiveIntegration(args.workspaceId, 'email'),
-    ]);
-    const externalChannels: Array<{ channel: 'whatsapp' | 'email'; status: 'pending' | 'skipped' }> = [];
+    // WhatsApp stays delivery-intent-only (Sub-turn 6a posture): a noop adapter
+    // records 'skipped', a real one 'pending' for a future sender. EMAIL now
+    // actually dispatches (Sub-slice 2.1.5) when the event has a configured
+    // template — so only approval-vocabulary events email, not every in-product
+    // ping. Adapters/template/workspace loaded once per emit, not per recipient.
+    const waIntegration = await loadActiveIntegration(args.workspaceId, 'whatsapp');
+    const externalChannels: Array<{ channel: 'whatsapp'; status: 'pending' | 'skipped' }> = [];
     if (waIntegration) {
       externalChannels.push({ channel: 'whatsapp', status: waIntegration.provider === 'noop' ? 'skipped' : 'pending' });
     }
-    if (emailIntegration) {
-      externalChannels.push({ channel: 'email', status: emailIntegration.provider === 'noop' ? 'skipped' : 'pending' });
-    }
+    const [emailLoaded, wsInfo, settings] = await Promise.all([
+      loadActiveEmailAdapter(args.workspaceId),
+      loadWorkspaceInfo(args.workspaceId),
+      loadWorkspaceSettingsSafe(args.workspaceId),
+    ]);
+    const emailTpl = emailTemplateFor(settings, args.eventType);
+    const emailVars = { workspace_name: wsInfo.name, link_url: args.linkUrl ?? '', ...metadata };
 
     for (const r of recipients) {
       const inserted = await query<{ id: string }>(sql`
@@ -365,19 +459,46 @@ export async function emitNotification(args: NotifyArgs): Promise<void> {
         )
       `;
 
-      // External channels: record the delivery intent for each active adapter.
-      // 6a wires the pipe only — nothing is actually sent here.
+      // WhatsApp: record delivery intent only (not wired).
       for (const ext of externalChannels) {
         await sql`
           INSERT INTO notification_deliveries (
             workspace_id, notification_id, channel, status, target_user_id, payload_snapshot
           ) VALUES (
-            ${args.workspaceId}::uuid,
-            ${notificationId}::uuid,
-            ${ext.channel}::text,
-            ${ext.status}::text,
-            ${r.user_id}::uuid,
+            ${args.workspaceId}::uuid, ${notificationId}::uuid, ${ext.channel}::text,
+            ${ext.status}::text, ${r.user_id}::uuid,
             ${JSON.stringify({ title, body, link_url: args.linkUrl ?? null })}::jsonb
+          )
+        `;
+      }
+
+      // Email: actually dispatch via SMTP when a real adapter + template + the
+      // recipient's address are all present. Otherwise record intent (skipped).
+      if (emailLoaded) {
+        let status: 'pending' | 'skipped' | 'sent' | 'failed' = 'skipped';
+        let reason: string | null = null;
+        let providerRef: string | null = null;
+        if (emailLoaded.provider === 'noop') { status = 'skipped'; reason = 'noop_adapter'; }
+        else if (!emailTpl) { status = 'skipped'; reason = 'no_template'; }
+        else if (!r.email) { status = 'skipped'; reason = 'no_contact_method'; }
+        else {
+          const subject = substitute(emailTpl.subject, emailVars);
+          const emailBody = substitute(emailTpl.body, emailVars);
+          const sr = await sendEmail(emailLoaded, { to: r.email, subject, body: emailBody, ws: wsInfo });
+          status = sr.status === 'sent' ? 'sent' : 'failed';
+          providerRef = sr.messageId ?? null;
+          reason = sr.error ?? null;
+        }
+        const deliveredAt = status === 'sent' ? new Date().toISOString() : null;
+        await sql`
+          INSERT INTO notification_deliveries (
+            workspace_id, notification_id, channel, status, target_user_id,
+            target_address, payload_snapshot, error_message, provider_ref, delivered_at
+          ) VALUES (
+            ${args.workspaceId}::uuid, ${notificationId}::uuid, 'email', ${status}::text,
+            ${r.user_id}::uuid, ${r.email ?? null}::text,
+            ${JSON.stringify({ title, body, link_url: args.linkUrl ?? null })}::jsonb,
+            ${reason}::text, ${providerRef}::text, ${deliveredAt}::timestamptz
           )
         `;
       }
