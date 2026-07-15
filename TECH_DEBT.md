@@ -70,3 +70,21 @@ or rental-window field is a fresh chance to reintroduce the 400 unless the autho
 either uses the canonical names or adds the same shim. The mitigation is the
 process rule already adopted: every new endpoint ships a contract test that
 parses the exact frontend payload through the endpoint's real Zod schema.
+
+---
+
+## TD-2 — `normalizeSettings` is an allow-list that silently drops unknown keys
+
+**Status:** open · logged 2026-07-15 (Sub-slice 2.2 hotfix, PR #79) · low-risk with the current mitigation; revisit if settings keys keep growing.
+
+**What.** `normalizeSettings()` in `src/routes/workspace.ts` (used by `GET /api/workspace` and the settings PATCH response) rebuilds a *fresh* object from a fixed allow-list of keys. Any `workspace.settings` key not explicitly copied is **dropped from the response** — even though the PATCH persists it to the JSONB and Neon shows it saved.
+
+**Why it bit us.** The six order-policy objects (`extension_policy`, `cancellation_policy`, `approval_routing`, `notification_policy`, `standby_policy`, `quote_policy`) were **not** in the allow-list. So a saved `standby_policy.default_hold_duration_minutes = 180` could never be read back: the New Order Composer read `settings.standby_policy === undefined` and fell through to its hardcoded fallback (240). The Settings → Order Policies page appeared to work only because it kept local form state after a save and rarely re-fetched.
+
+**Fix applied.** Added `ORDER_POLICY_SETTINGS_KEYS` — a single list that drives BOTH the GET passthrough (in `normalizeSettings`) and the PATCH merge (`ORDER_POLICY_KEYS` now aliases it) so a saved policy is always readable back. Guarded by `test/workspace_settings_roundtrip.test.ts`.
+
+**Residual debt.** The allow-list pattern remains: **any future `settings.*` key must be added to `normalizeSettings` (and its round-trip test) or it will silently vanish on read.** This is a foot-gun for every new configurable feature.
+
+**How to reconcile.** Either (a) switch `normalizeSettings` to *merge onto* the raw settings (fill defaults for known keys, pass everything else through) instead of rebuilding from scratch — so unknown keys survive by default; or (b) keep the allow-list but add a CI test that fails when a key present in the PATCH schema is absent from the GET passthrough. (b) is cheaper; (a) removes the foot-gun entirely.
+
+**Blast radius if ignored.** Every new workspace-configurable setting is a chance to reintroduce the exact "saved but not readable → UI shows a hardcoded default" bug. Rule D (configurability test) catches it per-feature, but only if the author writes the test.

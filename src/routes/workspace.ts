@@ -72,7 +72,7 @@ function clientCtx(c: Context) {
 }
 
 // Normalize the JSONB into the exact 5-key shape the frontend expects.
-function normalizeSettings(raw: unknown) {
+export function normalizeSettings(raw: unknown) {
   const s = (raw ?? {}) as Record<string, any>;
   const b = s.billing ?? {}, t = s.tax ?? {}, inv = s.invoice ?? {}, bd = s.bank_details ?? {}, f = s.features ?? {};
   const contract = s.contract ?? {};
@@ -108,9 +108,30 @@ function normalizeSettings(raw: unknown) {
     // Reminders are passed through raw (deeply nested per-channel config). The
     // settings UI reads/writes this object directly.
     reminders: s.reminders ?? {},
+    // Order-policy objects are passed through raw. These are the source of truth
+    // for the Settings → Order Policies page AND for UI defaults that must be
+    // configurable (e.g. the New Order Composer's standby hold duration reads
+    // standby_policy.default_hold_duration_minutes). Omitting them here meant
+    // GET /api/workspace stripped the policies the PATCH had just saved, so no
+    // consumer could read a configured value back — the composer fell through to
+    // its hardcoded fallback. Pass through raw (each is a shallow policy object;
+    // undefined stays undefined so callers keep their own defaults).
+    ...ORDER_POLICY_SETTINGS_KEYS.reduce((acc, k) => {
+      if (s[k] !== undefined) acc[k] = s[k];
+      return acc;
+    }, {} as Record<string, unknown>),
     features,
   };
 }
+
+// The workspace.settings keys holding order-policy objects. Kept in sync with
+// ORDER_POLICY_KEYS below (that one drives the PATCH merge; this one drives the
+// GET passthrough). Both must list the same keys or a saved policy can't be read
+// back.
+const ORDER_POLICY_SETTINGS_KEYS = [
+  'extension_policy', 'cancellation_policy', 'approval_routing',
+  'notification_policy', 'standby_policy', 'quote_policy',
+] as const;
 
 async function loadWorkspaceRow(workspaceId: string): Promise<WorkspaceRow | null> {
   const rows = await query<WorkspaceRow>(sql`
@@ -283,7 +304,9 @@ const patchSchema = z.object({
 });
 
 // Sub-slice 2.1/2.2 — order policy sub-objects the settings page may write.
-const ORDER_POLICY_KEYS = ['extension_policy', 'cancellation_policy', 'approval_routing', 'notification_policy', 'standby_policy', 'quote_policy'] as const;
+// Same keys drive the PATCH merge and the GET passthrough — one list so a saved
+// policy is always readable back (see ORDER_POLICY_SETTINGS_KEYS above).
+const ORDER_POLICY_KEYS = ORDER_POLICY_SETTINGS_KEYS;
 
 workspace.patch('/settings', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
