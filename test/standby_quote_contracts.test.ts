@@ -23,7 +23,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  standbyCreateSchema, standbyExtendSchema,
+  standbyCreateSchema, standbyCreateBodySchema, standbyExtendSchema,
 } from '../src/routes/standbys.js';
 import {
   quoteCreateSchema, quoteAcceptSchema, quoteWithdrawSchema,
@@ -60,22 +60,60 @@ test('POST /api/standbys accepts the New Order Composer createStandby() body', (
   assertParses(standbyCreateSchema, frontendBody, 'standby create');
 });
 
-// Regression: the OLD (broken) body must be REJECTED — proves the schema is the
-// real gate and the field rename actually mattered.
-test('POST /api/standbys REJECTS the old customer_person_id/rental_start body', () => {
-  const oldBrokenBody = {
-    customer_person_id: UUID,     // wrong: should be customer_id
-    rental_start: ISO_START,      // wrong: should be rental_start_at
-    rental_end: ISO_END,          // wrong: should be rental_end_at
+// The CANONICAL schema still REJECTS the core-order shape — it stays the strict
+// source of truth (the fix's field rename genuinely mattered).
+test('standbyCreateSchema (canonical) REJECTS the core customer_person_id/rental_start body', () => {
+  const coreShapeBody = {
+    customer_person_id: UUID,     // core alias, not canonical
+    rental_start: ISO_START,
+    rental_end: ISO_END,
     requested_via: 'walk_in',
     reason_tag: 'customer_deciding',
     hold_duration_minutes: 240,
     line_items: [{ product_id: PROD, quantity: 1 }],
   };
-  const r = standbyCreateSchema.safeParse(oldBrokenBody);
-  assert.equal(r.success, false, 'old body should fail — otherwise the fix is untested');
+  const r = standbyCreateSchema.safeParse(coreShapeBody);
+  assert.equal(r.success, false, 'canonical schema must reject the core shape');
   const paths = (r as any).error.issues.map((i: any) => i.path.join('.')).sort();
   assert.deepEqual(paths, ['customer_id', 'rental_end_at', 'rental_start_at']);
+});
+
+// COMPATIBILITY NET (TECH_DEBT.md): the schema the ENDPOINT uses maps core
+// aliases onto canonical keys, so a caller speaking the app-wide core shape is
+// accepted. Guards against the SAME drift recurring from any other consumer.
+test('standbyCreateBodySchema (endpoint) ACCEPTS the core shape via the compat net', () => {
+  const coreShapeBody = {
+    customer_person_id: UUID,
+    rental_start: ISO_START,
+    rental_end: ISO_END,
+    internal_notes: 'walk-in hold',
+    requested_via: 'walk_in',
+    reason_tag: 'customer_deciding',
+    hold_duration_minutes: 240,
+    line_items: [{ product_id: PROD, quantity: 1 }],
+  };
+  const r = standbyCreateBodySchema.safeParse(coreShapeBody);
+  assert.ok(r.success, 'compat net should accept the core shape: ' + JSON.stringify((r as any).error?.issues));
+  // aliases are normalized onto the canonical keys.
+  assert.equal((r as any).data.customer_id, UUID);
+  assert.equal((r as any).data.rental_start_at, ISO_START);
+  assert.equal((r as any).data.rental_end_at, ISO_END);
+  assert.equal((r as any).data.reason_notes, 'walk-in hold');
+});
+
+// An explicit canonical value always wins over a conflicting alias.
+test('standbyCreateBodySchema: canonical key wins when both are present', () => {
+  const other = '00000000-0000-0000-0000-000000000000';
+  const r = standbyCreateBodySchema.safeParse({
+    customer_id: UUID, customer_person_id: other,
+    rental_start_at: ISO_START, rental_start: '1999-01-01T00:00:00.000Z',
+    rental_end_at: ISO_END,
+    requested_via: 'walk_in', reason_tag: 'customer_deciding',
+    line_items: [{ product_id: PROD, quantity: 1 }],
+  });
+  assert.ok(r.success);
+  assert.equal((r as any).data.customer_id, UUID);
+  assert.equal((r as any).data.rental_start_at, ISO_START);
 });
 
 // ---------------------------------------------------------------------------

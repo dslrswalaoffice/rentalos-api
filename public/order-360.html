@@ -768,7 +768,9 @@ function render(){
   main+=card('payments',DOT.payments,'Payments',null,(bal>0?'<span style="color:var(--attention)">'+formatINR(bal)+' due</span>':'<span style="color:var(--success)">Paid</span>'),cardPayments());
   main+=card('deposits',DOT.deposits,'Deposits',null,'<span style="color:var(--neutral)">'+escapeHtml(String(o.deposit_status||'none').replace(/_/g,' '))+'</span>',cardDeposits());
   main+=card('events',DOT.events,'Related Events',String(nRel),null,cardEvents());
-  if(S.quotes&&S.quotes.length)main+=card('quotes',DOT.events,'Quote Versions',String(S.quotes.length),null,cardQuotes());
+  // Quote Versions card renders unconditionally (Sub-slice 2.2 deliverable) —
+  // empty orders get an empty state with "Create v1". Count badge only when >0.
+  main+=card('quotes',DOT.events,'Quote Versions',(S.quotes&&S.quotes.length?String(S.quotes.length):null),null,cardQuotes());
   main+=card('documents',DOT.documents,'Documents',null,null,cardDocuments());
   main+=card('communications',DOT.communications,'Communications',null,null,cardComms());
   main+=card('notes',DOT.notes,'Notes',null,null,cardNotes());
@@ -803,7 +805,8 @@ function cardQuotes(){
     let h='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">';
     for(const q of qs){const on=q.id===active.id;h+='<button class="btn btn-tiny '+(on?'btn-primary':'btn-secondary')+'" data-qtab="'+escapeAttr(q.id)+'">v'+escapeHtml(q.version_number)+' · '+escapeHtml(String(q.status).toUpperCase())+'</button>';}
     h+='</div>';
-    if(!active)return h+'<div class="empty">No quote versions.</div>';
+    if(!active)return '<div class="empty" style="text-align:center;padding:8px 0 4px"><div style="color:var(--neutral);font-size:13px;margin-bottom:12px">No versions yet — create the first quote for this order.</div>'
+      +'<button class="btn btn-tiny btn-primary" data-qact="revise">'+I('plus',14)+'Create v1</button></div>';
     h+='<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">'
       +'<div><div style="font-family:var(--head-font);font-weight:600;font-size:14px;color:var(--ink)">'+escapeHtml(active.quote_number)+'</div>'
       +'<div class="mono" style="font-size:11px;color:var(--neutral);margin-top:3px">'+formatINR(active.total_paise)+(active.valid_until?' · valid until '+fmtDate(active.valid_until):'')+(active.view_count?' · '+active.view_count+' view'+(active.view_count===1?'':'s'):'')+'</div></div>'
