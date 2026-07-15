@@ -1746,6 +1746,7 @@
       try {
         const res = await api.get('/api/integrations');
         state.integrations = res.adapters || [];
+        state.encKeyOk = res.enc_key_ok !== false; // proactive misconfig signal
       } catch (err) {
         state.integrations = { error: err.body?.error || err.message || 'error' };
       }
@@ -1765,6 +1766,12 @@
         return `<div class="card"><h3>Couldn't load integrations</h3><p class="card-sub">${escapeHtml(state.integrations?.error || 'error')}</p></div>`;
       }
       const canEdit = canEditMetadata();
+      // Proactive server-config warning: a missing/malformed INTEGRATION_ENC_KEY
+      // (must be 64-char hex) makes every credential save fail. Show it up front
+      // so nobody hits a mystery error on Save.
+      const encWarn = state.encKeyOk === false
+        ? `<div class="notice" style="border-color:#fecaca;background:#fef2f2;color:#991b1b"><strong>⚠ Server encryption key is misconfigured</strong>Saving credentials is disabled until <code>INTEGRATION_ENC_KEY</code> is set to a valid 64-character hex string in the deployment environment (generate with <code>openssl rand -hex 32</code>), then redeploy.</div>`
+        : '';
       const roleNote = canEdit ? '' : `<div class="notice">You have read-only access. Only owners and managers can configure integrations.</div>`;
       const intro = `<div class="notice"><strong>How integrations work</strong>Pick one provider per category, save its credentials, then activate it. Credentials are encrypted and never shown again. Only the <em>Noop (testing)</em> adapters are functional today — real providers are coming soon.</div>`;
       const sections = CATEGORY_ORDER.map(cat => {
@@ -1777,7 +1784,7 @@
           <div class="adapter-grid">${cards}</div>
         </div>`;
       }).join('');
-      return `${roleNote}${intro}${sections}`;
+      return `${encWarn}${roleNote}${intro}${sections}`;
     }
 
     function adapterCard(a, canEdit) {
@@ -1939,7 +1946,13 @@
           await loadIntegrations();
         } catch (err) {
           saveBtn.disabled = false; saveBtn.textContent = 'Save';
-          showToast('Save failed: ' + (err.body?.error || err.message));
+          // Structured (Item 12) errors carry error.message + reasons[]; show the
+          // actionable message (e.g. "encryption key missing") not "[object Object]".
+          const e = err.body && err.body.error;
+          const msg = (e && typeof e === 'object')
+            ? (e.reasons && e.reasons[0] && e.reasons[0].message) || e.message || e.code
+            : (e || err.message);
+          showToast('Save failed: ' + msg);
         }
       });
     }
