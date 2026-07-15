@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Policies · RentalOS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#202058;--head:#26235a;--neutral:#6b7280;--neutral-bg:#f3f4f6;--neutral-border:#d1d5db;
+  --info:#4f46e5;--info-bg:#eef2ff;--info-border:#c7d2fe;--info-hover:#4338ca;
+  --success:#059669;--success-bg:#ecfdf5;--attention:#d97706;--attention-bg:#fffbeb;--danger:#dc2626;
+  --bg:#ffffff;--surface-1:#faf9f7;--surface-2:#f4f2ee;--border:#ece9e3;
+  --head-font:'Space Grotesk',system-ui,sans-serif;--body-font:'Manrope',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;--radius:14px;
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--surface-1);font-family:var(--body-font);color:var(--ink);-webkit-font-smoothing:antialiased}
+a{color:var(--info);text-decoration:none}
+.subnav{background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 26px;height:46px;font-size:13px;position:sticky;top:0;z-index:39}
+.crumbs{font-family:var(--mono);font-size:12px;color:var(--neutral)}
+.wrap{max-width:880px;margin:0 auto;padding:28px 26px 90px}
+.pagehd{margin-bottom:22px}
+.pagehd h1{font-family:var(--head-font);font-weight:600;font-size:24px;color:var(--ink);margin:0 0 6px;letter-spacing:-.02em}
+.pagehd p{font-size:13.5px;color:var(--neutral);margin:0}
+.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 1px 2px rgba(32,32,88,.04);margin-bottom:20px;overflow:hidden}
+.card-hd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.sec-dot{width:8px;height:8px;border-radius:50%}
+.card-hd .t{font-family:var(--head-font);font-weight:600;font-size:15px;color:var(--head)}
+.card-hd .d{font-size:12px;color:var(--neutral);margin-left:auto}
+.card-bd{padding:20px 22px}
+.frow{display:flex;align-items:center;gap:16px;padding:11px 0;border-top:1px solid var(--border)}
+.frow:first-child{border-top:none}
+.frow .lbl{flex:1;min-width:0}
+.frow .lbl .k{font-size:13.5px;color:var(--head);font-weight:500}
+.frow .lbl .h{font-size:12px;color:var(--neutral);margin-top:2px}
+input[type=number],input[type=text]{font-family:var(--mono);font-size:13px;color:var(--head);border:1px solid var(--neutral-border);background:var(--bg);border-radius:8px;padding:8px 10px;outline:none;width:130px}
+input:focus{border-color:var(--info)}
+select{font-family:var(--mono);font-size:13px;color:var(--head);border:1px solid var(--neutral-border);background:var(--bg);border-radius:8px;padding:8px 10px;outline:none;cursor:pointer}
+.tog{width:42px;height:24px;border-radius:999px;background:var(--neutral-border);position:relative;cursor:pointer;transition:background .15s;flex:none}
+.tog.on{background:var(--info)}
+.tog::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .15s}
+.tog.on::after{left:21px}
+.grouplbl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--neutral);font-weight:600;margin:16px 0 6px}
+.savebar{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--border);padding:14px 26px;display:flex;align-items:center;justify-content:flex-end;gap:14px;box-shadow:0 -4px 14px rgba(32,32,88,.05);z-index:40}
+.btn{border:none;cursor:pointer;font-family:var(--body-font);font-size:14px;font-weight:600;padding:10px 22px;border-radius:10px}
+.btn-primary{background:var(--info);color:#fff;box-shadow:0 2px 6px rgba(79,70,229,.3)}
+.btn-primary:hover{background:var(--info-hover)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.savehint{font-size:12.5px;color:var(--neutral)}
+.toast-wrap{position:fixed;top:16px;right:16px;z-index:300;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--head);color:#fff;padding:11px 16px;border-radius:10px;font-size:13px;box-shadow:0 8px 24px rgba(32,32,88,.24)}
+.toast.ok{background:var(--success)}.toast.err{background:var(--danger)}
+.denied{padding:60px 20px;text-align:center;color:var(--neutral)}
+.mono{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="subnav"><a href="/settings.html">‹ Settings</a><span class="crumbs">Settings › Order Policies</span></div>
+<div class="wrap">
+  <div class="pagehd"><h1>Order Policies</h1><p>Extension, cancellation, approval routing and customer-notification rules. These drive the Extension and Cancellation flows on every order.</p></div>
+  <div id="app"><div class="denied">Loading…</div></div>
+</div>
+<div class="savebar" id="savebar" style="display:none"><span class="savehint" id="savehint"></span><button class="btn btn-primary" id="saveBtn">Save changes</button></div>
+<div class="toast-wrap" id="toasts"></div>
+<script type="module">
+import { api, ensureAuth } from '/_lib/api.js';
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toast(m,k){const w=document.getElementById('toasts');const e=document.createElement('div');e.className='toast'+(k?' '+k:'');e.textContent=m;w.appendChild(e);setTimeout(()=>e.remove(),3200);}
+function n(v,d){const x=Number(v);return isFinite(x)?x:(d||0);}
+const paiseToR=p=>Math.round(Number(p||0)/100);
+const rToPaise=r=>Math.round(Number(r||0)*100);
+
+let SET={};
+function ep(){return SET.extension_policy||{};}
+function cp(){return SET.cancellation_policy||{};}
+function ar(){return SET.approval_routing||{};}
+
+function frow(k,h,control){return '<div class="frow"><div class="lbl"><div class="k">'+esc(k)+'</div>'+(h?'<div class="h">'+esc(h)+'</div>':'')+'</div>'+control+'</div>';}
+function numInput(id,val,suffix){return '<div style="display:flex;align-items:center;gap:8px"><input type="number" id="'+id+'" value="'+esc(val)+'">'+(suffix?'<span class="mono" style="font-size:11px;color:var(--neutral)">'+esc(suffix)+'</span>':'')+'</div>';}
+function toggle(id,on){return '<div class="tog'+(on?' on':'')+'" id="'+id+'" data-tog></div>';}
+
+function render(){
+  const e=ep(),c=cp(),a=ar();
+  const tiers=c.tiers||{};const ra=c.requires_approval||{};const rba=a.route_by_amount||{};
+  let h='';
+  // Extension policy
+  h+='<div class="card"><div class="card-hd"><span class="sec-dot" style="background:var(--info)"></span><span class="t">Extension Policy</span></div><div class="card-bd">'
+    +frow('Requires approval over','An extension longer than this many days needs manager approval.',numInput('e_days',n(e.requires_approval_over_days,2),'days'))
+    +frow('Requires approval over value','Additional charges above this rupee amount need approval.',numInput('e_value',paiseToR(e.requires_approval_over_value_paise),'₹'))
+    +frow('Approval if original unpaid','Require approval when the original order still has a balance.',toggle('e_unpaid',e.requires_approval_if_original_unpaid!==false))
+    +frow('Approval for new customers','Require approval for a first-time customer’s extension.',toggle('e_newcust',e.requires_approval_for_new_customers!==false))
+    +frow('Cutoff before end','Block extensions started within this many hours of the current end.',numInput('e_cutoff',n(e.cutoff_hours_before_end,4),'hours'))
+  +'</div></div>';
+  // Cancellation policy
+  h+='<div class="card"><div class="card-hd"><span class="sec-dot" style="background:var(--danger)"></span><span class="t">Cancellation Policy</span></div><div class="card-bd">'
+    +'<div class="grouplbl">Refund tiers (% of order total)</div>'
+    +frow('More than 72 hours before dispatch','',numInput('c_t72',n((tiers.before_72hr||{}).refund_percent,100),'%'))
+    +frow('24–72 hours before dispatch','',numInput('c_t2472',n((tiers['24_to_72hr']||{}).refund_percent,75),'%'))
+    +frow('Under 24 hours before dispatch','',numInput('c_t24',n((tiers.under_24hr||{}).refund_percent,50),'%'))
+    +'<div class="grouplbl">No-show</div>'
+    +frow('No-show refund','',numInput('c_nsref',n((c.no_show_policy||{}).refund_percent,0),'%'))
+    +frow('No-show deposit forfeit','',numInput('c_nsdep',n((c.no_show_policy||{}).deposit_forfeit_percent,100),'%'))
+    +'<div class="grouplbl">Approval triggers</div>'
+    +frow('Under-24hr cancellations need approval','',toggle('c_ap24',ra.under_24hr_cancellations!==false))
+    +frow('No-show cancellations need approval','',toggle('c_apns',ra.no_show_cancellations!==false))
+    +frow('Refunds over this amount need approval','',numInput('c_aprefund',paiseToR(ra.refunds_over_paise),'₹'))
+    +'<div class="grouplbl">Refund processing</div>'
+    +frow('Auto-initiate refund on confirm','',toggle('c_autoref',(c.refund_processing||{}).auto_initiate_on_confirm!==false))
+    +frow('Expected credit time','',numInput('c_refdays',n((c.refund_processing||{}).expected_business_days,7),'business days'))
+  +'</div></div>';
+  // Approval routing
+  h+='<div class="card"><div class="card-hd"><span class="sec-dot" style="background:var(--attention)"></span><span class="t">Approval Routing</span></div><div class="card-bd">'
+    +frow('Escalation rule','Where an approval goes by default.','<select id="a_esc"><option value="one_role_up"'+(a.escalation_rule==='one_role_up'||!a.escalation_rule?' selected':'')+'>One role up</option></select>')
+    +frow('Route to owner over amount','Any approval involving more than this amount routes straight to the owner.',numInput('a_amt',paiseToR(rba.over_paise),'₹'))
+    +frow('Auto-expire after','A pending approval expires after this many hours.',numInput('a_expire',n(a.auto_expire_hours,72),'hours'))
+    +frow('Remind after','Remind the approver after this many hours.',numInput('a_remind',n(a.remind_after_hours,24),'hours'))
+  +'</div></div>';
+  document.getElementById('app').innerHTML=h;
+  document.getElementById('savebar').style.display='flex';
+  // toggles
+  document.querySelectorAll('[data-tog]').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('on')));
+}
+
+function togOn(id){const el=document.getElementById(id);return !!el&&el.classList.contains('on');}
+function numVal(id,d){const el=document.getElementById(id);return el?n(el.value,d):d;}
+
+function collect(){
+  const c=cp();
+  const extension_policy={...ep(),
+    requires_approval_over_days:numVal('e_days',2),
+    requires_approval_over_value_paise:rToPaise(numVal('e_value',0)),
+    requires_approval_if_original_unpaid:togOn('e_unpaid'),
+    requires_approval_for_new_customers:togOn('e_newcust'),
+    cutoff_hours_before_end:numVal('e_cutoff',4),
+  };
+  const cancellation_policy={...c,
+    tiers:{
+      before_72hr:{refund_percent:numVal('c_t72',100),processing_fee_paise:n((c.tiers&&c.tiers.before_72hr||{}).processing_fee_paise,0)},
+      '24_to_72hr':{refund_percent:numVal('c_t2472',75),processing_fee_paise:n((c.tiers&&c.tiers['24_to_72hr']||{}).processing_fee_paise,0)},
+      under_24hr:{refund_percent:numVal('c_t24',50),processing_fee_paise:n((c.tiers&&c.tiers.under_24hr||{}).processing_fee_paise,0)},
+    },
+    no_show_policy:{refund_percent:numVal('c_nsref',0),deposit_forfeit_percent:numVal('c_nsdep',100)},
+    requires_approval:{
+      under_24hr_cancellations:togOn('c_ap24'),
+      no_show_cancellations:togOn('c_apns'),
+      refunds_over_paise:rToPaise(numVal('c_aprefund',0)),
+    },
+    refund_processing:{auto_initiate_on_confirm:togOn('c_autoref'),expected_business_days:numVal('c_refdays',7)},
+  };
+  const approval_routing={...ar(),
+    escalation_rule:(document.getElementById('a_esc')||{}).value||'one_role_up',
+    route_by_amount:{...(ar().route_by_amount||{}),over_paise:rToPaise(numVal('a_amt',0)),target_role:(ar().route_by_amount||{}).target_role||'owner'},
+    auto_expire_hours:numVal('a_expire',72),
+    remind_after_hours:numVal('a_remind',24),
+  };
+  return {extension_policy,cancellation_policy,approval_routing};
+}
+
+document.getElementById('saveBtn').addEventListener('click',async()=>{
+  const btn=document.getElementById('saveBtn');btn.disabled=true;
+  document.getElementById('savehint').textContent='Saving…';
+  try{
+    const settings=collect();
+    const res=await api.patch('/api/workspace/settings',{settings});
+    SET=(res&&res.settings)||SET;
+    document.getElementById('savehint').textContent='Saved';toast('Order policies saved','ok');
+    setTimeout(()=>{document.getElementById('savehint').textContent='';},2000);
+  }catch(err){
+    toast('Save failed: '+(err.body&&err.body.error||err.message),'err');
+    document.getElementById('savehint').textContent='';
+  }
+  btn.disabled=false;
+});
+
+(async function(){
+  const me=await ensureAuth();
+  const role=me&&me.user&&me.user.role;
+  if(role!=='owner'&&role!=='manager'){
+    document.getElementById('app').innerHTML='<div class="denied">Order policies are managed by owners and managers only.</div>';
+    return;
+  }
+  try{
+    const ws=await api.get('/api/workspace');
+    SET=(ws&&ws.settings)||{};
+    render();
+  }catch(err){
+    document.getElementById('app').innerHTML='<div class="denied">Could not load settings.</div>';
+  }
+})();
+</script>
+</body>
+</html>

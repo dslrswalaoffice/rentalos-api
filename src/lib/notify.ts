@@ -116,7 +116,166 @@ const TEMPLATES: Record<string, { title: string; body?: string }> = {
     title: 'Coupon {code} applied to Order #{order_number}',
     body: '{customer_name} · ₹{discount} off',
   },
+  // Sub-slice 2.1 — extensions / cancellations / approvals (internal staff feed).
+  'order.cancelled': {
+    title: 'Order #{order_number} cancelled',
+    body: '{customer_name} · {reason_tag}',
+  },
+  'extension_pending_approval': {
+    title: 'Extension needs approval · Order #{order_number}',
+    body: '+{delta_days} day(s), ₹{additional_charges}. Requested by {actor_name}.',
+  },
+  'cancellation_pending_approval': {
+    title: 'Cancellation needs approval · Order #{order_number}',
+    body: 'Refund ₹{refund_amount}. Requested by {actor_name}.',
+  },
+  'approval_required': {
+    title: 'Approval needed: {resource_label} · Order #{order_number}',
+    body: 'Requested by {actor_name}. Review to approve or reject.',
+  },
+  'approval_approved': {
+    title: 'Approved: {resource_label} · Order #{order_number}',
+    body: 'Approved by {actor_name}.',
+  },
+  'approval_rejected': {
+    title: 'Rejected: {resource_label} · Order #{order_number}',
+    body: 'Rejected by {actor_name}.{reason_suffix}',
+  },
 };
+
+// ============================================================================
+// Customer-facing notifications (Sub-slice 2.1, N1 pipeline).
+// ----------------------------------------------------------------------------
+// Internal notifications (above) go to workspace users. These go to the CUSTOMER
+// over WhatsApp/email. Our schema is user-centric, so a customer send is recorded
+// as a notification_deliveries row with notification_id NULL + target_person_id
+// set (no notifications row). The Order 360 Communications card reads these back
+// by payload_snapshot->>'order_id'.
+//
+// Policy modes live at settings.notification_policy.events[event_type].mode:
+//   off            → no send
+//   manual_only    → auto path is a no-op (only the Send Update modal fires it)
+//   auto           → record a delivery per active-adapter channel (default)
+//   auto_with_review → recorded as 'pending' (a human clicks Send later)
+// A missing policy defaults to 'auto'. Honest scope (matches 6a): we RECORD the
+// delivery intent; a real sender worker lands in a later sub-slice. Fail-open.
+// ============================================================================
+
+export type CustomerChannel = 'whatsapp' | 'email';
+
+export type CustomerNotifyResult = {
+  mode: string;
+  deliveries: Array<{ channel: CustomerChannel; status: 'pending' | 'skipped' | 'sent'; reason?: string }>;
+};
+
+function notificationMode(settings: Record<string, any> | null | undefined, eventType: string): string {
+  const m = settings?.notification_policy?.events?.[eventType]?.mode;
+  return typeof m === 'string' ? m : 'auto';
+}
+
+/** Record one customer delivery row (notification_id NULL). Never throws. */
+async function recordCustomerDelivery(args: {
+  workspaceId: string;
+  orderId: string;
+  personId: string | null;
+  channel: CustomerChannel;
+  status: 'pending' | 'skipped' | 'sent';
+  address: string | null;
+  message: string;
+  eventType: string;
+  errorMessage?: string | null;
+}): Promise<void> {
+  await sql`
+    INSERT INTO notification_deliveries (
+      workspace_id, notification_id, channel, status,
+      target_user_id, target_person_id, target_address, payload_snapshot, error_message
+    ) VALUES (
+      ${args.workspaceId}::uuid, NULL, ${args.channel}::text, ${args.status}::text,
+      NULL, ${args.personId ?? null}::uuid, ${args.address ?? null}::text,
+      ${JSON.stringify({ order_id: args.orderId, event_type: args.eventType, message: args.message })}::jsonb,
+      ${args.errorMessage ?? null}::text
+    )
+  `;
+}
+
+/**
+ * Send a customer-facing notification for a business event, honoring the
+ * workspace notification policy. `channels` is the requested set; a channel is
+ * skipped (recorded) when it has no active adapter or the customer lacks that
+ * contact method. `bypassPolicy` (manual Send Update) forces the send. Never
+ * throws — a notification must not break the action that triggered it.
+ */
+export async function emitCustomerNotification(args: {
+  workspaceId: string;
+  orderId: string;
+  personId: string | null;
+  eventType: string;
+  message: string;
+  channels: CustomerChannel[];
+  contact: { phone?: string | null; email?: string | null };
+  settings?: Record<string, any> | null;
+  bypassPolicy?: boolean;
+}): Promise<CustomerNotifyResult> {
+  const result: CustomerNotifyResult = { mode: 'auto', deliveries: [] };
+  try {
+    const settings = args.settings ?? (await loadWorkspaceSettingsSafe(args.workspaceId));
+    const mode = args.bypassPolicy ? 'manual' : notificationMode(settings, args.eventType);
+    result.mode = mode;
+    if (!args.bypassPolicy && (mode === 'off' || mode === 'manual_only')) return result;
+
+    const [wa, email] = await Promise.all([
+      loadActiveIntegration(args.workspaceId, 'whatsapp'),
+      loadActiveIntegration(args.workspaceId, 'email'),
+    ]);
+    const pendingOrSent: 'pending' | 'sent' = mode === 'auto' || mode === 'manual' ? 'pending' : 'pending';
+
+    for (const channel of args.channels) {
+      const adapter = channel === 'whatsapp' ? wa : email;
+      const address = channel === 'whatsapp' ? args.contact.phone ?? null : args.contact.email ?? null;
+      let status: 'pending' | 'skipped' | 'sent';
+      let reason: string | undefined;
+      if (!address) {
+        status = 'skipped';
+        reason = 'no_contact_method';
+      } else if (!adapter) {
+        status = 'skipped';
+        reason = 'no_active_adapter';
+      } else if (adapter.provider === 'noop') {
+        status = 'skipped';
+        reason = 'noop_adapter';
+      } else {
+        status = pendingOrSent;
+      }
+      await recordCustomerDelivery({
+        workspaceId: args.workspaceId,
+        orderId: args.orderId,
+        personId: args.personId,
+        channel,
+        status,
+        address,
+        message: args.message,
+        eventType: args.eventType,
+        errorMessage: reason ?? null,
+      });
+      result.deliveries.push({ channel, status, reason });
+    }
+  } catch (err) {
+    console.error('emitCustomerNotification failed:', err, args.eventType);
+  }
+  return result;
+}
+
+/** Load settings without throwing (a lookup failure just yields {}). */
+async function loadWorkspaceSettingsSafe(workspaceId: string): Promise<Record<string, any>> {
+  try {
+    const rows = await query<{ settings: Record<string, any> | null }>(sql`
+      SELECT settings FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
+    `);
+    return (rows[0]?.settings ?? {}) as Record<string, any>;
+  } catch {
+    return {};
+  }
+}
 
 function renderTemplate(
   eventType: string,
