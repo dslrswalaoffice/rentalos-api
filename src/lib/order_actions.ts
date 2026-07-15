@@ -163,6 +163,10 @@ export async function applyExtensionEffects(args: {
       + (deltaPaise > 0 ? `Additional charges: ${inr(deltaPaise)}. ` : '') + 'Thank you.',
     channels: ['whatsapp', 'email'],
     contact: { phone: order.customer_phone, email: order.customer_email },
+    variables: {
+      customer_name: order.customer_name ?? 'there', order_number: order.order_number,
+      new_end_date: fmtDate(newEnd.toISOString()), additional_charges: deltaPaise > 0 ? inr(deltaPaise) : inr(0),
+    },
   }).catch(() => {});
 
   return {
@@ -250,16 +254,21 @@ export async function applyCancellationEffects(args: {
   }).catch(() => {});
 
   const totalToCustomer = refundAmt + Number(cancel.deposit_refunded_paise);
+  const refundTimeline = willProcessRefund ? ` within ${expectedDays} business days` : '';
   emitCustomerNotification({
     workspaceId: args.workspaceId, orderId: args.orderId, personId: order.customer_person_id,
     eventType: 'cancellation_confirmed',
     message: `Hi ${order.customer_name ?? 'there'}, your order #${order.order_number} has been cancelled. `
       + (totalToCustomer > 0
-        ? `A refund of ${inr(totalToCustomer)} will be processed${willProcessRefund ? ` within ${expectedDays} business days` : ''}. `
+        ? `A refund of ${inr(totalToCustomer)} will be processed${refundTimeline}. `
         : '') + 'Sorry to see this order go.',
     channels: ['whatsapp', 'email'],
     contact: { phone: order.customer_phone, email: order.customer_email },
     settings: args.settings,
+    variables: {
+      customer_name: order.customer_name ?? 'there', order_number: order.order_number,
+      refund_amount: inr(totalToCustomer), refund_timeline: refundTimeline,
+    },
   }).catch(() => {});
 
   return { ok: true, status: finalStatus, refund_expected_credit_by: creditBy };

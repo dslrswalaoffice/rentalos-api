@@ -1994,6 +1994,7 @@ orders.post('/:id/extend', requirePermission('orders.edit'), async (c) => {
     emitNotification({
       workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'extension_pending_approval',
       targetType: 'order', targetId: id, linkUrl: `/order-360.html?id=${id}`,
+      emailRecipientUserId: ap.approver_user_id, // email ONLY the routed approver
       metadata: {
         order_number: order.order_number, delta_days: deltaDays,
         additional_charges: '₹' + Math.round(estCharges / 100).toLocaleString('en-IN'),
@@ -2229,6 +2230,7 @@ orders.post('/:id/cancel', requirePermission('orders.cancel'), async (c) => {
     emitNotification({
       workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'cancellation_pending_approval',
       targetType: 'order', targetId: id, linkUrl: `/order-360.html?id=${id}`,
+      emailRecipientUserId: ap.approver_user_id, // email ONLY the routed approver
       metadata: {
         order_number: order.order_number,
         refund_amount: '₹' + Math.round(refundAmount / 100).toLocaleString('en-IN'),

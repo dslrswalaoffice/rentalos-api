@@ -80,6 +80,18 @@ function ar(){return SET.approval_routing||{};}
 function frow(k,h,control){return '<div class="frow"><div class="lbl"><div class="k">'+esc(k)+'</div>'+(h?'<div class="h">'+esc(h)+'</div>':'')+'</div>'+control+'</div>';}
 function numInput(id,val,suffix){return '<div style="display:flex;align-items:center;gap:8px"><input type="number" id="'+id+'" value="'+esc(val)+'">'+(suffix?'<span class="mono" style="font-size:11px;color:var(--neutral)">'+esc(suffix)+'</span>':'')+'</div>';}
 function toggle(id,on){return '<div class="tog'+(on?' on':'')+'" id="'+id+'" data-tog></div>';}
+function np(){return SET.notification_policy||{};}
+function tplFor(k){return ((np().templates||{})[k]||{}).email||{};}
+function emailField(key,label,vars){
+  const em=tplFor(key);
+  return '<div style="padding:14px 0;border-top:1px solid var(--border)">'
+    +'<div class="k" style="margin-bottom:8px">'+esc(label)+'</div>'
+    +'<input type="text" id="tpl_'+key+'_subject" value="'+esc(em.subject||'')+'" placeholder="Subject" style="width:100%;font-family:var(--body-font);margin-bottom:8px">'
+    +'<textarea id="tpl_'+key+'_body" placeholder="Body" style="width:100%;min-height:88px;resize:vertical;border:1px solid var(--neutral-border);border-radius:8px;padding:9px 11px;font-family:var(--body-font);font-size:13px;color:var(--head);outline:none">'+esc(em.body||'')+'</textarea>'
+    +'<div class="h" style="margin-top:5px;font-family:var(--mono);font-size:10.5px">Variables: '+esc(vars)+'</div>'
+  +'</div>';
+}
+function strVal(id){const el=document.getElementById(id);return el?el.value:'';}
 
 function render(){
   const e=ep(),c=cp(),a=ar();
@@ -116,6 +128,17 @@ function render(){
     +frow('Route to owner over amount','Any approval involving more than this amount routes straight to the owner.',numInput('a_amt',paiseToR(rba.over_paise),'₹'))
     +frow('Auto-expire after','A pending approval expires after this many hours.',numInput('a_expire',n(a.auto_expire_hours,72),'hours'))
     +frow('Remind after','Remind the approver after this many hours.',numInput('a_remind',n(a.remind_after_hours,24),'hours'))
+  +'</div></div>';
+  // Email templates (Sub-slice 2.1.5)
+  h+='<div class="card"><div class="card-hd"><span class="sec-dot" style="background:var(--success)"></span><span class="t">Email Templates</span><span class="d">Sent to customers &amp; approvers · WhatsApp stays manual</span></div><div class="card-bd">'
+    +'<div class="grouplbl">Customer emails</div>'
+    +emailField('extension_confirmed','Extension confirmed','{customer_name} {order_number} {new_end_date} {additional_charges} {workspace_name}')
+    +emailField('cancellation_confirmed','Cancellation confirmed','{customer_name} {order_number} {refund_amount} {refund_timeline} {workspace_name}')
+    +'<div class="grouplbl">Internal / approval emails</div>'
+    +emailField('extension_pending_approval','Extension needs approval','{actor_name} {order_number} {delta_days} {additional_charges} {link_url}')
+    +emailField('cancellation_pending_approval','Cancellation needs approval','{actor_name} {order_number} {refund_amount} {link_url}')
+    +emailField('approval_approved','Approval approved','{resource_label} {order_number} {actor_name}')
+    +emailField('approval_rejected','Approval rejected','{resource_label} {order_number} {actor_name} {reason_suffix}')
   +'</div></div>';
   document.getElementById('app').innerHTML=h;
   document.getElementById('savebar').style.display='flex';
@@ -155,7 +178,20 @@ function collect(){
     auto_expire_hours:numVal('a_expire',72),
     remind_after_hours:numVal('a_remind',24),
   };
-  return {extension_policy,cancellation_policy,approval_routing};
+  // Email templates — replace the whole templates map, preserving each event's
+  // existing whatsapp placeholder (2.1.5 wires email only).
+  const EVENTS=['extension_confirmed','cancellation_confirmed','extension_pending_approval','cancellation_pending_approval','approval_approved','approval_rejected'];
+  const existingTpls=(np().templates)||{};
+  const templates={};
+  for(const k of EVENTS){
+    templates[k]={
+      email:{subject:strVal('tpl_'+k+'_subject'),body:strVal('tpl_'+k+'_body')},
+      whatsapp:(existingTpls[k]||{}).whatsapp||{template_name:null,variable_order:null},
+    };
+  }
+  // Shallow-merge under notification_policy preserves any `events` modes server-side.
+  const notification_policy={templates};
+  return {extension_policy,cancellation_policy,approval_routing,notification_policy};
 }
 
 document.getElementById('saveBtn').addEventListener('click',async()=>{
