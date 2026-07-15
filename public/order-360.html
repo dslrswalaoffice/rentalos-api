@@ -90,6 +90,49 @@ a:hover{color:var(--info-hover)}
 .ovi.disabled{color:var(--neutral);cursor:not-allowed}
 .ovsep{height:1px;background:var(--border);margin:5px 8px}
 
+/* ---- Sub-slice 2.1 modals (extension / cancellation / approval / send update) ---- */
+.mask{position:fixed;inset:0;background:rgba(38,35,90,.28);z-index:200;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:48px 16px}
+.modal{width:720px;max-width:100%;background:var(--bg);border-radius:14px;box-shadow:0 24px 64px -12px rgba(24,22,60,.45),0 8px 24px -8px rgba(24,22,60,.3);display:flex;flex-direction:column;overflow:hidden;margin-bottom:48px}
+.m-hd{display:flex;align-items:flex-start;gap:16px;padding:24px 26px 18px}
+.m-title{margin:0;font-family:var(--head-font);font-size:19px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.m-sub{margin-top:6px;font-size:13px;color:var(--neutral)}
+.m-x{width:32px;height:32px;flex:none;border:1px solid var(--border);background:var(--bg);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--neutral)}
+.m-x:hover{background:var(--surface-1);color:var(--ink)}
+.m-bd{padding:0 26px 6px;display:flex;flex-direction:column}
+.m-sec{padding:18px 0;border-top:1px solid var(--border)}
+.m-sec:first-child{border-top:none}
+.m-lbl{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--neutral);text-transform:uppercase;margin-bottom:12px}
+.m-ft{border-top:1px solid var(--border);padding:15px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--surface-1)}
+.m-input{font-family:var(--mono);font-size:14px;color:var(--head);border:1px solid var(--neutral-border);background:var(--bg);border-radius:9px;padding:9px 12px;outline:none}
+.m-input:focus{border-color:var(--info)}
+.m-select{font-family:var(--mono);font-size:13px;color:var(--head);border:1px solid var(--neutral-border);background:var(--bg);border-radius:9px;padding:9px 12px;outline:none;cursor:pointer}
+.m-ta{width:100%;min-height:64px;resize:vertical;padding:11px 13px;border:1px solid var(--neutral-border);border-radius:9px;font-family:var(--body-font);font-size:13px;color:var(--head);outline:none}
+.m-ta:focus{border-color:var(--info)}
+.m-chip{display:inline-flex;align-items:center;padding:5px 11px;border-radius:7px;background:var(--info-bg);color:var(--info);font-family:var(--mono);font-size:12px;font-weight:600}
+.m-fin{border:1px solid var(--border);border-radius:12px;background:var(--surface-1);padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.m-frow{display:flex;align-items:baseline;justify-content:space-between}
+.m-frow .l{font-size:13px;color:#4b4b63}
+.m-frow .v{font-family:var(--mono);font-size:14px;color:var(--head)}
+.m-fdash{border-top:1px dashed var(--neutral-border);margin:2px 0}
+.m-ftot .l{font-size:14px;font-weight:700;color:var(--ink)}
+.m-ftot .v{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--ink)}
+.m-warn{display:flex;gap:12px;border:1px solid var(--attention-border);background:var(--attention-bg);border-radius:12px;padding:14px}
+.m-warn .ic{flex:none;color:var(--attention);margin-top:1px}
+.m-warn .t{font-size:13px;font-weight:700;color:var(--head)}
+.m-cb{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:var(--head);user-select:none}
+.m-cbbox{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--neutral-border);display:flex;align-items:center;justify-content:center;color:#fff}
+.m-cb.on .m-cbbox{background:var(--info);border-color:var(--info)}
+.m-avrow{display:flex;align-items:center;gap:10px;font-size:13px;padding:3px 0}
+.m-btn{border:none;cursor:pointer;background:var(--info);color:#fff;font-family:var(--body-font);font-size:14px;font-weight:600;padding:11px 22px;border-radius:10px;box-shadow:0 2px 6px rgba(79,70,229,.3)}
+.m-btn:hover{background:var(--info-hover)}
+.m-btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+.m-btn.danger{background:var(--danger);box-shadow:0 2px 6px rgba(220,38,38,.3)}
+.m-btn.danger:hover{background:#b91c1c}
+.m-ghost{border:none;background:none;cursor:pointer;font-family:var(--body-font);font-size:13px;font-weight:600;color:var(--neutral);padding:8px 4px}
+.m-ghost:hover{color:var(--ink)}
+.m-hint{font-size:11px;color:var(--neutral);margin-top:5px}
+.appchip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;background:var(--attention-bg);border:1px solid var(--attention-border);color:var(--attention);font-family:var(--mono);font-size:11px;font-weight:600;cursor:pointer}
+
 /* blocker panel */
 .blocker{position:absolute;top:52px;right:0;width:320px;background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 44px rgba(32,32,88,.2);padding:16px;z-index:60}
 .blocker-title{font-family:var(--head-font);font-weight:600;font-size:14px;color:var(--head);margin-bottom:12px;display:flex;align-items:center;gap:8px}
@@ -206,6 +249,7 @@ a:hover{color:var(--info-hover)}
 <div id="strip"></div>
 <div class="wrap"><div id="app"></div></div>
 <div class="toast-wrap" id="toasts"></div>
+<div id="modalRoot"></div>
 
 <script type="module">
 import { api, ensureAuth, formatINR } from '/_lib/api.js';
@@ -262,8 +306,11 @@ const ITEM_STATUS={pending_dispatch:{label:'ALLOCATED',tone:'neutral'},dispatche
 
 // ------------------------------------------------------------------ state
 const S={id:null,order:null,items:[],events:[],assets:[],tags:[],cf:[],coupon:null,agg:null,aggCtx:null,
+  settings:{},extensions:[],cancellation:null,approvals:[],customer:null,comms:[],
   open:{customer:true,rental:true,equipment:true,pricing:true,payments:true,deposits:true,events:true,documents:false,communications:false,notes:true},
   overflow:false,blocker:null,filters:new Set(['All'])};
+// module-scoped modal state (no localStorage — per RentalOS phase rules)
+const M={kind:null,data:null,decide:null,busy:false};
 
 function toneClass(t){return 'pill-'+(t||'neutral');}
 function tone3(sev){return sev==='red'?'sev-red':sev==='amber'?'sev-amber':'sev-neutral';}
@@ -298,6 +345,7 @@ function renderStrip(){
     +'<span class="pill pill-lg '+toneClass(tone)+'"><span class="pdot"></span>'+escapeHtml(label)
       +(count?'<span class="count-in-pill" style="background:'+toneVar+'">'+escapeHtml(count)+'</span>':'')+'</span>'
     +'<span class="amountpill">'+formatINR(o.total_paise)+'</span>'
+    +(S.approvals&&S.approvals.length?'<span class="appchip" data-approval="'+escapeAttr(S.approvals[0].id)+'">⚠ Approval pending — '+escapeHtml((S.approvals[0].approver_role_required||'').replace(/^\w/,c=>c.toUpperCase()))+'</span>':'')
     +'<div style="margin-left:auto;display:flex;align-items:center;gap:10px;position:relative">'
       +'<button class="btn btn-primary" data-cta '+(cta.disabled?'disabled':'')+'>'+I('truck',17)+escapeHtml(cta.label)+'</button>'
       +'<button class="btn btn-secondary" data-secondary="contact">'+I('chat',16)+'Contact</button>'
@@ -312,6 +360,7 @@ function renderOverflow(){
   const cancelBlocked=(rs==='closed'||rs==='cancelled'||rs==='fully_dispatched'||rs==='active'||rs==='partial_return');
   return '<div class="overflow" data-stop>'
     +'<div class="ovi" data-ov="edit">'+I('edit',16)+'Edit order details</div>'
+    +'<div class="ovi" data-ov="send-update">'+I('chat',16)+'Send Update to Customer</div>'
     +'<div class="ovi" data-ov="print">'+I('print',16)+'Print / export invoice</div>'
     +'<div class="ovi" data-ov="duplicate">'+I('dup',16)+'Duplicate order</div>'
     +'<div class="ovsep"></div>'
@@ -538,18 +587,32 @@ const RELATED_TYPES=[['order.extended','Extension','swap'],['order.status.forced
 function relatedEvents(){
   return S.events.filter(e=>RELATED_TYPES.some(r=>String(e.event_type||'').includes(r[0])));
 }
+const EXT_STATUS_TONE={pending_approval:'attention',approved:'success',rejected:'danger',cancelled:'neutral'};
+const CANCEL_STATUS_TONE={pending_approval:'attention',confirmed:'danger',refund_processing:'progress',refund_complete:'success',refund_failed:'danger',rejected:'neutral'};
 function cardEvents(){
-  const evs=relatedEvents();
+  const exts=S.extensions||[];const cancel=S.cancellation;
   return function(){
-    if(!evs.length)return '<div class="empty">No extensions, substitutions, or damage events.</div>';
-    return evs.map(e=>{
-      const meta=RELATED_TYPES.find(r=>String(e.event_type).includes(r[0]))||['','Event','info'];
-      return '<div class="substub" style="margin-bottom:8px">'
-        +'<span style="width:36px;height:36px;border-radius:9px;background:var(--info-bg);color:var(--info);display:flex;align-items:center;justify-content:center;flex:none">'+I(meta[2],17)+'</span>'
-        +'<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600;color:var(--ink)">'+escapeHtml(meta[1])+'</div>'
-        +'<div class="mono" style="font-size:11px;color:var(--neutral);margin-top:4px">'+fmtDateTime(e.occurred_at)+(e.actor_name?' · '+escapeHtml(e.actor_name):'')+'</div></div>'
+    if(!exts.length&&!cancel)return '<div class="empty">No extensions or cancellations on this order.</div>';
+    let html='';
+    for(const e of exts){
+      const tone=EXT_STATUS_TONE[e.status]||'neutral';
+      html+='<div class="substub" style="margin-bottom:8px">'
+        +'<span style="width:36px;height:36px;border-radius:9px;background:var(--info-bg);color:var(--info);display:flex;align-items:center;justify-content:center;flex:none">'+I('swap',17)+'</span>'
+        +'<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600;color:var(--ink)">Extension #'+escapeHtml(e.extension_number)+' · +'+escapeHtml(e.additional_days)+'d'+(Number(e.additional_charges_paise)>0?' · '+formatINR(e.additional_charges_paise):'')+'</div>'
+        +'<div class="mono" style="font-size:11px;color:var(--neutral);margin-top:4px">'+fmtDateTime(e.requested_at)+(e.requested_by_name?' · '+escapeHtml(e.requested_by_name):'')+'</div></div>'
+        +'<span class="pill '+toneClass(tone)+'"><span class="pdot"></span>'+escapeHtml(String(e.status).replace(/_/g,' ').toUpperCase())+'</span>'
         +'</div>';
-    }).join('');
+    }
+    if(cancel){
+      const tone=CANCEL_STATUS_TONE[cancel.status]||'neutral';
+      html+='<div class="substub" style="margin-bottom:8px">'
+        +'<span style="width:36px;height:36px;border-radius:9px;background:var(--danger-bg);color:var(--danger);display:flex;align-items:center;justify-content:center;flex:none">'+I('cancel',17)+'</span>'
+        +'<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600;color:var(--ink)">Cancellation · '+escapeHtml(String(cancel.reason_tag||'').replace(/_/g,' '))+'</div>'
+        +'<div class="mono" style="font-size:11px;color:var(--neutral);margin-top:4px">Refund '+formatINR(cancel.refund_amount_paise)+' · '+fmtDateTime(cancel.requested_at)+'</div></div>'
+        +'<span class="pill '+toneClass(tone)+'"><span class="pdot"></span>'+escapeHtml(String(cancel.status).replace(/_/g,' ').toUpperCase())+'</span>'
+        +'</div>';
+    }
+    return html;
   };
 }
 
@@ -570,9 +633,25 @@ function cardDocuments(){
   };
 }
 
+const COMM_STATUS={sent:['✓ Sent','var(--neutral)'],delivered:['✓✓ Delivered','var(--neutral)'],read:['✓✓ Read','var(--success)'],pending:['◷ Queued','var(--progress)'],skipped:['— Skipped','var(--neutral)'],failed:['⚠ Failed','var(--danger)']};
 function cardComms(){
+  const rows=S.comms||[];
   return function(){
-    return '<div class="empty"><div class="empty-ic">'+I('chat',26)+'</div>No communications logged yet.<br><span style="font-size:12px">WhatsApp, call and email logs will appear here.</span></div>';
+    let html='<div style="display:flex;margin-bottom:14px"><button class="btn btn-tiny btn-primary" style="margin-left:auto" data-act="send-update-inline">'+I('chat',15)+'Send update</button></div>';
+    if(!rows.length)return html+'<div class="empty"><div class="empty-ic">'+I('chat',26)+'</div>No messages sent yet.<br><span style="font-size:12px">Extension, cancellation and manual updates appear here.</span></div>';
+    for(const r of rows){
+      const st=COMM_STATUS[r.status]||[String(r.status),'var(--neutral)'];
+      const msg=(r.payload_snapshot&&r.payload_snapshot.message)||'';
+      const ev=(r.payload_snapshot&&r.payload_snapshot.event_type)||'';
+      html+='<div style="display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--border)">'
+        +'<span style="width:30px;height:30px;border-radius:8px;background:var(--surface-1);border:1px solid var(--border);color:var(--neutral);display:flex;align-items:center;justify-content:center;flex:none">'+I(r.channel==='email'?'doc':'wa',15)+'</span>'
+        +'<div style="flex:1;min-width:0"><div style="font-size:12.5px;color:var(--head);line-height:1.5">'+escapeHtml(msg)+'</div>'
+        +'<div class="mono" style="font-size:10.5px;color:var(--neutral);margin-top:5px">'+escapeHtml(String(r.channel).toUpperCase())+' · '+escapeHtml(String(ev).replace(/_/g,' '))+' · '+fmtDateTime(r.created_at)
+        +(r.error_message?' · '+escapeHtml(r.error_message):'')+'</div></div>'
+        +'<span style="font-family:var(--mono);font-size:10.5px;font-weight:600;color:'+st[1]+';flex:none;white-space:nowrap">'+st[0]+'</span>'
+        +'</div>';
+    }
+    return html;
   };
 }
 
@@ -677,7 +756,7 @@ const DOT={customer:'var(--info)',rental:'var(--progress)',equipment:'var(--head
 function render(){
   renderStrip();
   const o=S.order;const bal=Number(o.balance_paise!=null?o.balance_paise:(o.total_paise-o.paid_paise));
-  const nRel=relatedEvents().length;
+  const nRel=(S.extensions?S.extensions.length:0)+(S.cancellation?1:0);
   let main='';
   main+=renderStepper();
   main+='<div class="body-grid"><div class="col-main">';
@@ -746,17 +825,20 @@ document.addEventListener('click',(ev)=>{
   if(t.closest('[data-cta]')){primaryCta();return;}
   if(t.closest('[data-overflow]')){S.overflow=!S.overflow;S.blocker=null;renderStrip();return;}
   if(t.closest('[data-blocker-close]')){S.blocker=null;renderStrip();return;}
+  const appc=t.closest('[data-approval]');if(appc){openDecideMode(appc.getAttribute('data-approval'));return;}
   const ov=t.closest('[data-ov]');if(ov){handleOverflow(ov.getAttribute('data-ov'),ov.classList.contains('disabled'));return;}
   const act=t.closest('[data-act]');if(act){handleAct(act.getAttribute('data-act'),act);return;}
   const sec=t.closest('[data-secondary]');if(sec){handleAct('contact',sec);return;}
+  const mact=t.closest('[data-m]');if(mact){handleModal(mact.getAttribute('data-m'),mact);return;}
 });
 
 function handleOverflow(kind,disabled){
   S.overflow=false;
   if(kind==='cancel'){
     if(disabled){toast('Cancelling is blocked — this order has dispatched equipment. Use Return instead.','err');renderStrip();return;}
-    doTransition('cancelled');return;
+    renderStrip();openCancellationModal();return;
   }
+  if(kind==='send-update'){renderStrip();openSendUpdateModal();return;}
   if(kind==='edit'){window.location.href='/order.html?id='+S.id;return;}
   if(kind==='print'){window.location.href='/invoice.html?order='+S.id;return;}
   if(kind==='duplicate'){toast('Duplicate order — not wired in this view');renderStrip();return;}
@@ -768,7 +850,9 @@ async function handleAct(kind,el){
     case 'wa': if(o.customer_phone)window.open('https://wa.me/'+String(o.customer_phone).replace(/\D/g,''),'_blank');break;
     case 'call': if(o.customer_phone)window.location.href='tel:'+o.customer_phone;break;
     case 'contact': toast('Contact '+(o.customer_name||'customer'));break;
-    case 'extend': case 'add-line': case 'view-asset': case 'substitute': case 'report-damage': case 'record-payment': case 'record-deposit': case 'release-deposit': case 'forfeit-deposit': case 'dispatch-item':
+    case 'extend': openExtensionModal();break;
+    case 'send-update-inline': openSendUpdateModal();break;
+    case 'add-line': case 'view-asset': case 'substitute': case 'report-damage': case 'record-payment': case 'record-deposit': case 'release-deposit': case 'forfeit-deposit': case 'dispatch-item':
       window.location.href='/order.html?id='+S.id;break;
     case 'save-note':{
       const box=document.querySelector('[data-note-input]');const val=box?box.value.trim():'';
@@ -786,7 +870,11 @@ async function load(){
   S.order=data.order;S.items=data.items||[];S.events=data.events||[];S.assets=data.assets||[];
   S.tags=data.tags||[];S.cf=data.custom_fields||[];S.coupon=data.coupon_redemption||null;
   S.agg=data.aggregate_status||null;S.aggCtx=data.aggregate_status_context||null;
+  S.extensions=data.extensions||[];S.cancellation=data.cancellation||null;
+  S.approvals=data.active_approvals||[];S.customer=data.customer||null;
   document.getElementById('crumb-order').textContent='#'+data.order.order_number;
+  // Communications (customer-facing deliveries) — best-effort, non-blocking.
+  api.get('/api/orders/'+S.id+'/communications').then(r=>{S.comms=r.communications||[];render();}).catch(()=>{});
   render();
 }
 
@@ -806,20 +894,317 @@ function errorState(status){
     +'<a class="btn btn-secondary" href="/orders.html" style="display:inline-flex">← Back to Orders</a></div></div>';
 }
 
+// ==================================================================== MODALS (Sub-slice 2.1)
+function isoToLocalInput(iso){if(!iso)return '';const t=new Date(iso);if(isNaN(t))return '';const p=n=>String(n).padStart(2,'0');return t.getFullYear()+'-'+p(t.getMonth()+1)+'-'+p(t.getDate())+'T'+p(t.getHours())+':'+p(t.getMinutes());}
+function localInputToIso(v){if(!v)return null;const t=new Date(v);return isNaN(t)?null:t.toISOString();}
+function num(v,d){const n=Number(v);return isFinite(n)?n:(d||0);}
+function mclose(){M.kind=null;M.data=null;M.decide=null;M.busy=false;document.getElementById('modalRoot').innerHTML='';}
+function mrender(inner){document.getElementById('modalRoot').innerHTML='<div class="mask" data-mask><div class="modal" data-stop>'+inner+'</div></div>';}
+const XSVG='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+function mHead(title,sub){return '<div class="m-hd"><div style="flex:1"><h2 class="m-title">'+escapeHtml(title)+'</h2><div class="m-sub">'+sub+'</div></div><button class="m-x" data-m="close">'+XSVG+'</button></div>';}
+function checkbox(on,label,mkey){return '<label class="m-cb'+(on?' on':'')+'" data-m="'+mkey+'"><span class="m-cbbox">'+(on?I('check',12):'')+'</span>'+escapeHtml(label)+'</label>';}
+
+// ---- EXTENSION ----
+function openExtensionModal(){
+  const o=S.order;
+  M.kind='extension';
+  M.data={newEnd:isoToLocalInput(o.rental_end),reasonTag:'customer_request',notes:'',wa:true,email:true,conflicts:[],checking:false,checkToken:0};
+  recomputeExtension();
+}
+function extPolicy(){return (S.settings&&S.settings.extension_policy)||{};}
+function recomputeExtension(){
+  const o=S.order;const d=M.data;
+  const newIso=localInputToIso(d.newEnd);
+  const oldMs=o.rental_end?new Date(o.rental_end).getTime():null;
+  const newMs=newIso?new Date(newIso).getTime():null;
+  d.days=(oldMs!=null&&newMs!=null&&newMs>oldMs)?Math.ceil((newMs-oldMs)/86400000):0;
+  // additional charges estimate = sum(rate*qty)*days
+  let est=0;for(const it of rentalItems()){est+=Number(it.daily_rate_paise||0)*Number(it.quantity||1)*d.days;}
+  d.estCharges=est;
+  const ep=extPolicy();const reasons=[];
+  if(d.days>num(ep.requires_approval_over_days,2))reasons.push('Extension of '+d.days+' days exceeds the '+num(ep.requires_approval_over_days,2)+'-day limit');
+  const vt=num(ep.requires_approval_over_value_paise,0);if(vt>0&&est>vt)reasons.push('Additional charges exceed the value threshold');
+  if(ep.requires_approval_if_original_unpaid&&Number(o.balance_paise)>0)reasons.push('Original order is not fully paid');
+  d.requiresApproval=reasons.length>0;d.reasons=reasons;
+  renderExtensionModal();
+  // fire availability preview (advisory) for the extension window
+  if(oldMs!=null&&newMs!=null&&newMs>oldMs){
+    const token=++d.checkToken;d.checking=true;
+    const items=rentalItems().filter(it=>it.product_id);
+    Promise.all(items.map(it=>api.post('/api/availability/check',{product_id:it.product_id,quantity:Number(it.quantity||1),start:new Date(oldMs).toISOString(),end:new Date(newMs).toISOString(),exclude_order_id:S.id,location_id:o.pickup_location_id}).then(r=>({it,check:r.check})).catch(()=>null)))
+      .then(res=>{if(token!==d.checkToken)return;d.conflicts=res.filter(x=>x&&x.check&&!x.check.available).map(x=>({name:x.it.description,product_id:x.it.product_id}));d.checking=false;renderExtensionModal();});
+  }
+}
+function renderExtensionModal(){
+  if(M.kind!=='extension')return;const o=S.order;const d=M.data;const dec=M.decide;
+  const REASONS=[['customer_request','customer_request'],['shoot_extended','shoot_extended'],['weather','weather'],['equipment_delay','equipment_delay'],['logistics_delay','logistics_delay'],['other','other']];
+  let b='';
+  // new end date
+  b+='<div class="m-sec"><div class="m-lbl">New end date</div>'
+    +'<div style="font-size:13px;color:var(--neutral);margin-bottom:12px">Currently: <span class="mono" style="color:var(--head)">'+fmtDateTime(o.rental_end)+'</span></div>'
+    +'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+    +'<input type="datetime-local" class="m-input" data-mfield="newEnd" value="'+escapeAttr(d.newEnd)+'"'+(dec?' disabled':'')+'>'
+    +(d.days>0?'<span class="m-chip">Extension: +'+d.days+' day'+(d.days>1?'s':'')+'</span>':'<span style="font-size:12px;color:var(--danger)">Pick a date after the current end</span>')
+    +'</div></div>';
+  // availability
+  b+='<div class="m-sec"><div class="m-lbl">Availability check</div>';
+  if(d.checking)b+='<div style="font-size:13px;color:var(--neutral)">Checking…</div>';
+  else if(!d.conflicts.length)b+='<div class="m-avrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span style="color:var(--head)">All items free for the extension window</span></div>';
+  else{for(const cf of d.conflicts)b+='<div class="m-avrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--attention)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="color:var(--head);font-weight:600">'+escapeHtml(cf.name)+'</span><span style="color:var(--attention)">— conflict in the extension window (advisory)</span></div>';}
+  b+='</div>';
+  // additional charges
+  b+='<div class="m-sec"><div class="m-lbl">Additional charges (estimate)</div>'
+    +'<div class="m-fin">';
+  for(const it of rentalItems()){const rate=Number(it.daily_rate_paise||0);if(!rate)continue;b+='<div class="m-frow"><span class="l">'+escapeHtml(it.description)+'</span><span class="v">'+formatINR(rate)+'/day × '+(d.days||0)+' = '+formatINR(rate*Number(it.quantity||1)*(d.days||0))+'</span></div>';}
+  b+='<div class="m-fdash"></div><div class="m-frow m-ftot"><span class="l">Estimated total</span><span class="v">'+formatINR(d.estCharges||0)+'</span></div></div>'
+    +'<div class="m-hint">Final charge is computed server-side on confirm.</div></div>';
+  // reason
+  b+='<div class="m-sec"><div class="m-lbl">Reason</div>'
+    +'<select class="m-select" data-mfield="reasonTag"'+(dec?' disabled':'')+'>'+REASONS.map(r=>'<option value="'+r[0]+'"'+(d.reasonTag===r[0]?' selected':'')+'>'+r[1]+'</option>').join('')+'</select>'
+    +'<textarea class="m-ta" data-mfield="notes" placeholder="Optional notes…" style="margin-top:10px"'+(dec?' disabled':'')+'>'+escapeHtml(d.notes||'')+'</textarea></div>';
+  // approval warning
+  if(d.requiresApproval&&!dec){
+    b+='<div class="m-sec"><div class="m-warn"><span class="ic">'+I('warn',20)+'</span><div><div class="t">This extension requires approval</div>'
+      +'<div style="font-size:12.5px;color:var(--neutral);margin-top:6px">'+d.reasons.map(escapeHtml).join(' · ')+'</div></div></div></div>';
+  }
+  // notification
+  if(!dec)b+='<div class="m-sec"><div class="m-lbl">Customer notification</div><div style="display:flex;gap:22px">'+checkbox(d.wa,'WhatsApp','tog-wa')+checkbox(d.email,'Email','tog-email')+'</div></div>';
+  // footer
+  const cta=dec?'':(d.requiresApproval?'Request Approval':'Confirm Extension');
+  let foot;
+  if(dec)foot=decideFooter();
+  else foot='<button class="m-ghost" data-m="close">Cancel</button><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">'
+    +'<button class="m-btn" data-m="submit-ext"'+((d.days>0&&!M.busy)?'':' disabled')+'>'+escapeHtml(cta)+'</button>'
+    +(d.requiresApproval?'<span class="m-hint">Approver will be notified</span>':'')+'</div>';
+  const sub=escapeHtml(o.customer_name||'')+' · Currently: '+fmtDate(o.rental_start)+' → '+fmtDate(o.rental_end);
+  mrender(mHead('EXTEND RENTAL — #'+escapeHtml(o.order_number),(dec?decideBanner():sub))+'<div class="m-bd">'+b+'</div><div class="m-ft">'+foot+'</div>');
+}
+
+// ---- CANCELLATION ----
+function openCancellationModal(){
+  const o=S.order;
+  M.kind='cancellation';
+  M.data={reasonTag:'customer_change_of_plans',notes:'',wa:true,email:true};
+  computeCancellation();renderCancellationModal();
+}
+function cancelPolicy(){return (S.settings&&S.settings.cancellation_policy)||{};}
+function computeCancellation(){
+  const o=S.order;const d=M.data;const cp=cancelPolicy();
+  const startMs=o.rental_start?new Date(o.rental_start).getTime():null;const now=Date.now();
+  const hrs=startMs!=null?(startMs-now)/3600000:null;
+  let tier='before_72hr';if(hrs!=null){if(hrs<24)tier='under_24hr';else if(hrs<72)tier='24_to_72hr';}
+  const grace=num((S.settings.billing||{}).grace_period_hours,2);
+  const isNoShow=d.reasonTag==='customer_no_show'||(o.status==='confirmed'&&startMs!=null&&now>startMs+grace*3600000);
+  const tiers=cp.tiers||{before_72hr:{refund_percent:100},'24_to_72hr':{refund_percent:75},under_24hr:{refund_percent:50}};
+  const tcfg=tiers[tier]||{refund_percent:100,processing_fee_paise:0};
+  let pct=num(tcfg.refund_percent,100);let fee=num(tcfg.processing_fee_paise,0);let depForfeitPct=0;
+  const autoR=cp.auto_refund_reasons||[];const autoZ=cp.auto_zero_refund_reasons||[];
+  if(autoR.indexOf(d.reasonTag)>=0){pct=100;fee=0;}
+  else if(isNoShow||autoZ.indexOf(d.reasonTag)>=0){pct=0;depForfeitPct=num((cp.no_show_policy||{}).deposit_forfeit_percent,100);}
+  const original=Number(o.total_paise);const refund=Math.round(original*pct/100);const forfeit=original-refund;
+  const heldDeposit=(o.deposit_status==='held')?Number(o.deposit_required_paise||0):0;
+  const depForfeit=depForfeitPct>0?Math.round(heldDeposit*depForfeitPct/100):0;const depRefund=heldDeposit-depForfeit;
+  // approval
+  const ra=cp.requires_approval||{};const reasons=[];
+  if(tier==='under_24hr'&&ra.under_24hr_cancellations)reasons.push('Cancellation within 24 hours of dispatch');
+  if(isNoShow&&ra.no_show_cancellations)reasons.push('No-show cancellation');
+  const rt=num(ra.refunds_over_paise,0);if(rt>0&&refund>rt)reasons.push('Refund exceeds the approval threshold');
+  d.tier=tier;d.hrs=hrs;d.isNoShow=isNoShow;d.pct=pct;
+  d.fin={original,refund,forfeit,fee,depRefund,depForfeit,total:refund+depRefund};
+  d.requiresApproval=reasons.length>0;d.reasons=reasons;
+}
+function tierLabel(t){return t==='before_72hr'?'> 72hr':(t==='24_to_72hr'?'24–72hr':'< 24hr');}
+function renderCancellationModal(){
+  if(M.kind!=='cancellation')return;const o=S.order;const d=M.data;const dec=M.decide;const f=d.fin;
+  const REASONS=['customer_change_of_plans','customer_budget_issue','shoot_cancelled','duplicate_booking','customer_found_alternative','weather','equipment_issue_on_our_side','no_kyc','payment_failed','customer_no_show','staff_error','other'];
+  let b='';
+  // current state
+  b+='<div class="m-sec"><div class="m-lbl">Current state</div>'
+    +'<div style="display:flex;flex-direction:column;gap:9px">'
+    +'<div style="display:flex;gap:12px"><span style="width:150px;color:var(--neutral);font-size:13px">Status</span><span class="pill '+toneClass(AGG_TONE[resolvedStatus()]||'neutral')+'"><span class="pdot"></span>'+escapeHtml(String(resolvedStatus()).replace(/_/g,' ').toUpperCase())+'</span></div>'
+    +'<div style="display:flex;gap:12px"><span style="width:150px;color:var(--neutral);font-size:13px">Time to dispatch</span><span class="mono" style="font-size:13px;font-weight:700;color:'+(d.hrs!=null&&d.hrs<24?'var(--attention)':'var(--head)')+'">'+(d.hrs!=null?(d.hrs>=0?Math.round(d.hrs)+' hours':'past due'):'—')+'</span></div>'
+    +'<div style="display:flex;gap:12px"><span style="width:150px;color:var(--neutral);font-size:13px">Policy tier</span><span style="font-size:12.5px;color:var(--attention)">'+tierLabel(d.tier)+' — '+d.pct+'% refund'+(d.requiresApproval?' · approval required':'')+'</span></div>'
+    +'</div></div>';
+  // reason
+  b+='<div class="m-sec"><div class="m-lbl">Cancellation reason</div>'
+    +'<select class="m-select" data-mfield="reasonTag" style="min-width:280px"'+(dec?' disabled':'')+'>'+REASONS.map(r=>'<option value="'+r+'"'+(d.reasonTag===r?' selected':'')+'>'+r+'</option>').join('')+'</select>'
+    +(d.reasonTag==='equipment_issue_on_our_side'||d.reasonTag==='staff_error'?'<div style="font-size:12px;color:var(--success);margin-top:8px">100% refund override active (our fault)</div>':'')
+    +(d.isNoShow?'<div style="font-size:12px;color:var(--danger);margin-top:8px">No-show — 0% refund + deposit forfeit</div>':'')
+    +'<textarea class="m-ta" data-mfield="notes" placeholder="Optional notes…" style="margin-top:10px"'+(dec?' disabled':'')+'>'+escapeHtml(d.notes||'')+'</textarea></div>';
+  // financial impact
+  b+='<div class="m-sec"><div class="m-lbl">Financial impact</div><div class="m-fin">'
+    +'<div class="m-frow"><span class="l">Original amount</span><span class="v">'+formatINR(f.original)+'</span></div>'
+    +(f.forfeit>0?'<div class="m-frow"><span class="l">Cancellation fee ('+(100-d.pct)+'% forfeit)</span><span class="v" style="color:var(--attention)">− '+formatINR(f.forfeit)+'</span></div>':'')
+    +'<div class="m-frow"><span class="l">Refund to customer</span><span class="v">'+formatINR(f.refund)+'</span></div>'
+    +(f.depRefund>0?'<div class="m-frow"><span class="l">Deposit refund</span><span class="v">'+formatINR(f.depRefund)+'</span></div>':'')
+    +(f.depForfeit>0?'<div class="m-frow"><span class="l">Deposit forfeited</span><span class="v" style="color:var(--danger)">'+formatINR(f.depForfeit)+'</span></div>':'')
+    +'<div class="m-fdash"></div><div class="m-frow m-ftot"><span class="l">Total to customer</span><span class="v">'+formatINR(f.total)+'</span></div>'
+    +'</div></div>';
+  // operational impact
+  const eq=rentalItems();
+  b+='<div class="m-sec"><div class="m-lbl">Operational impact</div>'
+    +'<div style="font-size:13px;color:var(--neutral);margin-bottom:5px">Availability released for</div>'
+    +'<div class="mono" style="font-size:13px;font-weight:600;color:var(--head);margin-bottom:12px">'+fmtDateTime(o.rental_start)+' → '+fmtDateTime(o.rental_end)+'</div>'
+    +'<div style="font-size:13px;color:var(--neutral);margin-bottom:5px">Equipment freed</div>'
+    +'<div style="font-size:12px;color:var(--head);line-height:1.6">'+(eq.length?eq.map(it=>{const a=assetsForItem(it.id).map(x=>x.asset_code).join(', ');return escapeHtml(it.description)+(a?' ('+escapeHtml(a)+')':'');}).join(' · '):'—')+'</div></div>';
+  // approval
+  if(d.requiresApproval&&!dec)b+='<div class="m-sec"><div class="m-warn"><span class="ic">'+I('warn',20)+'</span><div><div class="t">This cancellation requires approval</div><div style="font-size:12.5px;color:var(--neutral);margin-top:6px">'+d.reasons.map(escapeHtml).join(' · ')+'</div></div></div></div>';
+  // notification
+  if(!dec)b+='<div class="m-sec"><div class="m-lbl">Notification</div><div style="display:flex;gap:22px">'+checkbox(d.wa,'WhatsApp','tog-wa')+checkbox(d.email,'Email','tog-email')+'</div></div>';
+  // footer
+  let foot;
+  if(dec)foot=decideFooter();
+  else foot='<button class="m-ghost" data-m="close">Keep Order</button><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">'
+    +'<button class="m-btn danger" data-m="submit-cancel"'+(M.busy?' disabled':'')+'>'+(d.requiresApproval?'Request Approval':'Confirm Cancellation')+'</button>'
+    +(d.requiresApproval?'<span class="m-hint">Approver will be notified</span>':'')+'</div>';
+  mrender(mHead('CANCEL ORDER — #'+escapeHtml(o.order_number),(dec?decideBanner():escapeHtml(o.customer_name||'')+' · Currently: '+escapeHtml(String(resolvedStatus()).replace(/_/g,' '))))+'<div class="m-bd">'+b+'</div><div class="m-ft">'+foot+'</div>');
+}
+
+// ---- SEND UPDATE ----
+function openSendUpdateModal(){
+  const o=S.order;
+  M.kind='send';M.data={wa:true,email:!!o.customer_email,message:'',useAlt:false,altPhone:'',eventType:'manual_update'};
+  renderSendModal();
+}
+function renderSendModal(){
+  if(M.kind!=='send')return;const o=S.order;const d=M.data;
+  let b='';
+  b+='<div class="m-sec"><div class="m-lbl">Channels</div><div style="display:flex;gap:22px">'+checkbox(d.wa,'WhatsApp','tog-wa')+checkbox(d.email,'Email','tog-email')+'</div></div>';
+  b+='<div class="m-sec"><div class="m-lbl">Recipient</div>'
+    +'<label class="m-cb'+(!d.useAlt?' on':'')+'" data-m="rcp-reg" style="margin-bottom:8px"><span class="m-cbbox">'+(!d.useAlt?I('check',12):'')+'</span>Registered: '+escapeHtml(o.customer_phone||'—')+'</label><br>'
+    +'<label class="m-cb'+(d.useAlt?' on':'')+'" data-m="rcp-alt"><span class="m-cbbox">'+(d.useAlt?I('check',12):'')+'</span>Alternate number</label>'
+    +(d.useAlt?'<input class="m-input" data-mfield="altphone" placeholder="+91…" value="'+escapeAttr(d.altPhone)+'" style="display:block;margin-top:8px;width:220px">'
+      +'<div style="margin-top:8px">'+checkbox(d.updDefault,'Also update customer’s default number','tog-upd')+'</div>':'')
+    +'</div>';
+  b+='<div class="m-sec"><div class="m-lbl">Message</div><textarea class="m-ta" data-mfield="message" placeholder="Type the customer message…" style="min-height:110px">'+escapeHtml(d.message||'')+'</textarea></div>';
+  const foot='<button class="m-ghost" data-m="close">Cancel</button>'
+    +'<button class="m-btn" data-m="submit-send"'+(((d.wa||d.email)&&(d.message||'').trim()&&!M.busy)?'':' disabled')+'>'+I('chat',15)+'Send Update</button>';
+  mrender(mHead('SEND UPDATE — #'+escapeHtml(o.order_number),escapeHtml(o.customer_name||''))+'<div class="m-bd">'+b+'</div><div class="m-ft">'+foot+'</div>');
+}
+
+// ---- APPROVAL DECIDE MODE ----
+function decideBanner(){const a=M.decide;return '<span style="color:var(--attention);font-weight:600">APPROVAL PENDING</span> · Requested by '+escapeHtml(a.requester_name||'—')+' · '+fmtDateTime(a.requested_at);}
+function decideFooter(){
+  return '<textarea class="m-ta" data-mfield="decideNotes" placeholder="Decision notes (optional)…" style="flex:1;min-height:0;height:40px;margin-right:12px"></textarea>'
+    +'<div style="display:flex;gap:10px"><button class="m-btn danger" data-m="decide-reject"'+(M.busy?' disabled':'')+'>Reject</button>'
+    +'<button class="m-btn" data-m="decide-approve"'+(M.busy?' disabled':'')+'>Approve</button></div>';
+}
+async function openDecideMode(approvalId){
+  try{
+    const r=await api.get('/api/approvals/'+approvalId);
+    const a=r.approval;
+    if(!r.can_decide&&a.status==='pending'){toast('You are not the approver for this request','err');}
+    M.decide={id:a.id,requester_name:a.requester_name,requested_at:a.requested_at,resource_type:a.resource_type,notes:''};
+    if(a.status!=='pending'){toast('This approval is already '+a.status);return;}
+    if(a.resource_type==='order_extension'){
+      const snap=a.request_snapshot||{};
+      M.kind='extension';
+      M.data={newEnd:isoToLocalInput(snap.new_rental_end),reasonTag:a.request_reason_tag||'customer_request',notes:a.request_reason_notes||'',wa:false,email:false,conflicts:(snap.conflicts||[]).map(c=>({name:c.product_name||'Item'})),checking:false,checkToken:0,
+        days:Number(snap.additional_days||0),estCharges:Number(snap.estimated_additional_charges_paise||0),requiresApproval:true,reasons:[]};
+      renderExtensionModal();
+    }else if(a.resource_type==='order_cancellation'){
+      const snap=a.request_snapshot||{};const fi=snap.financial_impact||{};
+      M.kind='cancellation';
+      M.data={reasonTag:a.request_reason_tag||'other',notes:a.request_reason_notes||'',wa:false,email:false,
+        tier:snap.tier||'under_24hr',hrs:null,isNoShow:false,pct:num(fi.refund_percent,0),requiresApproval:true,reasons:[],
+        fin:{original:num(fi.original_amount_paise,S.order.total_paise),refund:num(fi.refund_amount_paise,0),forfeit:num(fi.forfeit_amount_paise,0),fee:num(fi.processing_fee_paise,0),depRefund:num(fi.deposit_refunded_paise,0),depForfeit:num(fi.deposit_forfeited_paise,0),total:num(fi.total_to_customer_paise,0)}};
+      renderCancellationModal();
+    }
+  }catch(err){toast('Could not load approval: '+(err.body&&err.body.error||err.message),'err');}
+}
+
+// ---- modal event dispatch ----
+document.addEventListener('change',(e)=>{
+  const f=e.target.closest&&e.target.closest('[data-mfield]');if(!f||!M.kind)return;
+  const key=f.getAttribute('data-mfield');
+  if(key==='newEnd'){M.data.newEnd=e.target.value;recomputeExtension();}
+  else if(key==='reasonTag'){M.data.reasonTag=e.target.value;if(M.kind==='extension')recomputeExtension();else{computeCancellation();renderCancellationModal();}}
+});
+document.addEventListener('input',(e)=>{
+  const f=e.target.closest&&e.target.closest('[data-mfield]');if(!f||!M.data)return;
+  const key=f.getAttribute('data-mfield');
+  if(key==='notes')M.data.notes=e.target.value;
+  else if(key==='message')M.data.message=e.target.value;
+  else if(key==='altphone')M.data.altPhone=e.target.value;
+  else if(key==='decideNotes'&&M.decide)M.decide.notes=e.target.value;
+});
+async function handleModal(kind){
+  const d=M.data;
+  if(kind==='close'){mclose();return;}
+  if(kind==='tog-wa'){d.wa=!d.wa;rerenderModal();return;}
+  if(kind==='tog-email'){d.email=!d.email;rerenderModal();return;}
+  if(kind==='tog-upd'){d.updDefault=!d.updDefault;rerenderModal();return;}
+  if(kind==='rcp-reg'){d.useAlt=false;rerenderModal();return;}
+  if(kind==='rcp-alt'){d.useAlt=true;rerenderModal();return;}
+  if(kind==='submit-ext')return submitExtension();
+  if(kind==='submit-cancel')return submitCancellation();
+  if(kind==='submit-send')return submitSend();
+  if(kind==='decide-approve')return submitDecide('approved');
+  if(kind==='decide-reject')return submitDecide('rejected');
+}
+function rerenderModal(){if(M.kind==='extension')renderExtensionModal();else if(M.kind==='cancellation')renderCancellationModal();else if(M.kind==='send')renderSendModal();}
+function chans(d){const c=[];if(d.wa)c.push('whatsapp');if(d.email)c.push('email');return c;}
+async function submitExtension(){
+  const d=M.data;const iso=localInputToIso(d.newEnd);if(!iso){toast('Pick a valid date','err');return;}
+  M.busy=true;renderExtensionModal();
+  try{
+    const r=await api.post('/api/orders/'+S.id+'/extend',{new_rental_end_at:iso,reason_tag:d.reasonTag,reason_notes:d.notes||undefined,customer_notification_channels:chans(d)});
+    mclose();toast(r.status==='pending_approval'?'Extension sent for approval':'Rental extended','ok');await load();
+  }catch(err){M.busy=false;showModalError(err,renderExtensionModal);}
+}
+async function submitCancellation(){
+  const d=M.data;M.busy=true;renderCancellationModal();
+  try{
+    const r=await api.post('/api/orders/'+S.id+'/cancel',{reason_tag:d.reasonTag,reason_notes:d.notes||undefined,customer_notification_channels:chans(d)});
+    mclose();toast(r.status==='pending_approval'?'Cancellation sent for approval':'Order cancelled','ok');await load();
+  }catch(err){M.busy=false;showModalError(err,renderCancellationModal);}
+}
+async function submitSend(){
+  const d=M.data;M.busy=true;renderSendModal();
+  const body={channels:chans(d),message:(d.message||'').trim(),event_type:'manual_update'};
+  if(d.useAlt&&d.altPhone){body.alt_phone=d.altPhone;if(d.updDefault)body.update_customer_default=true;}
+  try{await api.post('/api/orders/'+S.id+'/send-update',body);mclose();toast('Update sent','ok');await load();}
+  catch(err){M.busy=false;showModalError(err,renderSendModal);}
+}
+async function submitDecide(decision){
+  M.busy=true;rerenderModal();
+  try{
+    await api.post('/api/approvals/'+M.decide.id+'/decide',{decision,reason_notes:(M.decide.notes||'')||undefined});
+    mclose();toast(decision==='approved'?'Approved':'Rejected','ok');
+    // strip approval query from URL so a refresh doesn't reopen
+    history.replaceState(null,'','/order-360.html?id='+S.id);
+    await load();
+  }catch(err){M.busy=false;showModalError(err,rerenderModal);}
+}
+function showModalError(err,rerender){
+  const struct=err.body&&err.body.error&&Array.isArray(err.body.error.reasons)?err.body.error:null;
+  if(struct){toast('Blocked: '+(struct.reasons[0]&&struct.reasons[0].message||struct.message),'err');}
+  else toast('Failed: '+(err.body&&err.body.error||err.message),'err');
+  if(rerender)rerender();
+}
+// close modal on mask click
+document.addEventListener('click',(e)=>{if(e.target&&e.target.hasAttribute&&e.target.hasAttribute('data-mask'))mclose();});
+
 // ------------------------------------------------------------------ boot
 (async function(){
   await ensureAuth();
-  S.id=new URLSearchParams(location.search).get('id');
+  const qs=new URLSearchParams(location.search);
+  S.id=qs.get('id');
   if(!S.id){errorState(404);return;}
   skeleton();
+  // Workspace policy (extension/cancellation thresholds) — best-effort.
+  try{const ws=await api.get('/api/workspace');S.settings=(ws&&ws.settings)||{};}catch{}
   try{
     await load();
     // auto-expand issues / collapse empties post-load
     const o=S.order;const bal=Number(o.balance_paise!=null?o.balance_paise:(o.total_paise-o.paid_paise));
     S.open.payments=bal>0;
     S.open.deposits=(o.deposit_status&&o.deposit_status!=='none');
-    S.open.events=relatedEvents().length>0;
+    S.open.events=relatedEvents().length>0||S.extensions.length>0||!!S.cancellation;
     render();
+    // Deep link: approval decide mode (?approval_id=…&mode=decide)
+    const apId=qs.get('approval_id');
+    if(apId&&qs.get('mode')==='decide'){openDecideMode(apId);}
   }catch(err){
     errorState(err.status||500);
   }

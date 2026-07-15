@@ -6,7 +6,6 @@ import { audit } from '../lib/audit.js';
 import { emitNotification } from '../lib/notify.js';
 import { recomputeOrderTotals } from '../lib/pricing.js';
 import { checkAvailability, getDefaultLocationId } from '../lib/availability.js';
-import { generateInvoice } from './invoices.js';
 import { applyDepositStatus } from './payments.js';
 import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
 import {
@@ -26,6 +25,14 @@ import { requirePermission, can } from '../lib/permissions.js';
 import { deriveAggregateStatus, aggregateInputFromLoaded } from '../lib/aggregate_status.js';
 import { orderBlock, reason as reasonB } from '../lib/blocked_action.js';
 import { idempotencyMiddleware } from '../lib/idempotency.js';
+import {
+  createApprovalRequest,
+  evaluateExtensionApproval,
+  evaluateCancellationApproval,
+  loadWorkspaceSettings,
+} from '../lib/approvals.js';
+import { applyExtensionEffects, applyCancellationEffects } from '../lib/order_actions.js';
+import { emitCustomerNotification } from '../lib/notify.js';
 
 // ============================================================================
 // src/routes/orders.ts
@@ -841,12 +848,85 @@ orders.get('/:id', async (c) => {
   const aggregate = deriveAggregateStatus(
     aggregateInputFromLoaded(order, items as { item_type: string; status: string }[], orderAssets.length > 0),
   );
+
+  // Sub-slice 2.1 — extensions, cancellation, pending approvals, enriched customer.
+  const [extensions, cancellationRows, activeApprovals, custEnrich] = await Promise.all([
+    query(sql`
+      SELECT e.id, e.extension_number, e.original_rental_end_at, e.new_rental_end_at, e.additional_days,
+             e.additional_charges_paise, e.reason_tag, e.reason_notes, e.status, e.requires_approval,
+             e.approval_request_id, e.requested_at, e.approved_at, e.had_conflict,
+             ru.display_name AS requested_by_name
+      FROM order_extensions e
+      LEFT JOIN users ru ON ru.id = e.requested_by_user_id
+      WHERE e.order_id = ${id}::uuid AND e.workspace_id = ${session.workspace.id}::uuid
+      ORDER BY e.extension_number ASC
+    `),
+    query(sql`
+      SELECT ca.id, ca.reason_tag, ca.reason_notes, ca.status, ca.original_amount_paise,
+             ca.refund_amount_paise, ca.forfeit_amount_paise, ca.deposit_refunded_paise,
+             ca.deposit_forfeited_paise, ca.requires_approval, ca.approval_request_id,
+             ca.refund_initiated_at, ca.refund_expected_credit_by, ca.requested_at, ca.confirmed_at,
+             ru.display_name AS requested_by_name
+      FROM order_cancellations ca
+      LEFT JOIN users ru ON ru.id = ca.requested_by_user_id
+      WHERE ca.order_id = ${id}::uuid AND ca.workspace_id = ${session.workspace.id}::uuid
+      LIMIT 1
+    `),
+    query(sql`
+      SELECT ar.id, ar.resource_type, ar.resource_id, ar.approver_role_required, ar.status,
+             ar.requested_at, ar.request_reason_tag, ru.display_name AS requester_name
+      FROM approval_requests ar
+      LEFT JOIN users ru ON ru.id = ar.requester_user_id
+      WHERE ar.order_id = ${id}::uuid AND ar.workspace_id = ${session.workspace.id}::uuid
+        AND ar.status = 'pending'
+      ORDER BY ar.requested_at DESC
+    `),
+    query<{ tier: string | null; trust_score: number | null; prior_completed: number; outstanding_paise: number }>(sql`
+      SELECT p.tier, p.trust_score,
+        (SELECT COUNT(*)::int FROM orders o2
+           WHERE o2.workspace_id = p.workspace_id AND o2.customer_person_id = p.id
+             AND o2.id != ${id}::uuid AND o2.status::text IN ('confirmed','dispatched','active','returned','closed')
+        ) AS prior_completed,
+        COALESCE((SELECT SUM(o3.balance_paise)::bigint FROM orders o3
+           WHERE o3.workspace_id = p.workspace_id AND o3.customer_person_id = p.id
+             AND o3.deleted_at IS NULL AND o3.status::text NOT IN ('cancelled','draft')
+        ), 0) AS outstanding_paise
+      FROM people p
+      WHERE p.id = ${order.customer_person_id}::uuid AND p.workspace_id = ${session.workspace.id}::uuid
+      LIMIT 1
+    `),
+  ]);
+
+  // Customer segment: vip tier wins; else repeat when they have prior completed
+  // orders; else new. kyc_status / credit_limit have no columns yet → null (the
+  // 360 renders gracefully without them).
+  const ce = custEnrich[0];
+  const segment = ce
+    ? (ce.tier === 'vip' ? 'vip' : Number(ce.prior_completed) > 0 ? 'repeat' : 'new')
+    : null;
+  const customer = {
+    id: order.customer_person_id,
+    name: order.customer_name ?? null,
+    phone: order.customer_phone ?? null,
+    email: order.customer_email ?? null,
+    kyc_status: null as string | null,
+    trust_score: ce?.trust_score ?? null,
+    tier: ce?.tier ?? null,
+    segment,
+    credit_limit_paise: null as number | null,
+    outstanding_paise: Number(ce?.outstanding_paise ?? 0),
+  };
+
   return c.json({
     order, items, events, can_finalize: canFinalize, custom_fields: customFields, tags,
     coupon_redemption: redemption[0] ?? null,
     assets: orderAssets,
     aggregate_status: aggregate.aggregate_status,
     aggregate_status_context: aggregate.aggregate_status_context,
+    extensions,
+    cancellation: cancellationRows[0] ?? null,
+    active_approvals: activeApprovals,
+    customer,
   });
 });
 
@@ -1722,9 +1802,23 @@ const EXTENDABLE_STATUSES: readonly OrderStatus[] = ['confirmed', 'dispatched', 
 const MAX_EXTENSION_DAYS = 365;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+// Sub-slice 2.1 enhances the payload: the new date may arrive as `new_rental_end`
+// (legacy order.html) OR `new_rental_end_at` (new modal). `reason` (legacy) folds
+// into `reason_notes`; a `reason_tag` classifies it. Extra fields drive the
+// policy/approval flow. At least one of the two date fields is required.
+const REASON_TAGS = ['customer_request', 'shoot_extended', 'weather', 'equipment_delay', 'logistics_delay', 'other'] as const;
 const extendSchema = z.object({
-  new_rental_end: z.string().datetime(),
-  reason: z.string().max(500).optional(),
+  new_rental_end:     z.string().datetime().optional(),
+  new_rental_end_at:  z.string().datetime().optional(),
+  reason:             z.string().max(2000).optional(),
+  reason_tag:         z.enum(REASON_TAGS).optional(),
+  reason_notes:       z.string().max(2000).optional(),
+  additional_deposit_paise: z.number().int().min(0).optional(),
+  conflict_resolution: z.enum(['shorten', 'substitute', 'reshuffle', 'force', 'none']).optional(),
+  conflict_resolution_data: z.record(z.string(), z.any()).optional(),
+  customer_notification_channels: z.array(z.enum(['whatsapp', 'email'])).optional(),
+}).refine((d) => !!(d.new_rental_end || d.new_rental_end_at), {
+  message: 'new_rental_end_at is required', path: ['new_rental_end_at'],
 });
 
 type ExtensionConflict = {
@@ -1746,7 +1840,10 @@ orders.post('/:id/extend', requirePermission('orders.edit'), async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   }
-  const { new_rental_end, reason } = parsed.data;
+  const p = parsed.data;
+  const newEndStr = p.new_rental_end_at ?? p.new_rental_end!;
+  const reasonNotes = p.reason_notes ?? p.reason ?? null;
+  const reasonTag = p.reason_tag ?? 'customer_request';
 
   const order = await loadOrder(id, session.workspace.id);
   if (!order) return c.json({ error: 'not_found' }, 404);
@@ -1763,7 +1860,7 @@ orders.post('/:id/extend', requirePermission('orders.edit'), async (c) => {
   }
 
   const oldEnd = new Date(order.rental_end);
-  const newEnd = new Date(new_rental_end);
+  const newEnd = new Date(newEndStr);
   if (newEnd.getTime() <= oldEnd.getTime()) {
     return c.json({ error: 'not_an_extension', reason: 'new_end_must_be_after_current_end' }, 400);
   }
@@ -1773,9 +1870,7 @@ orders.post('/:id/extend', requirePermission('orders.edit'), async (c) => {
   }
   const deltaDays = Math.ceil(deltaMs / MS_PER_DAY);
 
-  const oldTotalPaise = Number(order.total_paise);
-
-  // Availability sweep of the extension window (current end → new end) per
+  // Availability sweep of the extension window (current end -> new end) per
   // rental line. Advisory: collect conflicts, never block. Fail-soft per item.
   const items = await loadItems(id);
   const rentalItems = items.filter((it) => it.item_type === 'rental' && it.product_id);
@@ -1806,131 +1901,468 @@ orders.post('/:id/extend', requirePermission('orders.edit'), async (c) => {
     }
   }
 
-  // Move rental_end forward.
-  await sql`
-    UPDATE orders SET rental_end = ${newEnd.toISOString()}::timestamptz, updated_at = now()
-    WHERE id = ${id} AND workspace_id = ${session.workspace.id}
-  `;
-
-  // Re-price for its side effects (writes the order.pricing.recomputed timeline
-  // event), then reload the persisted order so totals are fresh. Fail-open on the
-  // recompute itself.
-  let recomputeChanged = false;
-  try {
-    const rc = await recomputeOrderTotals(id, session.workspace.id, session.user.id);
-    recomputeChanged = rc.changed;
-  } catch (err) {
-    console.error('recompute after extension failed', err);
+  // Estimate the additional charges (rate x qty x added days) for the policy
+  // check BEFORE applying — the exact figure comes from the recompute in
+  // applyExtensionEffects. Estimate uses added days beyond the current end.
+  const addedDays = Math.ceil(deltaMs / MS_PER_DAY);
+  let estCharges = 0;
+  for (const it of rentalItems) {
+    estCharges += Number(it.daily_rate_paise || 0) * Number(it.quantity) * addedDays;
   }
-  // Mirror the recompute route: the pricing recompute also gets an audit row.
-  await audit({
-    workspaceId: session.workspace.id,
-    actorUserId: session.user.id,
-    eventType: 'orders.pricing.recomputed',
-    targetType: 'order',
-    targetId: id,
-    payload: { changed: recomputeChanged, via: 'extension' },
-    ipAddress, userAgent,
+
+  // Policy evaluation — all thresholds from workspace.settings (never hardcoded).
+  const settings = await loadWorkspaceSettings(session.workspace.id);
+  const priorCompleted = (await query<{ n: number }>(sql`
+    SELECT COUNT(*)::int AS n FROM orders
+    WHERE workspace_id = ${session.workspace.id}::uuid
+      AND customer_person_id = ${order.customer_person_id}::uuid
+      AND id != ${id}::uuid
+      AND status::text IN ('confirmed','dispatched','active','returned','closed')
+  `))[0]?.n ?? 0;
+  const decision = evaluateExtensionApproval(settings, {
+    additionalDays: deltaDays,
+    additionalChargesPaise: estCharges,
+    originalUnpaid: Number(order.balance_paise) > 0,
+    isNewCustomer: priorCompleted === 0,
+  });
+
+  // Persist the extension record (first-class row). extension_number is 1-based.
+  const extNum = ((await query<{ n: number }>(sql`
+    SELECT COUNT(*)::int AS n FROM order_extensions
+    WHERE order_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+  `))[0]?.n ?? 0) + 1;
+  const policySnapshot = {
+    extension_policy: settings.extension_policy ?? {},
+    approval_routing: settings.approval_routing ?? {},
+    evaluated: { requires_approval: decision.requires, role: decision.role, reasons: decision.reasons },
+  };
+  const extRow = (await query<{ id: string }>(sql`
+    INSERT INTO order_extensions (
+      workspace_id, order_id, extension_number, original_rental_end_at, new_rental_end_at,
+      additional_days, additional_deposit_paise, reason_tag, reason_notes,
+      had_conflict, conflict_resolution, conflict_resolution_data,
+      requires_approval, requested_by_user_id, status, policy_applied_snapshot
+    ) VALUES (
+      ${session.workspace.id}::uuid, ${id}::uuid, ${extNum}::int,
+      ${oldEnd.toISOString()}::timestamptz, ${newEnd.toISOString()}::timestamptz,
+      ${deltaDays}::int, ${p.additional_deposit_paise ?? 0}::bigint,
+      ${reasonTag}::text, ${reasonNotes}::text,
+      ${conflicts.length > 0}::boolean, ${p.conflict_resolution ?? null}::text,
+      ${p.conflict_resolution_data ? JSON.stringify(p.conflict_resolution_data) : null}::jsonb,
+      ${decision.requires}::boolean, ${session.user.id}::uuid,
+      ${decision.requires ? 'pending_approval' : 'approved'}::text,
+      ${JSON.stringify(policySnapshot)}::jsonb
+    )
+    RETURNING id
+  `))[0]!;
+
+  // ---- Approval-required path: create the request, notify, do NOT move dates.
+  if (decision.requires) {
+    const ap = await createApprovalRequest({
+      workspaceId: session.workspace.id,
+      requesterUserId: session.user.id,
+      requiredRole: decision.role,
+      resourceType: 'order_extension',
+      resourceId: extRow.id,
+      orderId: id,
+      reasonTag,
+      reasonNotes,
+      requestSnapshot: {
+        order_number: order.order_number, customer_name: order.customer_name,
+        old_rental_end: oldEnd.toISOString(), new_rental_end: newEnd.toISOString(),
+        additional_days: deltaDays, estimated_additional_charges_paise: estCharges,
+        conflicts,
+      },
+      policySnapshot,
+    });
+    await sql`
+      UPDATE order_extensions SET approval_request_id = ${ap.id}::uuid, updated_at = now()
+      WHERE id = ${extRow.id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+    `;
+    await recordOrderEvent({
+      workspaceId: session.workspace.id, orderId: id, eventType: 'order.extension.requested',
+      fromStatus: order.status, toStatus: order.status,
+      payload: { extension_id: extRow.id, approval_request_id: ap.id, delta_days: deltaDays, requires_approval: true, reasons: decision.reasons },
+      actorUserId: session.user.id,
+    });
+    await audit({
+      workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'orders.extension.requested',
+      targetType: 'order', targetId: id,
+      payload: { extension_id: extRow.id, approval_request_id: ap.id, requires_approval: true, role: decision.role },
+      ipAddress, userAgent,
+    });
+    emitNotification({
+      workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'extension_pending_approval',
+      targetType: 'order', targetId: id, linkUrl: `/order-360.html?id=${id}`,
+      metadata: {
+        order_number: order.order_number, delta_days: deltaDays,
+        additional_charges: '₹' + Math.round(estCharges / 100).toLocaleString('en-IN'),
+        actor_name: session.user.displayName ?? '',
+      },
+    }).catch(() => {});
+    return c.json({
+      extension_id: extRow.id,
+      status: 'pending_approval',
+      approval_request_id: ap.id,
+      requires_approval: true,
+      approver_role_required: decision.role,
+      reasons: decision.reasons,
+      conflicts,
+    });
+  }
+
+  // ---- No-approval path: apply immediately via the shared effects.
+  const applied = await applyExtensionEffects({
+    workspaceId: session.workspace.id, orderId: id, actorUserId: session.user.id,
+    extensionId: extRow.id, approvedByUserId: null, ctx: { ipAddress, userAgent },
   });
   const freshOrder = (await loadOrder(id, session.workspace.id)) ?? order;
-  const newTotalPaise = Number(freshOrder.total_paise);
-  const deltaPaise = newTotalPaise - oldTotalPaise;
-
-  // Invoice revision (Booqable pattern): if the order already has any invoice
-  // and isn't closed, generate a fresh revision through the shared path. Old
-  // snapshots stay immutable. Fail-open — a revision error never fails the
-  // extension.
-  let invoiceRevision: { revised: boolean; new_invoice_id: string | null; new_revision_number: number | null } = {
-    revised: false, new_invoice_id: null, new_revision_number: null,
-  };
-  try {
-    const existingInv = await query<{ n: number; seq: number | null }>(sql`
-      SELECT COUNT(*)::int AS n, MIN(sequence)::int AS seq
-      FROM invoices
-      WHERE order_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
-    `);
-    const hasInvoice = (existingInv[0]?.n ?? 0) > 0;
-    if (hasInvoice && freshOrder.status !== 'closed') {
-      const seq = existingInv[0]?.seq ?? 1;
-      const gen = await generateInvoice({
-        workspaceId: session.workspace.id,
-        userId: session.user.id,
-        orderId: id,
-        sequence: Number(seq),
-        notes: reason ? `Extension: ${reason}` : 'Auto-revision on rental extension',
-        ipAddress, userAgent,
-        bypassReadiness: true,
-      });
-      if (gen.ok) {
-        invoiceRevision = {
-          revised: true,
-          new_invoice_id: gen.invoice.id as string,
-          new_revision_number: gen.revision,
-        };
-      }
-    }
-  } catch (err) {
-    console.error('invoice revision on extension failed', err);
-  }
-
-  const eventPayload = {
-    old_rental_end: oldEnd.toISOString(),
-    new_rental_end: newEnd.toISOString(),
-    delta_days: deltaDays,
-    delta_paise: deltaPaise,
-    reason: reason ?? null,
-    conflicts,
-    invoice_revised: invoiceRevision.revised,
-    new_invoice_id: invoiceRevision.new_invoice_id,
-    new_revision_number: invoiceRevision.new_revision_number,
-  };
-
-  await recordOrderEvent({
-    workspaceId: session.workspace.id,
-    orderId: id,
-    eventType: 'order.extended',
-    fromStatus: order.status,
-    toStatus: order.status,
-    payload: eventPayload,
-    actorUserId: session.user.id,
-  });
-
-  await audit({
-    workspaceId: session.workspace.id,
-    actorUserId: session.user.id,
-    eventType: 'orders.extended',
-    targetType: 'order',
-    targetId: id,
-    payload: eventPayload,
-    ipAddress, userAgent,
-  });
-
-  emitNotification({
-    workspaceId: session.workspace.id,
-    actorUserId: session.user.id,
-    eventType: 'order.extended',
-    targetType: 'order', targetId: id,
-    linkUrl: `/order.html?id=${id}`,
-    metadata: {
-      order_number: order.order_number,
-      delta_days: deltaDays,
-      customer_name: order.customer_name ?? '',
-      actor_name: session.user.displayName ?? '',
-    },
-  }).catch(() => {});
-
+  // Backward-compatible response shape (legacy order.html reads order/delta/…)
+  // plus the new extension_id + status.
   return c.json({
+    extension_id: extRow.id,
+    status: 'approved',
+    requires_approval: false,
     order: {
       id: freshOrder.id,
       rental_end: freshOrder.rental_end,
-      total_paise: newTotalPaise,
+      total_paise: Number(freshOrder.total_paise),
       balance_paise: Number(freshOrder.balance_paise),
       status: freshOrder.status,
     },
-    delta: { days: deltaDays, paise: deltaPaise },
+    delta: { days: applied.delta_days, paise: applied.delta_paise },
     conflicts,
-    invoice_revision: invoiceRevision,
+    invoice_revision: applied.invoice_revision,
   });
+});
+
+// ============================================================================
+// POST /api/orders/:id/cancel — first-class cancellation (Sub-slice 2.1)
+// ----------------------------------------------------------------------------
+// Computes the policy tier from hours-before-dispatch, applies reason overrides,
+// freezes the policy snapshot (legal defense), routes for approval when required,
+// and — when not — flips the order to cancelled (releasing availability) via the
+// shared applyCancellationEffects. Structured Blocked errors for ineligible states.
+// ============================================================================
+const CANCEL_REASON_TAGS = [
+  'customer_change_of_plans', 'customer_budget_issue', 'shoot_cancelled', 'duplicate_booking',
+  'customer_found_alternative', 'weather', 'equipment_issue_on_our_side', 'no_kyc',
+  'payment_failed', 'customer_no_show', 'staff_error', 'other',
+] as const;
+const cancelSchema = z.object({
+  reason_tag: z.enum(CANCEL_REASON_TAGS),
+  reason_notes: z.string().max(2000).optional(),
+  customer_notification_channels: z.array(z.enum(['whatsapp', 'email'])).optional(),
+  editable_message: z.string().max(2000).optional(),
+});
+
+orders.post('/:id/cancel', requirePermission('orders.cancel'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = cancelSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const p = parsed.data;
+
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+
+  // State gate (Item 12): dispatched/on-rent → Return flow; returned/closed →
+  // Finance void; already cancelled → terminal.
+  if (order.status === 'dispatched' || order.status === 'active') {
+    return c.json(orderBlock('CANCEL_BLOCKED', 'Cannot cancel a dispatched order', [
+      reasonB('lifecycle_state', 'ALREADY_DISPATCHED',
+        'Equipment is with the customer — use the Return flow to bring it back, then settle charges.',
+        { type: 'internal', target: `/order.html?id=${id}` }),
+    ]), 409);
+  }
+  if (order.status === 'returned' || order.status === 'closed') {
+    return c.json(orderBlock('CANCEL_BLOCKED', 'Cannot cancel a completed order', [
+      reasonB('terminal_state', 'ORDER_COMPLETE',
+        `This order is ${order.status} — use a Finance void / credit note to reverse charges.`),
+    ]), 409);
+  }
+  if (order.status === 'cancelled') {
+    return c.json(orderBlock('CANCEL_BLOCKED', 'Order already cancelled', [
+      reasonB('terminal_state', 'ALREADY_CANCELLED', 'This order is already cancelled.'),
+    ]), 409);
+  }
+
+  // One cancellation per order.
+  const existing = await query<{ id: string; status: string }>(sql`
+    SELECT id, status FROM order_cancellations
+    WHERE order_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid LIMIT 1
+  `);
+  if (existing.length) {
+    return c.json(orderBlock('CANCEL_BLOCKED', 'A cancellation already exists for this order', [
+      reasonB('lifecycle_state', 'CANCELLATION_EXISTS', `A cancellation is already ${existing[0]!.status}.`),
+    ]), 409);
+  }
+
+  const settings = await loadWorkspaceSettings(session.workspace.id);
+  const cp = settings.cancellation_policy ?? {};
+  const tiers = cp.tiers ?? {};
+
+  // Hours before dispatch (rental_start is the scheduled pickup).
+  const now = Date.now();
+  const startMs = order.rental_start ? new Date(order.rental_start).getTime() : null;
+  const hoursBeforeDispatch = startMs != null ? (startMs - now) / 3_600_000 : null;
+
+  // No-show: past the scheduled pickup + grace, still merely confirmed. Or the
+  // operator explicitly tags it a no-show.
+  const graceHours = Number(settings.billing?.grace_period_hours ?? 2);
+  const isNoShow =
+    p.reason_tag === 'customer_no_show' ||
+    (order.status === 'confirmed' && startMs != null && now > startMs + graceHours * 3_600_000);
+
+  // Tier by time (default before_72hr when there's no scheduled pickup — nothing
+  // is committed yet).
+  let tier: 'before_72hr' | '24_to_72hr' | 'under_24hr' = 'before_72hr';
+  if (hoursBeforeDispatch != null) {
+    if (hoursBeforeDispatch < 24) tier = 'under_24hr';
+    else if (hoursBeforeDispatch < 72) tier = '24_to_72hr';
+    else tier = 'before_72hr';
+  }
+
+  // Base refund percent from the tier, then reason overrides.
+  const tierCfg = tiers[tier] ?? { refund_percent: 100, processing_fee_paise: 0 };
+  let refundPercent = Number(tierCfg.refund_percent ?? 100);
+  let processingFee = Number(tierCfg.processing_fee_paise ?? 0);
+  const autoRefund: string[] = cp.auto_refund_reasons ?? [];
+  const autoZero: string[] = cp.auto_zero_refund_reasons ?? [];
+  let depositForfeitPercent = 0;
+  if (autoRefund.includes(p.reason_tag)) {
+    refundPercent = 100; processingFee = 0;  // our fault → full refund
+  } else if (isNoShow || autoZero.includes(p.reason_tag)) {
+    refundPercent = 0;
+    depositForfeitPercent = Number(cp.no_show_policy?.deposit_forfeit_percent ?? 100);
+  }
+
+  const original = Number(order.total_paise);
+  const refundAmount = Math.round((original * refundPercent) / 100);
+  const forfeitAmount = original - refundAmount;
+
+  // Held deposit (net of prior refunds/forfeits).
+  const depRows = await query<{ payment_kind: string; amount_paise: number }>(sql`
+    SELECT payment_kind, amount_paise FROM payments
+    WHERE order_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+      AND status = 'completed'
+      AND payment_kind = ANY(string_to_array('deposit,deposit_refund,deposit_forfeit'::text, ','))
+  `);
+  const dSum = (k: string) => depRows.filter((r) => r.payment_kind === k).reduce((s, r) => s + Number(r.amount_paise), 0);
+  const heldDeposit = Math.max(0, dSum('deposit') - dSum('deposit_refund') - dSum('deposit_forfeit'));
+  const depositForfeited = depositForfeitPercent > 0 ? Math.round((heldDeposit * depositForfeitPercent) / 100) : 0;
+  const depositRefunded = heldDeposit - depositForfeited;
+
+  const decision = evaluateCancellationApproval(settings, {
+    tier, refundAmountPaise: refundAmount, isNoShow,
+  });
+
+  const policySnapshot = {
+    cancellation_policy: cp, approval_routing: settings.approval_routing ?? {},
+    computed: { tier, hours_before_dispatch: hoursBeforeDispatch, is_no_show: isNoShow,
+      refund_percent: refundPercent, deposit_forfeit_percent: depositForfeitPercent },
+    evaluated: { requires_approval: decision.requires, role: decision.role, reasons: decision.reasons },
+  };
+
+  const cancelRow = (await query<{ id: string }>(sql`
+    INSERT INTO order_cancellations (
+      workspace_id, order_id, order_state_at_cancellation, hours_before_dispatch,
+      reason_tag, reason_notes, original_amount_paise, refund_amount_paise, forfeit_amount_paise,
+      processing_fee_paise, deposit_refunded_paise, deposit_forfeited_paise,
+      requires_approval, requested_by_user_id, status, policy_applied_snapshot
+    ) VALUES (
+      ${session.workspace.id}::uuid, ${id}::uuid, ${order.status}::text, ${hoursBeforeDispatch}::numeric,
+      ${p.reason_tag}::text, ${p.reason_notes ?? null}::text, ${original}::bigint,
+      ${refundAmount}::bigint, ${forfeitAmount}::bigint, ${processingFee}::bigint,
+      ${depositRefunded}::bigint, ${depositForfeited}::bigint,
+      ${decision.requires}::boolean, ${session.user.id}::uuid,
+      ${decision.requires ? 'pending_approval' : 'pending_approval'}::text,
+      ${JSON.stringify(policySnapshot)}::jsonb
+    )
+    RETURNING id
+  `))[0]!;
+
+  // Line items to be freed (for the operational-impact preview).
+  const freedItems = (await loadItems(id)).filter((it) => it.item_type === 'rental');
+  const operationalImpact = {
+    availability_released_from: order.rental_start,
+    availability_released_until: order.rental_end,
+    line_item_ids_freed: freedItems.map((it) => it.id),
+  };
+  const financialImpact = {
+    refund_amount_paise: refundAmount, forfeit_amount_paise: forfeitAmount,
+    processing_fee_paise: processingFee,
+    deposit_refunded_paise: depositRefunded, deposit_forfeited_paise: depositForfeited,
+    total_to_customer_paise: refundAmount + depositRefunded,
+    tier, refund_percent: refundPercent,
+  };
+
+  // ---- Approval-required path.
+  if (decision.requires) {
+    const ap = await createApprovalRequest({
+      workspaceId: session.workspace.id, requesterUserId: session.user.id, requiredRole: decision.role,
+      resourceType: 'order_cancellation', resourceId: cancelRow.id, orderId: id,
+      reasonTag: p.reason_tag, reasonNotes: p.reason_notes ?? null,
+      requestSnapshot: {
+        order_number: order.order_number, customer_name: order.customer_name,
+        tier, financial_impact: financialImpact, operational_impact: operationalImpact,
+      },
+      policySnapshot,
+    });
+    await sql`UPDATE order_cancellations SET approval_request_id = ${ap.id}::uuid, updated_at = now()
+              WHERE id = ${cancelRow.id}::uuid AND workspace_id = ${session.workspace.id}::uuid`;
+    await recordOrderEvent({
+      workspaceId: session.workspace.id, orderId: id, eventType: 'order.cancellation.requested',
+      fromStatus: order.status, toStatus: order.status,
+      payload: { cancellation_id: cancelRow.id, approval_request_id: ap.id, reason_tag: p.reason_tag, requires_approval: true, reasons: decision.reasons },
+      actorUserId: session.user.id,
+    });
+    await audit({
+      workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'orders.cancellation.requested',
+      targetType: 'order', targetId: id,
+      payload: { cancellation_id: cancelRow.id, approval_request_id: ap.id, requires_approval: true, role: decision.role },
+      ipAddress, userAgent,
+    });
+    emitNotification({
+      workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'cancellation_pending_approval',
+      targetType: 'order', targetId: id, linkUrl: `/order-360.html?id=${id}`,
+      metadata: {
+        order_number: order.order_number,
+        refund_amount: '₹' + Math.round(refundAmount / 100).toLocaleString('en-IN'),
+        actor_name: session.user.displayName ?? '',
+      },
+    }).catch(() => {});
+    return c.json({
+      cancellation_id: cancelRow.id, status: 'pending_approval', approval_request_id: ap.id,
+      requires_approval: true, approver_role_required: decision.role, reasons: decision.reasons,
+      financial_impact: financialImpact, operational_impact: operationalImpact,
+    });
+  }
+
+  // ---- No-approval path: apply immediately.
+  const applied = await applyCancellationEffects({
+    workspaceId: session.workspace.id, orderId: id, actorUserId: session.user.id,
+    cancellationId: cancelRow.id, approvedByUserId: null, settings, ctx: { ipAddress, userAgent },
+  });
+  return c.json({
+    cancellation_id: cancelRow.id, status: applied.status, approval_request_id: null,
+    requires_approval: false, financial_impact: financialImpact, operational_impact: operationalImpact,
+    refund_expected_credit_by: applied.refund_expected_credit_by,
+  });
+});
+
+// ============================================================================
+// GET /api/orders/:id/extensions — extensions on this order (Related Events).
+// ============================================================================
+orders.get('/:id/extensions', async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const rows = await query(sql`
+    SELECT e.*, ru.display_name AS requested_by_name, au.display_name AS approved_by_name
+    FROM order_extensions e
+    LEFT JOIN users ru ON ru.id = e.requested_by_user_id
+    LEFT JOIN users au ON au.id = e.approved_by_user_id
+    WHERE e.order_id = ${id}::uuid AND e.workspace_id = ${session.workspace.id}::uuid
+    ORDER BY e.extension_number ASC
+  `);
+  return c.json({ extensions: rows });
+});
+
+// ============================================================================
+// GET /api/orders/:id/cancellation — the cancellation, if any.
+// ============================================================================
+orders.get('/:id/cancellation', async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const rows = await query(sql`
+    SELECT ca.*, ru.display_name AS requested_by_name, au.display_name AS approved_by_name
+    FROM order_cancellations ca
+    LEFT JOIN users ru ON ru.id = ca.requested_by_user_id
+    LEFT JOIN users au ON au.id = ca.approved_by_user_id
+    WHERE ca.order_id = ${id}::uuid AND ca.workspace_id = ${session.workspace.id}::uuid
+    LIMIT 1
+  `);
+  return c.json({ cancellation: rows[0] ?? null });
+});
+
+// ============================================================================
+// GET /api/orders/:id/communications — customer notification deliveries for the
+// Order 360 Communications card (Sub-slice 2.1). Reads the customer-facing
+// delivery rows (notification_id NULL, tagged with this order in the payload).
+// ============================================================================
+orders.get('/:id/communications', async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const rows = await query(sql`
+    SELECT id, channel, status, target_person_id, target_address,
+           payload_snapshot, error_message, delivered_at, created_at
+    FROM notification_deliveries
+    WHERE workspace_id = ${session.workspace.id}::uuid
+      AND notification_id IS NULL
+      AND payload_snapshot->>'order_id' = ${id}::text
+    ORDER BY created_at DESC
+    LIMIT 100
+  `);
+  return c.json({ communications: rows });
+});
+
+// ============================================================================
+// POST /api/orders/:id/send-update — manual customer notification (Send Update).
+// Bypasses the notification-policy mode (a manual send always fires). Records the
+// delivery rows + an order timeline event.
+// ============================================================================
+const sendUpdateSchema = z.object({
+  event_type: z.string().max(80).default('manual_update'),
+  channels: z.array(z.enum(['whatsapp', 'email'])).min(1),
+  message: z.string().min(1).max(4000),
+  alt_phone: z.string().max(30).optional(),
+  alt_email: z.string().email().max(200).optional(),
+  update_customer_default: z.boolean().optional(),
+});
+
+orders.post('/:id/send-update', requirePermission('orders.edit'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => null);
+  const parsed = sendUpdateSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const p = parsed.data;
+
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+
+  const contact = {
+    phone: p.alt_phone ?? order.customer_phone ?? null,
+    email: p.alt_email ?? order.customer_email ?? null,
+  };
+  const result = await emitCustomerNotification({
+    workspaceId: session.workspace.id, orderId: id, personId: order.customer_person_id,
+    eventType: p.event_type, message: p.message, channels: p.channels, contact, bypassPolicy: true,
+  });
+
+  // Opt-in: only update the customer's default number when explicitly requested.
+  if (p.update_customer_default && p.alt_phone) {
+    await sql`UPDATE people SET phone = ${p.alt_phone}::text, updated_at = now()
+              WHERE id = ${order.customer_person_id}::uuid AND workspace_id = ${session.workspace.id}::uuid`
+      .catch(() => {});
+  }
+
+  await recordOrderEvent({
+    workspaceId: session.workspace.id, orderId: id, eventType: 'order.comm.sent',
+    fromStatus: order.status, toStatus: order.status,
+    payload: { event_type: p.event_type, channels: p.channels, deliveries: result.deliveries },
+    actorUserId: session.user.id,
+  });
+  await audit({
+    workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'orders.comm.sent',
+    targetType: 'order', targetId: id, payload: { channels: p.channels, event_type: p.event_type },
+    ipAddress, userAgent,
+  });
+  return c.json({ sent: true, deliveries: result.deliveries });
 });
 
 // ============================================================================

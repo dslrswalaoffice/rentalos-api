@@ -271,8 +271,17 @@ const patchSchema = z.object({
       }).optional(),
     }).optional(),
     features: z.record(z.string(), z.boolean()).optional(),
+    // Sub-slice 2.1 — order policy objects (whole-object replace on save). Edited
+    // from settings-order-policies.html; gated by settings.manage + admin roles.
+    extension_policy:    z.record(z.string(), z.any()).optional(),
+    cancellation_policy: z.record(z.string(), z.any()).optional(),
+    approval_routing:    z.record(z.string(), z.any()).optional(),
+    notification_policy: z.record(z.string(), z.any()).optional(),
   }).optional(),
 });
+
+// Sub-slice 2.1 — order policy sub-objects the settings page may write.
+const ORDER_POLICY_KEYS = ['extension_policy', 'cancellation_policy', 'approval_routing', 'notification_policy'] as const;
 
 workspace.patch('/settings', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
@@ -290,8 +299,11 @@ workspace.patch('/settings', requirePermission('settings.manage'), async (c) => 
   const sf = input.settings ?? {};
   const featureKeys = sf.features ? Object.keys(sf.features) : [];
   const hasFeatures = featureKeys.length > 0;
+  const hasOrderPolicy = ORDER_POLICY_KEYS.some((k) => sf[k] !== undefined);
   const hasMetadata =
-    Object.keys(wf).length > 0 || !!(sf.billing || sf.tax || sf.invoice || sf.bank_details || sf.contract || sf.reminders);
+    Object.keys(wf).length > 0 ||
+    !!(sf.billing || sf.tax || sf.invoice || sf.bank_details || sf.contract || sf.reminders) ||
+    hasOrderPolicy;
 
   // Role gates.
   if (hasFeatures && role !== 'owner') {
@@ -331,6 +343,14 @@ workspace.patch('/settings', requirePermission('settings.manage'), async (c) => 
     for (const [k, v] of Object.entries(sf.features)) {
       next.features[k] = v;
       changedPaths.push(`settings.features.${k}`);
+    }
+  }
+  // Order policy objects — shallow-merge the top level (the settings page sends
+  // the complete policy object, so nested groups like tiers replace wholesale).
+  for (const key of ORDER_POLICY_KEYS) {
+    if (sf[key] !== undefined) {
+      next[key] = { ...(next[key] ?? {}), ...(sf[key] as Record<string, unknown>) };
+      changedPaths.push(`settings.${key}`);
     }
   }
 

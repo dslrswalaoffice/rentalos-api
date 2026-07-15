@@ -23,6 +23,7 @@ import { pricing } from './routes/pricing.js';
 import { recommendations } from './routes/recommendations.js';
 import { invitations } from './routes/invitations.js';
 import { members } from './routes/members.js';
+import { approvals } from './routes/approvals.js';
 import { config } from './lib/config.js';
 import { sql } from './db.js';
 import { analyticsMiddleware } from './middleware/analytics.js';
@@ -78,6 +79,7 @@ app.route('/api/pricing', pricing);
 app.route('/api/recommendations', recommendations);
 app.route('/api/invitations', invitations);
 app.route('/api/members', members);
+app.route('/api/approvals', approvals);
 // Fallback for unknown /api/* — keep it JSON so clients can parse it.
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) {
