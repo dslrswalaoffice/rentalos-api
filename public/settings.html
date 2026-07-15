@@ -1869,20 +1869,29 @@
       }
     }
 
-    function fieldInput(f, savedConfig, credsSaved) {
+    // `kind` is the field's SOURCE bucket ('credential' | 'config') — passed by the
+    // caller from a.credentialFields vs a.configFields. The data-kind MUST follow
+    // the bucket, NOT the input type: a credential field of type text (e.g. the
+    // SMTP `username`) has to be saved into credentials, otherwise the adapter
+    // can't authenticate ("Missing credentials for PLAIN"). Credential values are
+    // never returned by the API, so they render blank with an "(unchanged)" hint
+    // when already saved (same as passwords); leaving them blank preserves them.
+    function fieldInput(f, savedConfig, credsSaved, kind) {
       const isSecret = f.type === 'password';
-      const cfgVal = savedConfig?.[f.key];
+      const isCred = kind === 'credential';
+      const cfgVal = isCred ? undefined : savedConfig?.[f.key];
       let control;
       if (f.type === 'select') {
         const opts = (f.options || []).map(o => `<option value="${escapeAttr(o)}" ${cfgVal === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('');
-        control = `<select data-key="${escapeAttr(f.key)}" data-kind="config">${opts}</select>`;
+        control = `<select data-key="${escapeAttr(f.key)}" data-kind="${kind}">${opts}</select>`;
       } else if (isSecret) {
         const ph = credsSaved ? '(unchanged — leave blank to keep)' : (f.placeholder || '');
-        control = `<input type="password" data-key="${escapeAttr(f.key)}" data-kind="credential" placeholder="${escapeAttr(ph)}" autocomplete="new-password" value="">`;
+        control = `<input type="password" data-key="${escapeAttr(f.key)}" data-kind="${kind}" placeholder="${escapeAttr(ph)}" autocomplete="new-password" value="">`;
       } else {
-        const kind = 'config';
+        const type = f.type === 'email' ? 'email' : (f.type === 'url' ? 'url' : 'text');
+        const ph = (isCred && credsSaved) ? '(unchanged — leave blank to keep)' : (f.placeholder || '');
         const val = cfgVal ?? '';
-        control = `<input type="${f.type === 'email' ? 'email' : (f.type === 'url' ? 'url' : 'text')}" data-key="${escapeAttr(f.key)}" data-kind="${kind}" placeholder="${escapeAttr(f.placeholder || '')}" value="${escapeAttr(val)}" autocomplete="off">`;
+        control = `<input type="${type}" data-key="${escapeAttr(f.key)}" data-kind="${kind}" placeholder="${escapeAttr(ph)}" value="${escapeAttr(val)}" autocomplete="off">`;
       }
       return `<div class="field">
         <label>${escapeHtml(f.label)}${f.required ? '' : '<span class="hint">optional</span>'}</label>
@@ -1897,8 +1906,8 @@
       const cfg = a.configuration;
       const savedConfig = cfg?.config || {};
       const credsSaved = !!cfg?.credentials_saved;
-      const credFields = (a.credentialFields || []).map(f => fieldInput(f, savedConfig, credsSaved)).join('');
-      const confFields = (a.configFields || []).map(f => fieldInput(f, savedConfig, credsSaved)).join('');
+      const credFields = (a.credentialFields || []).map(f => fieldInput(f, savedConfig, credsSaved, 'credential')).join('');
+      const confFields = (a.configFields || []).map(f => fieldInput(f, savedConfig, credsSaved, 'config')).join('');
       const testModeChecked = cfg?.test_mode ? 'checked' : '';
       const helpLink = a.helpUrl ? `<a href="${escapeAttr(a.helpUrl)}" target="_blank" rel="noopener" style="font-size:12px">Documentation ↗</a>` : '';
       const overlay = document.createElement('div');

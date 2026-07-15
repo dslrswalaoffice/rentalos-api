@@ -178,6 +178,22 @@ integrations.put('/:category/:provider', requirePermission('settings.manage'), a
       }
       throw err;
     }
+    // Integrity check: decrypt what we're about to persist and confirm it matches.
+    // Blocks persisting credentials we couldn't read back (corruption / key drift)
+    // — better a clear save error now than a silent "empty password" at send time.
+    try {
+      const roundTrip = decryptJson(Buffer.from(encB64!, 'base64')) as Record<string, string>;
+      if (JSON.stringify(roundTrip) !== JSON.stringify(mergedCreds)) {
+        console.error('[integrations] credential round-trip mismatch on save', { category, provider });
+        return c.json(orderBlock('CREDENTIAL_ROUNDTRIP_FAILED',
+          'Credentials could not be verified after encryption.',
+          [reasonB('external', 'ROUNDTRIP_MISMATCH',
+            'The saved credentials did not decrypt back to the same value — the encryption key may be unstable. Not saving. Verify INTEGRATION_ENC_KEY and try again.')]), 503);
+      }
+    } catch (err) {
+      console.error('[integrations] credential round-trip decrypt failed on save', err);
+      return c.json(encKeyBlockedBody(), 503);
+    }
   }
 
   const mergedConfig = { ...(existing?.config ?? {}), ...(input.config ?? {}) };
