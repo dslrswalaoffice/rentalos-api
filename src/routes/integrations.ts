@@ -3,7 +3,8 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
-import { encryptJson, decryptJson } from '../lib/crypto.js';
+import { encryptJson, decryptJson, EncKeyMissingError } from '../lib/crypto.js';
+import { orderBlock, reason as reasonB, type BlockedErrorBody } from '../lib/blocked_action.js';
 import { ADAPTER_METADATA, findAdapter, findMetadata } from '../lib/adapters/registry.js';
 import {
   sessionMiddleware,
@@ -124,6 +125,21 @@ const putSchema = z.object({
   test_mode: z.boolean().optional(),
 });
 
+/**
+ * Structured (Item 12) error for a missing/invalid INTEGRATION_ENC_KEY. Exported
+ * so the regression test can assert its shape. This is a SERVER-CONFIG problem,
+ * not a client one — an operator can't fix it from the UI, so the message points
+ * at the deployment env var explicitly instead of a generic "internal_error".
+ */
+export function encKeyBlockedBody(): BlockedErrorBody {
+  return orderBlock(
+    'ENCRYPTION_KEY_UNAVAILABLE',
+    'Credentials can’t be saved — the server’s integration encryption key is not configured.',
+    [reasonB('external', 'ENC_KEY_MISSING',
+      'INTEGRATION_ENC_KEY is missing or invalid on the server. An admin must set a 64-character hex key in the deployment environment (Vercel → Settings → Environment Variables) and redeploy. Until then, integration credentials cannot be encrypted or saved.')],
+  );
+}
+
 integrations.put('/:category/:provider', requirePermission('settings.manage'), async (c) => {
   const session = c.get('session')!;
   const { ipAddress, userAgent } = clientCtx(c);
@@ -144,7 +160,22 @@ integrations.put('/:category/:provider', requirePermission('settings.manage'), a
   // omitted by the frontend → existing value preserved). Then re-encrypt.
   const mergedCreds = { ...decodeCreds(existing?.credentials_b64 ?? null), ...(input.credentials ?? {}) };
   const hasCreds = Object.keys(mergedCreds).length > 0;
-  const encB64 = hasCreds ? encryptJson(mergedCreds).toString('base64') : null;
+  // Encryption can fail only when INTEGRATION_ENC_KEY is missing/invalid — surface
+  // that as an actionable 503, not a generic internal_error (SMTP-save hotfix).
+  let encB64: string | null = null;
+  if (hasCreds) {
+    try {
+      encB64 = encryptJson(mergedCreds).toString('base64');
+    } catch (err) {
+      if (err instanceof EncKeyMissingError) {
+        console.error('[integrations] save blocked — INTEGRATION_ENC_KEY missing/invalid', {
+          workspace_id: session.workspace.id, category, provider,
+        });
+        return c.json(encKeyBlockedBody(), 503);
+      }
+      throw err;
+    }
+  }
 
   const mergedConfig = { ...(existing?.config ?? {}), ...(input.config ?? {}) };
   const testMode = input.test_mode ?? existing?.test_mode ?? false;

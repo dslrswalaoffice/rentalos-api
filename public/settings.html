@@ -1939,7 +1939,13 @@
           await loadIntegrations();
         } catch (err) {
           saveBtn.disabled = false; saveBtn.textContent = 'Save';
-          showToast('Save failed: ' + (err.body?.error || err.message));
+          // Structured (Item 12) errors carry error.message + reasons[]; show the
+          // actionable message (e.g. "encryption key missing") not "[object Object]".
+          const e = err.body && err.body.error;
+          const msg = (e && typeof e === 'object')
+            ? (e.reasons && e.reasons[0] && e.reasons[0].message) || e.message || e.code
+            : (e || err.message);
+          showToast('Save failed: ' + msg);
         }
       });
     }

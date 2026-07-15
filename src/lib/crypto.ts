@@ -14,10 +14,30 @@ const ALGO = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 
+/**
+ * Thrown when INTEGRATION_ENC_KEY is missing or malformed. A TYPED error (not a
+ * bare Error) so callers can catch it specifically and return an actionable,
+ * structured response instead of a generic 500 — the SMTP-save hotfix: a missing
+ * key must tell the operator "set INTEGRATION_ENC_KEY", not "internal_error".
+ */
+export class EncKeyMissingError extends Error {
+  code = 'ENCRYPTION_KEY_UNAVAILABLE' as const;
+  constructor(message = 'INTEGRATION_ENC_KEY missing or invalid (expected 64-char hex)') {
+    super(message);
+    this.name = 'EncKeyMissingError';
+  }
+}
+
+/** True when a usable 64-char-hex key is configured. Never throws. */
+export function encKeyAvailable(): boolean {
+  const hex = process.env.INTEGRATION_ENC_KEY;
+  return !!hex && hex.length === 64 && /^[0-9a-fA-F]+$/.test(hex);
+}
+
 function getKey(): Buffer {
   const hex = process.env.INTEGRATION_ENC_KEY;
-  if (!hex || hex.length !== 64) {
-    throw new Error('INTEGRATION_ENC_KEY missing or invalid (expected 64-char hex)');
+  if (!hex || hex.length !== 64 || !/^[0-9a-fA-F]+$/.test(hex)) {
+    throw new EncKeyMissingError();
   }
   return Buffer.from(hex, 'hex');
 }
