@@ -46,7 +46,7 @@ async function loadActiveEmailAdapter(workspaceId: string): Promise<LoadedEmail 
 }
 
 /** {var} substitution — unknown tokens are left literal so a typo is visible. */
-function substitute(text: string, vars: Record<string, unknown>): string {
+export function substitute(text: string, vars: Record<string, unknown>): string {
   return String(text).replace(/\{(\w+)\}/g, (_, k) => (k in vars ? String(vars[k] ?? '') : `{${k}}`));
 }
 function escapeHtml(s: string): string {

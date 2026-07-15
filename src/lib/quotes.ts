@@ -210,7 +210,9 @@ export async function sendQuoteVersion(args: {
     variables: {
       customer_name: built.customer.name ?? 'there', quote_number: v.quote_number, total_amount: inr(built.total_paise),
       rental_start: fmtDate(built.rental_start_at), rental_end: fmtDate(built.rental_end_at),
-      valid_until: fmtDate(validUntil), tracking_url: trackingUrl, workspace_name: '',
+      valid_until: fmtDate(validUntil), tracking_url: trackingUrl,
+      // workspace_name is resolved by emitCustomerNotification from the workspace
+      // row; do NOT pass an empty string here or it clobbers the real name.
     },
   }).catch(() => {});
   return { ok: true, version: { id: v.id, status: 'sent', valid_until: validUntil, tracking_token: token } };
@@ -268,7 +270,7 @@ export async function acceptQuoteVersion(args: {
       workspaceId: args.workspaceId, orderId: args.orderId, personId: order.customer_person_id, eventType: 'quote_accepted',
       message: `Thank you — quote ${v.quote_number} has been accepted and your order #${order.order_number} is confirmed.`,
       channels: ['whatsapp', 'email'], contact: { phone: order.customer_phone, email: order.customer_email },
-      variables: { customer_name: order.customer_name ?? 'there', quote_number: v.quote_number, order_number: order.order_number, total_amount: inr(Number(order.total_paise)), workspace_name: '' },
+      variables: { customer_name: order.customer_name ?? 'there', quote_number: v.quote_number, order_number: order.order_number, total_amount: inr(Number(order.total_paise)) /* workspace_name resolved in emitCustomerNotification */ },
     }).catch(() => {});
   }
   return { ok: true };
