@@ -96,7 +96,7 @@ publicQuotes.get('/tracking/:token', async (c) => {
 });
 
 // POST /api/quote-versions/tracking/:token/accept — customer portal acceptance.
-const acceptSchema = z.object({
+export const publicQuoteAcceptSchema = z.object({
   signature_data_url: z.string().max(500000).optional(),
   notes: z.string().max(2000).optional(),
 });
@@ -106,7 +106,7 @@ publicQuotes.post('/tracking/:token/accept', async (c) => {
   const token = c.req.param('token');
   if (!TOKEN_RE.test(token)) return c.json({ error: 'not_found' }, 404);
   const body = await c.req.json().catch(() => ({}));
-  const parsed = acceptSchema.safeParse(body ?? {});
+  const parsed = publicQuoteAcceptSchema.safeParse(body ?? {});
   if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
 
   const qv = await loadByToken(token);
