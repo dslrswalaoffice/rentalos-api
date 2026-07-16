@@ -166,13 +166,13 @@ export async function createSubstitution(args: CreateSubstitutionArgs): Promise<
   };
   const status = requiresApproval ? 'pending_approval' : 'proposed';
 
-  // Number: SUB-{year}-{orderNumber padded}-{seq}. Retry on a concurrent-create
-  // unique clash (recompute seq), same discipline as quote versioning.
-  const year = new Date().getUTCFullYear();
+  // Number: SUB-{orderNumber}-{seq} (Option A — per-order sequence, no year).
+  // Retry on a concurrent-create unique clash (recompute seq), same discipline as
+  // quote versioning.
   const MAX_ATTEMPTS = 4;
   for (let attempt = 1; ; attempt++) {
     const seq = Number((await query<{ n: number }>(sql`SELECT COUNT(*)::int AS n FROM substitutions WHERE order_id = ${args.orderId}::uuid AND workspace_id = ${args.workspaceId}::uuid`))[0]?.n ?? 0) + 1;
-    const substitutionNumber = `SUB-${year}-${String(orderCtx.order_number).padStart(4, '0')}-${String(seq).padStart(2, '0')}`;
+    const substitutionNumber = `SUB-${orderCtx.order_number}-${String(seq).padStart(2, '0')}`;
     try {
       const row = (await query<any>(sql`
         INSERT INTO substitutions (

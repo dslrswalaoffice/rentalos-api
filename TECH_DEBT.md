@@ -127,3 +127,19 @@ So internal staff (e.g. Shoaib) don't get the emails they should when a quote is
 **How to reconcile.** Design pass first (no design substrate exists for the Revision modal yet), then implement: a Revise modal on `order-360.html` with reason-tag dropdown + notes + an editable line-item/pricing/dates surface + live diff preview; and a chain visualization in the Quote Versions card. Reuse the existing diff computation (`computeDiff` / `diff_from_parent`) for the preview. No backend change expected beyond possibly an endpoint to apply content edits as part of the revision.
 
 **Blast radius if ignored.** Operators can create revisions but can't meaningfully change quote content through the UI (only the reason tag), and the version history is hard to read. No data loss, no customer-facing breakage on the paths that DO work (send/accept/track). Purely a workflow-usability gap.
+
+---
+
+## TD-5 — Blob upload infrastructure for damage-incident photos
+
+**Status:** open · logged 2026-07-16 (Sub-slice 2.3) · deferred to a follow-up sub-slice by Aamir's explicit decision (Q4 + Q5). NOT blocking 2.3.
+
+**What.** Damage incidents require photo evidence (min 3 per incident, policy-configurable). The schema stores photos as **JSONB arrays of refs** — `damage_incidents.photos` and `damage_incident_assets.photos_before` / `photos_after`, each an array of `{url, gps, timestamp}`. There is **no upload endpoint** yet: the URLs are references to images hosted elsewhere. Sub-slice 2.3 ships with photo **refs only**.
+
+**Why it exists.** Aamir's decisions: Q4 — "JSONB refs to backend-issued blob URLs; if blob storage infra doesn't exist yet, log as TD-5 and proceed with JSONB refs to placeholder URLs. Do NOT store base64 in DB." Q5 — "Blob upload feature: DEFER to a follow-up sub-slice. Sub-slice 2.3 ships with photo REFS only; actual upload capability comes later." Storing base64 in Postgres was explicitly rejected (row bloat, no CDN, no thumbnails).
+
+**Where it lives.** `migrations/048_create_damage_incidents.sql` (`photos` JSONB), `migrations/049_create_damage_incident_assets.sql` (`photos_before` / `photos_after` JSONB); the damage-incident modal (M4) collects URL refs (paste/placeholder) rather than uploading files; `src/lib/damage.ts` enforces the min-photo COUNT but does not validate that a URL resolves to a real image.
+
+**How to reconcile.** A dedicated blob sub-slice: a `POST /api/damage-incidents/:id/photos` (or a generic media endpoint) that accepts a multipart file, client-compresses (reuse the product-image pipeline: max 1200px / JPEG 0.85 / 5 MB cap), uploads to Vercel Blob under a multi-tenant prefix (`workspaces/<ws>/damage/<incident>-<ts>-<rand>.jpg`), and returns the blob URL to append to the JSONB array. Requires `BLOB_READ_WRITE_TOKEN` (already used by product images — same infra). The JSONB ref shape is forward-compatible: a blob URL is just another `{url}`; no schema change needed when upload lands.
+
+**Blast radius if ignored.** Operators must paste image URLs (or use placeholders) instead of snapping a photo in-flow. The min-photo COUNT is enforced but not the image validity — a bad URL is accepted. No data-model change is needed later (the ref shape already accommodates real blob URLs). No customer impact, no data loss.
