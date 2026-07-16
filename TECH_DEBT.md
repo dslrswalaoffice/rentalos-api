@@ -88,3 +88,22 @@ parses the exact frontend payload through the endpoint's real Zod schema.
 **How to reconcile.** Either (a) switch `normalizeSettings` to *merge onto* the raw settings (fill defaults for known keys, pass everything else through) instead of rebuilding from scratch — so unknown keys survive by default; or (b) keep the allow-list but add a CI test that fails when a key present in the PATCH schema is absent from the GET passthrough. (b) is cheaper; (a) removes the foot-gun entirely.
 
 **Blast radius if ignored.** Every new workspace-configurable setting is a chance to reintroduce the exact "saved but not readable → UI shows a hardcoded default" bug. Rule D (configurability test) catches it per-feature, but only if the author writes the test.
+
+---
+
+## TD-3 — Internal/transactional events have no email templates (silently skipped)
+
+**Status:** open · logged 2026-07-16 (Sub-slice 2.2, PR #81) · low priority — not blocking; fold into a template-seeding sub-slice.
+
+**What.** Several events fire correctly and create `notification_deliveries` rows, but with `status='skipped', error_message='no_template'` for the email channel, because no template is seeded under `settings.notification_policy.templates.<event>`:
+- `quote_accepted_internal` (staff notification)
+- `order.created`
+- `extension_pending_approval` (approver notification)
+
+So internal staff (e.g. Shoaib) don't get the emails they should when a quote is accepted, an order is created, or an approval is pending. In-product notifications for these still work; only their **email** channel is skipped.
+
+**Not a code bug** — the pipeline behaves correctly (skip + record when no template). It's a **workspace-configuration gap**: templates were only seeded for customer-facing events (`quote_sent`, `quote_reminder`, `quote_expiring`, `quote_accepted`, `standby_expiring`, `standby_expired`) and the 2.1 order events, not for these internal ones.
+
+**How to reconcile.** In a template-seeding sub-slice, add default email templates for the internal events above under `notification_policy.templates`, using the internal merge-field vocabulary (`order_number`, `quote_number`, `customer_name`, `total_amount`, `link_url`). Guard with the merge-field completeness audit (Rule C) so every referenced token is supplied by the emit site.
+
+**Blast radius if ignored.** Internal staff miss email notifications (they still see in-product). No customer impact, no data loss. Distinct from the `quote_sent` bug (PR #81), which was a code bug (un-awaited emit) — a missing template writes a *skipped row*; the un-awaited emit wrote *no row at all*.
