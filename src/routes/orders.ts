@@ -26,6 +26,8 @@ import { deriveAggregateStatus, aggregateInputFromLoaded } from '../lib/aggregat
 import { orderBlock, reason as reasonB } from '../lib/blocked_action.js';
 import { idempotencyMiddleware } from '../lib/idempotency.js';
 import { quoteVersions } from './quote_versions.js';
+import { orderSubstitutions } from './substitutions.js';
+import { orderDamage } from './damage.js';
 import {
   createApprovalRequest,
   evaluateExtensionApproval,
@@ -130,25 +132,34 @@ const ITEM_STATUSES = [
   'not_returned_chargeable',
   'not_returned_non_chargeable',
   'missing',
+  'substituted_out',            // Sub-slice 2.3 — swapped out via a substitution
 ] as const;
 type OrderItemStatus = typeof ITEM_STATUSES[number];
 
 const CANONICAL_ITEM_TRANSITIONS: Record<OrderItemStatus, OrderItemStatus[]> = {
-  pending_dispatch:            ['dispatched', 'not_returned_non_chargeable', 'missing'],
-  dispatched:                  ['returned', 'returned_with_damage', 'not_returned_chargeable', 'missing'],
+  pending_dispatch:            ['dispatched', 'not_returned_non_chargeable', 'missing', 'substituted_out'],
+  dispatched:                  ['returned', 'returned_with_damage', 'not_returned_chargeable', 'missing', 'substituted_out'],
   returned:                    ['returned_with_damage'],   // damage discovered post-return
   returned_with_damage:        [],
   not_returned_chargeable:     ['returned'],               // customer eventually returns it
   not_returned_non_chargeable: ['returned'],               // customer eventually returns it
   missing:                     ['returned'],               // recovered
+  // substituted_out is TERMINAL: the replacement line carries the reservation.
+  // Revert restores the prior status by DIRECT write (revertSubstitution), not via
+  // this advisory map — so no outbound transitions here.
+  substituted_out:             [],
 };
 
+// substituted_out counts toward can_finalize (mirrors `missing`): the swapped-out
+// line is done, and it does NOT reserve capacity (absent from
+// RESERVING_ITEM_STATUSES in src/lib/availability.ts).
 const TERMINAL_ITEM_STATUSES: readonly OrderItemStatus[] = [
   'returned',
   'returned_with_damage',
   'not_returned_chargeable',
   'not_returned_non_chargeable',
   'missing',
+  'substituted_out',
 ];
 
 function isCanonicalItem(from: OrderItemStatus, to: OrderItemStatus): boolean {
@@ -700,7 +711,7 @@ orders.get('/', async (c) => {
         COUNT(*) FILTER (WHERE oi.item_type = 'rental' AND oi.status::text = 'pending_dispatch')::int AS pending_dispatch,
         COUNT(*) FILTER (WHERE oi.item_type = 'rental' AND oi.status::text = 'dispatched')::int AS dispatched_cnt,
         COUNT(*) FILTER (WHERE oi.item_type = 'rental' AND oi.status::text IN ('returned','returned_with_damage'))::int AS returned_cnt,
-        COUNT(*) FILTER (WHERE oi.item_type = 'rental' AND oi.status::text IN ('returned','returned_with_damage','not_returned_chargeable','not_returned_non_chargeable','missing'))::int AS terminal_cnt
+        COUNT(*) FILTER (WHERE oi.item_type = 'rental' AND oi.status::text IN ('returned','returned_with_damage','not_returned_chargeable','not_returned_non_chargeable','missing','substituted_out'))::int AS terminal_cnt
       FROM order_items oi
       WHERE oi.order_id = o.id AND oi.workspace_id = o.workspace_id
     ) ic ON true
@@ -3274,3 +3285,11 @@ orders.delete('/:id', requirePermission('orders.edit'), async (c) => {
 // Their paths (/:id/quote-versions) don't overlap this router's own routes.
 // ----------------------------------------------------------------------------
 orders.route('/', quoteVersions);
+// Sub-slice 2.3 — same fold-into-orders discipline (Bug A / PR #80). The
+// order-scoped substitution + damage routes (/:id/substitutions,
+// /:id/damage-incidents) share the orders router's single session + idempotency
+// pass. Both routers declare NO global middleware of their own. The id-scoped
+// routes (/api/substitutions/:id, /api/damage-incidents/:id) are mounted
+// separately in app.ts (distinct prefix — no double-mount risk).
+orders.route('/', orderSubstitutions);
+orders.route('/', orderDamage);

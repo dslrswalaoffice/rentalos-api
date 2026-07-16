@@ -69,6 +69,10 @@ CREATE TABLE IF NOT EXISTS substitutions (
   -- Original + replacement item references (order_items, NOT order_line_items)
   original_order_item_id UUID NOT NULL REFERENCES order_items(id),
   original_asset_id UUID REFERENCES assets(id),
+  -- The replacement PRODUCT is chosen at creation (esp. equivalent_product_swap /
+  -- upgrade / downgrade). The replacement LINE is materialised at execute, and a
+  -- specific unit (replacement_asset_id) may be pinned then or later (QR scan-out).
+  replacement_product_id UUID REFERENCES products(id),
   replacement_order_item_id UUID REFERENCES order_items(id),
   replacement_asset_id UUID REFERENCES assets(id),
   -- Preserve the original item's pre-substitution status so revert can restore it.

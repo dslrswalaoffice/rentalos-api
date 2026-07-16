@@ -18,7 +18,7 @@
 
 import { createMiddleware } from 'hono/factory';
 
-// The full registry. 24 keys, grouped. Value = human-readable description
+// The full registry. 28 keys, grouped. Value = human-readable description
 // (rendered on the Team permission editor). Adding a permission = add a key
 // here + include it in the relevant preset(s) below.
 export const PERMISSIONS = {
@@ -35,6 +35,11 @@ export const PERMISSIONS = {
   'dispatch.execute':       'Dispatch gear and hand over',
   'returns.execute':        'Check in returns',
   'damage.record':          'Record damage and open repair tickets',
+  'substitutions.manage':   'Create, execute, and revert substitutions',
+  // Money-adjacent (Sub-slice 2.3) — staff (warehouse) NEVER holds these.
+  'substitutions.financial':'Substitutions that charge or credit the customer',
+  'damage.resolve_financial':'Set damage liability, resolution, and deposit action',
+  'damage.approve':         'Approve high-value or disputed damage resolutions',
   // Money
   'payments.record':        'Record payments',
   'payments.refund':        'Issue refunds',
@@ -65,7 +70,7 @@ export const ALL_PERMISSION_KEYS = Object.keys(PERMISSIONS) as PermissionKey[];
 // Grouping for the Team editor UI (label → keys). Order matters for rendering.
 export const PERMISSION_GROUPS: { label: string; keys: PermissionKey[] }[] = [
   { label: 'Orders',    keys: ['orders.view','orders.create','orders.edit','orders.cancel','orders.revert_status','orders.override_period','orders.override_price','orders.apply_discount'] },
-  { label: 'Operations', keys: ['dispatch.execute','returns.execute','damage.record'] },
+  { label: 'Operations', keys: ['dispatch.execute','returns.execute','damage.record','substitutions.manage','substitutions.financial','damage.resolve_financial','damage.approve'] },
   { label: 'Money',     keys: ['payments.record','payments.refund','deposits.retain','invoices.manage'] },
   { label: 'Inventory', keys: ['inventory.view','inventory.manage','inventory.pricing','inventory.costs'] },
   { label: 'People',    keys: ['people.view','people.manage','people.view_sensitive'] },
@@ -85,6 +90,7 @@ export const PRESETS: { owner: '*'; manager: PermissionKey[]; staff: PermissionK
     'orders.revert_status', 'orders.override_period', 'orders.override_price',
     'orders.apply_discount',
     'dispatch.execute', 'returns.execute', 'damage.record',
+    'substitutions.manage', 'substitutions.financial', 'damage.resolve_financial',
     'payments.record', 'payments.refund', 'deposits.retain', 'invoices.manage',
     'inventory.view', 'inventory.manage', 'inventory.pricing',
     'people.view', 'people.manage', 'people.view_sensitive',
@@ -94,9 +100,13 @@ export const PRESETS: { owner: '*'; manager: PermissionKey[]; staff: PermissionK
   staff: [
     'orders.view', 'orders.create', 'orders.edit',
     'dispatch.execute', 'returns.execute', 'damage.record',
+    // Operational swaps only — staff (warehouse) can create/execute substitutions
+    // but NOT the financial ones, and NEVER touches damage financial resolution.
+    'substitutions.manage',
     'inventory.view',
     'people.view',
     // NOT: cancel, revert, overrides, discounts, all money, costs,
+    //      substitutions.financial, damage.resolve_financial, damage.approve(owner),
     //      sensitive KYC, reports, settings, team
   ],
 };
