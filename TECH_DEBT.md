@@ -107,3 +107,23 @@ So internal staff (e.g. Shoaib) don't get the emails they should when a quote is
 **How to reconcile.** In a template-seeding sub-slice, add default email templates for the internal events above under `notification_policy.templates`, using the internal merge-field vocabulary (`order_number`, `quote_number`, `customer_name`, `total_amount`, `link_url`). Guard with the merge-field completeness audit (Rule C) so every referenced token is supplied by the emit site.
 
 **Blast radius if ignored.** Internal staff miss email notifications (they still see in-product). No customer impact, no data loss. Distinct from the `quote_sent` bug (PR #81), which was a code bug (un-awaited emit) — a missing template writes a *skipped row*; the un-awaited emit wrote *no row at all*.
+
+---
+
+## TD-4 — Quote Revision UX is a stub (prompt, no chain viz, no content editing)
+
+**Status:** open · logged 2026-07-16 (Sub-slice 2.2, Test 4) · **UX gaps, not workflow blockers** — backend supersession is verified correct end-to-end. Deferred to a dedicated design cycle; ship as a separate PR after Sub-slice 2.2 is closed. NOT blocking 2.2 verification or 2.3.
+
+*(Numbered TD-4: the Test-4 note called this "TD-3", but TD-3 was already taken by the missing-internal-templates item from PR #81.)*
+
+**Backend is correct (do not touch).** Real Neon data confirms a 4-version chain with `parent_version_id`, `superseded_at`, and `superseded_by_version_id` populated correctly on each transition. `createQuoteVersionFromOrder` + `sendQuoteVersion` supersession work as designed. These are purely front-end / product-surface gaps in `public/order-360.html`.
+
+**Gap 1 — Revise is a `window.prompt()`, not a modal.** Clicking Revise on a quote version opens a native browser prompt with a single reason-tag text field prefilled `'customer_requested_change'` (Cancel/OK). Per the locked spec (Item 7 Quote Versioning + Item 16 Order 360 pattern) it should open a proper modal with: a **reason-tag dropdown** listing all 7 taxonomy options; an **optional revision-notes textarea**; a surface to **edit quote content** (line items, pricing, dates, discounts); and a **diff preview** (v(n) → v(n+1)) before commit.
+
+**Gap 2 — the Quote Versions card doesn't visualize the revision chain.** Versions render as flat rows/tabs. It should show the hierarchical chain (v1 → v2 → v3 → v4) with parent→child relationships and superseded status made visible.
+
+**Gap 3 — no content modification between versions (the functional consequence of Gap 1).** Because the prompt gives no edit surface, Revise → OK creates v(n+1) as an *identical copy* of v(n) with only a new reason tag. The revision workflow captures a reason but can't change what the customer sees — so it's currently useless in practice. (Backend supports content changes via `createQuoteVersionFromOrder` re-snapshotting the order; the missing piece is a UI to modify the order/quote content before the revision snapshot.)
+
+**How to reconcile.** Design pass first (no design substrate exists for the Revision modal yet), then implement: a Revise modal on `order-360.html` with reason-tag dropdown + notes + an editable line-item/pricing/dates surface + live diff preview; and a chain visualization in the Quote Versions card. Reuse the existing diff computation (`computeDiff` / `diff_from_parent`) for the preview. No backend change expected beyond possibly an endpoint to apply content edits as part of the revision.
+
+**Blast radius if ignored.** Operators can create revisions but can't meaningfully change quote content through the UI (only the reason tag), and the version history is hard to read. No data loss, no customer-facing breakage on the paths that DO work (send/accept/track). Purely a workflow-usability gap.
