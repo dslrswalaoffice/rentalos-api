@@ -25,6 +25,7 @@ import { requirePermission, can } from '../lib/permissions.js';
 import { deriveAggregateStatus, aggregateInputFromLoaded } from '../lib/aggregate_status.js';
 import { orderBlock, reason as reasonB } from '../lib/blocked_action.js';
 import { idempotencyMiddleware } from '../lib/idempotency.js';
+import { quoteVersions } from './quote_versions.js';
 import {
   createApprovalRequest,
   evaluateExtensionApproval,
@@ -3262,3 +3263,14 @@ orders.delete('/:id', requirePermission('orders.edit'), async (c) => {
 
   return c.json({ ok: true });
 });
+
+// ----------------------------------------------------------------------------
+// Bug A fix (PR #80): the quote-version routes (/:id/quote-versions[/…]) are
+// FOLDED INTO this router instead of being a second `app.route('/api/orders',
+// quoteVersions)` mount. A second mount at the same prefix made Hono run the
+// idempotency middleware TWICE per quote request (pass 2 always 409'd). Folding
+// here means they share this router's SINGLE session + idempotency pass.
+// quoteVersions itself declares no global middleware (see quote_versions.ts).
+// Their paths (/:id/quote-versions) don't overlap this router's own routes.
+// ----------------------------------------------------------------------------
+orders.route('/', quoteVersions);

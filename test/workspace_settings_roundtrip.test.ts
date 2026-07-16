@@ -52,3 +52,19 @@ test('normalizeSettings omits an absent policy (composer keeps its fallback)', (
   assert.equal(out.standby_policy, undefined);
   assert.equal(standbyHoldDefaultMinutes(out), null); // → composer uses its built-in preset
 });
+
+// Bug B hardening (PR #80): GET /api/workspace must not aggressively browser-cache
+// the settings — the composer reads it right after a save and must see the new
+// value. Source-level guard against regressing to a stale max-age.
+test('GET /api/workspace does not browser-cache settings with a positive max-age', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const src = readFileSync(fileURLToPath(new URL('../src/routes/workspace.ts', import.meta.url)), 'utf8');
+  // Find the Cache-Control header set on the workspace GET.
+  const m = src.match(/c\.header\('Cache-Control',\s*'([^']+)'\)/);
+  assert.ok(m, 'workspace GET should still set a Cache-Control header');
+  const cc = m![1];
+  assert.ok(cc.includes('private'), 'must stay private (multi-tenant data)');
+  assert.ok(/no-cache|max-age=0/.test(cc), `settings GET must always revalidate; got "${cc}"`);
+  assert.ok(!/max-age=[1-9]/.test(cc), `settings GET must not cache with a positive max-age; got "${cc}"`);
+});

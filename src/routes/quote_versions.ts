@@ -5,24 +5,36 @@ import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { config } from '../lib/config.js';
 import {
-  sessionMiddleware, requireAuth, type SessionUser, type SessionWorkspace,
+  type SessionUser, type SessionWorkspace,
 } from '../middleware/session.js';
 import { requirePermission } from '../lib/permissions.js';
-import { idempotencyMiddleware } from '../lib/idempotency.js';
 import { orderBlock, reason as reasonB } from '../lib/blocked_action.js';
 import { loadWorkspaceSettings, createApprovalRequest } from '../lib/approvals.js';
 import { createQuoteVersionFromOrder, sendQuoteVersion, acceptQuoteVersion } from '../lib/quotes.js';
 
 // ============================================================================
 // src/routes/quote_versions.ts (Sub-slice 2.2) — /api/orders/:id/quote-versions
-// (session-guarded; mounted at /api/orders alongside the orders router)
+// ----------------------------------------------------------------------------
+// These routes are FOLDED INTO the orders router (src/routes/orders.ts does
+// `orders.route('/', quoteVersions)`), NOT mounted separately on the app.
+//
+// WHY (Bug A / PR #80): originally this router was a SECOND `app.route('/api/
+// orders', quoteVersions)` alongside the orders router, and it carried its OWN
+// `use('*', sessionMiddleware, requireAuth)` + `use('*', idempotencyMiddleware)`.
+// Two routers at the same prefix means Hono runs BOTH `use('*')` chains for a
+// path the first router doesn't own — so the idempotency middleware executed
+// TWICE per quote-version request: pass 1 wrote the record `in_flight`, pass 2
+// saw it and returned 409 "identical request already being processed", for every
+// fresh key. Folding these routes under the orders router gives them the orders
+// router's single session+idempotency pass. This module therefore adds NO global
+// middleware of its own (the parent provides it).
 // ============================================================================
 type SessionVar = { sessionId: string; user: SessionUser; workspace: SessionWorkspace } | null;
 type Env = { Variables: { session: SessionVar } };
 
 export const quoteVersions = new Hono<Env>();
-quoteVersions.use('*', sessionMiddleware, requireAuth);
-quoteVersions.use('*', idempotencyMiddleware);
+// NOTE: no `quoteVersions.use('*', …)` here — session + idempotency come from the
+// orders router this is folded into. Adding them back reintroduces Bug A.
 
 function clientCtx(c: Context) {
   const ipAddress = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? c.req.header('x-real-ip') ?? null;
