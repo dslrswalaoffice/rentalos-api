@@ -1,0 +1,40 @@
+-- 047_add_substituted_out_to_order_items.sql — Sub-slice 2.3: item status for substitution.
+-- ---------------------------------------------------------------------------
+-- ⚠ AUTOCOMMIT MIGRATION (RUNNER-SENSITIVE): this file contains
+-- `ALTER TYPE order_item_status ADD VALUE`, which Postgres FORBIDS inside a
+-- transaction block. The migration runner (src/lib/migrate.ts) detects the
+-- ADD VALUE and runs this WHOLE file in autocommit (non-atomic). Therefore
+-- EVERY statement here MUST be individually idempotent — a partial failure
+-- re-converges on the next deploy. There is exactly ONE statement, and it is
+-- guarded with IF NOT EXISTS.
+--
+-- REALITY CHECK vs the handoff pack:
+--   * The pack's migration "055" does `DROP CONSTRAINT order_line_items_status_check`
+--     then re-adds a CHECK with values reserved/allocated/on_rent/inspected/closed.
+--     NONE of that matches this codebase. `order_items.status` is a Postgres ENUM
+--     (`order_item_status`, migration 006), NOT a CHECK constraint, and the real
+--     enum values are pending_dispatch / dispatched / returned /
+--     returned_with_damage / not_returned_chargeable / not_returned_non_chargeable
+--     / missing. So the correct change is a single ADD VALUE, not a constraint swap.
+--
+-- `substituted_out` is a TERMINAL, NON-RESERVING status (confirmed with Aamir):
+--   * dropped from RESERVING_ITEM_STATUSES (src/lib/availability.ts) — the
+--     replacement line now holds the capacity; a substituted_out line must NOT
+--     double-book against its own replacement.
+--   * counted toward can_finalize (TERMINAL_ITEM_STATUSES, src/routes/orders.ts),
+--     mirroring `missing`.
+--   * excluded from pending-return filters and the return workflow.
+-- These wiring changes land in the M2 backend code, NOT in this migration.
+--
+-- The new value is NOT used anywhere in THIS migration (avoids the "unsafe use of
+-- new enum value in same transaction" trap — same discipline as migration 044).
+-- ---------------------------------------------------------------------------
+
+ALTER TYPE order_item_status ADD VALUE IF NOT EXISTS 'substituted_out';
+
+-- ---------------------------------------------------------------------------
+-- REVERSE MIGRATION (for reference — Postgres cannot DROP an enum value):
+--   Enum values are not removable. To roll back, the enum would have to be
+--   rebuilt (CREATE new type, migrate the column, DROP old type) — deliberately
+--   not automated here.
+-- ---------------------------------------------------------------------------

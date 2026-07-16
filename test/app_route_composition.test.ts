@@ -126,3 +126,62 @@ test('DOUBLE mount (the bug): fresh key → 409 (documents what we fixed)', asyn
   const res = await app2.request('/api/orders/878/quote-versions', { method: 'POST', headers: { 'Idempotency-Key': 'fresh-2' } });
   assert.equal(res.status, 409, 'the double mount reproduces Bug A (409 on a fresh key)');
 });
+
+// ============================================================================
+// Sub-slice 2.3 — Rule G for substitutions + damage incidents (extends the above,
+// does not downgrade it). Order-scoped routes are FOLDED into the orders router
+// (like quote-versions); id-scoped routes are STANDALONE mounts at distinct
+// prefixes (/api/substitutions, /api/damage-incidents) with their own middleware.
+// ============================================================================
+
+// --- 5. Folded + standalone 2.3 routes are all registered in the real app. ----
+test('2.3 substitution + damage routes are registered in the real assembled app', () => {
+  const paths = new Set(((app as any).routes as Array<{ path: string }>).map((r) => r.path));
+  // Folded into /api/orders (a broken fold would drop these).
+  assert.ok(paths.has('/api/orders/:id/substitutions'), 'POST/GET /api/orders/:id/substitutions missing');
+  assert.ok(paths.has('/api/orders/:id/damage-incidents'), 'POST/GET /api/orders/:id/damage-incidents missing');
+  // Standalone id-scoped routes.
+  assert.ok(paths.has('/api/substitutions/:id/execute'), '/api/substitutions/:id/execute missing');
+  assert.ok(paths.has('/api/substitutions/:id/revert'), '/api/substitutions/:id/revert missing');
+  assert.ok(paths.has('/api/damage-incidents/:id/save-the-shoot'), '/api/damage-incidents/:id/save-the-shoot missing');
+  assert.ok(paths.has('/api/damage-incidents/:id/financial-resolution'), '/api/damage-incidents/:id/financial-resolution missing');
+  assert.ok(paths.has('/api/damage-incidents/:id/timeline'), '/api/damage-incidents/:id/timeline missing');
+});
+
+// --- 6. Distinct standalone prefixes → NOT a double-mount. The /api/orders folded
+//        routes share the orders router's single idempotency pass (test 1 already
+//        proves ≤1 per path across the WHOLE app, including these). ------------
+test('2.3 standalone mounts use distinct prefixes (no Bug-A double-mount)', () => {
+  const src = readFileSync(fileURLToPath(new URL('../src/app.ts', import.meta.url)), 'utf8');
+  const mounts = src.split('\n')
+    .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*'))
+    .flatMap((l) => [...l.matchAll(/app\.route\(\s*'([^']+)'/g)].map((m) => m[1]));
+  assert.ok(mounts.includes('/api/substitutions'), '/api/substitutions not mounted');
+  assert.ok(mounts.includes('/api/damage-incidents'), '/api/damage-incidents not mounted');
+  // Neither collides with /api/orders (the folded routes live INSIDE the orders router).
+  assert.ok(!mounts.includes('/api/orders/substitutions'), 'unexpected nested-prefix mount');
+});
+
+// --- 7. Behavioral proof through the REAL assembled app (app.request): a POST to
+//        each new route with NO session must reach auth and 401 — NOT 404. A 404
+//        would mean the fold/mount dropped the route (the failure Bug A-class bugs
+//        cause). This exercises real Hono routing + the real middleware chain.
+//        (A 201 needs a live DB-backed session; that path is covered by the PG16
+//        round-trip harnesses — neon can't reach local PG in-process.) ----------
+const U = '00000000-0000-0000-0000-000000000000';
+for (const [label, path] of [
+  ['folded substitutions POST', `/api/orders/${U}/substitutions`],
+  ['folded damage POST', `/api/orders/${U}/damage-incidents`],
+  ['standalone substitution execute', `/api/substitutions/${U}/execute`],
+  ['standalone damage save-the-shoot', `/api/damage-incidents/${U}/save-the-shoot`],
+] as const) {
+  test(`real app.request: ${label} is wired (401 not 404) with no session`, async () => {
+    const res = await app.request(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'rule-g-' + label.replace(/\W+/g, '-') },
+      body: JSON.stringify({}),
+    });
+    assert.notEqual(res.status, 404, `${label}: route not registered (404) — a broken fold/mount`);
+    assert.equal(res.status, 401, `${label}: expected 401 (auth runs) — got ${res.status}`);
+  });
+}

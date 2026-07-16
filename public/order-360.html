@@ -106,6 +106,8 @@ a:hover{color:var(--info-hover)}
 .m-input{font-family:var(--mono);font-size:14px;color:var(--head);border:1px solid var(--neutral-border);background:var(--bg);border-radius:9px;padding:9px 12px;outline:none}
 .m-input:focus{border-color:var(--info)}
 .m-select{font-family:var(--mono);font-size:13px;color:var(--head);border:1px solid var(--neutral-border);background:var(--bg);border-radius:9px;padding:9px 12px;outline:none;cursor:pointer}
+.m-select[data-f],.m-input[data-f],.m-ta[data-f]{width:100%;box-sizing:border-box}
+.m-input[data-f]{font-family:var(--body-font);font-size:13px}
 .m-ta{width:100%;min-height:64px;resize:vertical;padding:11px 13px;border:1px solid var(--neutral-border);border-radius:9px;font-family:var(--body-font);font-size:13px;color:var(--head);outline:none}
 .m-ta:focus{border-color:var(--info)}
 .m-chip{display:inline-flex;align-items:center;padding:5px 11px;border-radius:7px;background:var(--info-bg);color:var(--info);font-family:var(--mono);font-size:12px;font-weight:600}
@@ -302,12 +304,24 @@ const AGG_TONE={draft:'neutral',quoted:'neutral',confirmed:'info',allocated:'inf
 // primary CTA by resolved status
 const CTA={draft:{label:'Send Quote',to:'quoted'},quoted:{label:'Confirm Order',to:'confirmed'},confirmed:{label:'Allocate Equipment',to:null,scroll:'equipment'},allocated:{label:'Prepare Dispatch',to:null,link:function(id){return '/order.html?id='+id;}},partially_dispatched:{label:'Dispatch Remaining',to:null,link:function(id){return '/order.html?id='+id;}},fully_dispatched:{label:'Return',to:'returned'},dispatched:{label:'Return',to:'returned'},active:{label:'Return',to:'returned'},partial_return:{label:'Complete Return',to:'returned'},awaiting_inspection:{label:'Start Inspection',to:null,scroll:'equipment'},ready_to_close:{label:'Generate Final Invoice',to:null,link:function(id){return '/invoice.html?order='+id;}},returned:{label:'Generate Final Invoice',to:null,link:function(id){return '/invoice.html?order='+id;}},closed:{label:'Close Order',to:null,disabled:true},cancelled:{label:'Cancelled',to:null,disabled:true}};
 // item micro-status
-const ITEM_STATUS={pending_dispatch:{label:'ALLOCATED',tone:'neutral'},dispatched:{label:'ON RENT',tone:'success'},returned:{label:'RETURNED',tone:'success'},returned_with_damage:{label:'RETURNED · DAMAGE',tone:'attention'},not_returned_chargeable:{label:'NOT RETURNED',tone:'danger'},not_returned_non_chargeable:{label:'NOT RETURNED',tone:'neutral'},missing:{label:'MISSING',tone:'danger'}};
+const ITEM_STATUS={pending_dispatch:{label:'ALLOCATED',tone:'neutral'},dispatched:{label:'ON RENT',tone:'success'},returned:{label:'RETURNED',tone:'success'},returned_with_damage:{label:'RETURNED · DAMAGE',tone:'attention'},not_returned_chargeable:{label:'NOT RETURNED',tone:'danger'},not_returned_non_chargeable:{label:'NOT RETURNED',tone:'neutral'},missing:{label:'MISSING',tone:'danger'},substituted_out:{label:'SUBSTITUTED OUT',tone:'neutral'}};
+// Sub-slice 2.3 taxonomies (mirror the DB CHECKs / lib constants).
+const SUB_TYPES=['same_unit_swap','same_product_swap','equivalent_product_swap','upgrade_free','upgrade_paid','downgrade_credit','kit_component_swap'];
+const SUB_REASONS=['unit_failed_precheck','unit_unavailable_at_dispatch','unit_damaged_in_rental','customer_preference_change','customer_upgrade_request','goodwill_upgrade','product_shortage','extension_conflict','operational_convenience','staff_error','other'];
+const SUB_FIN=['no_change','additional_charge','credit_to_customer','business_absorb'];
+const SUB_TIMING=[['immediate_before_dispatch','Immediate','Before dispatch'],['rush_mid_rental','Rush — mid-rental','Customer at doorstep now'],['at_next_natural_handover','At next natural handover','Bundle with a scheduled touchpoint'],['scheduled','Scheduled','Pick a date & time']];
+const DMG_INCIDENT_TYPES=['accidental_drop','impact_damage','liquid_damage','electrical_damage','operational_failure','theft','loss','third_party_damage','weather','misuse','wear_and_tear_dispute','other'];
+const DMG_SEVERITIES=[['cosmetic','Cosmetic'],['minor','Minor'],['major','Major'],['total_loss','Total loss'],['catastrophic','Catastrophic']];
+const DMG_REPORTERS=['customer_whatsapp','staff_observation','on_rent_check_in','inspection_at_return','third_party'];
+const DMG_DECISIONS=[['substitute_with_another_unit','Substitute with another unit','Swap in an equivalent unit now'],['dispatch_replacement_keep_damaged','Dispatch replacement, keep damaged','Send a spare; damaged unit stays out'],['early_return_damaged_only','Early return of damaged item only','Continues rental with other items'],['continue_with_damaged','Continue with damaged item','Customer keeps using it as-is'],['full_early_return','Full early return','End the whole rental early'],['pending','Decide later','Triage the money later']];
+const DMG_LIABILITY=['yes','no','partial','pending_investigation'];
+const DMG_RESOLUTION=['customer_pays','insurance_claim','warranty_coverage','business_absorbs','partial_split','deposit_only','deposit_plus_additional','pending'];
+const DMG_DEPOSIT=['hold','adjust','forfeit_partial','forfeit_full','no_change'];
 
 // ------------------------------------------------------------------ state
 const S={id:null,order:null,items:[],events:[],assets:[],tags:[],cf:[],coupon:null,agg:null,aggCtx:null,
-  settings:{},extensions:[],cancellation:null,approvals:[],customer:null,comms:[],standby:null,quotes:[],activeQuoteTab:null,
-  open:{customer:true,rental:true,equipment:true,pricing:true,payments:true,deposits:true,events:true,quotes:true,documents:false,communications:false,notes:true},
+  settings:{},extensions:[],cancellation:null,approvals:[],customer:null,comms:[],standby:null,quotes:[],activeQuoteTab:null,substitutions:[],damage:[],
+  open:{customer:true,rental:true,equipment:true,pricing:true,payments:true,deposits:true,events:true,changes:true,quotes:true,documents:false,communications:false,notes:true},
   overflow:false,blocker:null,filters:new Set(['All'])};
 // module-scoped modal state (no localStorage — per RentalOS phase rules)
 const M={kind:null,data:null,decide:null,busy:false};
@@ -500,8 +514,8 @@ function cardEquipment(){
           +'<div class="mono" style="font-size:11px;color:var(--neutral);margin-top:3px">Qty '+escapeHtml(it.quantity)+(rate?' · '+formatINR(rate)+'/day × '+bdays:'')+'</div>'
           +'<div class="item-actions">'
             +'<button class="linkbtn" data-act="view-asset">View asset</button>'
-            +'<button class="linkbtn" data-act="substitute">Substitute</button>'
-            +'<button class="linkbtn" data-act="report-damage">Report damage</button>'
+            +(it.status!=='substituted_out'?'<button class="linkbtn" data-act="substitute" data-item="'+escapeAttr(it.id)+'">Substitute this</button>':'')
+            +(it.status!=='substituted_out'?'<button class="linkbtn" data-act="report-damage" data-item="'+escapeAttr(it.id)+'">Report damage</button>':'')
             +(it.status==='pending_dispatch'?'<button class="linkbtn" data-act="dispatch-item" data-item="'+escapeAttr(it.id)+'">Dispatch this</button>':'')
           +'</div>'
         +'</div>'
@@ -768,6 +782,10 @@ function render(){
   main+=card('payments',DOT.payments,'Payments',null,(bal>0?'<span style="color:var(--attention)">'+formatINR(bal)+' due</span>':'<span style="color:var(--success)">Paid</span>'),cardPayments());
   main+=card('deposits',DOT.deposits,'Deposits',null,'<span style="color:var(--neutral)">'+escapeHtml(String(o.deposit_status||'none').replace(/_/g,' '))+'</span>',cardDeposits());
   main+=card('events',DOT.events,'Related Events',String(nRel),null,cardEvents());
+  // Sub-slice 2.3 — Substitutions & Damage. Renders unconditionally with an empty
+  // state; count badge sums both lists.
+  const nChg=(S.substitutions?S.substitutions.length:0)+(S.damage?S.damage.length:0);
+  main+=card('changes',DOT.equipment,'Substitutions & Damage',(nChg?String(nChg):null),null,cardChanges());
   // Quote Versions card renders unconditionally (Sub-slice 2.2 deliverable) —
   // empty orders get an empty state with "Create v1". Count badge only when >0.
   main+=card('quotes',DOT.events,'Quote Versions',(S.quotes&&S.quotes.length?String(S.quotes.length):null),null,cardQuotes());
@@ -909,7 +927,14 @@ async function handleAct(kind,el){
     case 'contact': toast('Contact '+(o.customer_name||'customer'));break;
     case 'extend': openExtensionModal();break;
     case 'send-update-inline': openSendUpdateModal();break;
-    case 'add-line': case 'view-asset': case 'substitute': case 'report-damage': case 'record-payment': case 'record-deposit': case 'release-deposit': case 'forfeit-deposit': case 'dispatch-item':
+    case 'substitute': openSubstitutionModal(el&&el.getAttribute('data-item'));break;
+    case 'report-damage': openDamageModal(el&&el.getAttribute('data-item'));break;
+    case 'sub-execute': doSubstitutionAction('execute',el&&el.getAttribute('data-sub'));break;
+    case 'sub-revert': doSubstitutionAction('revert',el&&el.getAttribute('data-sub'));break;
+    case 'sub-approve': doSubstitutionAction('approve',el&&el.getAttribute('data-sub'));break;
+    case 'sub-reject': doSubstitutionAction('reject',el&&el.getAttribute('data-sub'));break;
+    case 'dmg-open': openDamageModal(null,el&&el.getAttribute('data-dmg'));break;
+    case 'add-line': case 'view-asset': case 'record-payment': case 'record-deposit': case 'release-deposit': case 'forfeit-deposit': case 'dispatch-item':
       window.location.href='/order.html?id='+S.id;break;
     case 'save-note':{
       const box=document.querySelector('[data-note-input]');const val=box?box.value.trim():'';
@@ -930,6 +955,9 @@ async function load(){
   S.extensions=data.extensions||[];S.cancellation=data.cancellation||null;
   S.approvals=data.active_approvals||[];S.customer=data.customer||null;
   S.standby=data.standby||null;S.quotes=data.quote_versions||[];
+  // Sub-slice 2.3 — substitutions + damage incidents load async (like comms).
+  api.get('/api/orders/'+S.id+'/substitutions').then(r=>{S.substitutions=r.substitutions||[];render();}).catch(()=>{});
+  api.get('/api/orders/'+S.id+'/damage-incidents').then(r=>{S.damage=r.damage_incidents||[];render();}).catch(()=>{});
   if(S.quotes.length&&!S.activeQuoteTab)S.activeQuoteTab=S.quotes[S.quotes.length-1].id;
   document.getElementById('crumb-order').textContent='#'+data.order.order_number;
   // Communications (customer-facing deliveries) — best-effort, non-blocking.
@@ -1277,6 +1305,271 @@ async function handleQuote(kind,qid){
     await load();
   }catch(err){showModalError(err);}
   finally{ quoteBusy=false; }
+}
+
+// ============================================================ Sub-slice 2.3
+// Substitutions & Damage — card + modals. Native selects for the taxonomies
+// (design-consistent with the page's simpler modals). Damage evidence attaches in
+// the Order Notes card (no photos here, Aamir Q1). Every mutation carries the
+// shared client's auto Idempotency-Key via api.post.
+// ---------------------------------------------------------------------------
+function titleize(s){return String(s||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
+function selOpts(list,cur){return list.map(v=>'<option value="'+escapeAttr(v)+'"'+(v===cur?' selected':'')+'>'+escapeHtml(titleize(v))+'</option>').join('');}
+const SUB_STATUS_TONE={proposed:'neutral',pending_approval:'attention',approved:'info',rejected:'danger',executed:'success',reverted:'neutral'};
+const DMG_STATUS_TONE={reported:'attention',investigating:'info',resolution_proposed:'attention',customer_acknowledged:'info',in_repair:'progress',financial_settled:'success',closed:'success'};
+const SEV_TONE={cosmetic:'neutral',minor:'neutral',major:'attention',total_loss:'danger',catastrophic:'danger'};
+
+function cardChanges(){
+  return function(){
+    const subs=S.substitutions||[];const dmg=S.damage||[];
+    if(!subs.length&&!dmg.length)return '<div class="empty"><div class="empty-ic">'+I('swap',26)+'</div>No substitutions or damage incidents. Use <b>Substitute this</b> or <b>Report damage</b> on a line item.</div>';
+    let html='';
+    if(subs.length){
+      html+='<div class="mono" style="font-size:10px;letter-spacing:.14em;color:var(--neutral);margin:2px 0 10px">SUBSTITUTIONS</div>';
+      for(const s of subs){
+        const tone=SUB_STATUS_TONE[s.status]||'neutral';
+        const canExec=(s.status==='proposed'&&!s.requires_approval)||s.status==='approved';
+        const canApprove=s.status==='pending_approval';
+        const canRevert=s.status==='executed';
+        html+='<div class="item-row"><div class="thumb">'+I('swap',18)+'</div><div style="flex:1;min-width:0">'
+          +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="item-name">'+escapeHtml(s.substitution_number)+'</span><span class="mono" style="font-size:11px;color:var(--accent)">'+escapeHtml(s.substitution_type)+'</span></div>'
+          +'<div class="mono" style="font-size:11px;color:var(--neutral);margin-top:3px">'+escapeHtml(titleize(s.substitution_reason_tag))+(Number(s.financial_amount_paise)>0?' · '+escapeHtml(s.financial_handling)+' '+formatINR(s.financial_amount_paise):'')+'</div>'
+          +'<div class="item-actions">'
+          +(canExec?'<button class="linkbtn" data-act="sub-execute" data-sub="'+escapeAttr(s.id)+'">Execute</button>':'')
+          +(canApprove?'<button class="linkbtn" data-act="sub-approve" data-sub="'+escapeAttr(s.id)+'">Approve</button><button class="linkbtn" data-act="sub-reject" data-sub="'+escapeAttr(s.id)+'">Reject</button>':'')
+          +(canRevert?'<button class="linkbtn" data-act="sub-revert" data-sub="'+escapeAttr(s.id)+'">Revert</button>':'')
+          +'</div></div>'
+          +'<span class="pill '+toneClass(tone)+'"><span class="pdot"></span>'+escapeHtml(String(s.status).replace(/_/g,' ').toUpperCase())+'</span></div>';
+      }
+    }
+    if(dmg.length){
+      html+='<div class="mono" style="font-size:10px;letter-spacing:.14em;color:var(--neutral);margin:16px 0 10px">DAMAGE INCIDENTS</div>';
+      for(const x of dmg){
+        const tone=DMG_STATUS_TONE[x.status]||'attention';const sv=SEV_TONE[x.severity]||'neutral';
+        html+='<div class="item-row"><div class="thumb" style="color:var(--danger)">'+I('warn',18)+'</div><div style="flex:1;min-width:0">'
+          +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="item-name">'+escapeHtml(x.incident_number)+'</span><span class="pill '+toneClass(sv)+'" style="font-size:10px"><span class="pdot"></span>'+escapeHtml(String(x.severity).replace(/_/g,' ').toUpperCase())+'</span></div>'
+          +'<div class="mono" style="font-size:11px;color:var(--neutral);margin-top:3px">'+escapeHtml(titleize(x.incident_type))+(x.operational_decision&&x.operational_decision!=='pending'?' · '+escapeHtml(titleize(x.operational_decision)):'')+(x.requires_approval?' · needs approval':'')+'</div>'
+          +'<div class="item-actions"><button class="linkbtn" data-act="dmg-open" data-dmg="'+escapeAttr(x.id)+'">Open</button></div></div>'
+          +'<span class="pill '+toneClass(tone)+'"><span class="pdot"></span>'+escapeHtml(String(x.status).replace(/_/g,' ').toUpperCase())+'</span></div>';
+      }
+    }
+    return html;
+  };
+}
+
+// section label used inside the 2.3 modals (matches the DC "mono uppercase" label)
+function mlabel(t,req){return '<div class="mono" style="font-size:10px;font-weight:600;letter-spacing:.14em;color:var(--neutral);margin:18px 0 10px">'+escapeHtml(t)+(req?' <span style="color:var(--danger)">*</span>':'')+'</div>';}
+
+// ---- Substitution modal -----------------------------------------------------
+async function openSubstitutionModal(itemId){
+  const it=S.items.find(i=>i.id===itemId)||rentalItems()[0];
+  if(!it){toast('No rental line item to substitute','err');return;}
+  M.kind='substitution';M.busy=false;
+  M.data={itemId:it.id,products:[],loading:true,type:'same_product_swap',reason:'unit_damaged_in_rental',fin:'no_change',timing:'rush_mid_rental',amount:'',replProduct:'',replAsset:'',notes:''};
+  mrender(renderSubModal(it));
+  try{const r=await api.get('/api/inventory/products');M.data.products=(r.products||r.items||[]).filter(p=>!p.is_kit);}catch{}
+  M.data.loading=false;if(M.kind==='substitution')mrender(renderSubModal(it));
+}
+function renderSubModal(it){
+  const d=M.data;
+  const prodOpts='<option value="">— same product —</option>'+(d.products||[]).map(p=>'<option value="'+escapeAttr(p.id)+'"'+(p.id===d.replProduct?' selected':'')+'>'+escapeHtml(p.name||p.sku||p.id)+'</option>').join('');
+  const showAmt=(d.fin==='additional_charge'||d.fin==='credit_to_customer');
+  return '<div class="m-hd"><div><div class="mono" style="display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:20px;background:var(--accent-bg,#eef2ff);color:var(--accent);font-size:10px;font-weight:600;letter-spacing:.1em"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>SUBSTITUTION</div>'
+    +'<h3 class="m-title" style="margin-top:10px">Swap an asset in this order</h3>'
+    +'<div style="font-size:12.5px;color:var(--neutral);margin-top:4px">#'+escapeHtml(S.order.order_number)+' · '+escapeHtml(it.description||'Item')+'</div></div>'
+    +'<button class="m-x" data-mclose>'+I('cancel',16)+'</button></div>'
+    +'<div class="m-bd">'
+    +mlabel('CURRENT LINE ITEM')
+    +'<div style="font-size:13px;color:var(--head);font-weight:600">'+escapeHtml(it.description||'Item')+' <span class="mono" style="font-size:11px;color:var(--neutral)">· qty '+escapeHtml(it.quantity)+' · '+escapeHtml(String(it.status).replace(/_/g,' '))+'</span></div>'
+    +mlabel('REASON',true)
+    +'<select data-f="reason" class="m-select">'+selOpts(SUB_REASONS,d.reason)+'</select>'
+    +'<textarea data-f="notes" class="m-ta" placeholder="Notes (optional)…" style="margin-top:10px;min-height:56px">'+escapeHtml(d.notes)+'</textarea>'
+    +mlabel('REPLACEMENT')
+    +'<div style="font-size:11.5px;color:var(--neutral);margin-bottom:6px">Replacement product '+(d.loading?'(loading…)':'(leave as same product for a same-unit/same-product swap)')+'</div>'
+    +'<select data-f="replProduct" class="m-select">'+prodOpts+'</select>'
+    +'<input data-f="replAsset" class="m-input" style="margin-top:10px" placeholder="Replacement asset code / ID (optional — pins a specific unit)" value="'+escapeAttr(d.replAsset)+'">'
+    +mlabel('TYPE & FINANCIAL HANDLING')
+    +'<div style="display:flex;gap:12px;flex-wrap:wrap"><select data-f="type" class="m-select" style="flex:1;min-width:180px">'+selOpts(SUB_TYPES,d.type)+'</select>'
+    +'<select data-f="fin" class="m-select" style="flex:1;min-width:180px">'+selOpts(SUB_FIN,d.fin)+'</select></div>'
+    +(showAmt?'<div style="display:flex;align-items:center;gap:8px;margin-top:10px"><span class="mono" style="color:var(--neutral)">₹</span><input data-f="amount" class="m-input" style="max-width:160px" placeholder="Amount (rupees)" value="'+escapeAttr(d.amount)+'"></div>':'')
+    +mlabel('WHEN DOES THE SWAP HAPPEN?',true)
+    +'<select data-f="timing" class="m-select">'+SUB_TIMING.map(t=>'<option value="'+t[0]+'"'+(t[0]===d.timing?' selected':'')+'>'+escapeHtml(t[1])+' — '+escapeHtml(t[2])+'</option>').join('')+'</select>'
+    +'</div>'
+    +'<div class="m-ft"><button class="m-ghost" data-mclose>Cancel</button><button class="m-btn" data-msub-submit '+(M.busy?'disabled':'')+'>'+(M.busy?'Working…':'Execute Substitution')+'</button></div>';
+}
+async function submitSubstitution(){
+  if(M.busy)return;const d=M.data;
+  const body={original_order_item_id:d.itemId,substitution_type:d.type,reason_tag:d.reason,timing:d.timing,financial_handling:d.fin,reason_notes:d.notes||undefined};
+  if(d.replProduct)body.replacement_product_id=d.replProduct;
+  if(d.replAsset&&/^[0-9a-f-]{36}$/i.test(d.replAsset))body.replacement_asset_id=d.replAsset;
+  if((d.fin==='additional_charge'||d.fin==='credit_to_customer')&&d.amount)body.financial_amount_paise=Math.round(Number(d.amount)*100);
+  M.busy=true;mrender(renderSubModal(S.items.find(i=>i.id===d.itemId)||{}));
+  try{
+    const created=await api.post('/api/orders/'+S.id+'/substitutions',body);
+    if(created.requires_approval){toast('Substitution sent for approval','ok');}
+    else{await api.post('/api/substitutions/'+created.substitution.id+'/execute',{});toast('Substitution executed','ok');}
+    mclose();await load();
+  }catch(err){M.busy=false;showModalError(err);}
+}
+async function doSubstitutionAction(kind,subId){
+  if(!subId)return;
+  try{
+    if(kind==='execute'){await api.post('/api/substitutions/'+subId+'/execute',{});toast('Substitution executed','ok');}
+    else if(kind==='approve'){await api.post('/api/substitutions/'+subId+'/approve',{});toast('Approved','ok');}
+    else if(kind==='reject'){const reason=prompt('Reject reason (optional):')||undefined;await api.post('/api/substitutions/'+subId+'/reject',{reason});toast('Rejected','ok');}
+    else if(kind==='revert'){if(!confirm('Revert this substitution? The original line is restored and the replacement removed.'))return;const reason=prompt('Revert reason (optional):')||undefined;await api.post('/api/substitutions/'+subId+'/revert',{reason});toast('Reverted','ok');}
+    await load();
+  }catch(err){toast('Action failed: '+((err.body&&err.body.error)||err.message),'err');}
+}
+
+// ---- Damage incident modal (5-step) ----------------------------------------
+async function openDamageModal(itemId,dmgId){
+  // View an existing incident (continue the workflow) OR start a new report.
+  if(dmgId){
+    let inc=null;try{inc=(await api.get('/api/damage-incidents/'+dmgId)).damage_incident;}catch{}
+    if(!inc){toast('Could not load incident','err');return;}
+    M.kind='damage';M.busy=false;M.data={view:true,inc,step:3,decision:inc.operational_decision||'pending',products:[],replProduct:'',
+      liability:inc.customer_liability||'pending_investigation',resolution:inc.financial_resolution||'pending',deposit:inc.deposit_action||'no_change',finalCost:''};
+    mrender(renderDamageModal());
+    try{const r=await api.get('/api/inventory/products');M.data.products=(r.products||[]).filter(p=>!p.is_kit);}catch{}
+    if(M.kind==='damage')mrender(renderDamageModal());
+    return;
+  }
+  const it=S.items.find(i=>i.id===itemId)||rentalItems()[0];
+  if(!it){toast('No rental line item to report on','err');return;}
+  M.kind='damage';M.busy=false;
+  M.data={view:false,step:1,itemId:it.id,incidentType:'accidental_drop',severity:'major',description:'',reporter:'staff_observation',
+    decision:'pending',products:[],replProduct:'',estCost:'',
+    liability:'',resolution:'pending',deposit:'no_change',finalCost:'',created:null};
+  mrender(renderDamageModal());
+  try{const r=await api.get('/api/inventory/products');M.data.products=(r.products||[]).filter(p=>!p.is_kit);}catch{}
+  if(M.kind==='damage')mrender(renderDamageModal());
+}
+function damageProgress(step){
+  const labels=['What happened','What\'s affected','Save the Shoot','Financial','Review'];
+  let h='<div style="display:flex;align-items:center;margin:4px 0 6px">';
+  for(let i=1;i<=5;i++){
+    const done=i<step,cur=i===step;
+    h+='<div style="display:flex;align-items:center;flex:'+(i<5?1:'none')+'"><span style="width:24px;height:24px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);border:2px solid '+(done||cur?'var(--accent)':'#cfcbc2')+';background:'+(done?'var(--accent)':cur?'#eef2ff':'#fff')+';color:'+(done?'#fff':cur?'var(--accent)':'#9ca3af')+'">'+(done?'✓':i)+'</span>'
+      +(i<5?'<span style="flex:1;height:3px;border-radius:2px;margin:0 6px;background:'+(done?'var(--accent)':'#e6e3dc')+'"></span>':'')+'</div>';
+  }
+  h+='</div><div style="font-family:var(--head-font);font-size:14px;font-weight:600;color:var(--ink)">Step '+step+' of 5 · '+escapeHtml(labels[step-1])+'</div>';
+  return h;
+}
+function renderDamageModal(){
+  const d=M.data;
+  if(d.view)return renderDamageView();
+  let body='';
+  if(d.step===1){
+    body=mlabel('INCIDENT TYPE',true)
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+DMG_INCIDENT_TYPES.map(t=>'<div data-dtype="'+t+'" style="padding:9px 8px;border-radius:9px;border:1px solid '+(t===d.incidentType?'var(--accent)':'#e6e3dc')+';background:'+(t===d.incidentType?'#eef2ff':'#fff')+';color:'+(t===d.incidentType?'var(--accent)':'var(--head)')+';font-size:11.5px;font-weight:'+(t===d.incidentType?'700':'500')+';cursor:pointer;text-align:center">'+escapeHtml(titleize(t))+'</div>').join('')+'</div>'
+      +mlabel('DESCRIPTION',true)+'<textarea data-f="description" class="m-ta" style="min-height:70px" placeholder="What happened?">'+escapeHtml(d.description)+'</textarea>'
+      +mlabel('WHO REPORTED THIS?')+'<select data-f="reporter" class="m-select">'+selOpts(DMG_REPORTERS,d.reporter)+'</select>'
+      +'<div style="margin-top:12px;font-size:11.5px;color:var(--neutral)">📎 Attach damage photos (WhatsApp screenshots etc.) in the order\'s <b>Notes</b> card.</div>';
+  }else if(d.step===2){
+    const it=S.items.find(i=>i.id===d.itemId)||{};
+    body=mlabel('AFFECTED ITEM')+'<div style="font-size:13px;color:var(--head);font-weight:600">'+escapeHtml(it.description||'Item')+'</div>'
+      +mlabel('SEVERITY',true)+'<div style="display:flex;gap:8px;flex-wrap:wrap">'+DMG_SEVERITIES.map(s=>'<div data-dsev="'+s[0]+'" style="padding:8px 13px;border-radius:9px;border:1px solid '+(s[0]===d.severity?'var(--accent)':'#e6e3dc')+';background:'+(s[0]===d.severity?'#eef2ff':'#fff')+';color:'+(s[0]===d.severity?'var(--accent)':'var(--head)')+';font-size:12.5px;font-weight:'+(s[0]===d.severity?'700':'500')+';cursor:pointer">'+escapeHtml(s[1])+'</div>').join('')+'</div>'
+      +mlabel('ESTIMATED REPAIR COST')+'<div style="display:flex;align-items:center;gap:8px"><span class="mono" style="color:var(--neutral)">₹</span><input data-f="estCost" class="m-input" style="max-width:180px" placeholder="Estimate (rupees)" value="'+escapeAttr(d.estCost)+'"></div>';
+  }else if(d.step===3){
+    body=mlabel('SAVE THE SHOOT — OPERATIONAL DECISION',true)
+      +'<div style="display:flex;flex-direction:column;gap:8px">'+DMG_DECISIONS.map(o=>'<div data-ddec="'+o[0]+'" style="display:flex;gap:11px;padding:11px 13px;border-radius:11px;border:1px solid '+(o[0]===d.decision?'var(--accent)':'#e6e3dc')+';background:'+(o[0]===d.decision?'#f8f9ff':'#fff')+';cursor:pointer"><span style="margin-top:2px;width:16px;height:16px;flex:none;border-radius:50%;border:2px solid '+(o[0]===d.decision?'var(--accent)':'#cfcbc2')+';display:flex;align-items:center;justify-content:center">'+(o[0]===d.decision?'<span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>':'')+'</span><div><div style="font-size:13px;font-weight:600;color:var(--head)">'+escapeHtml(o[1])+'</div><div style="font-size:11.5px;color:var(--neutral);margin-top:2px">'+escapeHtml(o[2])+'</div></div></div>').join('')+'</div>'
+      +(d.decision==='substitute_with_another_unit'?mlabel('REPLACEMENT PRODUCT FOR THE SWAP')+'<select data-f="replProduct" class="m-select"><option value="">— same product —</option>'+(d.products||[]).map(p=>'<option value="'+escapeAttr(p.id)+'"'+(p.id===d.replProduct?' selected':'')+'>'+escapeHtml(p.name||p.sku)+'</option>').join('')+'</select>':'');
+  }else if(d.step===4){
+    body='<div style="font-size:12px;color:var(--neutral);background:#fffbeb;border:1px solid #fcd9a4;border-radius:10px;padding:11px 13px;margin-top:6px">Preliminary — fix now, decide the money later. You can leave this and set it after inspection.</div>'
+      +mlabel('CUSTOMER LIABILITY')+'<select data-f="liability" class="m-select"><option value="">— use policy default —</option>'+selOpts(DMG_LIABILITY,d.liability)+'</select>'
+      +mlabel('FINANCIAL RESOLUTION')+'<select data-f="resolution" class="m-select">'+selOpts(DMG_RESOLUTION,d.resolution)+'</select>'
+      +mlabel('DEPOSIT ACTION')+'<select data-f="deposit" class="m-select">'+selOpts(DMG_DEPOSIT,d.deposit)+'</select>'
+      +mlabel('FINAL COST (if known)')+'<div style="display:flex;align-items:center;gap:8px"><span class="mono" style="color:var(--neutral)">₹</span><input data-f="finalCost" class="m-input" style="max-width:180px" placeholder="Final cost (rupees)" value="'+escapeAttr(d.finalCost)+'"></div>';
+  }else{
+    const it=S.items.find(i=>i.id===d.itemId)||{};
+    body=mlabel('REVIEW')
+      +'<div style="display:flex;flex-direction:column;gap:7px;font-size:13px;color:var(--head)">'
+      +'<div><b>'+escapeHtml(titleize(d.incidentType))+'</b> · '+escapeHtml(titleize(d.severity))+' · '+escapeHtml(it.description||'Item')+'</div>'
+      +'<div style="color:var(--neutral);font-size:12.5px">'+escapeHtml(d.description||'—')+'</div>'
+      +'<div class="mono" style="font-size:12px;color:var(--neutral)">Reported via '+escapeHtml(titleize(d.reporter))+'</div>'
+      +'<div class="mono" style="font-size:12px;color:var(--neutral)">Save the Shoot: '+escapeHtml(titleize(d.decision))+'</div>'
+      +'</div>';
+  }
+  const isLast=d.step===5;
+  return '<div class="m-hd"><div><div class="mono" style="display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:20px;background:var(--danger-bg);color:var(--danger);font-size:10px;font-weight:700;letter-spacing:.1em"><span style="width:7px;height:7px;border-radius:50%;background:var(--danger)"></span>DAMAGE INCIDENT</div>'
+    +'<div style="margin-top:12px">'+damageProgress(d.step)+'</div></div><button class="m-x" data-mclose>'+I('cancel',16)+'</button></div>'
+    +'<div class="m-bd">'+body+'</div>'
+    +'<div class="m-ft"><button class="m-ghost" '+(d.step>1?'data-dstep="'+(d.step-1)+'"':'data-mclose')+'>'+(d.step>1?'Back':'Cancel')+'</button>'
+    +(isLast?'<button class="m-btn danger" data-dsubmit '+(M.busy?'disabled':'')+'>'+(M.busy?'Creating…':'Create Incident')+'</button>':'<button class="m-btn" data-dstep="'+(d.step+1)+'">Next</button>')+'</div>';
+}
+function renderDamageView(){
+  const x=M.data.inc;const d=M.data;
+  const canFin=(x.status!=='closed');const canApprove=x.requires_approval;const canClose=(x.status!=='closed'&&!x.requires_approval);
+  return '<div class="m-hd"><div><div class="mono" style="display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:20px;background:var(--danger-bg);color:var(--danger);font-size:10px;font-weight:700;letter-spacing:.1em"><span style="width:7px;height:7px;border-radius:50%;background:var(--danger)"></span>DAMAGE INCIDENT</div>'
+    +'<h3 class="m-title" style="margin-top:10px">'+escapeHtml(x.incident_number)+'</h3><div style="font-size:12.5px;color:var(--neutral);margin-top:4px">'+escapeHtml(titleize(x.incident_type))+' · '+escapeHtml(titleize(x.severity))+' · '+escapeHtml(String(x.status).replace(/_/g,' '))+'</div></div><button class="m-x" data-mclose>'+I('cancel',16)+'</button></div>'
+    +'<div class="m-bd">'
+    +'<div style="font-size:13px;color:var(--head);line-height:1.55">'+escapeHtml(x.description||'')+'</div>'
+    +mlabel('SAVE THE SHOOT')+'<select data-f="decision" class="m-select">'+selOpts(DMG_DECISIONS.map(o=>o[0]),d.decision)+'</select>'
+    +(d.decision==='substitute_with_another_unit'?'<select data-f="replProduct" class="m-select" style="margin-top:8px"><option value="">— same product —</option>'+(d.products||[]).map(p=>'<option value="'+escapeAttr(p.id)+'"'+(p.id===d.replProduct?' selected':'')+'>'+escapeHtml(p.name||p.sku)+'</option>').join('')+'</select>':'')
+    +'<button class="btn btn-tiny btn-secondary" style="margin-top:10px" data-dsave-shoot>Apply operational decision</button>'
+    +mlabel('FINANCIAL RESOLUTION')
+    +'<select data-f="liability" class="m-select" style="margin-bottom:8px"><option value="">liability…</option>'+selOpts(DMG_LIABILITY,d.liability)+'</select>'
+    +'<select data-f="resolution" class="m-select" style="margin-bottom:8px">'+selOpts(DMG_RESOLUTION,d.resolution)+'</select>'
+    +'<select data-f="deposit" class="m-select" style="margin-bottom:8px">'+selOpts(DMG_DEPOSIT,d.deposit)+'</select>'
+    +'<div style="display:flex;align-items:center;gap:8px"><span class="mono" style="color:var(--neutral)">₹</span><input data-f="finalCost" class="m-input" style="max-width:180px" placeholder="Final cost" value="'+escapeAttr(d.finalCost)+'"></div>'
+    +(canFin?'<button class="btn btn-tiny btn-primary" style="margin-top:10px" data-dfin>Record resolution</button>':'')
+    +'</div>'
+    +'<div class="m-ft"><button class="m-ghost" data-mclose>Close</button><div style="display:flex;gap:8px">'
+    +(canApprove?'<button class="btn btn-tiny btn-secondary" data-dapprove>Approve</button>':'')
+    +(canClose?'<button class="m-btn" data-dclose-inc>Close incident</button>':'')+'</div></div>';
+}
+async function submitDamage(){
+  if(M.busy)return;const d=M.data;
+  if(!d.description.trim()){toast('Description is required','err');return;}
+  M.busy=true;mrender(renderDamageModal());
+  try{
+    const body={reported_by_type:d.reporter,occurred_at:new Date().toISOString(),incident_type:d.incidentType,severity:d.severity,description:d.description,
+      affected_items:[{order_item_id:d.itemId,severity:d.severity}]};
+    if(d.estCost)body.estimated_cost_paise=Math.round(Number(d.estCost)*100);
+    const created=await api.post('/api/orders/'+S.id+'/damage-incidents',body);
+    const incId=created.damage_incident.id;
+    if(d.decision&&d.decision!=='pending'){
+      const sts={operational_decision:d.decision};
+      if(d.decision==='substitute_with_another_unit'){sts.substitution={original_order_item_id:d.itemId,replacement_product_id:d.replProduct||undefined,substitution_type:'same_product_swap',timing:'rush_mid_rental'};}
+      try{await api.post('/api/damage-incidents/'+incId+'/save-the-shoot',sts);}catch(e){}
+    }
+    if(d.liability||d.resolution!=='pending'){
+      try{await api.post('/api/damage-incidents/'+incId+'/financial-resolution',{customer_liability:d.liability||'pending_investigation',financial_resolution:d.resolution,deposit_action:d.deposit,final_cost_paise:d.finalCost?Math.round(Number(d.finalCost)*100):undefined});}catch(e){}
+    }
+    toast('Damage incident '+created.damage_incident.incident_number+' created','ok');mclose();await load();
+  }catch(err){M.busy=false;showModalError(err);}
+}
+
+// Delegated handlers for the 2.3 modals (field edits, step nav, sub-actions).
+document.addEventListener('input',(e)=>{
+  const t=e.target;if(!t)return;
+  if(M.kind==='substitution'){const f=t.getAttribute&&t.getAttribute('data-f');if(f){M.data[f]=t.value;if(f==='fin')mrender(renderSubModal(S.items.find(i=>i.id===M.data.itemId)||{}));}}
+  else if(M.kind==='damage'){const f=t.getAttribute&&t.getAttribute('data-f');if(f)M.data[f]=t.value;}
+});
+document.addEventListener('click',(e)=>{
+  const t=e.target;if(!t.closest)return;
+  if(t.closest('[data-mclose]')&&(M.kind==='substitution'||M.kind==='damage')){mclose();return;}
+  if(t.closest('[data-msub-submit]')){submitSubstitution();return;}
+  const dstep=t.closest('[data-dstep]');if(dstep){M.data.step=Number(dstep.getAttribute('data-dstep'));mrender(renderDamageModal());return;}
+  const dtype=t.closest('[data-dtype]');if(dtype){M.data.incidentType=dtype.getAttribute('data-dtype');mrender(renderDamageModal());return;}
+  const dsev=t.closest('[data-dsev]');if(dsev){M.data.severity=dsev.getAttribute('data-dsev');mrender(renderDamageModal());return;}
+  const ddec=t.closest('[data-ddec]');if(ddec){M.data.decision=ddec.getAttribute('data-ddec');mrender(renderDamageModal());return;}
+  if(t.closest('[data-dsubmit]')){submitDamage();return;}
+  if(t.closest('[data-dsave-shoot]')){damageViewAction('save-the-shoot');return;}
+  if(t.closest('[data-dfin]')){damageViewAction('financial-resolution');return;}
+  if(t.closest('[data-dapprove]')){damageViewAction('approve');return;}
+  if(t.closest('[data-dclose-inc]')){damageViewAction('close');return;}
+},true);
+async function damageViewAction(kind){
+  const d=M.data;const id=d.inc.id;
+  try{
+    if(kind==='save-the-shoot'){const b={operational_decision:d.decision};if(d.decision==='substitute_with_another_unit')b.substitution={original_order_item_id:(d.inc.order_item_id||rentalItems()[0]&&rentalItems()[0].id),replacement_product_id:d.replProduct||undefined,substitution_type:'same_product_swap',timing:'rush_mid_rental'};await api.post('/api/damage-incidents/'+id+'/save-the-shoot',b);toast('Decision applied','ok');}
+    else if(kind==='financial-resolution'){await api.post('/api/damage-incidents/'+id+'/financial-resolution',{customer_liability:d.liability||'pending_investigation',financial_resolution:d.resolution,deposit_action:d.deposit,final_cost_paise:d.finalCost?Math.round(Number(d.finalCost)*100):undefined});toast('Resolution recorded','ok');}
+    else if(kind==='approve'){await api.post('/api/damage-incidents/'+id+'/approve',{});toast('Approved','ok');}
+    else if(kind==='close'){await api.post('/api/damage-incidents/'+id+'/close',{});toast('Incident closed','ok');}
+    mclose();await load();
+  }catch(err){toast('Action failed: '+((err.body&&err.body.error)||err.message),'err');}
 }
 
 // ------------------------------------------------------------------ boot

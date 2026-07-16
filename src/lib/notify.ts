@@ -245,6 +245,19 @@ const TEMPLATES: Record<string, { title: string; body?: string }> = {
     title: 'Quote {quote_number} accepted · Order #{order_number}',
     body: '{customer_name} accepted — {total_amount}. Order confirmed.',
   },
+  // Sub-slice 2.3 — substitution + damage internal feed.
+  'substitution_pending_approval': {
+    title: 'Substitution {substitution_number} needs approval · Order #{order_number}',
+    body: '{original_item} → {replacement_item}. Requested by {actor_name}.',
+  },
+  'damage_incident_reported_internal': {
+    title: 'Damage {incident_number} reported · Order #{order_number}',
+    body: '{severity} · {incident_type}. Reported by {actor_name}.',
+  },
+  'damage_incident_pending_approval': {
+    title: 'Damage {incident_number} resolution needs approval · Order #{order_number}',
+    body: '{resolution_summary} Requested by {actor_name}.',
+  },
 };
 
 // ============================================================================
