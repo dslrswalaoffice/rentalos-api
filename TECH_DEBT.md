@@ -145,3 +145,31 @@ So internal staff (e.g. Shoaib) don't get the emails they should when a quote is
 **Requires / approach.** A dedicated sub-slice (~2–3 weeks): real auth→workspace mapping, subdomain (or path) routing, a workspace-selection/onboarding UI, and cross-tenant isolation tests (assert tenant A can never read/write tenant B's rows). Because the repository layer already scopes by `workspace_id`, this is additive — no data-model migration expected, just the resolution + routing + UI + isolation-test layers.
 
 **Blast radius if ignored.** None for v1 (single tenant). The moment a second workspace exists without this, requests would resolve to the wrong (hardcoded) tenant — so it is a hard gate before any second tenant is onboarded, not a gradual-degradation risk.
+
+---
+
+## TD-7 — Orphaned `proposed` substitutions from Save The Shoot
+
+**Status:** open · logged 2026-07-16 (Sub-slice 2.3 click-test) · defer to a targeted follow-up PR after Sub-slice 2.4 · not blocking (orphan is inert, no data corruption).
+
+**What.** When an operator picks "Substitute with another unit" in a Damage Incident's Save The Shoot (Step 3), the flow auto-creates a substitution `SUB-{order}-01` with `status='proposed'` (and `source_type='damage_incident'`, `linked_substitution_id` set on the incident). If the operator then abandons that and instead runs a **fresh** substitution via the line-item "Substitute this" action, the auto-created `SUB-XX-01` is never executed or reverted — it **orphans forever in `proposed`**.
+
+**Observed in click-test.** `SUB-29-01` (`source_type='damage_incident'`, `status='proposed'`) exists but was superseded by the manually-created `SUB-29-02` (`source_type='direct'`, `status='executed'`). Both rows persist; only 02 took effect.
+
+**Blast radius.** Cosmetic/reporting only — a `proposed` substitution reserves nothing (it's not executed, so no `substituted_out` line, no capacity claim) and shows in the Substitutions & Damage card as a dangling "Execute/Reject" row. No double-booking, no financial impact. It's clutter + a confusing audit trail, not a correctness bug.
+
+**How to reconcile.** Either (a) when the operator clicks "Substitute this" and a `proposed` `source_type='damage_incident'` substitution already exists for that line, **open THAT one** in the modal instead of creating a fresh SUB; or (b) drive execution through Save The Shoot's own next step so the proposed row is executed (or explicitly rejected) rather than left dangling. (a) is the smaller change. Also worth: surface a "Reject" affordance on orphaned proposed rows so operators can clean them up.
+
+---
+
+## TD-8 — Direct same-/same-product substitutions don't notify the customer
+
+**Status:** open · logged 2026-07-16 (Sub-slice 2.3 click-test) · defer to a targeted follow-up PR after Sub-slice 2.4 · not blocking.
+
+**What (accurate root cause).** The click-test reported "no `substitution_executed` email fires." The emit is **NOT missing** — `executeSubstitution` (`src/lib/substitutions.ts`) DOES call `emitCustomerNotification({ eventType: 'substitution_executed', … })`. It is **gated** by `substitution_policy.customer_notification_defaults_by_type[substitution_type]`, and the seeded policy sets `same_unit_swap: false` and `same_product_swap: false` (migration 051) — matching the handoff pack's own rule ("same_unit + same_product = silent, everything else = notify"). The click-test's `SUB-29-02` was `same_product_swap`, so **silence is the configured behavior**, not a bug. The email DOES fire for `equivalent_product_swap`, `upgrade_free`, `upgrade_paid`, `downgrade_credit`, `kit_component_swap` (all default `true`).
+
+**The real gap.** A **direct** `same_product_swap` (a like-for-like unit swap not linked to a damage incident) therefore tells the customer nothing — and since it's `source_type='direct'`, there's no damage-incident notification carrying the news either. So the customer's gear was swapped with zero communication. That's defensible for a true same-unit swap (identical model, invisible to the customer), but operators may reasonably expect a heads-up.
+
+**How to reconcile.** A policy decision, not a missing emit: either (a) flip `customer_notification_defaults_by_type.same_product_swap` (and/or `same_unit_swap`) to `true` in the seed / per-workspace settings; or (b) make `executeSubstitution` always emit `substitution_executed` on execute regardless of type, and let the policy gate only the *channel*; or (c) leave as-is (silent is correct for identical-unit swaps) and document it in the operator UI so the silence is intentional, not surprising. Pick per how DSLRSWALA wants like-for-like swaps communicated.
+
+**Blast radius.** No data/financial impact. Purely a customer-communication expectation gap on the silent-by-policy substitution types.
