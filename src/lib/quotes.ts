@@ -233,18 +233,27 @@ export async function sendQuoteVersion(args: {
   await audit({ workspaceId: args.workspaceId, actorUserId: args.actorUserId, eventType: 'quotes.sent', targetType: 'quote_version', targetId: v.id, payload: { order_id: args.orderId, quote_number: v.quote_number, valid_until: validUntil }, ipAddress: null, userAgent: null });
 
   const trackingUrl = `${args.appOrigin}/quote-view.html?token=${token}`;
-  emitCustomerNotification({
-    workspaceId: args.workspaceId, orderId: args.orderId, personId: built.customer.id, eventType: 'quote_sent',
-    message: `Your quote ${v.quote_number} for ${inr(built.total_paise)} is ready. View and accept it here: ${trackingUrl}`,
-    channels: ['whatsapp', 'email'], contact: { phone: built.customer.phone, email: built.customer.email }, settings,
-    variables: {
-      customer_name: built.customer.name ?? 'there', quote_number: v.quote_number, total_amount: inr(built.total_paise),
-      rental_start: fmtDate(built.rental_start_at), rental_end: fmtDate(built.rental_end_at),
-      valid_until: fmtDate(validUntil), tracking_url: trackingUrl,
-      // workspace_name is resolved by emitCustomerNotification from the workspace
-      // row; do NOT pass an empty string here or it clobbers the real name.
-    },
-  }).catch(() => {});
+  // MUST await (Bug: quote_sent never fired). This runs in a Vercel serverless
+  // function; once the HTTP handler returns, un-awaited async work is frozen and
+  // may never complete — so a fire-and-forget emit lost the race against the slow
+  // SMTP send + notification_deliveries insert (whereas the fast in-product path
+  // usually won). The manual Send Update flow awaits its emit and works; this now
+  // matches it. Still fail-open: a notification failure must not fail the send
+  // (the version is already committed as 'sent').
+  try {
+    await emitCustomerNotification({
+      workspaceId: args.workspaceId, orderId: args.orderId, personId: built.customer.id, eventType: 'quote_sent',
+      message: `Your quote ${v.quote_number} for ${inr(built.total_paise)} is ready. View and accept it here: ${trackingUrl}`,
+      channels: ['whatsapp', 'email'], contact: { phone: built.customer.phone, email: built.customer.email }, settings,
+      variables: {
+        customer_name: built.customer.name ?? 'there', quote_number: v.quote_number, total_amount: inr(built.total_paise),
+        rental_start: fmtDate(built.rental_start_at), rental_end: fmtDate(built.rental_end_at),
+        valid_until: fmtDate(validUntil), tracking_url: trackingUrl,
+        // workspace_name is resolved by emitCustomerNotification from the workspace
+        // row; do NOT pass an empty string here or it clobbers the real name.
+      },
+    });
+  } catch { /* fail-open: send already succeeded */ }
   return { ok: true, version: { id: v.id, status: 'sent', valid_until: validUntil, tracking_token: token } };
 }
 
@@ -288,20 +297,26 @@ export async function acceptQuoteVersion(args: {
   `;
   await audit({ workspaceId: args.workspaceId, actorUserId: args.actorUserId, eventType: 'quotes.accepted', targetType: 'quote_version', targetId: v.id, payload: { order_id: args.orderId, source: args.source, quote_number: v.quote_number }, ipAddress: args.ip ?? null, userAgent: null });
 
+  // Notifications must be AWAITED — same serverless-freeze reason as sendQuoteVersion
+  // above (un-awaited emits are killed when the handler returns). Fail-open.
   // Internal sales notification (in-product; no customer-worded email to members).
-  emitNotification({
-    workspaceId: args.workspaceId, actorUserId: args.actorUserId, eventType: 'quote_accepted_internal',
-    targetType: 'order', targetId: args.orderId, linkUrl: `/order-360.html?id=${args.orderId}`,
-    metadata: { order_number: order?.order_number ?? '', quote_number: v.quote_number, customer_name: order?.customer_name ?? '', total_amount: inr(Number(order?.total_paise ?? 0)) },
-  }).catch(() => {});
+  try {
+    await emitNotification({
+      workspaceId: args.workspaceId, actorUserId: args.actorUserId, eventType: 'quote_accepted_internal',
+      targetType: 'order', targetId: args.orderId, linkUrl: `/order-360.html?id=${args.orderId}`,
+      metadata: { order_number: order?.order_number ?? '', quote_number: v.quote_number, customer_name: order?.customer_name ?? '', total_amount: inr(Number(order?.total_paise ?? 0)) },
+    });
+  } catch { /* fail-open */ }
   // Customer confirmation.
   if (order) {
-    emitCustomerNotification({
-      workspaceId: args.workspaceId, orderId: args.orderId, personId: order.customer_person_id, eventType: 'quote_accepted',
-      message: `Thank you — quote ${v.quote_number} has been accepted and your order #${order.order_number} is confirmed.`,
-      channels: ['whatsapp', 'email'], contact: { phone: order.customer_phone, email: order.customer_email },
-      variables: { customer_name: order.customer_name ?? 'there', quote_number: v.quote_number, order_number: order.order_number, total_amount: inr(Number(order.total_paise)) /* workspace_name resolved in emitCustomerNotification */ },
-    }).catch(() => {});
+    try {
+      await emitCustomerNotification({
+        workspaceId: args.workspaceId, orderId: args.orderId, personId: order.customer_person_id, eventType: 'quote_accepted',
+        message: `Thank you — quote ${v.quote_number} has been accepted and your order #${order.order_number} is confirmed.`,
+        channels: ['whatsapp', 'email'], contact: { phone: order.customer_phone, email: order.customer_email },
+        variables: { customer_name: order.customer_name ?? 'there', quote_number: v.quote_number, order_number: order.order_number, total_amount: inr(Number(order.total_paise)) /* workspace_name resolved in emitCustomerNotification */ },
+      });
+    } catch { /* fail-open */ }
   }
   return { ok: true };
 }
