@@ -203,12 +203,16 @@ workspace.get('/', async (c) => {
   const session = c.get('session')!;
   const state = await buildState(session);
   if (!state) return c.json({ error: 'not_found' }, 404);
-  // Workspace config/settings change rarely; let the browser cache it per
-  // navigation. `private` is mandatory — this is workspace-scoped (multi-tenant)
-  // data that must never land in a shared cache. Settings/feature mutations
-  // update the client from the PATCH response (never re-GET), so there's no
-  // read-after-write staleness.
-  c.header('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
+  // Bug B hardening (PR #80): the previous `max-age=60, stale-while-revalidate=300`
+  // let the BROWSER serve a pre-save copy of the settings for up to ~60s (and
+  // stale up to ~6min). The New Order Composer reads this endpoint on load right
+  // after an operator edits a policy in Settings, so a cached response showed the
+  // OLD default (e.g. 240 after saving 180) — a leading suspect for Bug B's
+  // composer symptom. This is workspace config that must reflect a just-saved
+  // change immediately, so we make it always-revalidate. `private` stays (never
+  // shared/CDN-cache multi-tenant data). NOTE: this is a safe hardening, not a
+  // trace-confirmed root cause — see DIAGNOSTIC_REPORT.md Section 3.
+  c.header('Cache-Control', 'private, no-cache, must-revalidate');
   return c.json(state);
 });
 

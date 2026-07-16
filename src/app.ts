@@ -25,7 +25,8 @@ import { invitations } from './routes/invitations.js';
 import { members } from './routes/members.js';
 import { approvals } from './routes/approvals.js';
 import { standbys } from './routes/standbys.js';
-import { quoteVersions } from './routes/quote_versions.js';
+// quoteVersions is folded into the orders router (src/routes/orders.ts), not
+// mounted here — see the note by the /api/orders mount below (Bug A, PR #80).
 import { publicQuotes } from './routes/public_quotes.js';
 import { cron } from './routes/cron.js';
 import { config } from './lib/config.js';
@@ -85,9 +86,10 @@ app.route('/api/invitations', invitations);
 app.route('/api/members', members);
 app.route('/api/approvals', approvals);
 app.route('/api/standbys', standbys);
-// Quote-version routes live under /api/orders/:id/quote-versions — mounted at the
-// same prefix as the orders router; Hono matches by full path so they coexist.
-app.route('/api/orders', quoteVersions);
+// Quote-version routes (/api/orders/:id/quote-versions) are folded INTO the
+// orders router (see src/routes/orders.ts → `orders.route('/', quoteVersions)`),
+// NOT mounted here. A second `app.route('/api/orders', quoteVersions)` made the
+// idempotency middleware run twice and 409 every quote request (Bug A, PR #80).
 // PUBLIC (unauthenticated) customer quote tracking — no session middleware.
 app.route('/api/quote-versions', publicQuotes);
 // Background jobs (secret-header auth) — standby expiry/reminders + quote monitor.
