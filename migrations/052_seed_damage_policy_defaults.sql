@@ -12,7 +12,7 @@
 --   * approval_required.* — the thresholds that flip requires_approval TRUE:
 --     severity ≥ major, cost > ₹15k (1500000 paise), insurance claim > ₹50k
 --     (5000000 paise), customer disputed, deposit forfeit > 50%.
---   * min_photos_required_per_incident (3) — enforced client + server (Rule).
+--   (No min_photos policy — photos are out of scope for 2.3, Aamir Q1.)
 -- ---------------------------------------------------------------------------
 
 UPDATE workspaces
@@ -54,8 +54,7 @@ SET settings = jsonb_set(
       ),
       'grace_period_for_financial_settlement_days', 7,
       'require_customer_signature_on_liability_acceptance', true,
-      'allow_customer_incident_reporting_via_portal', false,
-      'min_photos_required_per_incident', 3
+      'allow_customer_incident_reporting_via_portal', false
     )
   ),
   true

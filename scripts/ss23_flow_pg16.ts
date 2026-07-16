@@ -123,13 +123,13 @@ psql(`UPDATE assets SET status='out' WHERE id='${ASSET}' AND status='available';
 // true for major severity).
 const DI = psql(`INSERT INTO damage_incidents
   (workspace_id, order_id, incident_number, reported_by_type, occurred_at, incident_type, severity, description,
-   photos, customer_liability, estimated_cost_paise, financial_resolution, deposit_action, status, requires_approval,
+   customer_liability, estimated_cost_paise, financial_resolution, deposit_action, status, requires_approval,
    created_by, policy_applied_snapshot)
   VALUES ('${WS}','${ORDER}','DI-2026-9241-001','customer_whatsapp', now()-interval '1 hour','accidental_drop','major',
-   'Dropped on set','[{"url":"a"},{"url":"b"},{"url":"c"}]'::jsonb,'yes',4500000,'pending','no_change','reported',true,
+   'Dropped on set','yes',4500000,'pending','no_change','reported',true,
    '${USER}','{"auto_liability_applied":"yes"}'::jsonb) RETURNING id;`);
-psql(`INSERT INTO damage_incident_assets (workspace_id,damage_incident_id,order_item_id,asset_id,severity,photos_after,disposition)
-  VALUES ('${WS}','${DI}','${OI}','${ASSET}','major','[{"url":"c"}]'::jsonb,'maintenance_required');`);
+psql(`INSERT INTO damage_incident_assets (workspace_id,damage_incident_id,order_item_id,asset_id,severity,disposition)
+  VALUES ('${WS}','${DI}','${OI}','${ASSET}','major','maintenance_required');`);
 psql(`INSERT INTO damage_incident_events (workspace_id,damage_incident_id,event_type,actor_type,actor_id,actor_name,title)
   VALUES ('${WS}','${DI}','reported','user','${USER}','Op','Incident reported');`);
 {

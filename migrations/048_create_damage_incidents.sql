@@ -57,7 +57,9 @@ CREATE TABLE IF NOT EXISTS damage_incidents (
   )),
 
   description TEXT NOT NULL,
-  photos JSONB NOT NULL DEFAULT '[]'::jsonb,                -- [{url, gps, timestamp}]
+  -- No photo columns (Aamir Q1): damage evidence flows through the existing Order
+  -- Notes card (Ruhan attaches WhatsApp screenshots there). First-class photo
+  -- capture is a future sub-slice with proper blob storage — NOT here.
 
   -- Operational continuity (Save The Shoot choice)
   operational_decision TEXT CHECK (operational_decision IN (

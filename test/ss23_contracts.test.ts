@@ -81,39 +81,18 @@ test('isFinancialSubstitution — only money-touching swaps are financial', () =
 });
 
 // ── Damage incident create ──────────────────────────────────────────────────
-test('damageCreateSchema — the exact 5-step modal payload parses', () => {
+test('damageCreateSchema — the exact 5-step modal payload parses (no photos, Aamir Q1)', () => {
   assertParses(damageCreateSchema, {
     reported_by_type: 'customer_whatsapp',
     occurred_at: ISO,
     incident_type: 'accidental_drop',
     severity: 'major',
     description: 'Dropped on concrete; lens mount cracked.',
-    photos: [{ url: 'https://x/1.jpg' }, { url: 'https://x/2.jpg' }],
     affected_items: [
-      { order_item_id: UUID, asset_id: UUID2, severity: 'major', photos_after: [{ url: 'https://x/3.jpg' }] },
+      { order_item_id: UUID, asset_id: UUID2, severity: 'major', estimated_repair_cost_paise: 1500000, disposition: 'maintenance_required' },
     ],
     estimated_cost_paise: 4500000,
   }, 'full damage incident');
-});
-
-test('damageCreateSchema — photo refs: enriched shape parses, 8192 cap enforced', () => {
-  // Refs-only shape (TD-5): url + gps + timestamp + uploaded_by + upload_pending.
-  assertParses(damageCreateSchema, {
-    reported_by_type: 'customer_whatsapp', occurred_at: ISO, incident_type: 'liquid_damage', severity: 'minor',
-    description: 'spill', photos: [{ url: 'https://wa.me/media/abc.jpg', gps: '22.30,73.18', timestamp: ISO, uploaded_by: UUID, upload_pending: true }],
-    affected_items: [{ order_item_id: UUID, severity: 'minor', photos_after: [{ url: 'https://x/a.jpg' }] }],
-  }, 'enriched photo ref');
-  // url over the 8192 cap rejects.
-  assertRejects(damageCreateSchema, {
-    reported_by_type: 'staff_observation', occurred_at: ISO, incident_type: 'misuse', severity: 'minor',
-    description: 'x', photos: [{ url: 'https://x/' + 'a'.repeat(8200) }],
-    affected_items: [{ order_item_id: UUID, severity: 'minor' }],
-  }, 'url over 8192');
-  // empty url rejects.
-  assertRejects(damageCreateSchema, {
-    reported_by_type: 'staff_observation', occurred_at: ISO, incident_type: 'misuse', severity: 'minor',
-    description: 'x', photos: [{ url: '' }], affected_items: [{ order_item_id: UUID, severity: 'minor' }],
-  }, 'empty url');
 });
 
 test('damageCreateSchema — bad enums / empty affected_items reject', () => {

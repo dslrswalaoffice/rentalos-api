@@ -41,23 +41,11 @@ function actorName(session: { user: SessionUser }): string {
   return (session.user as { display_name?: string; email?: string }).display_name ?? (session.user as { email?: string }).email ?? 'Operator';
 }
 
-// Photos are REFS ONLY in Sub-slice 2.3 (no upload endpoint — see TD-5). `url` is
-// a plain string (8192-char cap at the validation layer, matching Aamir's spec);
-// the server stamps uploaded_by + upload_pending in the lib. Ruhan can paste an
-// existing R2/S3/WhatsApp media URL today. `.passthrough()` keeps any extra keys.
-const photoSchema = z.object({
-  url: z.string().min(1).max(8192),
-  gps: z.string().max(120).nullish(),
-  timestamp: z.string().max(60).nullish(),
-  uploaded_by: z.string().uuid().nullish(),
-  upload_pending: z.boolean().nullish(),
-}).passthrough();
+// No photos in 2.3 (Aamir Q1) — damage evidence lives in the Order Notes card.
 const affectedItemSchema = z.object({
   order_item_id: z.string().uuid(),
   asset_id: z.string().uuid().nullish(),
   severity: z.enum(SEVERITIES),
-  photos_after: z.array(photoSchema).default([]),
-  photos_before: z.array(photoSchema).default([]),
   estimated_repair_cost_paise: z.number().int().min(0).nullish(),
   disposition: z.enum(['return_to_service', 'maintenance_required', 'retire', 'sell_as_used', 'scrap', 'pending_assessment']).nullish(),
   repair_notes: z.string().max(2000).nullish(),
@@ -70,7 +58,6 @@ export const damageCreateSchema = z.object({
   incident_type: z.enum(INCIDENT_TYPES),
   severity: z.enum(SEVERITIES),
   description: z.string().min(1).max(4000),
-  photos: z.array(photoSchema).default([]),
   affected_items: z.array(affectedItemSchema).min(1),
   estimated_cost_paise: z.number().int().min(0).nullish(),
 });
@@ -131,16 +118,14 @@ orderDamage.post('/:id/damage-incidents', requirePermission('damage.record'), as
   const r = await createDamageIncident({
     workspaceId: session.workspace.id, orderId: id, actorUserId: session.user.id, actorName: actorName(session),
     reportedByType: p.reported_by_type, occurredAt: p.occurred_at, incidentType: p.incident_type as IncidentType, severity: p.severity as Severity,
-    description: p.description, photos: p.photos, estimatedCostPaise: p.estimated_cost_paise ?? null,
+    description: p.description, estimatedCostPaise: p.estimated_cost_paise ?? null,
     affectedItems: p.affected_items.map((it) => ({
       order_item_id: it.order_item_id, asset_id: it.asset_id ?? null, severity: it.severity as Severity,
-      photos_after: it.photos_after, photos_before: it.photos_before,
       estimated_repair_cost_paise: it.estimated_repair_cost_paise ?? null, disposition: it.disposition ?? null, repair_notes: it.repair_notes ?? null,
     })),
     ip: ipAddress, userAgent,
   });
   if (!r.ok) {
-    if (r.error === 'min_photos_required') return c.json({ error: r.error, min_photos: r.min_photos, provided: r.provided }, 422);
     const code = r.error === 'order_not_found' ? 404 : 409;
     return c.json({ error: r.error }, code);
   }

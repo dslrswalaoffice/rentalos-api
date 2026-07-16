@@ -132,9 +132,8 @@ psql(`INSERT INTO damage_incidents
    'major','Dropped on concrete, lens mount cracked','yes',100,'pending','hold',
    'reported',true,'${USER}','${SUB}');`);
 psql(`INSERT INTO damage_incident_assets
-  (id, workspace_id, damage_incident_id, order_item_id, asset_id, severity, photos_after, disposition)
-  VALUES (gen_random_uuid(),'${WS}','${DI}','${OI}','${ASSET}','major',
-   '[{"url":"https://x/1.jpg"},{"url":"https://x/2.jpg"},{"url":"https://x/3.jpg"}]'::jsonb,'maintenance_required');`);
+  (id, workspace_id, damage_incident_id, order_item_id, asset_id, severity, disposition)
+  VALUES (gen_random_uuid(),'${WS}','${DI}','${OI}','${ASSET}','major','maintenance_required');`);
 psql(`INSERT INTO damage_incident_events
   (id, workspace_id, damage_incident_id, event_type, actor_type, actor_id, actor_name, title, body)
   VALUES (gen_random_uuid(),'${WS}','${DI}','reported','user','${USER}','Op','Incident reported','via customer WhatsApp');`);

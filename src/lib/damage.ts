@@ -40,23 +40,8 @@ export const CUSTOMER_LIABILITIES = ['yes', 'no', 'partial', 'pending_investigat
 export const FINANCIAL_RESOLUTIONS = ['customer_pays', 'insurance_claim', 'warranty_coverage', 'business_absorbs', 'partial_split', 'deposit_only', 'deposit_plus_additional', 'pending'] as const;
 export const DEPOSIT_ACTIONS = ['hold', 'adjust', 'forfeit_partial', 'forfeit_full', 'no_change'] as const;
 
-// Photos are REFS ONLY in 2.3 (TD-5 — no upload infra yet). The server stamps
-// each ref with the uploader + upload_pending so a future blob sub-slice can find
-// and reconcile placeholders. upload_pending is false only for a URL we already
-// own (a Vercel Blob URL); everything else (pasted WhatsApp/R2/S3 links) is a
-// pending placeholder until real upload lands.
-function enrichPhotos(photos: Array<Record<string, unknown>> | undefined, uploaderId: string): Array<Record<string, unknown>> {
-  return (photos ?? []).map((p) => {
-    const url = String(p.url ?? '');
-    const owned = url.includes('.blob.vercel-storage.com');
-    return {
-      ...p,
-      url,
-      uploaded_by: (p.uploaded_by as string | undefined) ?? uploaderId,
-      upload_pending: typeof p.upload_pending === 'boolean' ? p.upload_pending : !owned,
-    };
-  });
-}
+// No photo handling in 2.3 (Aamir Q1) — damage evidence lives in the Order Notes
+// card. First-class photo capture is a future sub-slice with proper blob storage.
 
 function isUniqueViolation(e: unknown): boolean {
   const err = e as { code?: string; message?: string } | null;
@@ -71,7 +56,6 @@ function inr(paise: number): string {
 type DamagePolicy = {
   auto_customer_liability_by_type: Record<string, string>;
   approval_required: { severity_major_or_higher?: boolean; cost_over_paise?: number; insurance_claim_over_paise?: number; customer_disputed?: boolean; deposit_forfeit_over_percent?: number };
-  min_photos_required_per_incident: number;
   customer_notification_default: boolean;
   notify_owner_severity_threshold: string;
 };
@@ -80,7 +64,6 @@ function readDamagePolicy(settings: Record<string, any> | null | undefined): Dam
   return {
     auto_customer_liability_by_type: p.auto_customer_liability_by_type ?? {},
     approval_required: p.approval_required ?? {},
-    min_photos_required_per_incident: Number(p.min_photos_required_per_incident ?? 3),
     customer_notification_default: p.customer_notification_default !== false,
     notify_owner_severity_threshold: String(p.notify_owner_severity_threshold ?? 'major'),
   };
@@ -131,14 +114,13 @@ export async function addDamageEvent(args: {
 
 export type AffectedItemInput = {
   order_item_id: string; asset_id?: string | null; severity: Severity;
-  photos_after?: Array<Record<string, unknown>>; photos_before?: Array<Record<string, unknown>>;
   estimated_repair_cost_paise?: number | null; disposition?: string | null; repair_notes?: string | null;
 };
 
 export type CreateDamageArgs = {
   workspaceId: string; orderId: string; actorUserId: string; actorName: string;
   reportedByType: string; occurredAt: string; incidentType: IncidentType; severity: Severity;
-  description: string; photos?: Array<Record<string, unknown>>;
+  description: string;
   affectedItems: AffectedItemInput[];
   estimatedCostPaise?: number | null;
   ip?: string | null; userAgent?: string | null;
@@ -146,7 +128,7 @@ export type CreateDamageArgs = {
 
 export type CreateDamageResult =
   | { ok: true; incident: any; requires_approval: boolean }
-  | { ok: false; error: string; min_photos?: number; provided?: number };
+  | { ok: false; error: string };
 
 /** Report a damage incident: incident + per-asset rows + timeline, auto-liability
  *  from policy, approval routing, min-photo enforcement, notifications. */
@@ -157,14 +139,6 @@ export async function createDamageIncident(args: CreateDamageArgs): Promise<Crea
 
   const settings = (await query<{ settings: Record<string, any> | null }>(sql`SELECT settings FROM workspaces WHERE id = ${args.workspaceId}::uuid LIMIT 1`))[0]?.settings ?? {};
   const policy = readDamagePolicy(settings);
-
-  // Min photos: total across incident-level + per-asset "after" photos.
-  const incidentPhotos = enrichPhotos(args.photos, args.actorUserId);
-  const assetPhotoCount = args.affectedItems.reduce((n, it) => n + (it.photos_after?.length ?? 0), 0);
-  const totalPhotos = incidentPhotos.length + assetPhotoCount;
-  if (totalPhotos < policy.min_photos_required_per_incident) {
-    return { ok: false, error: 'min_photos_required', min_photos: policy.min_photos_required_per_incident, provided: totalPhotos };
-  }
 
   // Auto customer_liability from policy map (frozen into the snapshot).
   const autoLiability = policy.auto_customer_liability_by_type[args.incidentType] ?? 'pending_investigation';
@@ -185,12 +159,12 @@ export async function createDamageIncident(args: CreateDamageArgs): Promise<Crea
       incident = (await query<any>(sql`
         INSERT INTO damage_incidents (
           workspace_id, order_id, incident_number, reported_by_type, occurred_at, incident_type, severity,
-          description, photos, customer_liability, estimated_cost_paise, financial_resolution, deposit_action,
+          description, customer_liability, estimated_cost_paise, financial_resolution, deposit_action,
           status, requires_approval, created_by, policy_applied_snapshot)
         VALUES (
           ${args.workspaceId}::uuid, ${args.orderId}::uuid, ${incidentNumber}::text, ${args.reportedByType}::text,
           ${args.occurredAt}::timestamptz, ${args.incidentType}::text, ${args.severity}::text, ${args.description}::text,
-          ${JSON.stringify(incidentPhotos)}::jsonb, ${autoLiability}::text, ${args.estimatedCostPaise ?? null}::bigint,
+          ${autoLiability}::text, ${args.estimatedCostPaise ?? null}::bigint,
           'pending'::text, 'no_change'::text, 'reported'::text, ${approval.requires}::boolean, ${args.actorUserId}::uuid,
           ${JSON.stringify(policySnapshot)}::jsonb)
         RETURNING *
@@ -205,9 +179,8 @@ export async function createDamageIncident(args: CreateDamageArgs): Promise<Crea
   // Per-asset rows.
   for (const it of args.affectedItems) {
     await sql`
-      INSERT INTO damage_incident_assets (workspace_id, damage_incident_id, order_item_id, asset_id, severity, photos_before, photos_after, estimated_repair_cost_paise, disposition, repair_notes)
+      INSERT INTO damage_incident_assets (workspace_id, damage_incident_id, order_item_id, asset_id, severity, estimated_repair_cost_paise, disposition, repair_notes)
       VALUES (${args.workspaceId}::uuid, ${incident.id}::uuid, ${it.order_item_id}::uuid, ${it.asset_id ?? null}::uuid, ${it.severity}::text,
-        ${JSON.stringify(enrichPhotos(it.photos_before, args.actorUserId))}::jsonb, ${JSON.stringify(enrichPhotos(it.photos_after, args.actorUserId))}::jsonb,
         ${it.estimated_repair_cost_paise ?? null}::bigint, ${it.disposition ?? null}::text, ${it.repair_notes ?? null}::text)
     `;
   }

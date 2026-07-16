@@ -20,9 +20,7 @@ CREATE TABLE IF NOT EXISTS damage_incident_assets (
     'cosmetic', 'minor', 'major', 'total_loss', 'catastrophic'
   )),
 
-  -- Photo comparison
-  photos_before JSONB DEFAULT '[]'::jsonb,                  -- pulled from the dispatch event
-  photos_after JSONB NOT NULL DEFAULT '[]'::jsonb,          -- from this incident report
+  -- No photo columns (Aamir Q1) — evidence lives in the Order Notes card.
 
   -- Repair costing
   estimated_repair_cost_paise BIGINT,

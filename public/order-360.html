@@ -106,8 +106,8 @@ a:hover{color:var(--info-hover)}
 .m-input{font-family:var(--mono);font-size:14px;color:var(--head);border:1px solid var(--neutral-border);background:var(--bg);border-radius:9px;padding:9px 12px;outline:none}
 .m-input:focus{border-color:var(--info)}
 .m-select{font-family:var(--mono);font-size:13px;color:var(--head);border:1px solid var(--neutral-border);background:var(--bg);border-radius:9px;padding:9px 12px;outline:none;cursor:pointer}
-.m-select[data-f],.m-input[data-f],.m-input[data-photo],.m-ta[data-f]{width:100%;box-sizing:border-box}
-.m-input[data-f],.m-input[data-photo]{font-family:var(--body-font);font-size:13px}
+.m-select[data-f],.m-input[data-f],.m-ta[data-f]{width:100%;box-sizing:border-box}
+.m-input[data-f]{font-family:var(--body-font);font-size:13px}
 .m-ta{width:100%;min-height:64px;resize:vertical;padding:11px 13px;border:1px solid var(--neutral-border);border-radius:9px;font-family:var(--body-font);font-size:13px;color:var(--head);outline:none}
 .m-ta:focus{border-color:var(--info)}
 .m-chip{display:inline-flex;align-items:center;padding:5px 11px;border-radius:7px;background:var(--info-bg);color:var(--info);font-family:var(--mono);font-size:12px;font-weight:600}
@@ -1309,9 +1309,9 @@ async function handleQuote(kind,qid){
 
 // ============================================================ Sub-slice 2.3
 // Substitutions & Damage — card + modals. Native selects for the taxonomies
-// (design-consistent with the page's simpler modals); photos are URL refs only
-// (TD-5, no upload infra yet). Every mutation carries the shared client's auto
-// Idempotency-Key via api.post.
+// (design-consistent with the page's simpler modals). Damage evidence attaches in
+// the Order Notes card (no photos here, Aamir Q1). Every mutation carries the
+// shared client's auto Idempotency-Key via api.post.
 // ---------------------------------------------------------------------------
 function titleize(s){return String(s||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
 function selOpts(list,cur){return list.map(v=>'<option value="'+escapeAttr(v)+'"'+(v===cur?' selected':'')+'>'+escapeHtml(titleize(v))+'</option>').join('');}
@@ -1439,7 +1439,7 @@ async function openDamageModal(itemId,dmgId){
   if(!it){toast('No rental line item to report on','err');return;}
   M.kind='damage';M.busy=false;
   M.data={view:false,step:1,itemId:it.id,incidentType:'accidental_drop',severity:'major',description:'',reporter:'staff_observation',
-    photos:['','',''],decision:'pending',products:[],replProduct:'',estCost:'',
+    decision:'pending',products:[],replProduct:'',estCost:'',
     liability:'',resolution:'pending',deposit:'no_change',finalCost:'',created:null};
   mrender(renderDamageModal());
   try{const r=await api.get('/api/inventory/products');M.data.products=(r.products||[]).filter(p=>!p.is_kit);}catch{}
@@ -1465,9 +1465,7 @@ function renderDamageModal(){
       +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+DMG_INCIDENT_TYPES.map(t=>'<div data-dtype="'+t+'" style="padding:9px 8px;border-radius:9px;border:1px solid '+(t===d.incidentType?'var(--accent)':'#e6e3dc')+';background:'+(t===d.incidentType?'#eef2ff':'#fff')+';color:'+(t===d.incidentType?'var(--accent)':'var(--head)')+';font-size:11.5px;font-weight:'+(t===d.incidentType?'700':'500')+';cursor:pointer;text-align:center">'+escapeHtml(titleize(t))+'</div>').join('')+'</div>'
       +mlabel('DESCRIPTION',true)+'<textarea data-f="description" class="m-ta" style="min-height:70px" placeholder="What happened?">'+escapeHtml(d.description)+'</textarea>'
       +mlabel('WHO REPORTED THIS?')+'<select data-f="reporter" class="m-select">'+selOpts(DMG_REPORTERS,d.reporter)+'</select>'
-      +mlabel('PHOTOS (min 3 — paste URLs; upload coming later)',true)
-      +d.photos.map((p,i)=>'<input data-photo="'+i+'" class="m-input" style="margin-bottom:8px" placeholder="Photo URL '+(i+1)+'" value="'+escapeAttr(p)+'">').join('')
-      +'<button class="btn btn-tiny btn-ghost" data-dphoto-add>'+I('plus',14)+'Add photo</button>';
+      +'<div style="margin-top:12px;font-size:11.5px;color:var(--neutral)">📎 Attach damage photos (WhatsApp screenshots etc.) in the order\'s <b>Notes</b> card.</div>';
   }else if(d.step===2){
     const it=S.items.find(i=>i.id===d.itemId)||{};
     body=mlabel('AFFECTED ITEM')+'<div style="font-size:13px;color:var(--head);font-weight:600">'+escapeHtml(it.description||'Item')+'</div>'
@@ -1484,14 +1482,14 @@ function renderDamageModal(){
       +mlabel('DEPOSIT ACTION')+'<select data-f="deposit" class="m-select">'+selOpts(DMG_DEPOSIT,d.deposit)+'</select>'
       +mlabel('FINAL COST (if known)')+'<div style="display:flex;align-items:center;gap:8px"><span class="mono" style="color:var(--neutral)">₹</span><input data-f="finalCost" class="m-input" style="max-width:180px" placeholder="Final cost (rupees)" value="'+escapeAttr(d.finalCost)+'"></div>';
   }else{
-    const it=S.items.find(i=>i.id===d.itemId)||{};const nPhotos=d.photos.filter(p=>p.trim()).length;
+    const it=S.items.find(i=>i.id===d.itemId)||{};
     body=mlabel('REVIEW')
       +'<div style="display:flex;flex-direction:column;gap:7px;font-size:13px;color:var(--head)">'
       +'<div><b>'+escapeHtml(titleize(d.incidentType))+'</b> · '+escapeHtml(titleize(d.severity))+' · '+escapeHtml(it.description||'Item')+'</div>'
       +'<div style="color:var(--neutral);font-size:12.5px">'+escapeHtml(d.description||'—')+'</div>'
-      +'<div class="mono" style="font-size:12px;color:var(--neutral)">'+nPhotos+' photo(s) · reported via '+escapeHtml(titleize(d.reporter))+'</div>'
+      +'<div class="mono" style="font-size:12px;color:var(--neutral)">Reported via '+escapeHtml(titleize(d.reporter))+'</div>'
       +'<div class="mono" style="font-size:12px;color:var(--neutral)">Save the Shoot: '+escapeHtml(titleize(d.decision))+'</div>'
-      +'</div>'+(nPhotos<3?'<div style="margin-top:12px;font-size:12px;color:var(--danger)">⚠ At least 3 photos are required.</div>':'');
+      +'</div>';
   }
   const isLast=d.step===5;
   return '<div class="m-hd"><div><div class="mono" style="display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:20px;background:var(--danger-bg);color:var(--danger);font-size:10px;font-weight:700;letter-spacing:.1em"><span style="width:7px;height:7px;border-radius:50%;background:var(--danger)"></span>DAMAGE INCIDENT</div>'
@@ -1523,13 +1521,11 @@ function renderDamageView(){
 }
 async function submitDamage(){
   if(M.busy)return;const d=M.data;
-  const photos=d.photos.filter(p=>p.trim()).map(p=>({url:p.trim()}));
-  if(photos.length<3){toast('At least 3 photos are required','err');return;}
   if(!d.description.trim()){toast('Description is required','err');return;}
   M.busy=true;mrender(renderDamageModal());
   try{
-    const body={reported_by_type:d.reporter,occurred_at:new Date().toISOString(),incident_type:d.incidentType,severity:d.severity,description:d.description,photos,
-      affected_items:[{order_item_id:d.itemId,severity:d.severity,photos_after:photos}]};
+    const body={reported_by_type:d.reporter,occurred_at:new Date().toISOString(),incident_type:d.incidentType,severity:d.severity,description:d.description,
+      affected_items:[{order_item_id:d.itemId,severity:d.severity}]};
     if(d.estCost)body.estimated_cost_paise=Math.round(Number(d.estCost)*100);
     const created=await api.post('/api/orders/'+S.id+'/damage-incidents',body);
     const incId=created.damage_incident.id;
@@ -1542,14 +1538,14 @@ async function submitDamage(){
       try{await api.post('/api/damage-incidents/'+incId+'/financial-resolution',{customer_liability:d.liability||'pending_investigation',financial_resolution:d.resolution,deposit_action:d.deposit,final_cost_paise:d.finalCost?Math.round(Number(d.finalCost)*100):undefined});}catch(e){}
     }
     toast('Damage incident '+created.damage_incident.incident_number+' created','ok');mclose();await load();
-  }catch(err){M.busy=false;if(err.body&&err.body.error==='min_photos_required'){toast('At least '+err.body.min_photos+' photos required','err');}else showModalError(err);}
+  }catch(err){M.busy=false;showModalError(err);}
 }
 
 // Delegated handlers for the 2.3 modals (field edits, step nav, sub-actions).
 document.addEventListener('input',(e)=>{
   const t=e.target;if(!t)return;
   if(M.kind==='substitution'){const f=t.getAttribute&&t.getAttribute('data-f');if(f){M.data[f]=t.value;if(f==='fin')mrender(renderSubModal(S.items.find(i=>i.id===M.data.itemId)||{}));}}
-  else if(M.kind==='damage'){const f=t.getAttribute&&t.getAttribute('data-f');if(f)M.data[f]=t.value;const ph=t.getAttribute&&t.getAttribute('data-photo');if(ph!=null)M.data.photos[Number(ph)]=t.value;}
+  else if(M.kind==='damage'){const f=t.getAttribute&&t.getAttribute('data-f');if(f)M.data[f]=t.value;}
 });
 document.addEventListener('click',(e)=>{
   const t=e.target;if(!t.closest)return;
@@ -1559,7 +1555,6 @@ document.addEventListener('click',(e)=>{
   const dtype=t.closest('[data-dtype]');if(dtype){M.data.incidentType=dtype.getAttribute('data-dtype');mrender(renderDamageModal());return;}
   const dsev=t.closest('[data-dsev]');if(dsev){M.data.severity=dsev.getAttribute('data-dsev');mrender(renderDamageModal());return;}
   const ddec=t.closest('[data-ddec]');if(ddec){M.data.decision=ddec.getAttribute('data-ddec');mrender(renderDamageModal());return;}
-  if(t.closest('[data-dphoto-add]')){M.data.photos.push('');mrender(renderDamageModal());return;}
   if(t.closest('[data-dsubmit]')){submitDamage();return;}
   if(t.closest('[data-dsave-shoot]')){damageViewAction('save-the-shoot');return;}
   if(t.closest('[data-dfin]')){damageViewAction('financial-resolution');return;}

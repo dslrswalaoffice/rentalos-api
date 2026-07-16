@@ -130,25 +130,18 @@ So internal staff (e.g. Shoaib) don't get the emails they should when a quote is
 
 ---
 
-## TD-5 — Blob upload infrastructure for damage-incident photos
+## TD-6 — Multi-tenancy resolution is hardcoded to DSLRSWALA
 
-**Status:** open · logged 2026-07-16 (Sub-slice 2.3) · deferred to a follow-up sub-slice by Aamir's explicit decision (Q4 + Q5). NOT blocking 2.3.
+**Status:** open · logged 2026-07-16 (Sub-slice 2.3, Aamir Q2) · **not blocking v1** (DSLRSWALA-only launch) · own sub-slice when SaaS onboarding begins.
 
-**What.** Damage incidents require photo evidence (min 3 per incident, policy-configurable). Photos are stored as **JSONB arrays of refs** — `damage_incidents.photos` and `damage_incident_assets.photos_before` / `photos_after`, each an array of `{url, gps, timestamp, uploaded_by, upload_pending}`. There is **no multi-photo upload endpoint**: the URLs are references to images hosted elsewhere. Sub-slice 2.3 ships with photo **refs only**.
+**What.** Workspace resolution hardcodes a single tenant: `getWorkspaceContext()` returns the DSLRSWALA workspace id for all requests. The **repository layer already supports real multi-tenancy correctly** — every SELECT/INSERT/UPDATE/DELETE filters/sets `workspace_id`, and Sub-slice 2.3 followed that pattern throughout (substitutions, damage incidents, insurance claims, and every read all carry `workspace_id = session.workspace.id`). So the data model is tenant-ready; only the *resolution* (which workspace a request belongs to) is stubbed.
 
-**Blocking.** Sub-slice 2.3 (damage-incident photos, refs only). Also blocks **future dispatch/return condition photos** (the same multi-photo capability will be reused at handover). Not blocking any 2.3 endpoint or workflow — the min-photo COUNT is enforced today; only real file upload is deferred.
+**Why it exists.** Multi-tenancy is a cross-cutting concern (auth→workspace mapping, subdomain/routing, a workspace-switch UI, cross-tenant isolation tests) that needs its own 2–3 week sub-slice. Building it speculatively inside a feature sub-slice would balloon scope. Aamir's decision (Q2): keep using existing tenant scoping now; defer the resolution work.
 
-**Investigation (2026-07-16, before writing photo code).** Grepped for upload/signed/blob/r2/s3/media/attachment infra. Finding: **PARTIAL infra exists** — `@vercel/blob` v0.27.3 is installed and used by ONE endpoint, `POST /api/inventory/products/:id/image` (Sub-turn 5f, `src/routes/inventory.ts`): server-relayed multipart → `put()`, path `workspaces/<ws>/products/<id>-<ts>-<rand>.jpg`, jpeg/png/webp, 5 MB cap, writes a **scalar** `products.image_url`. Contract signatures (migration 020) store base64 in-DB — a separate pattern. **No generic/multi-file endpoint, no JSONB-array media handling, no media/attachment table.** So the capability damage photos need genuinely does not exist. Building it is its own sub-slice (Aamir: "Do NOT create any signed_uploads endpoints in this sub-slice").
+**Where it lives.** The workspace-context resolver (session → workspace) and any place that assumes a single default workspace. NOT in the feature repositories — those are already correct.
 
-**Current pattern (shipped in 2.3, Aamir-approved).** JSONB array of `{url, gps, timestamp, uploaded_by, upload_pending}`:
-- `url` — plain string, **8192-char cap at the validation layer** (`photoSchema` in `src/routes/damage.ts`).
-- `upload_pending: true` — the URL is a placeholder/external ref; actual upload is pending future infra. `src/lib/damage.ts::enrichPhotos()` stamps `uploaded_by` = actor and `upload_pending = !isOwnedVercelBlob(url)` on every photo at insert.
-- The API accepts existing R2/S3/WhatsApp media URLs today (Ruhan pastes a WhatsApp media URL).
+**Blocking.** SaaS launch (onboarding a second tenant). **Not blocking:** the v1 DSLRSWALA-only launch, or any Sub-slice 2.x feature.
 
-**Approach when built.** Signed uploads with **Cloudflare R2 or Vercel Blob**: a generic `POST /api/damage-incidents/:id/photos` (or a shared media endpoint) — client-compress (reuse the product-image pipeline: max 1200px / JPEG 0.85 / 5 MB), upload under `workspaces/<ws>/damage/<incident>-<ts>-<rand>.jpg`, append the owned URL to the JSONB array, and a migration that flips `upload_pending → false` + validates URLs. The ref shape is forward-compatible: an owned blob URL is just another `{url, upload_pending:false}` — **no schema change needed** when upload lands.
+**Requires / approach.** A dedicated sub-slice (~2–3 weeks): real auth→workspace mapping, subdomain (or path) routing, a workspace-selection/onboarding UI, and cross-tenant isolation tests (assert tenant A can never read/write tenant B's rows). Because the repository layer already scopes by `workspace_id`, this is additive — no data-model migration expected, just the resolution + routing + UI + isolation-test layers.
 
-**Estimated effort.** 2–3 days when scheduled.
-
-**Where it lives.** `migrations/048` (`photos` JSONB), `migrations/049` (`photos_before`/`photos_after` JSONB); `src/routes/damage.ts` (`photoSchema`, 8192 cap); `src/lib/damage.ts` (`enrichPhotos`, min-photo COUNT enforcement — does not validate a URL resolves to a real image).
-
-**Blast radius if ignored.** Operators paste image URLs (or placeholders) instead of snapping a photo in-flow. Min-photo COUNT is enforced but not image validity. No data-model change needed later; no customer impact, no data loss.
+**Blast radius if ignored.** None for v1 (single tenant). The moment a second workspace exists without this, requests would resolve to the wrong (hardcoded) tenant — so it is a hard gate before any second tenant is onboarded, not a gradual-degradation risk.
