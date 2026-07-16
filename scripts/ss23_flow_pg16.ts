@@ -99,23 +99,46 @@ assert.ok(!(RESERVING_ITEM_STATUSES as readonly string[]).includes('substituted_
   console.log('  ✓ S3 substituted_out is non-reserving (real RESERVING_ITEM_STATUSES + conflict query)');
 }
 
-// revertSubstitution replicated (within window): restore original, clear the FK
-// reference + mark reverted FIRST, THEN drop the replacement line (the
-// replacement_order_item_id FK would otherwise block the delete).
+// ─── REGRESSION: revert FK-ordering bug (caught by this harness during M2) ────
+// The bug: revertSubstitution deleted the replacement order_items row while
+// substitutions.replacement_order_item_id STILL pointed at it. Postgres rejects
+// the DELETE with FK violation `substitutions_replacement_order_item_id_fkey`, so
+// EVERY revert would have thrown a 500 in production. Isolated tests never touched
+// the FK; only this real-PG16 round-trip did.
+// The fix (mirrored below and in src/lib/substitutions.ts::revertSubstitution):
+// clear the FK reference (replacement_order_item_id = NULL) + mark reverted FIRST,
+// THEN delete the replacement line. Order is load-bearing — do not reorder.
+// First, PROVE the buggy order actually fails against real PG (documents WHY the
+// order matters — if this ever stops failing, the FK was dropped and the guard is
+// moot). We use a throwaway substitution that still references REPL.
+const buggyProbe = 'c1111111-1111-1111-1111-1111111111bb';
+psql(`INSERT INTO substitutions (id,workspace_id,order_id,substitution_number,source_type,substitution_type,substitution_reason_tag,original_order_item_id,original_prior_status,replacement_order_item_id,financial_handling,timing,status,requires_approval,created_by,policy_applied_snapshot) VALUES ('${buggyProbe}','${WS}','${ORDER}','SUB-9241-PROBE','direct','same_product_swap','other','${OI}','dispatched','${REPL}','no_change','rush_mid_rental','executed',false,'${USER}','{}'::jsonb);`);
+{
+  // Deleting REPL while the probe still FK-references it MUST fail — that's the bug.
+  let failed = false;
+  try {
+    execFileSync('runuser', ['-u','ubuntu','--','/usr/lib/postgresql/16/bin/psql','-h','/tmp/pgrun','-p','5433','-U','postgres','-d',DB,'-v','ON_ERROR_STOP=1','-tAqc',`DELETE FROM order_items WHERE id='${REPL}'`], { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] });
+  } catch { failed = true; }
+  assert.ok(failed, 'REGRESSION: deleting a replacement line while a substitution FK-references it MUST fail (the bug the fix prevents)');
+  console.log('  ✓ S4a regression: buggy delete order is rejected by the real FK (documents why the clear-first order is required)');
+}
+// Now the FIXED order (probe cleared too), replicated from revertSubstitution.
 psql(`UPDATE order_items SET status='dispatched' WHERE id='${OI}';`);
 psql(`UPDATE substitutions SET status='reverted', reverted_at=now(), reverted_by='${USER}', replacement_order_item_id=NULL WHERE id='${SUB}';`);
+psql(`UPDATE substitutions SET replacement_order_item_id=NULL WHERE id='${buggyProbe}';`); // clear the probe's ref too
 psql(`DELETE FROM order_assets WHERE order_item_id='${REPL}';`);
 psql(`DELETE FROM order_items WHERE id='${REPL}';`);
 psql(`UPDATE assets SET status='available' WHERE id='${ASSET2}' AND status='out';`);
 psql(`UPDATE assets SET status='out' WHERE id='${ASSET}' AND status='available';`);
+psql(`DELETE FROM substitutions WHERE id='${buggyProbe}';`);
 {
   const orig = psql(`SELECT status FROM order_items WHERE id='${OI}';`);
   const replGone = psql(`SELECT COUNT(*) FROM order_items WHERE id='${REPL}';`);
-  const subStatus = psql(`SELECT status FROM substitutions WHERE id='${SUB}';`);
+  const subRow = psql(`SELECT status||'|'||COALESCE(replacement_order_item_id::text,'NULL') FROM substitutions WHERE id='${SUB}';`);
   assert.equal(orig, 'dispatched', 'original restored to prior status');
-  assert.equal(replGone, '0', 'replacement line removed');
-  assert.equal(subStatus, 'reverted', 'sub reverted');
-  console.log('  ✓ S4 revertSubstitution → original restored, replacement removed, sub reverted');
+  assert.equal(replGone, '0', 'replacement line removed (only possible after the FK ref was cleared)');
+  assert.equal(subRow, 'reverted|NULL', 'sub reverted AND replacement_order_item_id cleared (the FK-safe order)');
+  console.log('  ✓ S4 revertSubstitution → original restored, replacement removed, sub reverted (FK cleared first)');
 }
 
 // ══ DAMAGE FLOW ══════════════════════════════════════════════════════════════

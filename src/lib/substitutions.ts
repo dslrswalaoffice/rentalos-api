@@ -362,9 +362,13 @@ export async function revertSubstitution(args: {
   }
 
   // Restore original, drop replacement. The substitution row references the
-  // replacement line via replacement_order_item_id (FK), so we mark the row
-  // reverted AND clear that reference FIRST, else the DELETE below violates the
-  // FK (caught by the PG16 flow harness — the real revert would have 500'd).
+  // replacement line via replacement_order_item_id (FK constraint
+  // substitutions_replacement_order_item_id_fkey), so we mark the row reverted AND
+  // clear that reference FIRST, else the DELETE below violates the FK and the whole
+  // revert 500s. ORDER IS LOAD-BEARING — do not move the DELETE above this UPDATE.
+  // (Regression: caught by scripts/ss23_flow_pg16.ts S4a during M2 — isolated tests
+  // never exercised the FK; only the real-PG16 round-trip did. The real revert
+  // would have thrown on every call in production.)
   await sql`UPDATE order_items SET status = ${sub.original_prior_status ?? 'dispatched'}::order_item_status, updated_at = now() WHERE id = ${sub.original_order_item_id}::uuid AND workspace_id = ${args.workspaceId}::uuid`;
   await sql`UPDATE substitutions SET status = 'reverted', reverted_at = now(), reverted_reason = ${args.reason ?? null}::text, reverted_by = ${args.actorUserId}::uuid, replacement_order_item_id = NULL, updated_at = now() WHERE id = ${sub.id}::uuid AND workspace_id = ${args.workspaceId}::uuid`;
   if (sub.replacement_order_item_id) {
