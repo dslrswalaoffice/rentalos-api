@@ -3,7 +3,13 @@ name: Standby expiry + reminders
 # Every 15 minutes: expire overdue standby holds (release availability + notify)
 # and fire customer/staff expiry reminders. The endpoint is idempotent and
 # self-throttling (per-row sent-at flags), so re-running is safe.
-# REMINDER_TRIGGER_SECRET must be a GitHub Actions secret AND a Vercel env var.
+#
+# OPERATIONAL REQUIREMENT (see docs/CRON_JOBS.md):
+#   REMINDER_TRIGGER_SECRET must exist BOTH as a GitHub Actions repository secret
+#   (this workflow reads it) AND as a Vercel project env var (the endpoint checks
+#   it), with the SAME value. Missing GitHub secret → this job fast-fails with a
+#   clear message; missing Vercel env var → the endpoint returns 503
+#   cron_secret_not_configured.
 on:
   schedule:
     - cron: '*/15 * * * *'
@@ -13,15 +19,29 @@ jobs:
   tick:
     runs-on: ubuntu-latest
     steps:
+      - name: Verify REMINDER_TRIGGER_SECRET is configured
+        env:
+          SECRET: ${{ secrets.REMINDER_TRIGGER_SECRET }}
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "::error title=Missing secret::REMINDER_TRIGGER_SECRET is not set in this repo's GitHub Actions secrets."
+            echo "Fix: Settings -> Secrets and variables -> Actions -> New repository secret."
+            echo "Name: REMINDER_TRIGGER_SECRET  |  Value: must match the REMINDER_TRIGGER_SECRET env var in the Vercel project."
+            exit 1
+          fi
+
       - name: Ping standby-tick
+        env:
+          SECRET: ${{ secrets.REMINDER_TRIGGER_SECRET }}
         run: |
           RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
             -X POST https://rentalos-api.vercel.app/api/cron/standby-tick \
-            -H "X-Reminder-Secret: ${{ secrets.REMINDER_TRIGGER_SECRET }}")
+            -H "X-Reminder-Secret: $SECRET")
           echo "HTTP $RESPONSE"
-          cat /tmp/response.json || true
-          echo
+          echo "Response body:"; cat /tmp/response.json || true; echo
           if [ "$RESPONSE" != "200" ]; then
-            echo "standby-tick failed with HTTP $RESPONSE"
+            echo "::error title=standby-tick failed::HTTP $RESPONSE - see the response body above."
+            echo "401 unauthorized -> the GitHub secret differs from the Vercel env var."
+            echo "503 cron_secret_not_configured -> REMINDER_TRIGGER_SECRET is missing in the Vercel project env."
             exit 1
           fi

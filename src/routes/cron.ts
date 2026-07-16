@@ -16,9 +16,30 @@ import { config } from '../lib/config.js';
 // ============================================================================
 export const cron = new Hono();
 
-function authed(c: any): boolean {
+// Cron auth. Returns an error Response when the caller is not authorized, or
+// null when it is. The two failure modes are reported DISTINCTLY so an operator
+// can tell WHICH side is misconfigured from the response body alone (the old
+// single 401 for both is why the failing cron was hard to diagnose):
+//   • 503 cron_secret_not_configured → the SERVER (Vercel env) has no secret set,
+//     so no header can ever match. Fix on Vercel.
+//   • 401 unauthorized → the header was missing/blank/wrong, i.e. the GitHub
+//     Actions secret is unset or differs from Vercel. Fix on GitHub.
+// Neither response echoes the secret value.
+export function cronAuthError(c: any) {
   const secret = process.env.REMINDER_TRIGGER_SECRET;
-  return !!secret && c.req.header('X-Reminder-Secret') === secret;
+  if (!secret) {
+    return c.json({
+      error: 'cron_secret_not_configured',
+      hint: 'Set REMINDER_TRIGGER_SECRET in the Vercel project env; it must match the GitHub Actions secret of the same name.',
+    }, 503);
+  }
+  if (c.req.header('X-Reminder-Secret') !== secret) {
+    return c.json({
+      error: 'unauthorized',
+      hint: 'X-Reminder-Secret did not match. Set the REMINDER_TRIGGER_SECRET GitHub Actions secret to the same value as the Vercel env var.',
+    }, 401);
+  }
+  return null;
 }
 function inr(paise: number): string {
   return '₹' + new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Math.round(Number(paise) / 100));
@@ -38,7 +59,8 @@ async function allWorkspaces(): Promise<WS[]> {
 // POST /api/cron/standby-tick
 // ----------------------------------------------------------------------------
 cron.post('/standby-tick', async (c) => {
-  if (!authed(c)) return c.json({ error: 'unauthorized' }, 401);
+  const authErr = cronAuthError(c);
+  if (authErr) return authErr;
   let expired = 0, customerReminders = 0, staffReminders = 0;
 
   for (const ws of await allWorkspaces()) {
@@ -58,12 +80,17 @@ cron.post('/standby-tick', async (c) => {
       await releaseStandbyHold({ workspaceId: ws.id, standbyId: s.id, actorUserId: null, newStatus: 'expired', orderStatus: 'standby_expired', outcomeReason: 'timed_out' });
       await audit({ workspaceId: ws.id, actorUserId: null, eventType: 'standbys.expired', targetType: 'standby', targetId: s.id, payload: { standby_number: s.standby_number }, ipAddress: null, userAgent: null });
       if (pol.on_expiry?.customer_notification !== false) {
-        emitCustomerNotification({
-          workspaceId: ws.id, orderId: '', personId: s.customer_id, eventType: 'standby_expired',
-          message: `Your hold ${s.standby_number} has expired and the equipment was released.`,
-          channels: ['whatsapp', 'email'], contact: { phone: s.phone, email: s.email }, settings: ws.settings,
-          variables: { customer_name: s.customer_name ?? 'there', standby_number: s.standby_number, reclaim_minutes: reclaim, workspace_name: ws.name },
-        }).catch(() => {});
+        // AWAIT (same serverless-freeze reason as PR #81): a fire-and-forget emit
+        // is killed when the cron handler returns, so the email + delivery row
+        // never land. Fail-open. Does NOT change the expiry logic above.
+        try {
+          await emitCustomerNotification({
+            workspaceId: ws.id, orderId: '', personId: s.customer_id, eventType: 'standby_expired',
+            message: `Your hold ${s.standby_number} has expired and the equipment was released.`,
+            channels: ['whatsapp', 'email'], contact: { phone: s.phone, email: s.email }, settings: ws.settings,
+            variables: { customer_name: s.customer_name ?? 'there', standby_number: s.standby_number, reclaim_minutes: reclaim, workspace_name: ws.name },
+          });
+        } catch { /* fail-open */ }
       }
       expired++;
     }
@@ -78,12 +105,14 @@ cron.post('/standby-tick', async (c) => {
     `);
     for (const s of custDue) {
       const items = Array.isArray(s.line_items_snapshot) ? s.line_items_snapshot.map((li: any) => li.name).filter(Boolean).join(', ') : '';
-      emitCustomerNotification({
-        workspaceId: ws.id, orderId: '', personId: s.customer_id, eventType: 'standby_expiring',
-        message: `Your hold ${s.standby_number} expires at ${fmtTime(s.expires_at)}. Let us know if you'd like to confirm.`,
-        channels: ['whatsapp', 'email'], contact: { phone: s.phone, email: s.email }, settings: ws.settings,
-        variables: { customer_name: s.customer_name ?? 'there', standby_number: s.standby_number, items_summary: items, expires_at: fmtTime(s.expires_at), workspace_name: ws.name },
-      }).catch(() => {});
+      try {
+        await emitCustomerNotification({
+          workspaceId: ws.id, orderId: '', personId: s.customer_id, eventType: 'standby_expiring',
+          message: `Your hold ${s.standby_number} expires at ${fmtTime(s.expires_at)}. Let us know if you'd like to confirm.`,
+          channels: ['whatsapp', 'email'], contact: { phone: s.phone, email: s.email }, settings: ws.settings,
+          variables: { customer_name: s.customer_name ?? 'there', standby_number: s.standby_number, items_summary: items, expires_at: fmtTime(s.expires_at), workspace_name: ws.name },
+        });
+      } catch { /* fail-open */ }
       await sql`UPDATE standbys SET customer_reminder_sent_at = now() WHERE id = ${s.id}::uuid`;
       customerReminders++;
     }
@@ -97,11 +126,13 @@ cron.post('/standby-tick', async (c) => {
       LIMIT 200
     `);
     for (const s of staffDue) {
-      emitNotification({
-        workspaceId: ws.id, actorUserId: null, eventType: 'standby_staff_reminder',
-        targetType: 'standby', targetId: s.id, linkUrl: s.order_id ? `/order-360.html?id=${s.order_id}` : undefined,
-        metadata: { standby_number: s.standby_number, order_number: s.order_number ?? '' },
-      }).catch(() => {});
+      try {
+        await emitNotification({
+          workspaceId: ws.id, actorUserId: null, eventType: 'standby_staff_reminder',
+          targetType: 'standby', targetId: s.id, linkUrl: s.order_id ? `/order-360.html?id=${s.order_id}` : undefined,
+          metadata: { standby_number: s.standby_number, order_number: s.order_number ?? '' },
+        });
+      } catch { /* fail-open */ }
       await sql`UPDATE standbys SET staff_reminder_sent_at = now() WHERE id = ${s.id}::uuid`;
       staffReminders++;
     }
@@ -113,7 +144,8 @@ cron.post('/standby-tick', async (c) => {
 // POST /api/cron/quote-tick
 // ----------------------------------------------------------------------------
 cron.post('/quote-tick', async (c) => {
-  if (!authed(c)) return c.json({ error: 'unauthorized' }, 401);
+  const authErr = cronAuthError(c);
+  if (authErr) return authErr;
   let expired = 0, expiringReminders = 0;
 
   for (const ws of await allWorkspaces()) {
@@ -132,12 +164,14 @@ cron.post('/quote-tick', async (c) => {
     `);
     for (const q of soon) {
       const url = q.tracking_link_url ? `${config.appOrigin}/quote-view.html?token=${q.tracking_link_url}` : '';
-      emitCustomerNotification({
-        workspaceId: ws.id, orderId: q.order_id, personId: q.customer_person_id, eventType: 'quote_expiring',
-        message: `Your quote ${q.quote_number} for ${inr(q.total_paise)} expires on ${fmtTime(q.valid_until)}. Accept it here: ${url}`,
-        channels: ['whatsapp', 'email'], contact: { phone: q.phone, email: q.email }, settings: ws.settings,
-        variables: { customer_name: q.customer_name ?? 'there', quote_number: q.quote_number, total_amount: inr(q.total_paise), valid_until: fmtTime(q.valid_until), tracking_url: url, workspace_name: ws.name },
-      }).catch(() => {});
+      try {
+        await emitCustomerNotification({
+          workspaceId: ws.id, orderId: q.order_id, personId: q.customer_person_id, eventType: 'quote_expiring',
+          message: `Your quote ${q.quote_number} for ${inr(q.total_paise)} expires on ${fmtTime(q.valid_until)}. Accept it here: ${url}`,
+          channels: ['whatsapp', 'email'], contact: { phone: q.phone, email: q.email }, settings: ws.settings,
+          variables: { customer_name: q.customer_name ?? 'there', quote_number: q.quote_number, total_amount: inr(q.total_paise), valid_until: fmtTime(q.valid_until), tracking_url: url, workspace_name: ws.name },
+        });
+      } catch { /* fail-open */ }
       await sql`UPDATE quote_versions SET expiry_notified_at = now() WHERE id = ${q.id}::uuid`;
       expiringReminders++;
     }
