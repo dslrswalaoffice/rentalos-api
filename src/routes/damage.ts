@@ -41,7 +41,17 @@ function actorName(session: { user: SessionUser }): string {
   return (session.user as { display_name?: string; email?: string }).display_name ?? (session.user as { email?: string }).email ?? 'Operator';
 }
 
-const photoSchema = z.object({ url: z.string().max(2000), gps: z.string().max(120).nullish(), timestamp: z.string().max(60).nullish() }).passthrough();
+// Photos are REFS ONLY in Sub-slice 2.3 (no upload endpoint — see TD-5). `url` is
+// a plain string (8192-char cap at the validation layer, matching Aamir's spec);
+// the server stamps uploaded_by + upload_pending in the lib. Ruhan can paste an
+// existing R2/S3/WhatsApp media URL today. `.passthrough()` keeps any extra keys.
+const photoSchema = z.object({
+  url: z.string().min(1).max(8192),
+  gps: z.string().max(120).nullish(),
+  timestamp: z.string().max(60).nullish(),
+  uploaded_by: z.string().uuid().nullish(),
+  upload_pending: z.boolean().nullish(),
+}).passthrough();
 const affectedItemSchema = z.object({
   order_item_id: z.string().uuid(),
   asset_id: z.string().uuid().nullish(),

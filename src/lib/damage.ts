@@ -40,6 +40,24 @@ export const CUSTOMER_LIABILITIES = ['yes', 'no', 'partial', 'pending_investigat
 export const FINANCIAL_RESOLUTIONS = ['customer_pays', 'insurance_claim', 'warranty_coverage', 'business_absorbs', 'partial_split', 'deposit_only', 'deposit_plus_additional', 'pending'] as const;
 export const DEPOSIT_ACTIONS = ['hold', 'adjust', 'forfeit_partial', 'forfeit_full', 'no_change'] as const;
 
+// Photos are REFS ONLY in 2.3 (TD-5 — no upload infra yet). The server stamps
+// each ref with the uploader + upload_pending so a future blob sub-slice can find
+// and reconcile placeholders. upload_pending is false only for a URL we already
+// own (a Vercel Blob URL); everything else (pasted WhatsApp/R2/S3 links) is a
+// pending placeholder until real upload lands.
+function enrichPhotos(photos: Array<Record<string, unknown>> | undefined, uploaderId: string): Array<Record<string, unknown>> {
+  return (photos ?? []).map((p) => {
+    const url = String(p.url ?? '');
+    const owned = url.includes('.blob.vercel-storage.com');
+    return {
+      ...p,
+      url,
+      uploaded_by: (p.uploaded_by as string | undefined) ?? uploaderId,
+      upload_pending: typeof p.upload_pending === 'boolean' ? p.upload_pending : !owned,
+    };
+  });
+}
+
 function isUniqueViolation(e: unknown): boolean {
   const err = e as { code?: string; message?: string } | null;
   if (!err) return false;
@@ -141,7 +159,7 @@ export async function createDamageIncident(args: CreateDamageArgs): Promise<Crea
   const policy = readDamagePolicy(settings);
 
   // Min photos: total across incident-level + per-asset "after" photos.
-  const incidentPhotos = args.photos ?? [];
+  const incidentPhotos = enrichPhotos(args.photos, args.actorUserId);
   const assetPhotoCount = args.affectedItems.reduce((n, it) => n + (it.photos_after?.length ?? 0), 0);
   const totalPhotos = incidentPhotos.length + assetPhotoCount;
   if (totalPhotos < policy.min_photos_required_per_incident) {
@@ -189,7 +207,7 @@ export async function createDamageIncident(args: CreateDamageArgs): Promise<Crea
     await sql`
       INSERT INTO damage_incident_assets (workspace_id, damage_incident_id, order_item_id, asset_id, severity, photos_before, photos_after, estimated_repair_cost_paise, disposition, repair_notes)
       VALUES (${args.workspaceId}::uuid, ${incident.id}::uuid, ${it.order_item_id}::uuid, ${it.asset_id ?? null}::uuid, ${it.severity}::text,
-        ${JSON.stringify(it.photos_before ?? [])}::jsonb, ${JSON.stringify(it.photos_after ?? [])}::jsonb,
+        ${JSON.stringify(enrichPhotos(it.photos_before, args.actorUserId))}::jsonb, ${JSON.stringify(enrichPhotos(it.photos_after, args.actorUserId))}::jsonb,
         ${it.estimated_repair_cost_paise ?? null}::bigint, ${it.disposition ?? null}::text, ${it.repair_notes ?? null}::text)
     `;
   }
