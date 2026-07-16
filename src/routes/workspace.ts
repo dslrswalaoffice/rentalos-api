@@ -131,6 +131,9 @@ export function normalizeSettings(raw: unknown) {
 const ORDER_POLICY_SETTINGS_KEYS = [
   'extension_policy', 'cancellation_policy', 'approval_routing',
   'notification_policy', 'standby_policy', 'quote_policy',
+  // Sub-slice 2.3 — must be listed here or a settings save strips the seeded
+  // policies (the TD-2 allow-list trap) AND GET won't read them back (Rule D).
+  'substitution_policy', 'damage_policy',
 ] as const;
 
 async function loadWorkspaceRow(workspaceId: string): Promise<WorkspaceRow | null> {
@@ -304,6 +307,8 @@ const patchSchema = z.object({
     notification_policy: z.record(z.string(), z.any()).optional(),
     standby_policy:      z.record(z.string(), z.any()).optional(),
     quote_policy:        z.record(z.string(), z.any()).optional(),
+    substitution_policy: z.record(z.string(), z.any()).optional(), // Sub-slice 2.3
+    damage_policy:       z.record(z.string(), z.any()).optional(), // Sub-slice 2.3
   }).optional(),
 });
 

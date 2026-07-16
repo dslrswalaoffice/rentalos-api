@@ -68,3 +68,18 @@ test('GET /api/workspace does not browser-cache settings with a positive max-age
   assert.ok(/no-cache|max-age=0/.test(cc), `settings GET must always revalidate; got "${cc}"`);
   assert.ok(!/max-age=[1-9]/.test(cc), `settings GET must not cache with a positive max-age; got "${cc}"`);
 });
+
+// Sub-slice 2.3 — substitution_policy + damage_policy must survive normalizeSettings
+// too (same TD-2 trap; Rule D). If either is dropped, a settings save wipes the
+// seeded policy and reversion_window_hours / auto-liability can't be read back.
+test('substitution_policy + damage_policy survive normalizeSettings (Rule D)', () => {
+  const raw = {
+    substitution_policy: { reversion_window_hours: 48, financial_defaults_by_type: { upgrade_paid: 'additional_charge' } },
+    damage_policy: { min_photos_required_per_incident: 5, approval_required: { severity_major_or_higher: true } },
+  };
+  const out = normalizeSettings(raw) as any;
+  assert.equal(out.substitution_policy?.reversion_window_hours, 48, 'substitution_policy dropped or value lost');
+  assert.equal(out.substitution_policy?.financial_defaults_by_type?.upgrade_paid, 'additional_charge');
+  assert.equal(out.damage_policy?.min_photos_required_per_incident, 5, 'damage_policy dropped or value lost');
+  assert.equal(out.damage_policy?.approval_required?.severity_major_or_higher, true);
+});
