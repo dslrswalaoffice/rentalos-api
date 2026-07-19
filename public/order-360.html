@@ -297,12 +297,18 @@ function daysBetween(a,b){const s=d(a),e=d(b);if(!s||!e||isNaN(s)||isNaN(e))retu
 function initials(name){const p=String(name||'').trim().split(/\s+/).filter(Boolean);if(!p.length)return '—';return (p[0][0]+(p[1]?p[1][0]:'')).toUpperCase();}
 
 function toast(msg,kind){const wrap=document.getElementById('toasts');const el=document.createElement('div');el.className='toast'+(kind?(' '+kind):'');el.textContent=msg;wrap.appendChild(el);setTimeout(()=>el.remove(),3600);}
+// Interim (Path C): several actions aren't wired into this order view yet and
+// used to punt to /order.html — which was renamed to order.html.legacy and is
+// no longer served, so they 404'd silently. Until they're built natively here
+// (or /order.html is restored), give honest feedback instead of a dead nav.
+const SOON_LABELS={edit:'Editing',['add-line']:'Adding a line',['view-asset']:'Viewing assets',['record-payment']:'Recording a payment',['record-deposit']:'Recording a deposit',['release-deposit']:'Releasing a deposit',['forfeit-deposit']:'Forfeiting a deposit',['dispatch-item']:'Dispatch'};
+function notInThisView(label){toast((label||'That action')+' isn’t available in this view yet','err');}
 
 // ------------------------------------------------------------------ vocab maps
 const AGG_LABEL={draft:'DRAFT',quoted:'QUOTED',confirmed:'CONFIRMED',allocated:'ALLOCATED',partially_dispatched:'PARTIALLY DISPATCHED',fully_dispatched:'DISPATCHED',active:'ON RENT',partial_return:'PARTIAL RETURN',awaiting_inspection:'AWAITING INSPECTION',ready_to_close:'READY TO CLOSE',returned:'RETURNED',closed:'CLOSED',cancelled:'CANCELLED'};
 const AGG_TONE={draft:'neutral',quoted:'neutral',confirmed:'info',allocated:'info',partially_dispatched:'progress',fully_dispatched:'progress',active:'progress',partial_return:'attention',awaiting_inspection:'attention',ready_to_close:'success',returned:'success',closed:'success',cancelled:'danger'};
 // primary CTA by resolved status
-const CTA={draft:{label:'Send Quote',to:'quoted'},quoted:{label:'Confirm Order',to:'confirmed'},confirmed:{label:'Allocate Equipment',to:null,scroll:'equipment'},allocated:{label:'Prepare Dispatch',to:null,link:function(id){return '/order.html?id='+id;}},partially_dispatched:{label:'Dispatch Remaining',to:null,link:function(id){return '/order.html?id='+id;}},fully_dispatched:{label:'Return',to:'returned'},dispatched:{label:'Return',to:'returned'},active:{label:'Return',to:'returned'},partial_return:{label:'Complete Return',to:'returned'},awaiting_inspection:{label:'Start Inspection',to:null,scroll:'equipment'},ready_to_close:{label:'Generate Final Invoice',to:null,link:function(id){return '/invoice.html?order='+id;}},returned:{label:'Generate Final Invoice',to:null,link:function(id){return '/invoice.html?order='+id;}},closed:{label:'Close Order',to:null,disabled:true},cancelled:{label:'Cancelled',to:null,disabled:true}};
+const CTA={draft:{label:'Send Quote',to:'quoted'},quoted:{label:'Confirm Order',to:'confirmed'},confirmed:{label:'Allocate Equipment',to:null,scroll:'equipment'},allocated:{label:'Prepare Dispatch',to:null,soon:true},partially_dispatched:{label:'Dispatch Remaining',to:null,soon:true},fully_dispatched:{label:'Return',to:'returned'},dispatched:{label:'Return',to:'returned'},active:{label:'Return',to:'returned'},partial_return:{label:'Complete Return',to:'returned'},awaiting_inspection:{label:'Start Inspection',to:null,scroll:'equipment'},ready_to_close:{label:'Generate Final Invoice',to:null,link:function(id){return '/invoice.html?order='+id;}},returned:{label:'Generate Final Invoice',to:null,link:function(id){return '/invoice.html?order='+id;}},closed:{label:'Close Order',to:null,disabled:true},cancelled:{label:'Cancelled',to:null,disabled:true}};
 // item micro-status
 const ITEM_STATUS={pending_dispatch:{label:'ALLOCATED',tone:'neutral'},dispatched:{label:'ON RENT',tone:'success'},returned:{label:'RETURNED',tone:'success'},returned_with_damage:{label:'RETURNED · DAMAGE',tone:'attention'},not_returned_chargeable:{label:'NOT RETURNED',tone:'danger'},not_returned_non_chargeable:{label:'NOT RETURNED',tone:'neutral'},missing:{label:'MISSING',tone:'danger'},substituted_out:{label:'SUBSTITUTED OUT',tone:'neutral'}};
 // Sub-slice 2.3 taxonomies (mirror the DB CHECKs / lib constants).
@@ -361,7 +367,7 @@ function renderStrip(){
     +'<span class="amountpill">'+formatINR(o.total_paise)+'</span>'
     +(S.approvals&&S.approvals.length?'<span class="appchip" data-approval="'+escapeAttr(S.approvals[0].id)+'">⚠ Approval pending — '+escapeHtml((S.approvals[0].approver_role_required||'').replace(/^\w/,c=>c.toUpperCase()))+'</span>':'')
     +'<div style="margin-left:auto;display:flex;align-items:center;gap:10px;position:relative">'
-      +'<button class="btn btn-primary" data-cta '+(cta.disabled?'disabled':'')+'>'+I('truck',17)+escapeHtml(cta.label)+'</button>'
+      +'<button class="btn btn-primary" data-cta '+(cta.disabled?'disabled':'')+(cta.soon?' title="Not available in this view yet"':'')+'>'+I('truck',17)+escapeHtml(cta.label)+'</button>'
       +'<button class="btn btn-secondary" data-secondary="contact">'+I('chat',16)+'Contact</button>'
       +'<button class="iconbtn" data-overflow>⋯</button>'
       +(S.overflow?renderOverflow():'')
@@ -869,6 +875,7 @@ function primaryCta(){
   if(!cta||cta.disabled)return;
   S.blocker=null;
   if(cta.to){doTransition(cta.to);return;}
+  if(cta.soon){notInThisView(cta.label);return;}
   if(cta.link){window.location.href=cta.link(S.id);return;}
   if(cta.scroll){scrollToCard(cta.scroll);return;}
   toast('Next step: '+cta.label);
@@ -914,7 +921,7 @@ function handleOverflow(kind,disabled){
     renderStrip();openCancellationModal();return;
   }
   if(kind==='send-update'){renderStrip();openSendUpdateModal();return;}
-  if(kind==='edit'){window.location.href='/order.html?id='+S.id;return;}
+  if(kind==='edit'){notInThisView('Editing');return;}
   if(kind==='print'){window.location.href='/invoice.html?order='+S.id;return;}
   if(kind==='duplicate'){toast('Duplicate order — not wired in this view');renderStrip();return;}
   renderStrip();
@@ -935,7 +942,7 @@ async function handleAct(kind,el){
     case 'sub-reject': doSubstitutionAction('reject',el&&el.getAttribute('data-sub'));break;
     case 'dmg-open': openDamageModal(null,el&&el.getAttribute('data-dmg'));break;
     case 'add-line': case 'view-asset': case 'record-payment': case 'record-deposit': case 'release-deposit': case 'forfeit-deposit': case 'dispatch-item':
-      window.location.href='/order.html?id='+S.id;break;
+      notInThisView(SOON_LABELS[kind]);break;
     case 'save-note':{
       const box=document.querySelector('[data-note-input]');const val=box?box.value.trim():'';
       if(!val){toast('Write a note first','err');break;}
