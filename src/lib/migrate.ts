@@ -17,12 +17,15 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { neon } from '@neondatabase/serverless';
+import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // The Neon tagged-template client. Callable as `sql`...`` AND as `sql(rawString)`.
-type Sql = ReturnType<typeof neon>;
+// Must match what `neon(url)` actually returns — NeonQueryFunction<false, false>.
+// `ReturnType<typeof neon>` widens the generics to <boolean, boolean>, which the
+// invariant `transaction` method makes non-assignable from a real neon() call.
+type Sql = NeonQueryFunction<false, false>;
 
 // Every table we expect to exist once 001 + 002 have applied. If any is missing
 // after a migration run, something in the SQL silently failed — we bail loudly.
