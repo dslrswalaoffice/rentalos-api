@@ -117,8 +117,30 @@ Only after that proof does the new pattern proceed. Flag as "candidate pattern, 
 
 ### Contract patterns (Items 25-28)
 - **Item 25** · API — POST lifecycle actions with named endpoints (not PATCH for state transitions), heavy 360 payloads, cursor pagination, HTTP 403 for permission and policy blocks
-- **Item 26** · DB — BIGINT paise, UUID v7, workspace_id second column, CHECK constraints not enums, json_agg not array_agg (Neon HTTP driver quirk), immutable financial records, append-only event tables per object, workspace-scoped at repository layer
-- **Item 27** · Permission Matrix — 5 roles (Owner/Manager/Warehouse/Sales/Accounts), 6-layer model (Module→Entity→Action→Lifecycle→Field→DataScope), warehouse NEVER sees costs
+- **Item 26** · DB — BIGINT paise, workspace_id second column, CHECK constraints not enums, json_agg not array_agg (Neon HTTP driver quirk), immutable financial records, append-only event tables per object, workspace-scoped at repository layer
+
+  **Item 26 DB Contract — v1 shipped (canonical):**
+  - Primary keys: UUID v4 via `gen_random_uuid()`
+  - v4 across all 51+ existing tables and all v1 new tables
+
+  **Item 26 DB Contract — Phase 2 aspirational:**
+  - UUID v7 (time-ordered) for tables shipped Phase 2+
+  - Not a retrofit priority for existing tables
+  - v7 generation function to be added when the first Phase 2 table needs it
+
+- **Item 27** · Permission Matrix — 6-layer model (Module→Entity→Action→Lifecycle→Field→DataScope)
+
+  **Item 27 Permission Matrix — v1 shipped (canonical):**
+  - 3 base roles: `owner` / `manager` / `staff` (migration 032)
+  - The `staff` role in v1 covers Warehouse, Sales, and Accounts functions with data-scope filtering at the query layer
+  - `workspace.settings.staff_subrole_map` (JSONB) declares which staff users are effectively warehouse/sales/accounts
+  - All data-scope rules referencing warehouse/sales/accounts apply at the query layer based on the `staff_subrole_map` lookup
+  - Warehouse users still NEVER see cost/financial fields (data-scope regulatory floor)
+
+  **Item 27 Permission Matrix — Phase 2 aspirational:**
+  - 5 roles: `owner` / `manager` / `warehouse` / `sales` / `accounts`
+  - Migration path: `staff_subrole_map` converts to actual role rows
+  - Splits the `staff` umbrella into role-specific permissions surface
 - **Item 28** · Idempotency — UUID v4 Idempotency-Key header on all mutation endpoints
 
 ### Cross-cutting patterns (Item N1)
@@ -224,10 +246,11 @@ Never mutate financial records. Correct via new records (credit notes, reversals
 
 ### Data
 - BIGINT paise for all monetary values (`_paise` suffix, no float)
-- UUID v7 primary keys everywhere
+- UUID v4 primary keys via `gen_random_uuid()` — v1 canonical across all existing + v1 new tables (UUID v7 is Phase 2 aspirational for Phase 2+ tables only; not a retrofit priority — see Item 26)
 - `workspace_id` as second column on every operational table
 - CHECK constraints, not native enum types (easier to extend)
 - Cursor-based pagination
+- Roles: 3 base roles `owner` / `manager` / `staff` (migration 032); `staff` covers warehouse/sales/accounts via `workspace.settings.staff_subrole_map` + query-layer data-scope filtering. 5 role-specific rows are Phase 2 aspirational — see Item 27
 
 ### Queries (Neon HTTP driver)
 - Use `json_agg`, never `array_agg` (returns text like `{customer}`)
