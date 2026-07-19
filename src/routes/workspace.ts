@@ -60,7 +60,9 @@ type WorkspaceRow = {
   address_line1: string | null; address_line2: string | null; city: string | null;
   state: string | null; postal_code: string | null;
   business_phone: string | null; business_email: string | null;
-  business_address: string | null; settings: unknown; created_at: string;
+  business_address: string | null;
+  timezone: string | null; currency_code: string | null; country_code: string | null; logo_url: string | null;
+  settings: unknown; created_at: string;
 };
 
 function clientCtx(c: Context) {
@@ -139,13 +141,17 @@ const ORDER_POLICY_SETTINGS_KEYS = [
   // above. Absent → the engine keeps its current settings.tax fallback (no
   // money-math change until it's explicitly configured + M2 lands).
   'tax_policy',
+  // Business Profile (Slice 2b) — freeform identity/branding/series fields that
+  // have no dedicated column. Passthrough + whole-object replace, like above.
+  'business_profile',
 ] as const;
 
 async function loadWorkspaceRow(workspaceId: string): Promise<WorkspaceRow | null> {
   const rows = await query<WorkspaceRow>(sql`
     SELECT id, slug, legal_name, gstin, pan, place_of_supply,
            address_line1, address_line2, city, state, postal_code,
-           business_phone, business_email, business_address, settings, created_at
+           business_phone, business_email, business_address,
+           timezone, currency_code, country_code, logo_url, settings, created_at
     FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
   `);
   return rows[0] ?? null;
@@ -184,6 +190,10 @@ async function buildState(session: NonNullable<SessionVar>) {
       postal_code: ws.postal_code,
       phone: ws.business_phone,
       email: ws.business_email,
+      timezone: ws.timezone,
+      currency_code: ws.currency_code,
+      country_code: ws.country_code,
+      logo_url: ws.logo_url,
       created_at: ws.created_at,
     },
     settings: normalizeSettings(ws.settings),
@@ -268,6 +278,8 @@ const patchSchema = z.object({
     phone:           nullableStr(30),
     email:           z.string().email().max(200).nullable().optional(),
     place_of_supply: nullableStr(100),
+    timezone:        nullableStr(60),
+    logo_url:        nullableStr(500),
   }).optional(),
   settings: z.object({
     billing: z.object({
@@ -336,6 +348,26 @@ const patchSchema = z.object({
         invoice_total_precision: z.enum(['paisa', 'rupee']).optional(),
         round_off_treatment:     z.enum(['separate_line_item', 'absorb_in_total', 'none']).optional(),
       }).optional(),
+    }).strict().optional(),
+    // Business Profile (Slice 2b) — freeform fields with no dedicated column.
+    // Whole-object replace on save (the editor sends the complete object).
+    business_profile: z.object({
+      business_type:   z.string().max(80).optional(),
+      tagline:         z.string().max(200).optional(),
+      cin:             z.string().max(30).optional(),
+      alt_phone:       z.string().max(30).optional(),
+      alt_email:       z.string().max(200).optional(),
+      website:         z.string().max(200).optional(),
+      instagram:       z.string().max(100).optional(),
+      youtube:         z.string().max(200).optional(),
+      fy_start_month:  z.string().max(20).optional(),
+      number_format:   z.string().max(30).optional(),
+      signatory_name:  z.string().max(120).optional(),
+      signatory_title: z.string().max(80).optional(),
+      invoice_prefix:  z.string().max(12).optional(),
+      quote_prefix:    z.string().max(12).optional(),
+      booking_prefix:  z.string().max(12).optional(),
+      payment_prefix:  z.string().max(12).optional(),
     }).strict().optional(),
   }).optional(),
 });
@@ -430,11 +462,14 @@ workspace.patch('/settings', requirePermission('settings.manage'), async (c) => 
       postal_code     = COALESCE(${wf.postal_code     ?? null}::text, postal_code),
       business_phone  = COALESCE(${wf.phone           ?? null}::text, business_phone),
       business_email  = COALESCE(${wf.email           ?? null}::text, business_email),
+      timezone        = COALESCE(${wf.timezone        ?? null}::text, timezone),
+      logo_url        = COALESCE(${wf.logo_url        ?? null}::text, logo_url),
       settings        = ${JSON.stringify(next)}::jsonb
     WHERE id = ${session.workspace.id}::uuid
     RETURNING id, slug, legal_name, gstin, pan, place_of_supply,
               address_line1, address_line2, city, state, postal_code,
-              business_phone, business_email, business_address, settings, created_at
+              business_phone, business_email, business_address,
+              timezone, currency_code, country_code, logo_url, settings, created_at
   `);
   for (const k of Object.keys(wf)) changedPaths.push(`workspace.${k}`);
 

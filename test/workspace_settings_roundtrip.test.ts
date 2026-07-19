@@ -106,3 +106,14 @@ test('tax_policy survives normalizeSettings; absent stays omitted (Tax-M1, Rule 
   const bare = normalizeSettings({ billing: {} }) as any;
   assert.equal(bare.tax_policy, undefined);
 });
+
+// Business Profile (Slice 2b) — settings.business_profile must survive
+// normalizeSettings (same Rule D trap) so the editor's freeform fields (tagline,
+// socials, signatory, series prefixes) can be read back after a save.
+test('business_profile survives normalizeSettings; absent stays omitted (Slice 2b)', () => {
+  const raw = { business_profile: { business_type: 'Proprietorship', tagline: 'Since 2018', invoice_prefix: 'INV-' } };
+  const out = normalizeSettings(raw) as any;
+  assert.equal(out.business_profile?.business_type, 'Proprietorship', 'business_profile dropped or value lost');
+  assert.equal(out.business_profile?.invoice_prefix, 'INV-');
+  assert.equal((normalizeSettings({ billing: {} }) as any).business_profile, undefined);
+});

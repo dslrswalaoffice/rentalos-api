@@ -11,15 +11,15 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f46e5'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
   <!--
-    Slice 2 · Business Profile (substrate: settings_business_profile.dc.html).
+    Slice 2 + 2b · Business Profile (substrate: settings_business_profile.dc.html).
     New self-contained page carrying the unified Settings shell (Slice 1). Wired
-    to the EXISTING /api/workspace GET + PATCH /api/workspace/settings for the real
-    fields (legal_name, gstin, pan, place_of_supply, address, phone, email, bank
-    details). Fields with no backend yet (business type, tagline, CIN, alt
-    contacts, socials, currency/FY/timezone/number-format, signatory, uploads,
-    document-series prefixes) render as DISABLED stubs with a "Soon" badge —
-    stub, never fake-saved. Nav cut-over (pointing settings.html's "Business
-    profile" here + retiring the workspace tab's identity fields) is a later step.
+    to /api/workspace GET + PATCH /api/workspace/settings. Slice 2b made most
+    fields real: identity/tax/contact/address/bank map to workspace columns +
+    settings.bank_details; the freeform fields (business type, tagline, socials,
+    signatory, FY, number-format, document-series prefixes) persist under a
+    settings.business_profile object; timezone + logo URL are real workspace
+    columns. Currency + country are read-only ("Locked · v1"); composition scheme
+    is the only remaining stub (belongs to the Tax page). Nav cut-over is later.
   -->
   <style>
     :root{
@@ -168,12 +168,16 @@
 
     // ---- form ----
     function resetForm(){
-      const w=state.data.workspace, s=state.data.settings, bd=s.bank_details||{};
+      const w=state.data.workspace, s=state.data.settings, bd=s.bank_details||{}, bp=s.business_profile||{};
+      const bpf={}; for(const k of ['business_type','tagline','cin','alt_phone','alt_email','website','instagram','youtube','fy_start_month','number_format','signatory_name','signatory_title','invoice_prefix','quote_prefix','booking_prefix','payment_prefix']) bpf[k]=bp[k]??'';
       state.form={
         workspace:{ legal_name:w.legal_name??'', gstin:w.gstin??'', pan:w.pan??'', place_of_supply:w.place_of_supply??'',
           phone:w.phone??'', email:w.email??'', address_line1:w.address_line1??'', address_line2:w.address_line2??'',
-          city:w.city??'', state:w.state??'', postal_code:w.postal_code??'' },
-        settings:{ bank_details:{ account_name:bd.account_name??'', bank_name:bd.bank_name??'', account_number:bd.account_number??'', ifsc:bd.ifsc??'', branch:bd.branch??'', upi_id:bd.upi_id??'' } },
+          city:w.city??'', state:w.state??'', postal_code:w.postal_code??'', timezone:w.timezone??'', logo_url:w.logo_url??'' },
+        settings:{
+          bank_details:{ account_name:bd.account_name??'', bank_name:bd.bank_name??'', account_number:bd.account_number??'', ifsc:bd.ifsc??'', branch:bd.branch??'', upi_id:bd.upi_id??'' },
+          business_profile:bpf,
+        },
       };
       state.baseline=JSON.parse(JSON.stringify(state.form));
     }
@@ -200,6 +204,14 @@
         <input type="text" disabled placeholder="${escapeAttr(o.ph||'Coming in a later update')}" title="Not available yet">
         ${o.hint?`<div class="hint">${escapeHtml(o.hint)}</div>`:''}</div>`;
     }
+    // read-only display of a real value (locked v1 fields — currency, country)
+    function ro(label,value){
+      return `<div class="field"><label>${escapeHtml(label)}<span class="soon">Locked · v1</span></label>
+        <input type="text" disabled value="${escapeAttr(value||'—')}"></div>`;
+    }
+    const MONTHS=['','January','February','March','April','May','June','July','August','September','October','November','December'];
+    const NUMFMTS=['','1,00,000 (Indian)','100,000 (Western)'];
+    const BIZ_TYPES=['','Proprietorship','Partnership','LLP','Private Ltd','Public Ltd','Other'];
     function secLabel(t){ return `<div class="sec-label"><span>${t}</span><span class="rule"></span></div>`; }
 
     function renderSections(){
@@ -208,8 +220,8 @@
         // IDENTITY
         `<div class="sec">${secLabel('IDENTITY')}<div class="grid">
           ${inp('workspace.legal_name','Legal name',{req:1,full:1,hint:'Appears on tax invoices and legal documents. Must match your GSTIN registration.'})}
-          ${stub('Business type')}
-          ${stub('Tagline',{full:1,ph:'Appears on printed documents below your name'})}
+          ${sel('settings.business_profile.business_type','Business type',BIZ_TYPES)}
+          ${inp('settings.business_profile.tagline','Tagline',{full:1,ph:'Appears on printed documents below your name'})}
         </div></div>` +
         // TAX REGISTRATION
         `<div class="sec">${secLabel('TAX REGISTRATION')}<div class="panel"><div class="grid">
@@ -221,12 +233,12 @@
         // CONTACT
         `<div class="sec">${secLabel('CONTACT')}<div class="grid">
           ${inp('workspace.phone','Primary phone',{req:1,mono:1,ph:'98227 12345'})}
-          ${stub('Alternate phone')}
+          ${inp('settings.business_profile.alt_phone','Alternate phone',{mono:1})}
           ${inp('workspace.email','Primary email',{req:1,mono:1,ph:'hello@example.com'})}
-          ${stub('Alternate email')}
-          ${stub('Website',{full:1})}
-          ${stub('Instagram')}
-          ${stub('YouTube')}
+          ${inp('settings.business_profile.alt_email','Alternate email',{mono:1})}
+          ${inp('settings.business_profile.website','Website',{full:1,mono:1,ph:'https://…'})}
+          ${inp('settings.business_profile.instagram','Instagram handle',{ph:'handle'})}
+          ${inp('settings.business_profile.youtube','YouTube channel',{ph:'URL or handle'})}
         </div></div>` +
         // REGISTERED ADDRESS
         `<div class="sec">${secLabel('REGISTERED ADDRESS')}<div class="grid">
@@ -235,14 +247,14 @@
           ${inp('workspace.city','City',{req:1,ph:'Vadodara'})}
           ${inp('workspace.postal_code','PIN code',{req:1,mono:1,ph:'390020'})}
           ${sel('workspace.state','State',INDIAN_STATES)}
-          ${stub('Country',{ph:'India · locked in v1'})}
+          ${ro('Country',state.data.workspace.country_code)}
         </div><div class="sec-foot">This is the address that appears on all tax invoices. Update your GSTIN registration first if your registered address changes.</div></div>` +
         // FINANCIAL IDENTITY
         `<div class="sec">${secLabel('FINANCIAL IDENTITY')}<div class="grid" style="margin-bottom:16px">
-          ${stub('Currency',{ph:'INR — locked in v1'})}
-          ${stub('Financial year start')}
-          ${stub('Time zone')}
-          ${stub('Number format')}
+          ${ro('Currency',state.data.workspace.currency_code)}
+          ${sel('settings.business_profile.fy_start_month','Financial year start',MONTHS)}
+          ${inp('workspace.timezone','Time zone',{ph:'Asia/Kolkata'})}
+          ${sel('settings.business_profile.number_format','Number format',NUMFMTS)}
         </div>
         <div class="panel"><div class="panel-sub">BANK DETAILS FOR INVOICING</div><div class="grid">
           ${inp('settings.bank_details.account_name','Account holder name',{full:1,ph:'As per bank records'})}
@@ -255,16 +267,16 @@
         <div class="sec-foot">Bank details appear on invoices under “Payment Instructions”. Leave blank to share separately.</div></div>` +
         // BRANDING
         `<div class="sec">${secLabel('BRANDING')}<div class="grid">
-          ${stub('Logo',{full:1,ph:'Upload arrives in a later update'})}
-          ${stub('Authorized signatory name')}
-          ${stub('Authorized signatory title')}
+          ${inp('workspace.logo_url','Logo URL',{full:1,mono:1,ph:'https://… (image upload arrives later)'})}
+          ${inp('settings.business_profile.signatory_name','Authorized signatory name',{ph:'Aamir Patel'})}
+          ${inp('settings.business_profile.signatory_title','Authorized signatory title',{ph:'Proprietor'})}
         </div></div>` +
         // DOCUMENT SERIES
         `<div class="sec">${secLabel('DOCUMENT SERIES')}<div class="panel"><div class="grid">
-          ${stub('Invoice series prefix')}
-          ${stub('Quote series prefix')}
-          ${stub('Booking series prefix')}
-          ${stub('Payment receipt prefix')}
+          ${inp('settings.business_profile.invoice_prefix','Invoice series prefix',{mono:1,ph:'INV-'})}
+          ${inp('settings.business_profile.quote_prefix','Quote series prefix',{mono:1,ph:'QUO-'})}
+          ${inp('settings.business_profile.booking_prefix','Booking series prefix',{mono:1,ph:'BK'})}
+          ${inp('settings.business_profile.payment_prefix','Payment receipt prefix',{mono:1,ph:'PMT-'})}
         </div></div><div class="sec-foot">Per-document series prefixes arrive in a later update. Invoice numbering is currently configured under Financial → Invoice format.</div></div>`;
 
       el.querySelectorAll('[data-field]').forEach(node=>{
@@ -284,7 +296,7 @@
 
     async function save(){
       const btn=document.getElementById('btn-save'); if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
-      const payload={ workspace:{...state.form.workspace}, settings:{ bank_details:{...state.form.settings.bank_details} } };
+      const payload={ workspace:{...state.form.workspace}, settings:{ bank_details:{...state.form.settings.bank_details}, business_profile:{...state.form.settings.business_profile} } };
       try{
         const res=await api.patch('/api/workspace/settings',payload);
         state.data=res; resetForm(); renderSections(); renderTopbar();
