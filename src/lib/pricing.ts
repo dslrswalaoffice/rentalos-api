@@ -391,6 +391,41 @@ function readTax(settings: unknown): TaxSettings {
   };
 }
 
+// Tax-M2 — the optional per-workspace GST config (Tax-M1 shape). Only the two
+// fields the engine consumes are typed; the rest (SAC/HSN/rounding) are display
+// metadata the editor manages and are ignored here.
+export type TaxPolicy = {
+  line_item_gst_rates_bps?: Record<string, number>;
+  default_gst_rate_bps?: number;
+} | null;
+
+export function readTaxPolicy(settings: unknown): TaxPolicy {
+  const tp = (settings as Record<string, unknown> | null)?.['tax_policy'];
+  if (!tp || typeof tp !== 'object') return null;
+  return tp as TaxPolicy;
+}
+
+// Tax-M2 — resolve a line's GST rate (bps). Precedence, most-specific first:
+//   1. the PRODUCT override (gst_rate_bps) — incl. an explicit 0
+//   2. the per-line-TYPE rate from tax_policy — incl. an explicit 0 (e.g. damage
+//      recovery configured to 0%)
+//   3. tax_policy.default_gst_rate_bps
+//   4. the legacy workspace default (settings.tax.default_gst_percent → bps)
+// When tax_policy is absent this collapses to `product ?? workspaceDefault`, i.e.
+// byte-identical to the pre-M2 behaviour — no invoice moves until it's configured.
+export function resolveLineRateBps(args: {
+  productRateBps: number | null;
+  itemType: string;
+  taxPolicy: TaxPolicy;
+  workspaceDefaultBps: number;
+}): number {
+  if (args.productRateBps != null) return args.productRateBps;
+  const typeRate = args.taxPolicy?.line_item_gst_rates_bps?.[args.itemType];
+  if (typeof typeRate === 'number') return typeRate;
+  if (typeof args.taxPolicy?.default_gst_rate_bps === 'number') return args.taxPolicy.default_gst_rate_bps;
+  return args.workspaceDefaultBps;
+}
+
 // ----------------------------------------------------------------------------
 // Load helpers (self-contained — the orders route types aren't exported)
 // ----------------------------------------------------------------------------
@@ -459,6 +494,7 @@ export async function recomputeOrderTotals(
   `);
   const billing = readBilling(wsRows[0]?.settings);
   const tax = readTax(wsRows[0]?.settings);
+  const taxPolicy = readTaxPolicy(wsRows[0]?.settings); // Tax-M2 (null → pre-M2 behaviour)
   const features = (wsRows[0]?.settings as Record<string, unknown> | null)?.['features'] as
     | Record<string, unknown>
     | undefined;
@@ -594,7 +630,12 @@ export async function recomputeOrderTotals(
     const lineTaxable = gstSplitOn
       && TAXABLE_ITEM_TYPES.has(item.item_type)
       && (lineCfg ? lineCfg.isTaxable : true);
-    const lineRateBps = lineCfg?.gstRateBps ?? workspaceDefaultBps;
+    const lineRateBps = resolveLineRateBps({
+      productRateBps: lineCfg?.gstRateBps ?? null,
+      itemType: item.item_type,
+      taxPolicy,
+      workspaceDefaultBps,
+    });
     const { cgst_paise, sgst_paise, igst_paise } = lineTaxable
       ? splitGstBps(chargeable, lineRateBps, isIntraState)
       : { cgst_paise: 0, sgst_paise: 0, igst_paise: 0 };
