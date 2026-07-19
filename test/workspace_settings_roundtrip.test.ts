@@ -83,3 +83,26 @@ test('substitution_policy + damage_policy survive normalizeSettings (Rule D)', (
   assert.equal(out.damage_policy?.min_photos_required_per_incident, 5, 'damage_policy dropped or value lost');
   assert.equal(out.damage_policy?.approval_required?.severity_major_or_higher, true);
 });
+
+// Tax editor (Tax-M1) — tax_policy must survive normalizeSettings (same TD-2 / Rule
+// D trap). If it's dropped, a settings save wipes the GST config and neither the
+// pricing engine (Tax-M2) nor the editor (Tax-M3) can read it back. Absent must
+// stay omitted so the engine keeps its current settings.tax fallback.
+test('tax_policy survives normalizeSettings; absent stays omitted (Tax-M1, Rule D)', () => {
+  const raw = {
+    tax_policy: {
+      gst_registration_status: 'regular',
+      default_gst_rate_bps: 1800,
+      line_item_gst_rates_bps: { rental: 1200, late_fee: 1800, damage: 0 },
+      rounding: { line_item_precision: 'paisa', invoice_total_precision: 'rupee', round_off_treatment: 'separate_line_item' },
+    },
+  };
+  const out = normalizeSettings(raw) as any;
+  assert.equal(out.tax_policy?.default_gst_rate_bps, 1800, 'tax_policy dropped or value lost');
+  assert.equal(out.tax_policy?.line_item_gst_rates_bps?.rental, 1200);
+  assert.equal(out.tax_policy?.line_item_gst_rates_bps?.damage, 0);
+  assert.equal(out.tax_policy?.rounding?.round_off_treatment, 'separate_line_item');
+  // Absent → omitted (no injected default; the engine keeps its settings.tax fallback).
+  const bare = normalizeSettings({ billing: {} }) as any;
+  assert.equal(bare.tax_policy, undefined);
+});

@@ -134,6 +134,11 @@ const ORDER_POLICY_SETTINGS_KEYS = [
   // Sub-slice 2.3 — must be listed here or a settings save strips the seeded
   // policies (the TD-2 allow-list trap) AND GET won't read them back (Rule D).
   'substitution_policy', 'damage_policy',
+  // Tax editor (Tax-M1) — the GST config the pricing engine adopts in Tax-M2.
+  // Passthrough on GET + whole-object replace on PATCH, same as the policies
+  // above. Absent → the engine keeps its current settings.tax fallback (no
+  // money-math change until it's explicitly configured + M2 lands).
+  'tax_policy',
 ] as const;
 
 async function loadWorkspaceRow(workspaceId: string): Promise<WorkspaceRow | null> {
@@ -309,6 +314,29 @@ const patchSchema = z.object({
     quote_policy:        z.record(z.string(), z.any()).optional(),
     substitution_policy: z.record(z.string(), z.any()).optional(), // Sub-slice 2.3
     damage_policy:       z.record(z.string(), z.any()).optional(), // Sub-slice 2.3
+    // Tax editor (Tax-M1). Typed because it is money config: GST rates as basis
+    // points (int, 0–2800 = up to the 28% slab), HSN/SAC as short strings.
+    // Whole-object replace on save — the editor sends the complete object.
+    tax_policy: z.object({
+      gst_registration_status:  z.enum(['none', 'regular', 'composition']).optional(),
+      default_gst_rate_bps:     z.number().int().min(0).max(2800).optional(),
+      composition_rate_bps:     z.number().int().min(0).max(2800).optional(),
+      line_item_gst_rates_bps:  z.record(z.string(), z.number().int().min(0).max(2800)).optional(),
+      line_item_sac_codes:      z.record(z.string(), z.string().max(8)).optional(),
+      category_hsn_defaults:    z.record(z.string(), z.object({
+        hsn:      z.string().max(8),
+        rate_bps: z.number().int().min(0).max(2800),
+      })).optional(),
+      tax_type_logic: z.object({
+        auto_detect_by_state:       z.boolean().optional(),
+        default_when_state_missing: z.enum(['intra_state', 'inter_state']).optional(),
+      }).optional(),
+      rounding: z.object({
+        line_item_precision:     z.enum(['paisa', 'rupee']).optional(),
+        invoice_total_precision: z.enum(['paisa', 'rupee']).optional(),
+        round_off_treatment:     z.enum(['separate_line_item', 'absorb_in_total', 'none']).optional(),
+      }).optional(),
+    }).strict().optional(),
   }).optional(),
 });
 
