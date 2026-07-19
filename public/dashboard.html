@@ -1179,7 +1179,7 @@
           </div>`).join('');
         body = `<div class="widget-big-number">${formatINR(total)}</div><div class="widget-big-sub">outstanding across active orders</div>${rows}`;
       } else body = emptyState('No outstanding balance');
-      return widgetShell('Unpaid balance', '', body, '<a href="/billing.html">Open billing →</a>');
+      return widgetShell('Unpaid balance', '', body, '<a href="/orders.html">Open orders →</a>');
     }
     function renderRevenue(w){
       const tw = w.this_week_paise || 0, lw = w.last_week_paise || 0;
@@ -1192,7 +1192,7 @@
         else { const up = w.delta_pct >= 0; cmp = `<div class="widget-comparison ${up?'up':'down'}">${up?'▲':'▼'} ${Math.abs(w.delta_pct)}% vs last week</div>`; }
         body = `<div class="widget-big-number">${formatINR(tw)}</div><div class="widget-big-sub">Last week: ${formatINR(lw)}</div>${cmp}`;
       }
-      return widgetShell("This week's revenue", '', body, '<a href="/insights.html">Open insights →</a>');
+      return widgetShell("This week's revenue", '', body, '<a href="/analytics.html">Open insights →</a>');
     }
 
     // ---------- render ----------
