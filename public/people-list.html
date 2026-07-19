@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>People · RentalOS</title>
+  <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f46e5'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <!--
+    Slice 1b · People List (substrate: docs/design-substrate/sprint-1/people_list_dc.html).
+    READ-ONLY. Wired to GET /api/people (no backend changes). Palette = the List
+    substrate reconciled as canonical (indigo #4f46e5, light rail) per Decision 2.
+    Real data only for Customer / Segment(tier) / Roles; the intelligence columns
+    (Trust/Rentals/LTV/Outstanding/KYC) render "—" because the read-only endpoint
+    does not compute them (Decision 1 — stub, never fake). Attention left-borders
+    stay neutral (no per-person outstanding available). New Person is a disabled
+    Item-12 blocked action ("coming in Slice 2").
+  -->
+  <style>
+    :root{
+      --ink:#202058; --head:#26235a; --muted:#8a8780; --muted2:#9ca3af; --muted3:#6b7280;
+      --indigo:#4f46e5; --indigo-hover:#3f37c9; --indigo-soft:rgba(79,70,229,.1);
+      --green:#059669; --blue:#2563eb; --amber:#d97706; --red:#dc2626; --grey:#6b7280;
+      --page:#f4f2ee; --card:#ffffff; --rail:#faf9f7; --line:#ece9e3; --line2:#f4f1ec; --field:#faf9f7;
+      --disp:'Space Grotesk',system-ui,sans-serif; --body:'Manrope',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--page);font-family:var(--body);color:var(--head);-webkit-font-smoothing:antialiased}
+    a{color:var(--indigo);text-decoration:none} a:hover{color:var(--indigo-hover)}
+    .shell{width:100%;max-width:1440px;margin:0 auto;display:flex;background:var(--card);min-height:100vh;position:relative}
+    /* icon rail */
+    .rail{width:60px;flex:none;background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px}
+    .rail .logo{width:32px;height:32px;border-radius:8px;background:var(--ink);color:#fff;font:600 16px var(--disp);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+    .rail a,.rail .ri{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690}
+    .rail a:hover{background:#f0eee9;color:var(--head)}
+    .rail a.active{background:var(--indigo-soft);color:var(--indigo)}
+    /* main */
+    main{flex:1;min-width:0;display:flex;flex-direction:column}
+    .topbar{height:56px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:0 22px}
+    .tsearch{flex:1;max-width:520px;height:36px;border:1px solid var(--line);border-radius:9px;background:var(--field);display:flex;align-items:center;gap:9px;padding:0 12px;color:var(--muted2);font-size:13px}
+    .iconbtn{width:34px;height:34px;border-radius:8px;border:none;background:transparent;color:var(--muted3);display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .avatar-sm{width:28px;height:28px;border-radius:50%;background:#eef0f4;color:var(--ink);font:600 10px var(--disp);display:flex;align-items:center;justify-content:center}
+    .subnav{height:34px;flex:none;border-bottom:1px solid #f0ede8;display:flex;align-items:center;padding:0 24px;font:600 10px var(--mono);letter-spacing:.08em;color:var(--muted2);text-transform:uppercase}
+    .content{flex:1;padding:24px 32px 48px}
+    /* top strip */
+    .strip{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px}
+    h1{margin:0;font:600 28px var(--disp);color:var(--ink);letter-spacing:-.01em}
+    .subline{margin:6px 0 0;font:400 13px var(--body);color:var(--muted)}
+    .btn-primary{display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;background:var(--indigo);color:#fff;border:none;border-radius:9px;font:600 13px var(--body);cursor:pointer;box-shadow:0 1px 2px rgba(79,70,229,.25)}
+    .btn-primary[disabled]{background:#c9c6e8;cursor:not-allowed;box-shadow:none}
+    /* chips */
+    .chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+    .chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;color:var(--muted3);font:500 12px var(--body);cursor:pointer;background:transparent;border:none}
+    .chip .n{font:600 11px var(--mono)}
+    .chip.active{background:var(--indigo-soft);color:var(--indigo);font-weight:600}
+    /* search row */
+    .searchrow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+    .search{flex:1;height:40px;border:1px solid var(--line);border-radius:10px;background:#fff;display:flex;align-items:center;gap:10px;padding:0 14px}
+    .search input{border:none;outline:none;flex:1;font:400 13px var(--body);color:var(--head);background:transparent}
+    .ghostbtn{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid #e4e0d9;background:#fff;border-radius:10px;color:var(--head);font:600 12px var(--body);cursor:pointer}
+    .ghostbtn[disabled]{color:#bdb9b1;cursor:not-allowed}
+    /* control bar */
+    .ctrl{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+    .count{font:500 12px var(--body);color:var(--muted)}
+    /* table */
+    .table{border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 1px 3px rgba(32,32,88,.04);overflow:hidden}
+    .grid{display:grid;grid-template-columns:44px minmax(220px,1.4fr) 130px 130px 150px 132px 128px 118px 120px;align-items:center}
+    .thead{background:var(--field);border-bottom:1px solid var(--line);height:42px}
+    .th{padding:0 10px;font:600 10px var(--mono);letter-spacing:.06em;color:var(--muted2)}
+    .row{min-height:60px;border-bottom:1px solid var(--line2);border-left:4px solid transparent;cursor:pointer}
+    .row:last-child{border-bottom:none}
+    .row:hover{background:var(--field)}
+    .cell{padding:0 10px;min-width:0}
+    .cbox{display:flex;justify-content:center}
+    .cbox span{width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block}
+    .pname{display:flex;align-items:center;gap:10px;min-width:0}
+    .pav{width:30px;height:30px;border-radius:8px;background:#eef0f4;color:var(--ink);font:600 11px var(--disp);display:inline-flex;align-items:center;justify-content:center;flex:none}
+    .pn{font:600 13px var(--body);color:var(--head);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pco{font:400 11px var(--body);color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .roletag{font:600 8px var(--mono);letter-spacing:.06em;color:var(--ink);background:rgba(32,32,88,.08);padding:2px 5px;border-radius:4px;flex:none;text-transform:uppercase}
+    .segpill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;font:600 9.5px var(--mono);letter-spacing:.02em;white-space:nowrap}
+    .segpill .dot{width:5px;height:5px;border-radius:50%;flex:none}
+    .seg-vip{background:rgba(5,150,105,.1);color:var(--green)} .seg-vip .dot{background:var(--green)}
+    .seg-premium{background:rgba(37,99,235,.1);color:var(--blue)} .seg-premium .dot{background:var(--blue)}
+    .seg-normal{background:rgba(107,114,128,.12);color:var(--grey)} .seg-normal .dot{background:var(--grey)}
+    .dash{color:#c8ccd3;font:500 14px var(--body)}
+    .stubcell{font:500 11px var(--mono);color:#c8ccd3}
+    .openlink{font:600 11px var(--body);color:var(--indigo)}
+    .pag{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-top:1px solid var(--line)}
+    .pag .info{font:500 12px var(--body);color:var(--muted2)}
+    .empty{padding:60px 20px;text-align:center;color:var(--muted)}
+    .empty .ic{opacity:.5;margin-bottom:10px}
+    .loading{padding:40px;text-align:center;color:var(--muted2);font-size:13px}
+    .tooltip-wrap{position:relative;display:inline-flex}
+    .tooltip-wrap:hover .tt{opacity:1}
+    .tt{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font:500 11px var(--body);padding:5px 9px;border-radius:6px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s;z-index:5}
+    @media(max-width:1120px){ .grid{grid-template-columns:44px minmax(180px,1.4fr) 120px 120px 130px} .hide-sm{display:none} }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- ICON RAIL -->
+    <aside class="rail">
+      <div class="logo">R</div>
+      <a href="/dashboard.html" title="Dashboard"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1.2"/><rect x="11" y="3" width="6" height="6" rx="1.2"/><rect x="3" y="11" width="6" height="6" rx="1.2"/><rect x="11" y="11" width="6" height="6" rx="1.2"/></svg></a>
+      <a href="/orders.html" title="Rentals"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.2 17 6v8l-7 3.8L3 14V6z"/><path d="M3 6l7 3.8L17 6"/><path d="M10 9.8V17.8"/></svg></a>
+      <a href="/inventory.html" title="Inventory"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5 17.5 6 10 9.5 2.5 6z"/><path d="M2.5 10 10 13.5 17.5 10"/><path d="M2.5 14 10 17.5 17.5 14"/></svg></a>
+      <a href="/people-list.html" class="active" title="People"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6.5" r="2.6"/><path d="M2.4 16c0-2.9 2-4.5 4.6-4.5S11.6 13.1 11.6 16"/><path d="M12.6 4.2a2.5 2.5 0 0 1 0 4.8M14 11.6c2 .4 3.5 1.9 3.5 4.4"/></svg></a>
+      <a href="/analytics.html" title="Insights"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17V3"/><path d="M3 17h14"/><rect x="6" y="10" width="2.6" height="4"/><rect x="10.5" y="6.5" width="2.6" height="7.5"/></svg></a>
+      <div style="flex:1"></div>
+      <a href="/settings.html" title="System"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M2.5 10h2.2M15.3 10h2.2M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/></svg></a>
+    </aside>
+
+    <main>
+      <!-- TOP BAR -->
+      <header class="topbar">
+        <button class="iconbtn" aria-label="Menu"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14"/></svg></button>
+        <div class="tsearch">
+          <svg width="16" height="16" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5"/><path d="M11.5 11.5 15 15"/></svg>
+          <span>Search anything</span>
+          <span style="margin-left:auto;font:600 10px var(--mono);color:#b6b3ad;border:1px solid #e4e0d9;border-radius:5px;padding:2px 6px">⌘K</span>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
+          <button class="iconbtn" aria-label="Notifications"><svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5a5 5 0 0 0-5 5c0 4-1.5 5.5-1.5 5.5h13S15 11.5 15 7.5a5 5 0 0 0-5-5z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg></button>
+          <span class="avatar-sm" id="me-initials">··</span>
+        </div>
+      </header>
+
+      <div class="subnav">People &nbsp;&rsaquo;&nbsp; All</div>
+
+      <div class="content">
+        <!-- TOP STRIP -->
+        <div class="strip">
+          <div>
+            <h1>People</h1>
+            <p class="subline">All rental relationships — customers, staff, investors &amp; vendors</p>
+          </div>
+          <div class="tooltip-wrap">
+            <button class="btn-primary" disabled>
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M7.5 3v9M3 7.5h9"/></svg>
+              New Person
+            </button>
+            <span class="tt">Creating people arrives in Slice 2</span>
+          </div>
+        </div>
+
+        <!-- VIEW CHIPS (role-based — real by_role counts; substrate's computed segments aren't available) -->
+        <div class="chips" id="chips"></div>
+
+        <!-- SEARCH ROW -->
+        <div class="searchrow">
+          <div class="search">
+            <svg width="17" height="17" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5"/><path d="M11.5 11.5 15.5 15.5"/></svg>
+            <input id="search" type="search" placeholder="Search by name / phone / email / company..." autocomplete="off">
+          </div>
+          <div class="tooltip-wrap"><button class="ghostbtn" disabled>Filters<svg width="12" height="12" fill="none" stroke="#c9c5bd" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5l3 3 3-3"/></svg></button><span class="tt">Advanced filters — Slice 2</span></div>
+        </div>
+
+        <!-- CONTROL BAR -->
+        <div class="ctrl">
+          <span class="count" id="count">Loading…</span>
+        </div>
+
+        <!-- TABLE -->
+        <div class="table">
+          <div class="grid thead">
+            <div class="th cbox"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+            <div class="th">PERSON</div>
+            <div class="th">SEGMENT</div>
+            <div class="th hide-sm">TRUST</div>
+            <div class="th hide-sm">RENTALS</div>
+            <div class="th hide-sm">LTV</div>
+            <div class="th hide-sm">OUTSTANDING</div>
+            <div class="th hide-sm">KYC</div>
+            <div class="th">&nbsp;</div>
+          </div>
+          <div id="rows"><div class="loading">Loading people…</div></div>
+          <div class="pag"><span class="info" id="paginfo"></span></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { api, ensureAuth } from '/_lib/api.js';
+
+    function escapeHtml(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+    function escapeAttr(s){ return escapeHtml(s).replace(/`/g,'&#96;'); }
+    function initials(name){ const p=String(name||'').trim().split(/\s+/).filter(Boolean); if(!p.length) return '··'; return (p[0][0]+(p[1]?p[1][0]:'')).toUpperCase(); }
+
+    const state = { all: [], byRole: {}, role: null, search: '' };
+
+    const ROLE_CHIPS = [
+      { key: null, label: 'All' },
+      { key: 'customer', label: 'Customers' },
+      { key: 'staff', label: 'Staff' },
+      { key: 'investor', label: 'Investors' },
+      { key: 'vendor', label: 'Vendors' },
+    ];
+
+    function segPill(tier){
+      const t = String(tier || '').toLowerCase();
+      if (t === 'vip')     return '<span class="segpill seg-vip"><span class="dot"></span>VIP</span>';
+      if (t === 'premium') return '<span class="segpill seg-premium"><span class="dot"></span>PREMIUM</span>';
+      if (t === 'normal')  return '<span class="segpill seg-normal"><span class="dot"></span>NORMAL</span>';
+      return '<span class="dash">—</span>';
+    }
+
+    function renderChips(){
+      const total = state.all.length;
+      const html = ROLE_CHIPS.map(c => {
+        const n = c.key === null ? (state.byRole.__all ?? total) : (state.byRole[c.key] ?? 0);
+        const active = state.role === c.key;
+        return `<button class="chip ${active ? 'active' : ''}" data-role="${c.key === null ? '' : escapeAttr(c.key)}">${escapeHtml(c.label)} <span class="n">(${n})</span></button>`;
+      }).join('');
+      document.getElementById('chips').innerHTML = html;
+    }
+
+    function rowHtml(p){
+      const roleTags = (p.roles || []).map(r => `<span class="roletag">${escapeHtml(r)}</span>`).join('');
+      const co = p.company_name ? `<div class="pco">${escapeHtml(p.company_name)}</div>` : '';
+      return `<div class="grid row" data-id="${escapeAttr(p.id)}">
+        <div class="cell cbox"><span></span></div>
+        <div class="cell"><div class="pname">
+          <span class="pav">${escapeHtml(initials(p.display_name))}</span>
+          <div style="min-width:0"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span class="pn">${escapeHtml(p.display_name || 'Unnamed')}</span>${roleTags}</div>${co}</div>
+        </div></div>
+        <div class="cell">${segPill(p.tier)}</div>
+        <div class="cell hide-sm"><span class="stubcell">—</span></div>
+        <div class="cell hide-sm"><span class="stubcell">—</span></div>
+        <div class="cell hide-sm"><span class="stubcell">—</span></div>
+        <div class="cell hide-sm"><span class="stubcell">—</span></div>
+        <div class="cell hide-sm"><span class="stubcell">—</span></div>
+        <div class="cell"><span class="openlink">Open →</span></div>
+      </div>`;
+    }
+
+    function render(){
+      const rowsEl = document.getElementById('rows');
+      const list = state.all; // server already filtered by role+search
+      if (!list.length){
+        rowsEl.innerHTML = `<div class="empty"><div class="ic"><svg width="26" height="26" fill="none" stroke="#c9c5bd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><path d="M3 20c0-3.6 3-6.5 7-6.5"/><circle cx="17" cy="9" r="2.4"/></svg></div>${state.search || state.role ? 'No people match this view yet.' : 'No people yet.'}</div>`;
+        document.getElementById('paginfo').textContent = '';
+        return;
+      }
+      rowsEl.innerHTML = list.map(rowHtml).join('');
+      document.getElementById('paginfo').innerHTML = `Showing <span style="font-family:var(--mono);color:#6b7280">1–${list.length}</span> of <span style="font-family:var(--mono);color:#6b7280">${list.length}</span>`;
+      rowsEl.querySelectorAll('.row').forEach(r => r.addEventListener('click', () => {
+        location.href = '/person-360.html?id=' + encodeURIComponent(r.getAttribute('data-id'));
+      }));
+    }
+
+    async function load(){
+      document.getElementById('count').textContent = 'Loading…';
+      const qs = new URLSearchParams();
+      if (state.role) qs.set('role', state.role);
+      if (state.search) qs.set('search', state.search);
+      const q = qs.toString();
+      let data;
+      try { data = await api.get('/api/people' + (q ? '?' + q : '')); }
+      catch (err) { document.getElementById('rows').innerHTML = `<div class="empty">Could not load people — ${escapeHtml((err.body && err.body.error) || err.message || 'error')}</div>`; document.getElementById('count').textContent = ''; return; }
+      state.all = data.people || [];
+      // by_role from the endpoint (workspace-wide counts, independent of the filter).
+      state.byRole = Object.assign({ __all: (data.people || []).length }, data.by_role || {});
+      // "__all" should reflect the unfiltered total; when a filter is active the
+      // endpoint's list is filtered, so keep the last-known all-count if we have one.
+      document.getElementById('count').textContent = `${state.all.length} ${state.all.length === 1 ? 'person' : 'people'}`;
+      renderChips();
+      render();
+    }
+
+    let allCount = null;
+    document.getElementById('chips').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-role]'); if (!b) return;
+      const v = b.getAttribute('data-role');
+      state.role = v === '' ? null : v;
+      load();
+    });
+    let searchTimer;
+    document.getElementById('search').addEventListener('input', (e) => {
+      clearTimeout(searchTimer);
+      const v = e.target.value.trim();
+      searchTimer = setTimeout(() => { state.search = v; load(); }, 300);
+    });
+
+    (async function(){
+      try {
+        const { user } = await ensureAuth();
+        document.getElementById('me-initials').textContent = initials(user && (user.display_name || user.email));
+      } catch { /* ensureAuth redirects on failure */ }
+      // First load: capture the true all-count for the "All" chip.
+      await load();
+      state.byRole.__all = state.all.length;
+      renderChips();
+    })();
+  </script>
+</body>
+</html>

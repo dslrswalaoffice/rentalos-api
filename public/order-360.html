@@ -460,7 +460,7 @@ function cardCustomer(){
         +'<div style="display:flex;gap:9px;margin-top:16px;flex-wrap:wrap">'
           +(o.customer_phone?'<button class="btn btn-tiny" style="background:var(--success-bg);color:var(--success);border-color:var(--success-border)" data-act="wa">'+I('wa',15)+'WhatsApp</button>':'')
           +(o.customer_phone?'<button class="btn btn-tiny btn-secondary" data-act="call">'+I('phone',15)+'Call</button>':'')
-          +(o.customer_person_id?'<a class="btn btn-tiny btn-ghost" href="/person.html?id='+escapeAttr(o.customer_person_id)+'">Open Customer 360 →</a>':'')
+          +(o.customer_person_id?'<a class="btn btn-tiny btn-ghost" href="/person-360.html?id='+escapeAttr(o.customer_person_id)+'">Open Customer 360 →</a>':'')
         +'</div>'
       +'</div>'
     +'</div>';
@@ -734,7 +734,7 @@ function renderSidebar(){
   html+='</div>';
   // related
   html+='<div class="card" style="padding:18px 20px"><div class="side-title">Related</div>';
-  if(o.customer_person_id)html+='<a class="rel-row" href="/person.html?id='+escapeAttr(o.customer_person_id)+'"><span style="color:var(--neutral)">'+I('user',16)+'</span><span style="flex:1;font-size:13px">Customer 360</span><span style="color:var(--neutral-border)">→</span></a>';
+  if(o.customer_person_id)html+='<a class="rel-row" href="/person-360.html?id='+escapeAttr(o.customer_person_id)+'"><span style="color:var(--neutral)">'+I('user',16)+'</span><span style="flex:1;font-size:13px">Customer 360</span><span style="color:var(--neutral-border)">→</span></a>';
   html+='<a class="rel-row" href="/invoice.html?order='+escapeAttr(S.id)+'"><span style="color:var(--neutral)">'+I('doc',16)+'</span><span style="flex:1;font-size:13px">Invoice</span><span style="color:var(--neutral-border)">→</span></a>';
   html+='<a class="rel-row" href="/orders.html"><span style="color:var(--neutral)">'+I('history',16)+'</span><span style="flex:1;font-size:13px">All orders</span><span style="color:var(--neutral-border)">→</span></a>';
   html+='</div>';

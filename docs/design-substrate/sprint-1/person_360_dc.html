@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f4f8;font-family:'Manrope',system-ui,sans-serif;color:#202058;-webkit-font-smoothing:antialiased}
+a{color:#4148c9;text-decoration:none}
+a:hover{color:#3339a8}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#d7d7e2;border-radius:6px;border:2px solid #f4f4f8}
+@keyframes pulseNode{0%{box-shadow:0 0 0 0 rgba(47,107,237,.45)}70%{box-shadow:0 0 0 9px rgba(47,107,237,0)}100%{box-shadow:0 0 0 0 rgba(47,107,237,0)}}
+</style>
+</helmet>
+<!-- RentalOS · Customer 360 · Rahul Malhotra -->
+<div style="width:1440px;margin:0 auto;display:flex;min-height:100vh;background:#f4f4f8">
+
+  <!-- LEFT ICON RAIL -->
+  <aside style="width:64px;flex:none;background:#26235a;display:flex;flex-direction:column;align-items:center;padding:14px 0;position:sticky;top:0;height:100vh;gap:4px">
+    <div style="width:34px;height:34px;border-radius:9px;background:#4148c9;display:flex;align-items:center;justify-content:center;margin-bottom:16px;font-family:'Space Grotesk';font-weight:700;color:#fff;font-size:16px">R</div>
+    <sc-for list="{{ modules }}" as="m" hint-placeholder-count="7">
+      <div title="{{ m.name }}" style="width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:{{ m.color }};background:{{ m.bg }}">
+        <span dangerouslySetInnerHTML="{{ m.icon }}" style="display:flex"></span>
+      </div>
+    </sc-for>
+    <div style="margin-top:auto;color:#8a88b8;display:flex;width:40px;height:40px;align-items:center;justify-content:center;cursor:pointer">
+      <span dangerouslySetInnerHTML="{{ gearIcon }}" style="display:flex"></span>
+    </div>
+  </aside>
+
+  <!-- RIGHT SIDE -->
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+
+    <!-- TOP BAR -->
+    <header style="height:60px;flex:none;background:#fff;border-bottom:1px solid #e8e8f0;display:flex;align-items:center;gap:20px;padding:0 26px;position:sticky;top:0;z-index:40">
+      <div style="font-family:'Space Grotesk';font-weight:700;font-size:17px;color:#26235a;letter-spacing:-.3px">Rental<span style="color:#4148c9">OS</span></div>
+      <div style="flex:1;max-width:520px;display:flex;align-items:center;gap:10px;background:#f4f4f8;border:1px solid #e8e8f0;border-radius:10px;padding:9px 13px;color:#8b8ba0">
+        <span dangerouslySetInnerHTML="{{ searchIcon }}" style="display:flex"></span>
+        <span style="font-size:13px">Search orders, customers, inventory…</span>
+        <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;background:#fff;border:1px solid #e8e8f0;border-radius:5px;padding:1px 6px;color:#a0a0b4">⌘K</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:16px">
+        <div style="position:relative;color:#5a5a72;display:flex;cursor:pointer"><span dangerouslySetInnerHTML="{{ bellIcon }}" style="display:flex"></span><span style="position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:#dc2f34;border:1.5px solid #fff"></span></div>
+        <div style="width:32px;height:32px;border-radius:50%;background:#eef0f4;color:#202058;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:13px;cursor:pointer">RS</div>
+      </div>
+    </header>
+
+    <!-- SUB-NAV -->
+    <div style="height:46px;flex:none;background:#fff;border-bottom:1px solid #e8e8f0;display:flex;align-items:center;gap:16px;padding:0 26px;font-size:13px;position:sticky;top:60px;z-index:39">
+      <a href="#" style="display:flex;align-items:center;gap:6px;color:#4148c9;font-weight:600"><span dangerouslySetInnerHTML="{{ backIcon }}" style="display:flex"></span>Back to Customers</a>
+      <span style="color:#d0d0dc">|</span>
+      <div style="font-family:'JetBrains Mono';font-size:12px;color:#8b8ba0;display:flex;gap:7px;align-items:center">
+        <span>Customers</span><span style="color:#c8c8d4">›</span><span style="color:#26235a;font-weight:600">Rahul Malhotra</span>
+      </div>
+    </div>
+
+    <!-- STICKY CUSTOMER HEADER STRIP -->
+    <div style="background:#fff;border-bottom:1px solid #e8e8f0;padding:16px 26px;position:sticky;top:106px;z-index:38;box-shadow:0 4px 14px rgba(32,32,88,.03)">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="width:48px;height:48px;border-radius:13px;background:#eef0f4;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:18px;color:#202058;flex:none">RM</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-family:'Space Grotesk';font-weight:600;font-size:22px;color:#202058;letter-spacing:-.3px">Rahul Malhotra</span>
+            <span style="font-family:'JetBrains Mono';font-size:10px;font-weight:600;letter-spacing:.5px;color:#16a34a;background:#e7f6ee;border:1px solid #c7ecd6;padding:3px 8px;border-radius:6px">VIP</span>
+            <span style="display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:#26235a;background:#fff;border:1px solid #e8e8f0;padding:4px 9px;border-radius:20px">Trust 92/100<span style="display:inline-block;width:46px;height:5px;border-radius:3px;background:#eeeef3"><span style="display:block;width:92%;height:100%;border-radius:3px;background:#16a34a"></span></span></span>
+          </div>
+          <span style="font-size:13px;color:#6c6c82">Malhotra Studios · Wedding photography</span>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:9px;position:relative">
+          <button style="display:flex;align-items:center;gap:7px;background:#4148c9;color:#fff;border:none;padding:10px 15px;border-radius:10px;font-family:'Manrope';font-weight:600;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(65,72,201,.28)" style-hover="background:#3339a8"><span dangerouslySetInnerHTML="{{ plusIcon }}" style="display:flex"></span>Start New Order</button>
+          <button style="display:flex;align-items:center;gap:7px;background:#fff;color:#26235a;border:1px solid #e0e0ea;padding:9px 13px;border-radius:10px;font-family:'Manrope';font-weight:600;font-size:13px;cursor:pointer" style-hover="background:#f4f4f8"><span dangerouslySetInnerHTML="{{ waIcon }}" style="display:flex;color:#16a34a"></span>WhatsApp</button>
+          <button style="display:flex;align-items:center;gap:7px;background:#fff;color:#26235a;border:1px solid #e0e0ea;padding:9px 13px;border-radius:10px;font-family:'Manrope';font-weight:600;font-size:13px;cursor:pointer" style-hover="background:#f4f4f8"><span dangerouslySetInnerHTML="{{ phoneIcon }}" style="display:flex"></span>Call</button>
+          <button onClick="{{ toggleOverflow }}" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:#fff;color:#5a5a72;border:1px solid #e0e0ea;border-radius:10px;cursor:pointer;font-size:18px" style-hover="background:#f4f4f8">⋯</button>
+          <sc-if value="{{ overflow }}">
+            <div style="position:absolute;top:46px;right:0;width:230px;background:#fff;border:1px solid #e8e8f0;border-radius:12px;box-shadow:0 12px 40px rgba(32,32,88,.16);padding:6px;z-index:50">
+              <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;cursor:pointer;font-size:13px;color:#26235a" style-hover="background:#f4f4f8"><span dangerouslySetInnerHTML="{{ editIcon }}" style="display:flex;color:#5a5a72"></span>Edit customer</div>
+              <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;cursor:pointer;font-size:13px;color:#26235a" style-hover="background:#f4f4f8"><span dangerouslySetInnerHTML="{{ mergeIcon }}" style="display:flex;color:#5a5a72"></span>Merge duplicate</div>
+              <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;cursor:pointer;font-size:13px;color:#26235a" style-hover="background:#f4f4f8"><span dangerouslySetInnerHTML="{{ printIcon }}" style="display:flex;color:#5a5a72"></span>Export profile</div>
+              <div style="height:1px;background:#eeeef3;margin:5px 8px"></div>
+              <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;cursor:pointer;font-size:13px;color:#dc2f34" style-hover="background:#fdecec"><span dangerouslySetInnerHTML="{{ archiveIcon }}" style="display:flex"></span>Archive customer</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN SCROLL AREA -->
+    <div style="padding:24px 26px 60px">
+
+      <!-- LIFECYCLE STEPPER -->
+      <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);padding:22px 26px;margin-bottom:22px">
+        <div style="display:flex;align-items:center;gap:0">
+          <sc-for list="{{ steps }}" as="s" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;flex:{{ s.flex }};min-width:0">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:9px;flex:none">
+                <div dangerouslySetInnerHTML="{{ s.node }}" style="display:flex;align-items:center;justify-content:center"></div>
+                <div style="text-align:center;line-height:1.25">
+                  <div style="font-family:'Space Grotesk';font-size:11.5px;font-weight:600;color:{{ s.labelColor }};white-space:nowrap">{{ s.label }}</div>
+                  <sc-if value="{{ s.sub }}"><div style="font-family:'JetBrains Mono';font-size:9.5px;color:#2f6bed;white-space:nowrap;margin-top:2px">{{ s.sub }}</div></sc-if>
+                </div>
+              </div>
+              <sc-if value="{{ s.connector }}"><div dangerouslySetInnerHTML="{{ s.connector }}" style="flex:1;height:2px;margin:0 4px;margin-bottom:26px"></div></sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- TWO-COLUMN BODY -->
+      <div style="display:flex;gap:22px;align-items:flex-start">
+
+        <!-- MAIN COLUMN 65% -->
+        <div style="flex:0 0 63%;max-width:63%;display:flex;flex-direction:column;gap:16px">
+
+          <!-- a) IDENTITY & CONTACT -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden">
+            <div onClick="{{ handlers.identity }}" style="display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer">
+              <span style="width:9px;height:9px;border-radius:50%;background:#4148c9;flex:none"></span>
+              <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#26235a">Identity &amp; Contact</span>
+              <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8b8ba0">Malhotra Studios</span>
+              <sc-if value="{{ exp.identity }}"><span style="color:#a0a0b4;font-size:12px">▾</span></sc-if><sc-if value="{{ col.identity }}"><span style="color:#a0a0b4;font-size:12px">▸</span></sc-if>
+            </div>
+            <sc-if value="{{ exp.identity }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:4px 22px 22px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px 32px">
+                  <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#a0a0b4;font-weight:600;margin-bottom:4px">Legal Name</div><div style="font-size:13.5px;font-weight:600;color:#202058">Rahul Malhotra</div></div>
+                  <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#a0a0b4;font-weight:600;margin-bottom:4px">Business</div><div style="font-size:13.5px;font-weight:600;color:#202058">Malhotra Studios</div></div>
+                  <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#a0a0b4;font-weight:600;margin-bottom:4px">GSTIN</div><div style="font-family:'JetBrains Mono';font-size:12.5px;color:#26235a">24ABCXX...E1ZR</div></div>
+                  <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#a0a0b4;font-weight:600;margin-bottom:4px">Language</div><div style="font-size:13.5px;color:#26235a">English / Hindi</div></div>
+                  <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#a0a0b4;font-weight:600;margin-bottom:4px">Phone</div><div style="font-size:13px;font-weight:600;color:#202058;display:flex;align-items:center;gap:7px"><span style="font-family:'JetBrains Mono';font-size:12.5px;font-weight:400">+91 98XXX XXXXX</span><span style="display:flex;align-items:center;gap:3px;font-size:11px;color:#16a34a;font-weight:600"><span dangerouslySetInnerHTML="{{ waIcon }}" style="display:flex"></span>WhatsApp</span></div></div>
+                  <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#a0a0b4;font-weight:600;margin-bottom:4px">Email</div><div style="font-family:'JetBrains Mono';font-size:12.5px;color:#26235a">rahul@studio.com</div></div>
+                </div>
+                <div style="border-top:1px solid #f2f2f7;margin:18px 0 15px"></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                  <div>
+                    <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#a0a0b4;font-weight:600;margin-bottom:6px">Primary Billing</div>
+                    <div style="display:flex;gap:8px"><span dangerouslySetInnerHTML="{{ pinIcon }}" style="display:flex;color:#8b8ba0;flex:none;margin-top:1px"></span><div style="font-size:12.5px;color:#26235a;line-height:1.5">Malhotra Studios, Race Course Rd,<br>Vadodara, Gujarat 390007</div></div>
+                  </div>
+                  <div>
+                    <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#a0a0b4;font-weight:600;margin-bottom:6px">Delivery Addresses · 2</div>
+                    <div style="border:1px solid #eeeef3;border-radius:10px;padding:10px 12px;background:#f8f8fc">
+                      <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px"><span style="font-weight:600;font-size:12.5px;color:#202058">Sayajigunj Studio</span><span style="font-family:'JetBrains Mono';font-size:9px;font-weight:600;color:#16a34a;background:#e7f6ee;border:1px solid #c7ecd6;border-radius:5px;padding:1px 6px">DEFAULT</span></div>
+                      <div style="font-size:11.5px;color:#8b8ba0">Sayajigunj, Vadodara 390005 · 7 km</div>
+                    </div>
+                  </div>
+                </div>
+                <div style="border-top:1px solid #f2f2f7;margin:16px 0 13px"></div>
+                <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#a0a0b4;font-weight:600;margin-bottom:8px">Notification Preferences</div>
+                <div style="display:flex;gap:8px">
+                  <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:#16a34a;background:#e7f6ee;border:1px solid #c7ecd6;border-radius:6px;padding:4px 10px">WhatsApp · On</span>
+                  <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:#16a34a;background:#e7f6ee;border:1px solid #c7ecd6;border-radius:6px;padding:4px 10px">Email · On</span>
+                  <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:#8b8ba0;background:#eeeef3;border-radius:6px;padding:4px 10px">SMS · Off</span>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- b) KYC & TRUST -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden">
+            <div onClick="{{ handlers.kyc }}" style="display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer">
+              <span style="width:9px;height:9px;border-radius:50%;background:#16a34a;flex:none"></span>
+              <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#26235a">KYC &amp; Trust</span>
+              <span style="display:flex;align-items:center;gap:6px;background:#e7f6ee;border:1px solid #c7ecd6;padding:3px 9px;border-radius:14px"><span style="width:7px;height:7px;border-radius:50%;background:#16a34a"></span><span style="font-family:'JetBrains Mono';font-size:10px;font-weight:600;color:#16a34a">VERIFIED</span></span>
+              <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8b8ba0">Trust 92/100</span>
+              <sc-if value="{{ exp.kyc }}"><span style="color:#a0a0b4;font-size:12px">▾</span></sc-if><sc-if value="{{ col.kyc }}"><span style="color:#a0a0b4;font-size:12px">▸</span></sc-if>
+            </div>
+            <sc-if value="{{ exp.kyc }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:4px 22px 22px">
+                <div style="font-size:12.5px;color:#6c6c82;margin-bottom:14px">Verified Nov 12 2024 by <span style="color:#26235a;font-weight:600">Aamir</span></div>
+                <div style="display:flex;gap:10px;margin-bottom:18px">
+                  <a href="#" style="display:flex;align-items:center;gap:8px;border:1px solid #eeeef3;border-radius:10px;padding:9px 13px;font-size:12.5px;font-weight:600;background:#f8f8fc;color:#26235a" style-hover="background:#f2f2fd"><span dangerouslySetInnerHTML="{{ docIcon }}" style="display:flex;color:#8b8ba0"></span>Aadhaar <span style="color:#4148c9">View</span></a>
+                  <a href="#" style="display:flex;align-items:center;gap:8px;border:1px solid #eeeef3;border-radius:10px;padding:9px 13px;font-size:12.5px;font-weight:600;background:#f8f8fc;color:#26235a" style-hover="background:#f2f2fd"><span dangerouslySetInnerHTML="{{ docIcon }}" style="display:flex;color:#8b8ba0"></span>PAN <span style="color:#4148c9">View</span></a>
+                  <a href="#" style="display:flex;align-items:center;gap:8px;border:1px solid #eeeef3;border-radius:10px;padding:9px 13px;font-size:12.5px;font-weight:600;background:#f8f8fc;color:#26235a" style-hover="background:#f2f2fd"><span dangerouslySetInnerHTML="{{ docIcon }}" style="display:flex;color:#8b8ba0"></span>GST Cert <span style="color:#4148c9">View</span></a>
+                </div>
+                <div style="background:#f8f8fc;border:1px solid #eeeef3;border-radius:12px;padding:16px 18px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                    <span style="font-family:'Space Grotesk';font-weight:600;font-size:11px;color:#8b8ba0;text-transform:uppercase;letter-spacing:.7px">Trust Breakdown</span>
+                    <div style="display:flex;align-items:center;gap:9px">
+                      <svg width="120" height="26" viewBox="0 0 120 26"><polyline points="0,20 20,19 40,16 60,14 80,11 100,8 120,5" fill="none" stroke="#16a34a" stroke-width="2"/><circle cx="120" cy="5" r="2.6" fill="#16a34a"/></svg>
+                      <span style="font-family:'JetBrains Mono';font-size:10px;color:#8b8ba0">85 → 92 · 12mo</span>
+                    </div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 26px">
+                    <div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span style="color:#6c6c82">Payment reliability</span><span style="font-family:'JetBrains Mono';font-weight:600;color:#202058">95</span></div><div style="height:5px;border-radius:3px;background:#eeeef3"><div style="width:95%;height:100%;border-radius:3px;background:#16a34a"></div></div></div>
+                    <div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span style="color:#6c6c82">Return timeliness</span><span style="font-family:'JetBrains Mono';font-weight:600;color:#202058">88</span></div><div style="height:5px;border-radius:3px;background:#eeeef3"><div style="width:88%;height:100%;border-radius:3px;background:#16a34a"></div></div></div>
+                    <div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span style="color:#6c6c82">Damage rate</span><span style="font-family:'JetBrains Mono';font-weight:600;color:#202058">96</span></div><div style="height:5px;border-radius:3px;background:#eeeef3"><div style="width:96%;height:100%;border-radius:3px;background:#16a34a"></div></div></div>
+                    <div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span style="color:#6c6c82">Communication</span><span style="font-family:'JetBrains Mono';font-weight:600;color:#202058">90</span></div><div style="height:5px;border-radius:3px;background:#eeeef3"><div style="width:90%;height:100%;border-radius:3px;background:#16a34a"></div></div></div>
+                  </div>
+                  <div style="border-top:1px solid #e8e8f0;margin-top:14px;padding-top:12px;display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:12.5px;font-weight:600;color:#26235a">Weighted average</span>
+                    <span style="font-family:'Space Grotesk';font-weight:700;font-size:18px;color:#16a34a">92</span>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- c) RELATIONSHIP SUMMARY -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden">
+            <div onClick="{{ handlers.relationship }}" style="display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer">
+              <span style="width:9px;height:9px;border-radius:50%;background:#2f6bed;flex:none"></span>
+              <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#26235a">Relationship Summary</span>
+              <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8b8ba0">Since Feb 2022</span>
+              <sc-if value="{{ exp.relationship }}"><span style="color:#a0a0b4;font-size:12px">▾</span></sc-if><sc-if value="{{ col.relationship }}"><span style="color:#a0a0b4;font-size:12px">▸</span></sc-if>
+            </div>
+            <sc-if value="{{ exp.relationship }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:4px 22px 22px">
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+                  <div style="border:1px solid #eeeef3;border-radius:12px;padding:15px">
+                    <div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:9px">LTV</div>
+                    <div style="font-family:'Space Grotesk';font-weight:600;font-size:26px;color:#202058;letter-spacing:-.5px">₹4,25,000</div>
+                    <div style="margin-top:8px;font-size:11px;font-weight:600;color:#16a34a;background:#e7f6ee;display:inline-block;padding:2px 7px;border-radius:6px">▲ 12% vs last yr</div>
+                  </div>
+                  <div style="border:1px solid #eeeef3;border-radius:12px;padding:15px">
+                    <div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:9px">Total Rentals</div>
+                    <div style="font-family:'Space Grotesk';font-weight:600;font-size:26px;color:#202058;letter-spacing:-.5px">18</div>
+                    <div style="margin-top:8px;font-size:11px;color:#8b8ba0">Last · 12 days ago</div>
+                  </div>
+                  <div style="border:1px solid #eeeef3;border-radius:12px;padding:15px">
+                    <div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:9px">Avg Order Value</div>
+                    <div style="font-family:'Space Grotesk';font-weight:600;font-size:26px;color:#202058;letter-spacing:-.5px">₹23,600</div>
+                    <div style="margin-top:8px;font-size:11px;font-weight:600;color:#16a34a;background:#e7f6ee;display:inline-block;padding:2px 7px;border-radius:6px">▲ 8%</div>
+                  </div>
+                  <div style="border:1px solid #eeeef3;border-radius:12px;padding:15px">
+                    <div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:9px">Cancellation Rate</div>
+                    <div style="font-family:'Space Grotesk';font-weight:600;font-size:26px;color:#16a34a;letter-spacing:-.5px">5.5%</div>
+                    <div style="margin-top:8px;font-size:11px;color:#8b8ba0">Healthy · &lt;10%</div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- d) RENTAL HISTORY -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden">
+            <div onClick="{{ handlers.rental }}" style="display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer">
+              <span style="width:9px;height:9px;border-radius:50%;background:#2f6bed;flex:none"></span>
+              <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#26235a">Rental History</span>
+              <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:#5a5a72;background:#eeeef3;padding:1px 7px;border-radius:10px">18</span>
+              <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8b8ba0">Last · 12 days ago</span>
+              <sc-if value="{{ exp.rental }}"><span style="color:#a0a0b4;font-size:12px">▾</span></sc-if><sc-if value="{{ col.rental }}"><span style="color:#a0a0b4;font-size:12px">▸</span></sc-if>
+            </div>
+            <sc-if value="{{ exp.rental }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:2px 22px 20px">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+                  <thead><tr style="text-align:left">
+                    <th style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;font-weight:500;padding:6px 8px 9px 0">Order</th>
+                    <th style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;font-weight:500;padding:6px 8px 9px">Status</th>
+                    <th style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;font-weight:500;padding:6px 8px 9px">Dates</th>
+                    <th style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;font-weight:500;padding:6px 8px 9px;text-align:right">Value</th>
+                    <th style="font-family:'JetBrains Mono';font-size:9px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;font-weight:500;padding:6px 8px 9px;text-align:center">Items</th>
+                    <th style="padding:6px 0 9px"></th>
+                  </tr></thead>
+                  <tbody>
+                    <sc-for list="{{ orders }}" as="o" hint-placeholder-count="5">
+                      <tr style="border-top:1px solid #f2f2f7">
+                        <td style="font-family:'JetBrains Mono';padding:12px 8px 12px 0;font-weight:600;color:#26235a">{{ o.id }}</td>
+                        <td style="padding:12px 8px"><span style="display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono';font-size:10px;font-weight:600;color:{{ o.stColor }};background:{{ o.stBg }};border:1px solid {{ o.stBorder }};border-radius:14px;padding:3px 9px;white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:{{ o.stColor }}"></span>{{ o.status }}</span></td>
+                        <td style="padding:12px 8px;color:#6c6c82">{{ o.dates }}</td>
+                        <td style="font-family:'JetBrains Mono';padding:12px 8px;text-align:right;font-weight:600;color:#26235a">{{ o.value }}</td>
+                        <td style="padding:12px 8px;text-align:center;color:#8b8ba0">{{ o.items }}</td>
+                        <td style="padding:12px 0;text-align:right"><a href="#" style="font-weight:600">Open →</a></td>
+                      </tr>
+                    </sc-for>
+                  </tbody>
+                </table>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:15px">
+                  <span style="font-size:11.5px;color:#3a3a58;background:#f8f8fc;border:1px solid #eeeef3;border-radius:8px;padding:6px 11px"><span style="color:#a0a0b4">Favorite:</span> Sony 60% · DJI 25% · Godox 15%</span>
+                  <span style="font-size:11.5px;color:#3a3a58;background:#f8f8fc;border:1px solid #eeeef3;border-radius:8px;padding:6px 11px"><span style="color:#a0a0b4">Typical duration:</span> 3.2 days avg</span>
+                  <span style="font-size:11.5px;color:#3a3a58;background:#f8f8fc;border:1px solid #eeeef3;border-radius:8px;padding:6px 11px"><span style="color:#a0a0b4">Preferred delivery:</span> Warehouse pickup 80%</span>
+                  <span style="font-size:11.5px;color:#3a3a58;background:#f8f8fc;border:1px solid #eeeef3;border-radius:8px;padding:6px 11px"><span style="color:#a0a0b4">Repeat cycle:</span> ~14 days between rentals</span>
+                </div>
+                <div style="margin-top:13px"><a href="#" style="font-size:12.5px;font-weight:600">Load 10 more</a></div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- e) PAYMENT BEHAVIOR -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden">
+            <div onClick="{{ handlers.payment }}" style="display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer">
+              <span style="width:9px;height:9px;border-radius:50%;background:#16a34a;flex:none"></span>
+              <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#26235a">Payment Behavior</span>
+              <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8b8ba0">Reliability 95%</span>
+              <sc-if value="{{ exp.payment }}"><span style="color:#a0a0b4;font-size:12px">▾</span></sc-if><sc-if value="{{ col.payment }}"><span style="color:#a0a0b4;font-size:12px">▸</span></sc-if>
+            </div>
+            <sc-if value="{{ exp.payment }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:4px 22px 22px">
+                <div style="margin-bottom:18px">
+                  <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#a0a0b4;font-weight:600;margin-bottom:9px">Preferred Methods</div>
+                  <div style="display:flex;height:9px;border-radius:5px;overflow:hidden;margin-bottom:9px">
+                    <div style="width:70%;background:#4148c9"></div><div style="width:20%;background:#2f6bed"></div><div style="width:10%;background:#c7c5dd"></div>
+                  </div>
+                  <div style="display:flex;gap:16px;font-size:11.5px;color:#6c6c82">
+                    <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:#4148c9"></span>UPI 70%</span>
+                    <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:#2f6bed"></span>Card 20%</span>
+                    <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:#c7c5dd"></span>Cash 10%</span>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+                  <div><div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:6px">Reliability</div><div style="font-family:'Space Grotesk';font-weight:600;font-size:19px;color:#16a34a">95%</div></div>
+                  <div><div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:6px">Avg Delay</div><div style="font-family:'Space Grotesk';font-weight:600;font-size:19px;color:#26235a">0.4 days</div></div>
+                  <div><div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:6px">Credit Limit</div><div style="font-family:'Space Grotesk';font-weight:600;font-size:19px;color:#26235a;display:flex;align-items:center;gap:7px">₹50,000 <span style="display:flex;color:#a0a0b4;cursor:pointer" dangerouslySetInnerHTML="{{ editIcon }}"></span></div></div>
+                  <div><div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:6px">Outstanding</div><div style="font-family:'Space Grotesk';font-weight:600;font-size:19px;color:#16a34a">₹0</div></div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- f) DEPOSITS & FORFEITS -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden">
+            <div onClick="{{ handlers.deposits }}" style="display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer">
+              <span style="width:9px;height:9px;border-radius:50%;background:#d98314;flex:none"></span>
+              <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#26235a">Deposits &amp; Forfeits</span>
+              <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8b8ba0">₹5,000 held</span>
+              <sc-if value="{{ exp.deposits }}"><span style="color:#a0a0b4;font-size:12px">▾</span></sc-if><sc-if value="{{ col.deposits }}"><span style="color:#a0a0b4;font-size:12px">▸</span></sc-if>
+            </div>
+            <sc-if value="{{ exp.deposits }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:4px 22px 22px;display:flex;align-items:center;gap:22px">
+                <div style="display:flex;gap:36px;flex:1">
+                  <div><div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:6px">Total Held · Active</div><div style="font-family:'Space Grotesk';font-weight:600;font-size:19px;color:#26235a">₹5,000</div><div style="font-size:11px;color:#8b8ba0;margin-top:2px">from BK2214</div></div>
+                  <div><div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:6px">Forfeits</div><div style="font-family:'Space Grotesk';font-weight:600;font-size:19px;color:#16a34a">0</div></div>
+                  <div><div style="font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.6px;color:#a0a0b4;text-transform:uppercase;margin-bottom:6px">Disputes</div><div style="font-family:'Space Grotesk';font-weight:600;font-size:19px;color:#16a34a">0</div></div>
+                </div>
+                <svg width="150" height="44" viewBox="0 0 150 44"><polyline points="0,30 30,28 60,31 90,26 120,29 150,24" fill="none" stroke="#c7c5dd" stroke-width="2"/></svg>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- g) COMMUNICATION -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden">
+            <div onClick="{{ handlers.communication }}" style="display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer">
+              <span style="width:9px;height:9px;border-radius:50%;background:#6c6c82;flex:none"></span>
+              <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#26235a">Communication</span>
+              <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:#5a5a72;background:#eeeef3;padding:1px 7px;border-radius:10px">47</span>
+              <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:11px;color:#8b8ba0">Last · WhatsApp today</span>
+              <sc-if value="{{ exp.communication }}"><span style="color:#a0a0b4;font-size:12px">▾</span></sc-if><sc-if value="{{ col.communication }}"><span style="color:#a0a0b4;font-size:12px">▸</span></sc-if>
+            </div>
+            <sc-if value="{{ exp.communication }}">
+              <div style="padding:2px 22px 20px;font-size:12.5px;color:#8b8ba0">47 messages across WhatsApp and email. <a href="#" style="font-weight:600">Open thread →</a></div>
+            </sc-if>
+          </div>
+
+          <!-- h) NOTES -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden">
+            <div onClick="{{ handlers.notes }}" style="display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer">
+              <span style="width:9px;height:9px;border-radius:50%;background:#26235a;flex:none"></span>
+              <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#26235a">Notes</span>
+              <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:#5a5a72;background:#eeeef3;padding:1px 7px;border-radius:10px">2</span>
+              <span style="margin-left:auto"></span>
+              <sc-if value="{{ exp.notes }}"><span style="color:#a0a0b4;font-size:12px">▾</span></sc-if><sc-if value="{{ col.notes }}"><span style="color:#a0a0b4;font-size:12px">▸</span></sc-if>
+            </div>
+            <sc-if value="{{ exp.notes }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:2px 22px 20px">
+                <div style="border:1px solid #e0e0ea;border-radius:11px;padding:12px 14px;margin-bottom:16px">
+                  <div style="font-size:13px;color:#a0a0b4">Add a note… use @ to mention a teammate</div>
+                  <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
+                    <span style="display:flex;gap:12px;color:#8b8ba0"><span dangerouslySetInnerHTML="{{ atIcon }}" style="display:flex"></span><span dangerouslySetInnerHTML="{{ attachIcon }}" style="display:flex"></span></span>
+                    <button style="margin-left:auto;background:#4148c9;color:#fff;border:none;padding:7px 15px;border-radius:8px;font-family:'Manrope';font-weight:600;font-size:12.5px;cursor:pointer" style-hover="background:#3339a8">Post note</button>
+                  </div>
+                </div>
+                <sc-for list="{{ notes }}" as="n" hint-placeholder-count="2">
+                  <div style="display:flex;gap:12px;padding-bottom:16px">
+                    <div style="width:32px;height:32px;border-radius:50%;background:{{ n.avBg }};color:#202058;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:12px;flex:none">{{ n.initials }}</div>
+                    <div style="flex:1;min-width:0">
+                      <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:600;font-size:12.5px;color:#202058">{{ n.author }}</span><span style="font-family:'JetBrains Mono';font-size:10.5px;color:#a0a0b4">{{ n.time }}</span></div>
+                      <div dangerouslySetInnerHTML="{{ n.body }}" style="font-size:13px;color:#3a3a58;line-height:1.55;margin-top:4px"></div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- i) OPEN ITEMS -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden">
+            <div onClick="{{ handlers.openitems }}" style="display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer">
+              <span style="width:9px;height:9px;border-radius:50%;background:#2f6bed;flex:none"></span>
+              <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#26235a">Open Items</span>
+              <span style="font-family:'JetBrains Mono';font-size:11px;font-weight:600;color:#5a5a72;background:#eeeef3;padding:1px 7px;border-radius:10px">2</span>
+              <span style="margin-left:auto"></span>
+              <sc-if value="{{ exp.openitems }}"><span style="color:#a0a0b4;font-size:12px">▾</span></sc-if><sc-if value="{{ col.openitems }}"><span style="color:#a0a0b4;font-size:12px">▸</span></sc-if>
+            </div>
+            <sc-if value="{{ exp.openitems }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:2px 22px 20px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid #eeeef3;border-radius:10px;font-size:13px">
+                  <span style="width:7px;height:7px;border-radius:50%;background:#2f6bed;flex:none"></span>
+                  <span style="font-weight:600;color:#26235a">Active order</span>
+                  <span style="font-family:'JetBrains Mono';font-size:12px;color:#26235a">BK2214</span>
+                  <span style="display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono';font-size:10px;font-weight:600;color:#2f6bed;background:#eaf1fe;border:1px solid #cfe0fc;border-radius:14px;padding:3px 8px">● Partially Dispatched 3/5</span>
+                  <a href="#" style="margin-left:auto;font-weight:600">→</a>
+                </div>
+                <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid #eeeef3;border-radius:10px;font-size:13px;color:#8b8ba0">
+                  <span style="width:7px;height:7px;border-radius:50%;background:#16a34a;flex:none"></span>No open damage
+                </div>
+                <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid #eeeef3;border-radius:10px;font-size:13px">
+                  <span style="width:7px;height:7px;border-radius:50%;background:#d98314;flex:none"></span>
+                  <span style="font-weight:600;color:#26235a">Active deposit hold</span>
+                  <span style="font-family:'JetBrains Mono';font-size:12px;color:#26235a">DP-2026-0142-1</span>
+                  <a href="#" style="margin-left:auto;font-weight:600">→</a>
+                </div>
+                <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid #eeeef3;border-radius:10px;font-size:13px;color:#8b8ba0">
+                  <span style="width:7px;height:7px;border-radius:50%;background:#16a34a;flex:none"></span>No recovery cases
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- j) RECOMMENDATIONS -->
+          <div style="background:#faf9fd;border:1px dashed #d7d5e6;border-radius:14px;overflow:hidden">
+            <div onClick="{{ handlers.recommendations }}" style="display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer">
+              <span style="width:9px;height:9px;border-radius:50%;background:#cdccdd;flex:none"></span>
+              <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#a0a0b4">Recommendations</span>
+              <span style="font-family:'JetBrains Mono';font-size:9px;font-weight:600;color:#a0a0b4;background:#eeeef3;padding:2px 7px;border-radius:10px">RESERVED</span>
+              <span style="margin-left:auto"></span>
+              <sc-if value="{{ exp.recommendations }}"><span style="color:#c9c7dd;font-size:12px">▾</span></sc-if><sc-if value="{{ col.recommendations }}"><span style="color:#c9c7dd;font-size:12px">▸</span></sc-if>
+            </div>
+            <sc-if value="{{ exp.recommendations }}">
+              <div style="padding:2px 22px 20px;font-size:12.5px;color:#b3b1c6;font-style:italic">AI recommendations coming soon</div>
+            </sc-if>
+          </div>
+
+        </div>
+
+        <!-- SIDEBAR 35% -->
+        <div style="flex:1;min-width:0;position:sticky;top:180px;display:flex;flex-direction:column;gap:16px">
+
+          <!-- Metadata -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);padding:18px 20px">
+            <div style="font-family:'Space Grotesk';font-weight:600;font-size:13px;color:#26235a;margin-bottom:14px;text-transform:uppercase;letter-spacing:.5px">Metadata</div>
+            <div style="display:flex;flex-direction:column;gap:13px">
+              <div style="display:flex;align-items:center"><span style="width:92px;font-size:11.5px;color:#8b8ba0;font-weight:600">Segment</span><span style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono';font-size:10.5px;font-weight:600;color:#16a34a;background:#e7f6ee;padding:3px 8px;border-radius:6px;cursor:pointer">VIP <span style="color:#16a34a">▾</span></span></div>
+              <div style="display:flex;align-items:flex-start"><span style="width:92px;font-size:11.5px;color:#8b8ba0;font-weight:600;padding-top:1px">Source</span><span style="font-size:12.5px;color:#26235a">WhatsApp inbound<span style="display:block;font-family:'JetBrains Mono';font-size:10.5px;color:#a0a0b4">Feb 2022</span></span></div>
+              <div style="display:flex;align-items:center"><span style="width:92px;font-size:11.5px;color:#8b8ba0;font-weight:600">Referred by</span><a href="#" style="font-size:12.5px;font-weight:600">Studio 8 Films</a></div>
+              <div style="display:flex;align-items:flex-start"><span style="width:92px;font-size:11.5px;color:#8b8ba0;font-weight:600;padding-top:2px">Tags</span><span style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-family:'JetBrains Mono';font-size:10.5px;color:#5a5a72;background:#eeeef3;padding:2px 8px;border-radius:5px">wedding</span><span style="font-family:'JetBrains Mono';font-size:10.5px;color:#5a5a72;background:#eeeef3;padding:2px 8px;border-radius:5px">premium</span><span style="font-family:'JetBrains Mono';font-size:10.5px;color:#5a5a72;background:#eeeef3;padding:2px 8px;border-radius:5px">repeat</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#a0a0b4;border:1px dashed #d0d0dc;padding:1px 7px;border-radius:5px;cursor:pointer">+</span></span></div>
+              <div style="display:flex;align-items:center"><span style="width:92px;font-size:11.5px;color:#8b8ba0;font-weight:600">Branch</span><span style="font-size:12.5px;color:#26235a">Vadodara HQ</span></div>
+              <div style="display:flex;align-items:flex-start"><span style="width:92px;font-size:11.5px;color:#8b8ba0;font-weight:600;padding-top:1px">Created</span><span style="font-size:12.5px;color:#26235a">Feb 12, 2022<span style="display:block;font-family:'JetBrains Mono';font-size:10.5px;color:#a0a0b4">by Aamir</span></span></div>
+              <div style="display:flex;align-items:flex-start"><span style="width:92px;font-size:11.5px;color:#8b8ba0;font-weight:600;padding-top:1px">Last activity</span><span style="font-size:12.5px;color:#26235a">Today<span style="display:block;font-family:'JetBrains Mono';font-size:10.5px;color:#a0a0b4">New order</span></span></div>
+            </div>
+          </div>
+
+          <!-- Related objects -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);padding:18px 20px">
+            <div style="font-family:'Space Grotesk';font-weight:600;font-size:13px;color:#26235a;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Related Objects</div>
+            <div style="display:flex;flex-direction:column">
+              <div style="padding:10px 0;border-bottom:1px solid #f2f2f7">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px"><span dangerouslySetInnerHTML="{{ historyIcon }}" style="display:flex;color:#8b8ba0"></span><span style="flex:1;font-size:13px;color:#26235a">Recent orders</span></div>
+                <div style="display:flex;gap:7px;padding-left:26px"><a href="#" style="font-family:'JetBrains Mono';font-size:11px;font-weight:600;background:#eeeef3;border-radius:6px;padding:3px 8px">BK2214</a><a href="#" style="font-family:'JetBrains Mono';font-size:11px;font-weight:600;background:#eeeef3;border-radius:6px;padding:3px 8px">BK2201</a><a href="#" style="font-family:'JetBrains Mono';font-size:11px;font-weight:600;background:#eeeef3;border-radius:6px;padding:3px 8px">BK2189</a></div>
+              </div>
+              <a href="#" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f2f2f7;color:#26235a" style-hover="color:#4148c9"><span dangerouslySetInnerHTML="{{ shieldIcon }}" style="display:flex;color:#8b8ba0"></span><span style="flex:1;font-size:13px">Active deposit holds</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#2f6bed">1</span><span style="color:#c0c0cc">→</span></a>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f2f2f7"><span dangerouslySetInnerHTML="{{ warnIcon }}" style="display:flex;color:#8b8ba0"></span><span style="flex:1;font-size:13px;color:#26235a">Open damage</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#16a34a">None</span></div>
+              <a href="#" style="display:flex;align-items:center;gap:10px;padding:10px 0;color:#26235a" style-hover="color:#4148c9"><span dangerouslySetInnerHTML="{{ userIcon }}" style="display:flex;color:#8b8ba0"></span><span style="flex:1;font-size:13px">Referrals made</span><span style="font-family:'JetBrains Mono';font-size:11px;color:#8b8ba0">4</span><span style="color:#c0c0cc">→</span></a>
+            </div>
+          </div>
+
+          <!-- Activity Feed -->
+          <div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);padding:18px 20px">
+            <div style="font-family:'Space Grotesk';font-weight:600;font-size:13px;color:#26235a;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Activity</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+              <sc-for list="{{ filters }}" as="f" hint-placeholder-count="7">
+                <button onClick="{{ f.onClick }}" style="font-family:'Manrope';font-size:11px;font-weight:600;padding:4px 10px;border-radius:14px;cursor:pointer;border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.color }}">{{ f.name }}</button>
+              </sc-for>
+            </div>
+            <div style="position:relative">
+              <sc-for list="{{ visibleActivity }}" as="e" hint-placeholder-count="10">
+                <div style="display:flex;gap:12px;position:relative;padding-bottom:16px">
+                  <div style="display:flex;flex-direction:column;align-items:center;flex:none">
+                    <div style="width:26px;height:26px;border-radius:50%;background:{{ e.bg }};color:{{ e.color }};display:flex;align-items:center;justify-content:center;font-size:12px;z-index:1;border:2px solid #fff">{{ e.icon }}</div>
+                    <div style="width:2px;flex:1;background:#eeeef3;margin-top:2px"></div>
+                  </div>
+                  <div style="flex:1;min-width:0;padding-top:1px">
+                    <div dangerouslySetInnerHTML="{{ e.text }}" style="font-size:12.5px;color:#3a3a58;line-height:1.45"></div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:3px"><span style="font-family:'JetBrains Mono';font-size:10px;color:#a0a0b4">{{ e.actor }}</span><span style="font-family:'JetBrains Mono';font-size:10px;color:#c0c0cc">·</span><span style="font-family:'JetBrains Mono';font-size:10px;color:#a0a0b4">{{ e.time }}</span></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    exp: { identity:true, kyc:true, relationship:true, rental:true, payment:true, deposits:true, communication:false, notes:true, openitems:true, recommendations:false },
+    overflow:false, filter:'All'
+  };
+
+  ic(path, w){ return {__html:'<svg width="'+(w||18)+'" height="'+(w||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'+path+'</svg>'}; }
+
+  renderVals(){
+    const exp = this.state.exp;
+    const col = {}; Object.keys(exp).forEach(k=>col[k]=!exp[k]);
+    const handlers = {};
+    Object.keys(exp).forEach(k=>handlers[k]=()=>this.setState(s=>({exp:{...s.exp,[k]:!s.exp[k]}})));
+
+    const modules = [
+      {name:'Dashboard', icon:this.ic('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'), color:'#a5a3d6', bg:'transparent'},
+      {name:'Rentals', icon:this.ic('<path d="M3 7h13v8H3z"/><path d="M16 10h3l2 2v3h-5z"/><circle cx="7" cy="17" r="1.6"/><circle cx="17.5" cy="17" r="1.6"/>'), color:'#a5a3d6', bg:'transparent'},
+      {name:'Inventory', icon:this.ic('<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'), color:'#a5a3d6', bg:'transparent'},
+      {name:'Customers', icon:this.ic('<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 4.5a3 3 0 0 1 0 6"/><path d="M18 20c0-2.4-1-4.5-2.6-6"/>'), color:'#fff', bg:'#4148c9'},
+      {name:'Finance', icon:this.ic('<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6" stroke-width="1.4"/>'), color:'#a5a3d6', bg:'transparent'},
+      {name:'Insights', icon:this.ic('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'), color:'#a5a3d6', bg:'transparent'},
+      {name:'System', icon:this.ic('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>'), color:'#a5a3d6', bg:'transparent'}
+    ];
+
+    const done = '<div style="width:30px;height:30px;border-radius:50%;background:#4148c9;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px">✓</div>';
+    const current = '<div style="width:34px;height:34px;border-radius:50%;background:#2f6bed;color:#fff;display:flex;align-items:center;justify-content:center;animation:pulseNode 2s infinite"><span style="width:9px;height:9px;border-radius:50%;background:#fff"></span></div>';
+    const future = '<div style="width:30px;height:30px;border-radius:50%;background:#fff;border:2px solid #e0e0ea;color:#c0c0cc;display:flex;align-items:center;justify-content:center;font-size:12px">○</div>';
+    const solid = {__html:'<div style="width:100%;height:2px;background:#4148c9"></div>'};
+    const dashed = {__html:'<div style="width:100%;height:0;border-top:2px dashed #d8d8e4"></div>'};
+    const steps = [
+      {label:'Lead',        node:{__html:done}, connector:solid,  flex:1, labelColor:'#5a5a72'},
+      {label:'KYC Verified',node:{__html:done}, connector:solid,  flex:1, labelColor:'#5a5a72'},
+      {label:'First Rental',node:{__html:done}, connector:solid,  flex:1, labelColor:'#5a5a72'},
+      {label:'Repeat',      node:{__html:done}, connector:solid,  flex:1, labelColor:'#5a5a72'},
+      {label:'VIP', sub:'Current', node:{__html:current}, connector:dashed, flex:1, labelColor:'#2f6bed'},
+      {label:'Inactive',    node:{__html:future}, connector:'',   flex:1, labelColor:'#a0a0b4'}
+    ];
+
+    const orders = [
+      {id:'BK2214', status:'Partially Dispatched 3/5', stColor:'#2f6bed', stBg:'#eaf1fe', stBorder:'#cfe0fc', dates:'Nov 20–23', value:'₹28,000', items:'5'},
+      {id:'BK2201', status:'Closed', stColor:'#16a34a', stBg:'#e7f6ee', stBorder:'#c7ecd6', dates:'Oct 8–12', value:'₹35,000', items:'6'},
+      {id:'BK2189', status:'Closed', stColor:'#16a34a', stBg:'#e7f6ee', stBorder:'#c7ecd6', dates:'Sept 15–19', value:'₹42,000', items:'8'},
+      {id:'BK2176', status:'Closed', stColor:'#16a34a', stBg:'#e7f6ee', stBorder:'#c7ecd6', dates:'Aug 22–26', value:'₹28,500', items:'5'},
+      {id:'BK2158', status:'Closed', stColor:'#16a34a', stBg:'#e7f6ee', stBorder:'#c7ecd6', dates:'Jul 10–14', value:'₹31,200', items:'6'}
+    ];
+
+    const notes = [
+      {initials:'RU', avBg:'#eef0f4', author:'Ruhan', time:'2 days ago', body:'Customer prefers early morning pickup for VIP orders.'},
+      {initials:'AA', avBg:'#f0eeee', author:'Aamir', time:'Nov 15', body:'<span style="color:#4148c9;font-weight:600">@Ruhan</span> verify large-order deposits before dispatch'}
+    ];
+    notes.forEach(n=>n.body={__html:n.body});
+
+    const BLUE={bg:'#eaf1fe',color:'#2f6bed'}, GREEN={bg:'#e7f6ee',color:'#16a34a'}, COMM={bg:'#f0f8f3',color:'#16a34a'}, GREY={bg:'#f4f4f8',color:'#5a5a72'}, SYS={bg:'#f4f4f8',color:'#8b8ba0'}, FIN={bg:'#e7f6ee',color:'#16a34a'};
+    const activity = [
+      {type:'State',         icon:'●', bg:BLUE.bg,  color:BLUE.color,  text:'Order <strong>BK2214</strong> created', actor:'Aamir', time:'2 days ago'},
+      {type:'State',         icon:'●', bg:BLUE.bg,  color:BLUE.color,  text:'Order <strong>BK2214</strong> dispatched (partial 3/5)', actor:'Ruhan', time:'2 hours ago'},
+      {type:'Communications',icon:'💬', bg:COMM.bg,  color:COMM.color,  text:'WhatsApp exchange re: pickup time', actor:'Rahul Malhotra', time:'Today'},
+      {type:'Notes',         icon:'📝', bg:GREY.bg,  color:GREY.color,  text:'Note added by Aamir', actor:'Aamir', time:'Nov 15'},
+      {type:'Financial',     icon:'💼', bg:FIN.bg,   color:FIN.color,   text:'Payment received <strong>₹14,000</strong> · UPI', actor:'Rahul Malhotra', time:'3 days ago'},
+      {type:'State',         icon:'●', bg:GREEN.bg, color:GREEN.color, text:'Order <strong>BK2201</strong> closed', actor:'Ruhan', time:'Oct 15'},
+      {type:'System',        icon:'ⓘ', bg:SYS.bg,   color:SYS.color,   text:'Trust score updated <strong>91 → 92</strong>', actor:'System', time:'Oct 15'},
+      {type:'Communications',icon:'💬', bg:COMM.bg,  color:COMM.color,  text:'Email opened re: quote v2', actor:'System', time:'3 weeks ago'},
+      {type:'State',         icon:'●', bg:BLUE.bg,  color:BLUE.color,  text:'Order <strong>BK2189</strong> dispatched', actor:'Ruhan', time:'Sept 15'},
+      {type:'System',        icon:'ⓘ', bg:SYS.bg,   color:SYS.color,   text:'Customer segment updated <strong>New → Repeat</strong>', actor:'System', time:'Feb 2023'}
+    ];
+    activity.forEach(a=>a.text={__html:a.text});
+    const filterNames = ['All','State','Actions','Communications','Notes','Financial','System'];
+    const filters = filterNames.map(name=>{
+      const active = this.state.filter===name;
+      return {name, onClick:()=>this.setState({filter:name}),
+        bg: active?'#26235a':'#fff', color: active?'#fff':'#5a5a72', border: active?'#26235a':'#e0e0ea'};
+    });
+    const visibleActivity = this.state.filter==='All'?activity:activity.filter(a=>a.type===this.state.filter);
+
+    return {
+      exp, col, handlers, modules, steps, orders, notes, filters, visibleActivity,
+      overflow:this.state.overflow,
+      toggleOverflow:()=>this.setState(s=>({overflow:!s.overflow})),
+      gearIcon:this.ic('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',20),
+      searchIcon:this.ic('<circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/>',16),
+      bellIcon:this.ic('<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',19),
+      backIcon:this.ic('<path d="M15 18l-6-6 6-6"/>',15),
+      plusIcon:this.ic('<path d="M12 5v14M5 12h14"/>',16),
+      waIcon:this.ic('<path d="M3 21l1.6-5A8 8 0 1 1 12 20a8 8 0 0 1-4-1z"/><path d="M8.5 9.5c0 3 2 5 5 5.5" stroke-width="1.3"/>',15),
+      phoneIcon:this.ic('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>',15),
+      editIcon:this.ic('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',15),
+      mergeIcon:this.ic('<path d="M8 3v4a4 4 0 0 0 4 4 4 4 0 0 1 4 4v4"/><path d="M16 3l3 3-3 3"/><path d="M8 21H4"/>',16),
+      printIcon:this.ic('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',16),
+      archiveIcon:this.ic('<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/>',16),
+      pinIcon:this.ic('<path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.4"/>',15),
+      docIcon:this.ic('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',15),
+      atIcon:this.ic('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',16),
+      attachIcon:this.ic('<path d="M21 12l-9 9a5.5 5.5 0 0 1-8-8l9-9a3.5 3.5 0 0 1 5 5l-9 9a1.5 1.5 0 0 1-2-2l8-8"/>',16),
+      userIcon:this.ic('<circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3-6.5 7-6.5s7 2.9 7 6.5"/>',16),
+      historyIcon:this.ic('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 2"/>',16),
+      shieldIcon:this.ic('<path d="M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z"/>',16),
+      warnIcon:this.ic('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',16)
+    };
+  }
+}
+</script>
+</body>
+</html>
