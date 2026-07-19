@@ -1377,32 +1377,108 @@ async function openSubstitutionModal(itemId){
   try{const r=await api.get('/api/inventory/products');M.data.products=(r.products||r.items||[]).filter(p=>!p.is_kit);}catch{}
   M.data.loading=false;if(M.kind==='substitution')mrender(renderSubModal(it));
 }
+// Money-touching swaps (mirrors src/lib/substitutions.ts isFinancialSubstitution).
+// Advisory only — the server makes the real permission/approval decision on submit.
+function subIsFinancial(type,fin){ return fin==='additional_charge'||fin==='credit_to_customer'||type==='upgrade_paid'||type==='downgrade_credit'; }
+const CAM_ICON='<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+
 function renderSubModal(it){
   const d=M.data;
-  const prodOpts='<option value="">— same product —</option>'+(d.products||[]).map(p=>'<option value="'+escapeAttr(p.id)+'"'+(p.id===d.replProduct?' selected':'')+'>'+escapeHtml(p.name||p.sku||p.id)+'</option>').join('');
+  const prodOpts='<option value="">— same product (same-unit / same-product swap) —</option>'+(d.products||[]).map(p=>'<option value="'+escapeAttr(p.id)+'"'+(p.id===d.replProduct?' selected':'')+'>'+escapeHtml(p.name||p.sku||p.id)+'</option>').join('');
   const showAmt=(d.fin==='additional_charge'||d.fin==='credit_to_customer');
-  return '<div class="m-hd"><div><div class="mono" style="display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:20px;background:var(--accent-bg,#eef2ff);color:var(--accent);font-size:10px;font-weight:600;letter-spacing:.1em"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>SUBSTITUTION</div>'
+  const financial=subIsFinancial(d.type,d.fin);
+  const chosen=(d.products||[]).find(p=>p.id===d.replProduct)||null;
+  const rate=it.unit_amount_paise!=null?formatINR(it.unit_amount_paise):null;
+  const total=it.total_amount_paise!=null?formatINR(it.total_amount_paise):null;
+  const priceLine=(rate?rate+' × '+escapeHtml(it.quantity||1)+(total?' = '+total:''):(total||''));
+
+  // ---- header ----
+  let h='<div class="m-hd"><div><div style="display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:20px;background:var(--info-bg);font:600 10px var(--mono);letter-spacing:.1em;color:var(--info)"><span style="width:7px;height:7px;border-radius:50%;background:var(--info)"></span>SUBSTITUTION</div>'
     +'<h3 class="m-title" style="margin-top:10px">Swap an asset in this order</h3>'
-    +'<div style="font-size:12.5px;color:var(--neutral);margin-top:4px">#'+escapeHtml(S.order.order_number)+' · '+escapeHtml(it.description||'Item')+'</div></div>'
-    +'<button class="m-x" data-mclose>'+I('cancel',16)+'</button></div>'
-    +'<div class="m-bd">'
+    +'<div style="font:400 12.5px var(--body-font);color:var(--neutral);margin-top:4px">#'+escapeHtml(S.order.order_number)+' · '+escapeHtml((S.order.customer_name)||'Customer')+' · '+escapeHtml(titleize(S.order.status||''))+'</div></div>'
+    +'<button class="m-x" data-mclose>'+I('cancel',16)+'</button></div>';
+
+  // ---- current line item card ----
+  let body='<div class="m-bd">'
     +mlabel('CURRENT LINE ITEM')
-    +'<div style="font-size:13px;color:var(--head);font-weight:600">'+escapeHtml(it.description||'Item')+' <span class="mono" style="font-size:11px;color:var(--neutral)">· qty '+escapeHtml(it.quantity)+' · '+escapeHtml(String(it.status).replace(/_/g,' '))+'</span></div>'
-    +mlabel('REASON',true)
+    +'<div style="display:flex;gap:14px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface-1)">'
+      +'<div style="width:60px;height:60px;flex:none;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:#b6b1a6">'+CAM_ICON+'</div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font:700 14px var(--head-font);color:var(--ink)">'+escapeHtml(it.description||'Item')+'</div>'
+        +(priceLine?'<div style="margin-top:5px;font:400 12px var(--mono);color:var(--neutral)">qty '+escapeHtml(it.quantity||1)+' · '+priceLine+'</div>':'')
+        +'<div style="margin-top:8px;display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;background:var(--info-bg)"><span style="width:6px;height:6px;border-radius:50%;background:var(--info)"></span><span style="font:600 10px var(--mono);letter-spacing:.06em;color:var(--info)">'+escapeHtml(String(it.status||'').replace(/_/g,' ').toUpperCase())+'</span></div>'
+      +'</div>'
+    +'</div>';
+
+  // ---- reason ----
+  body+=mlabel('REASON FOR SUBSTITUTION',true)
     +'<select data-f="reason" class="m-select">'+selOpts(SUB_REASONS,d.reason)+'</select>'
-    +'<textarea data-f="notes" class="m-ta" placeholder="Notes (optional)…" style="margin-top:10px;min-height:56px">'+escapeHtml(d.notes)+'</textarea>'
-    +mlabel('REPLACEMENT')
-    +'<div style="font-size:11.5px;color:var(--neutral);margin-bottom:6px">Replacement product '+(d.loading?'(loading…)':'(leave as same product for a same-unit/same-product swap)')+'</div>'
+    +'<textarea data-f="notes" class="m-ta" placeholder="Notes (optional)…" style="margin-top:10px;min-height:56px">'+escapeHtml(d.notes)+'</textarea>';
+
+  // ---- replacement ----
+  body+=mlabel('REPLACEMENT')
+    +'<div style="font:400 11.5px var(--body-font);color:var(--neutral);margin-bottom:6px">Replacement product '+(d.loading?'(loading…)':'— leave as “same product” for a same-unit / same-product swap')+'</div>'
     +'<select data-f="replProduct" class="m-select">'+prodOpts+'</select>'
-    +'<input data-f="replAsset" class="m-input" style="margin-top:10px" placeholder="Replacement asset code / ID (optional — pins a specific unit)" value="'+escapeAttr(d.replAsset)+'">'
-    +mlabel('TYPE & FINANCIAL HANDLING')
-    +'<div style="display:flex;gap:12px;flex-wrap:wrap"><select data-f="type" class="m-select" style="flex:1;min-width:180px">'+selOpts(SUB_TYPES,d.type)+'</select>'
-    +'<select data-f="fin" class="m-select" style="flex:1;min-width:180px">'+selOpts(SUB_FIN,d.fin)+'</select></div>'
-    +(showAmt?'<div style="display:flex;align-items:center;gap:8px;margin-top:10px"><span class="mono" style="color:var(--neutral)">₹</span><input data-f="amount" class="m-input" style="max-width:160px" placeholder="Amount (rupees)" value="'+escapeAttr(d.amount)+'"></div>':'')
-    +mlabel('WHEN DOES THE SWAP HAPPEN?',true)
-    +'<select data-f="timing" class="m-select">'+SUB_TIMING.map(t=>'<option value="'+t[0]+'"'+(t[0]===d.timing?' selected':'')+'>'+escapeHtml(t[1])+' — '+escapeHtml(t[2])+'</option>').join('')+'</select>'
+    +'<input data-f="replAsset" class="m-input" style="margin-top:10px" placeholder="Replacement asset code / ID (optional — pins a specific unit)" value="'+escapeAttr(d.replAsset)+'">';
+  if(chosen){
+    body+='<div style="margin-top:12px;border:1.5px solid var(--info-border);background:var(--info-bg);border-radius:12px;padding:13px 15px">'
+      +'<div style="font:700 13.5px var(--head-font);color:var(--ink)">'+escapeHtml(chosen.name||chosen.sku||'Selected product')+'</div>'
+      +'<div style="margin-top:4px;font:400 12px var(--body-font);color:var(--neutral)">Selected replacement product. Pin a specific unit above, or the earliest available unit is assigned at execute.</div></div>';
+  }
+  // Aspirational bits with no backend yet — stubbed honestly, never faked.
+  body+='<div style="margin-top:12px;display:flex;gap:10px;border:1px dashed var(--border);background:var(--surface-1);border-radius:11px;padding:11px 13px">'
+    +'<span style="color:var(--neutral);flex:none">'+I('info',15)+'</span>'
+    +'<div style="font:400 12px var(--body-font);color:var(--neutral);line-height:1.5">Live availability search and the automatic compatibility check (mount / format / stabilization) arrive in a future slice. For now, choose the replacement product/unit above.</div></div>';
+
+  // ---- type + financial handling ----
+  body+=mlabel('SUBSTITUTION TYPE & FINANCIAL HANDLING')
+    +'<div style="display:flex;gap:12px;flex-wrap:wrap">'
+      +'<div style="flex:1;min-width:180px"><div style="font:400 11px var(--body-font);color:var(--neutral);margin-bottom:5px">Type</div><select data-f="type" class="m-select">'+selOpts(SUB_TYPES,d.type)+'</select></div>'
+      +'<div style="flex:1;min-width:180px"><div style="font:400 11px var(--body-font);color:var(--neutral);margin-bottom:5px">Financial handling</div><select data-f="fin" class="m-select">'+selOpts(SUB_FIN,d.fin)+'</select></div>'
     +'</div>'
-    +'<div class="m-ft"><button class="m-ghost" data-mclose>Cancel</button><button class="m-btn" data-msub-submit '+(M.busy?'disabled':'')+'>'+(M.busy?'Working…':'Execute Substitution')+'</button></div>';
+    +(showAmt?'<div style="display:flex;align-items:center;gap:8px;margin-top:10px"><span style="font:400 14px var(--mono);color:var(--neutral)">₹</span><input data-f="amount" class="m-input" style="max-width:160px" placeholder="Amount (rupees)" value="'+escapeAttr(d.amount)+'"></div>':'');
+
+  // ---- timing (radio cards) ----
+  body+=mlabel('WHEN DOES THE SWAP HAPPEN?',true)
+    +'<div style="display:flex;flex-direction:column;gap:2px">'
+    +SUB_TIMING.map(function(t){
+      const on=t[0]===d.timing;
+      return '<div data-stime="'+t[0]+'" style="display:flex;align-items:flex-start;gap:11px;padding:10px 8px;border-radius:9px;cursor:pointer">'
+        +'<span style="margin-top:1px;width:18px;height:18px;border-radius:50%;flex:none;border:2px solid '+(on?'var(--info)':'var(--neutral-border)')+';display:flex;align-items:center;justify-content:center">'+(on?'<span style="width:8px;height:8px;border-radius:50%;background:var(--info)"></span>':'')+'</span>'
+        +'<div><div style="font:600 13px var(--body-font);color:var(--head)">'+escapeHtml(t[1])+'</div><div style="font:400 12px var(--body-font);color:var(--neutral);margin-top:2px">'+escapeHtml(t[2])+'</div></div></div>';
+    }).join('')
+    +'</div>';
+
+  // ---- financial impact (honest; exact pro-ration computed server-side) ----
+  body+=mlabel('FINANCIAL IMPACT');
+  let impact;
+  if(showAmt&&d.amount){
+    const sign=d.fin==='credit_to_customer'?'−':'+';
+    const col=d.fin==='credit_to_customer'?'var(--success)':'var(--ink)';
+    impact='<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:600 13px var(--body-font);color:var(--ink)">Customer change ('+escapeHtml(titleize(d.fin))+')</span><span style="font:700 16px var(--head-font);color:'+col+'">'+sign+'₹'+escapeHtml(String(Number(d.amount).toLocaleString('en-IN')))+'</span></div>';
+  } else {
+    impact='<div style="font:500 13px var(--body-font);color:var(--head)">No customer charge or credit ('+escapeHtml(titleize(d.fin))+').</div>';
+  }
+  body+='<div style="border:1px solid var(--info-border);background:var(--info-bg);border-radius:12px;padding:14px 16px">'+impact
+    +'<div style="margin-top:8px;font:400 11.5px var(--body-font);color:var(--neutral)">Exact pro-ration for the days used is computed by the pricing engine when the swap executes.</div></div>';
+
+  // ---- approval advisory ----
+  body+=mlabel('APPROVAL STATUS');
+  if(financial){
+    body+='<div style="display:flex;gap:11px;border:1px solid var(--attention-border);background:var(--attention-bg);border-radius:12px;padding:14px 15px">'
+      +'<span style="flex:none;color:var(--attention)">'+I('warn',18)+'</span>'
+      +'<div style="font:500 12.5px var(--body-font);color:#92590a;line-height:1.5"><b style="color:var(--head)">Financial substitution.</b> Depending on your workspace thresholds this may need manager approval — you’ll see the exact outcome after you submit.</div></div>';
+  } else {
+    body+='<div style="display:flex;align-items:center;gap:11px;border:1px solid var(--success-border);background:var(--success-bg);border-radius:12px;padding:14px 16px">'
+      +'<span style="color:var(--success)">'+I('check',18)+'</span>'
+      +'<div style="font:700 13px var(--body-font);color:#065f46">Within your authority <span style="font:400 12px var(--body-font);color:var(--neutral)">— non-financial swap</span></div></div>';
+  }
+  body+='<div style="margin-top:10px;font:400 11.5px var(--body-font);color:var(--neutral)">The customer is notified per your workspace substitution policy.</div>';
+
+  body+='</div>'; // m-bd
+  const cta=M.busy?'Working…':'Execute Substitution';
+  const ft='<div class="m-ft"><button class="m-ghost" data-mclose>Cancel</button><button class="m-btn" data-msub-submit '+(M.busy?'disabled':'')+'>'+cta+'</button></div>';
+  return h+body+ft;
 }
 async function submitSubstitution(){
   if(M.busy)return;const d=M.data;
@@ -1551,13 +1627,14 @@ async function submitDamage(){
 // Delegated handlers for the 2.3 modals (field edits, step nav, sub-actions).
 document.addEventListener('input',(e)=>{
   const t=e.target;if(!t)return;
-  if(M.kind==='substitution'){const f=t.getAttribute&&t.getAttribute('data-f');if(f){M.data[f]=t.value;if(f==='fin')mrender(renderSubModal(S.items.find(i=>i.id===M.data.itemId)||{}));}}
+  if(M.kind==='substitution'){const f=t.getAttribute&&t.getAttribute('data-f');if(f){M.data[f]=t.value;if(f==='fin'||f==='type'||f==='reason'||f==='replProduct')mrender(renderSubModal(S.items.find(i=>i.id===M.data.itemId)||{}));}}
   else if(M.kind==='damage'){const f=t.getAttribute&&t.getAttribute('data-f');if(f)M.data[f]=t.value;}
 });
 document.addEventListener('click',(e)=>{
   const t=e.target;if(!t.closest)return;
   if(t.closest('[data-mclose]')&&(M.kind==='substitution'||M.kind==='damage')){mclose();return;}
   if(t.closest('[data-msub-submit]')){submitSubstitution();return;}
+  const stime=t.closest('[data-stime]');if(stime&&M.kind==='substitution'){M.data.timing=stime.getAttribute('data-stime');mrender(renderSubModal(S.items.find(i=>i.id===M.data.itemId)||{}));return;}
   const dstep=t.closest('[data-dstep]');if(dstep){M.data.step=Number(dstep.getAttribute('data-dstep'));mrender(renderDamageModal());return;}
   const dtype=t.closest('[data-dtype]');if(dtype){M.data.incidentType=dtype.getAttribute('data-dtype');mrender(renderDamageModal());return;}
   const dsev=t.closest('[data-dsev]');if(dsev){M.data.severity=dsev.getAttribute('data-dsev');mrender(renderDamageModal());return;}
