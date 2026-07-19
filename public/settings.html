@@ -427,6 +427,29 @@
       }
     }
 
+    // Tax-M3 — build the editable tax_policy slice (rates stored as basis points,
+    // matching the engine + Zod). Absent → seed from the legacy default GST %.
+    // Damage recovery defaults to 0% (compensation, not a supply — Aamir's call);
+    // deposit is never a taxable line so it isn't listed. Existing SAC/HSN/rounding
+    // sub-keys are preserved (spread first) so a save never drops them.
+    const TAX_LINE_TYPES = ['rental', 'delivery_fee', 'late_fee', 'damage', 'other'];
+    function taxPolicyForm(s) {
+      const tp = s.tax_policy || {};
+      const defBps = Math.max(0, Math.min(2800, Math.round((s.tax?.default_gst_percent ?? 18) * 100)));
+      const saved = tp.line_item_gst_rates_bps || {};
+      const perType = {};
+      for (const t of TAX_LINE_TYPES) {
+        perType[t] = typeof saved[t] === 'number' ? saved[t] : (t === 'damage' ? 0 : defBps);
+      }
+      return {
+        ...tp,
+        gst_registration_status: tp.gst_registration_status || 'regular',
+        default_gst_rate_bps: typeof tp.default_gst_rate_bps === 'number' ? tp.default_gst_rate_bps : defBps,
+        line_item_gst_rates_bps: perType,
+        tax_type_logic: { ...(tp.tax_type_logic || {}), auto_detect_by_state: tp.tax_type_logic?.auto_detect_by_state !== false },
+      };
+    }
+
     // Editable (non-feature) slice of state, cloned for dirty diffing.
     function resetForm() {
       const w = state.data.workspace, s = state.data.settings;
@@ -444,6 +467,7 @@
           bank_details: { ...s.bank_details },
           contract: { template_text: s.contract?.template_text ?? '', template_version: s.contract?.template_version ?? 'v1' },
           reminders: JSON.parse(JSON.stringify(s.reminders ?? {})),
+          tax_policy: taxPolicyForm(s),
         },
       };
       state.baseline = JSON.parse(JSON.stringify(state.form));
@@ -546,6 +570,40 @@
               </div>
             </div>
           </div>
+        </div>
+        <div class="card">
+          <div class="section-h">GST rates by line type</div>
+          ${(() => {
+            const tp = s.tax_policy;
+            const active = !!state.data.settings.tax_policy;
+            const pct = (v) => (typeof v === 'number' ? v / 100 : '');
+            const LBL = { rental: 'Rental', delivery_fee: 'Delivery fee', late_fee: 'Late fee', damage: 'Damage recovery', other: 'Other / custom' };
+            return `
+            <div class="notice">${active
+              ? 'Active — these GST rates apply to new invoice lines. Existing invoices keep their snapshotted rates.'
+              : 'Not yet saved. <b>Saving activates these rates on future invoices</b> — existing invoices are untouched.'} Per-line-type rates take precedence over the legacy “Default GST %” above; product-level overrides still win. HSN/SAC codes and rounding rules arrive in a later update.</div>
+            <div class="field">
+              <label>GST registration</label>
+              <select data-field="settings.tax_policy.gst_registration_status" ${dis}>
+                <option value="regular" ${tp.gst_registration_status === 'regular' ? 'selected' : ''}>Regular — collect GST</option>
+                <option value="composition" ${tp.gst_registration_status === 'composition' ? 'selected' : ''}>Composition scheme</option>
+                <option value="none" ${tp.gst_registration_status === 'none' ? 'selected' : ''}>Not registered</option>
+              </select>
+            </div>
+            <div class="field-row">
+              <div class="field"><label>Default GST %<span class="hint">used where a line type below is blank</span></label>
+                <input type="number" data-taxrate="__default__" min="0" max="28" step="0.5" value="${pct(tp.default_gst_rate_bps)}" ${dis}></div>
+              <div class="field"><label>Auto-detect CGST/SGST vs IGST<span class="hint">by customer state</span></label>
+                <div class="toggle-field"><span class="tl">${tp.tax_type_logic.auto_detect_by_state ? 'On' : 'Off'}</span>
+                  <label class="switch"><input type="checkbox" data-field="settings.tax_policy.tax_type_logic.auto_detect_by_state" ${tp.tax_type_logic.auto_detect_by_state ? 'checked' : ''} ${dis}><span class="track"></span></label>
+                </div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:4px">
+              ${TAX_LINE_TYPES.map(t => `<div class="field"><label>${LBL[t]} GST %</label>
+                <input type="number" data-taxrate="${t}" min="0" max="28" step="0.5" value="${pct(tp.line_item_gst_rates_bps[t])}" ${dis}></div>`).join('')}
+            </div>`;
+          })()}
         </div>
         <div class="card">
           <div class="section-h">Invoice</div>
@@ -685,6 +743,18 @@
             if (el.dataset.upper) { const p = el.selectionStart; el.value = v = v.toUpperCase(); try { el.setSelectionRange(p, p); } catch {} }
           }
           setByPath(state.form, path, v);
+          renderTopbar();
+        });
+      });
+      // Tax-M3 — GST rate inputs are shown in %, stored in tax_policy as basis
+      // points (int, clamped 0–2800 = the 28% ceiling the Zod schema allows).
+      document.querySelectorAll('[data-taxrate]').forEach(el => {
+        el.addEventListener('input', () => {
+          const t = el.dataset.taxrate;
+          const bps = el.value === '' ? 0 : Math.max(0, Math.min(2800, Math.round(Number(el.value) * 100)));
+          const tp = state.form.settings.tax_policy;
+          if (t === '__default__') tp.default_gst_rate_bps = bps;
+          else tp.line_item_gst_rates_bps[t] = bps;
           renderTopbar();
         });
       });
