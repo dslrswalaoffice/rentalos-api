@@ -90,6 +90,29 @@
     .tab{padding:12px 16px;background:transparent;border:none;border-bottom:2px solid transparent;font-family:var(--font-body);font-size:13px;font-weight:600;color:var(--muted);cursor:pointer}
     .tab:hover{color:var(--ink)}
     .tab.active{color:var(--head);border-bottom-color:var(--head)}
+    /* Unified settings category nav (replaces the horizontal tab bar) */
+    .settings-body{display:flex;align-items:flex-start;min-height:calc(100vh - 57px)}
+    .settings-nav{width:238px;flex:none;background:#faf9f7;border-right:1px solid #ece9e3;align-self:stretch;position:sticky;top:57px;height:calc(100vh - 57px);overflow-y:auto;padding:16px 12px 30px}
+    .snav-title{font:600 12px var(--font-display,'Space Grotesk'),sans-serif;letter-spacing:.1em;color:#9a9690;padding:0 6px 10px}
+    .snav-search{margin-bottom:8px}
+    .snav-search input{width:100%;height:36px;border:1px solid #ece9e3;border-radius:9px;padding:0 11px;font:400 13px var(--font-body);color:#26235a;background:#fff;outline:none}
+    .snav-search input:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+    .snav-cat{margin-bottom:1px}
+    .snav-cat-head{display:flex;align-items:center;gap:9px;padding:8px 7px;border-radius:8px;cursor:pointer;user-select:none}
+    .snav-cat-head:hover{background:#f0ede8}
+    .snav-cat-ic{display:flex;color:#8a8780}
+    .snav-cat-name{flex:1;font:600 12px var(--font-display,'Space Grotesk'),sans-serif;letter-spacing:.05em;text-transform:uppercase;color:#6b6860}
+    .snav-chev{color:#c0bdb4;font-size:10px}
+    .snav-items{display:flex;flex-direction:column;gap:1px;padding:2px 0 6px}
+    .snav-item{display:flex;align-items:center;gap:10px;padding:7px 10px 7px 28px;border-radius:8px;cursor:pointer;font:500 13.5px var(--font-body);color:#4a4760;text-decoration:none}
+    .snav-item:hover{background:#eef2ff}
+    .snav-item.active{background:#4f46e5;color:#fff;font-weight:600}
+    .snav-dot{width:7px;height:7px;border-radius:50%;flex:none;border:1.5px solid #c9c6d9}
+    .snav-item.active .snav-dot{background:#fff;border:none}
+    .snav-ext{margin-left:auto;opacity:.55;font-size:11px}
+    .snav-empty{padding:16px 8px;font:400 12.5px var(--font-body);color:#9a9690;text-align:center}
+    .settings-body .content{flex:1;min-width:0}
+    @media (max-width:760px){ .settings-body{flex-direction:column} .settings-nav{width:100%;height:auto;position:static;border-right:none;border-bottom:1px solid #ece9e3} }
 
     .content{padding:22px 24px 60px;max-width:900px;margin:0 auto;width:100%}
     .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px 22px;margin-bottom:16px}
@@ -338,29 +361,25 @@
           </div>
 </div>
       </header>
-      <nav class="tabbar" id="tabbar">
-        <button class="tab active" data-tab="workspace">Workspace</button>
-        <button class="tab" data-tab="features">Features</button>
-        <button class="tab" data-tab="integrations">Integrations</button>
-        <button class="tab" data-tab="custom-fields">Custom Fields</button>
-        <button class="tab" data-tab="locations">Locations</button>
-        <button class="tab" data-tab="tags">Tags</button>
-        <button class="tab" data-tab="coupons">Coupons</button>
-        <button class="tab" data-tab="users">Users</button>
-        <a href="/settings-order-policies.html" style="padding:12px 16px;border-bottom:2px solid transparent;font-family:var(--font-body);font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;display:inline-flex;align-items:center">Order Policies ↗</a>
-      </nav>
-      <div class="content" id="content">
-        <!-- Skeleton state (Sub-turn 9a) — replaced by real content on load. -->
-        <div class="skeleton-card">
-          <div class="skeleton skeleton-title"></div>
-          <div class="skeleton skeleton-text long"></div>
-          <div class="skeleton skeleton-text short"></div>
-        </div>
-        <div class="skeleton-card">
-          <div class="skeleton skeleton-title"></div>
-          <div class="skeleton skeleton-text long"></div>
-          <div class="skeleton skeleton-text"></div>
-          <div class="skeleton skeleton-text short"></div>
+      <div class="settings-body">
+        <nav class="settings-nav">
+          <div class="snav-title">SETTINGS</div>
+          <div class="snav-search"><input id="snav-search-input" placeholder="Search settings…" autocomplete="off"></div>
+          <div id="snav-list"></div>
+        </nav>
+        <div class="content" id="content">
+          <!-- Skeleton state — replaced by real content on load. -->
+          <div class="skeleton-card">
+            <div class="skeleton skeleton-title"></div>
+            <div class="skeleton skeleton-text long"></div>
+            <div class="skeleton skeleton-text short"></div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton skeleton-title"></div>
+            <div class="skeleton skeleton-text long"></div>
+            <div class="skeleton skeleton-text"></div>
+            <div class="skeleton skeleton-text short"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -369,7 +388,7 @@
   <script type="module">
     import { api, ensureAuth } from '/_lib/api.js';
 
-    const state = { data: null, tab: 'workspace', form: null, baseline: null, integrations: null, members: null, invites: null, inviteLink: null };
+    const state = { data: null, tab: 'workspace', form: null, baseline: null, integrations: null, members: null, invites: null, inviteLink: null, navCollapsed: {}, navSearch: '' };
 
     const CATEGORY_LABELS = {
       payment: { title: 'Payment gateway', sub: 'Collect deposits and rental payments online. One active provider at a time.' },
@@ -475,8 +494,52 @@
     function isDirty() { return JSON.stringify(state.form) !== JSON.stringify(state.baseline); }
 
     // ---------- render ----------
+    // ---------- unified settings category nav ----------
+    const SNAV_ICON = (p) => '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
+    // Maps the existing content tabs into the substrate's category IA. Only real,
+    // backed items are listed (no stub nav entries); more land as features ship.
+    const SETTINGS_NAV = [
+      { id:'general',   name:'General',       icon:'<rect x="4" y="4" width="7" height="7" rx="1.4"/><rect x="13" y="4" width="7" height="7" rx="1.4"/><rect x="4" y="13" width="7" height="7" rx="1.4"/><rect x="13" y="13" width="7" height="7" rx="1.4"/>', items:[['workspace','Business profile']] },
+      { id:'financial', name:'Financial',     icon:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14" r="1.4"/>', items:[['coupons','Coupons']] },
+      { id:'team',      name:'Team & Access', icon:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.3 2.7-6 6-6"/><path d="M16 4.5a3 3 0 0 1 0 6"/><path d="M15 14c2.5.5 4.5 2.8 4.5 6"/>', items:[['users','Team members']] },
+      { id:'assets',    name:'Assets',        icon:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5"/><path d="M12 12v9"/>', items:[['locations','Locations'],['tags','Tags'],['custom-fields','Custom fields']] },
+      { id:'rental',    name:'Rental Rules',  icon:'<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v4h-4"/>', items:[['order-policies','Order policies','/settings-order-policies.html']] },
+      { id:'advanced',  name:'Advanced',      icon:'<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>', items:[['features','Feature flags'],['integrations','Integrations']] },
+    ];
+    function renderSettingsNav() {
+      const host = document.getElementById('snav-list');
+      if (!host) return;
+      const q = (state.navSearch || '').trim().toLowerCase();
+      let html = '', any = false;
+      for (const cat of SETTINGS_NAV) {
+        let items = cat.items;
+        if (q) items = items.filter(it => it[1].toLowerCase().includes(q) || cat.name.toLowerCase().includes(q));
+        if (!items.length) continue;
+        any = true;
+        const open = q ? true : !state.navCollapsed[cat.id];
+        html += '<div class="snav-cat"><div class="snav-cat-head" data-snav-cat="' + cat.id + '">'
+          + '<span class="snav-cat-ic">' + SNAV_ICON(cat.icon) + '</span>'
+          + '<span class="snav-cat-name">' + escapeHtml(cat.name) + '</span>'
+          + '<span class="snav-chev">' + (open ? '▾' : '▸') + '</span></div>';
+        if (open) {
+          html += '<div class="snav-items">';
+          for (const it of items) {
+            const key = it[0], label = it[1], href = it[2];
+            if (href) html += '<a class="snav-item" href="' + href + '"><span class="snav-dot"></span>' + escapeHtml(label) + '<span class="snav-ext">↗</span></a>';
+            else html += '<div class="snav-item' + (key === state.tab ? ' active' : '') + '" data-snav-item="' + key + '"><span class="snav-dot"></span>' + escapeHtml(label) + '</div>';
+          }
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+      if (!any) html += '<div class="snav-empty">No settings match “' + escapeHtml(state.navSearch) + '”.</div>';
+      host.innerHTML = html;
+      host.querySelectorAll('[data-snav-item]').forEach(el => el.addEventListener('click', () => switchTab(el.dataset.snavItem)));
+      host.querySelectorAll('[data-snav-cat]').forEach(el => el.addEventListener('click', () => { const id = el.dataset.snavCat; state.navCollapsed[id] = !state.navCollapsed[id]; renderSettingsNav(); }));
+    }
+
     function render() {
-      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === state.tab));
+      renderSettingsNav();
       renderTopbar();
       const el = document.getElementById('content');
       if (state.tab === 'workspace') { el.innerHTML = workspaceTab(); wireWorkspaceTab(); }
@@ -2047,7 +2110,8 @@
       history.replaceState(null, '', `#${tab}`);
       render();
     }
-    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+    const snavSearchInput = document.getElementById('snav-search-input');
+    if (snavSearchInput) snavSearchInput.addEventListener('input', () => { state.navSearch = snavSearchInput.value; renderSettingsNav(); });
     window.addEventListener('beforeunload', (e) => {
       if (state.tab === 'workspace' && isDirty()) { e.preventDefault(); e.returnValue = ''; }
     });
