@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>Integrations · Settings · RentalOS</title>
+  <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f46e5'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <!--
+    Slice 3 · Integrations (substrate: settings_integrations.dc.html). New
+    self-contained page on the unified Settings shell (Slice 1). Wired to the
+    EXISTING /api/integrations backend (Sub-turn 6a/6f): GET, PUT
+    {config,test_mode,credentials?}, POST activate/deactivate/test, DELETE. The
+    credential contract is ported verbatim from settings.html's integrations tab
+    (data-kind = source bucket; blank credential keeps the saved one; secrets
+    never returned). Backend categories are payment/whatsapp/email — the
+    substrate's SMS is aspirational and shown only in the Coming-soon strip.
+  -->
+  <style>
+    :root{
+      --ink:#202058; --head:#26235a; --muted:#8a8780; --muted2:#9ca3af; --sub:#6b6860;
+      --indigo:#4f46e5; --indigo-hover:#3f37c9; --indigo-soft:#eef2ff;
+      --green:#059669; --green-soft:#e7f6ee; --amber:#d97706; --amber-soft:#fbeede; --red:#dc2626; --red-soft:#fdecec; --blue:#2563eb; --blue-soft:#eaf1fe;
+      --page:#f4f2ee; --card:#fff; --rail:#faf9f7; --line:#ece9e3; --line2:#f0ede8; --field:#fff;
+      --disp:'Space Grotesk',system-ui,sans-serif; --body:'Manrope',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--page);font-family:var(--body);color:var(--head);-webkit-font-smoothing:antialiased}
+    a{color:var(--indigo);text-decoration:none} a:hover{color:var(--indigo-hover)}
+    input:focus,select:focus{outline:none;border-color:var(--indigo);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+    .shell{display:flex;min-height:100vh}
+    .sb{width:60px;flex:none;background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;position:sticky;top:0;height:100vh}
+    .sb .logo{width:32px;height:32px;border-radius:8px;background:var(--ink);color:#fff;font:600 16px var(--disp);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+    .sb a{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690}
+    .sb a:hover{background:#f0ede8;color:var(--head)} .sb a.active{background:var(--indigo-soft);color:var(--indigo)}
+    .main{flex:1;min-width:0;display:flex;flex-direction:column}
+    .topbar{height:56px;flex:none;background:var(--card);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:0 22px;position:sticky;top:0;z-index:40}
+    .crumb{font:400 12.5px var(--body);color:var(--muted2);display:flex;align-items:center;gap:8px}
+    .crumb .cur{color:var(--head);font-weight:600}
+    .settings-body{display:flex;align-items:flex-start;min-height:calc(100vh - 56px)}
+    .settings-nav{width:238px;flex:none;background:var(--rail);border-right:1px solid var(--line);align-self:stretch;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;padding:16px 12px 30px}
+    .snav-title{font:600 12px var(--disp);letter-spacing:.1em;color:#9a9690;padding:0 6px 10px}
+    .snav-cat-head{display:flex;align-items:center;gap:9px;padding:8px 7px;border-radius:8px}
+    .snav-cat-ic{display:flex;color:#8a8780}
+    .snav-cat-name{flex:1;font:600 12px var(--disp);letter-spacing:.05em;text-transform:uppercase;color:var(--sub)}
+    .snav-items{display:flex;flex-direction:column;gap:1px;padding:2px 0 6px}
+    .snav-item{display:flex;align-items:center;gap:10px;padding:7px 10px 7px 28px;border-radius:8px;cursor:pointer;font:500 13.5px var(--body);color:#4a4760;text-decoration:none}
+    .snav-item:hover{background:var(--indigo-soft)}
+    .snav-item.active{background:var(--indigo);color:#fff;font-weight:600}
+    .snav-dot{width:7px;height:7px;border-radius:50%;flex:none;border:1.5px solid #c9c6d9}
+    .snav-item.active .snav-dot{background:#fff;border:none}
+    .snav-ext{margin-left:auto;opacity:.55;font-size:11px}
+    .content{flex:1;min-width:0;padding:28px 40px 90px}
+    .wrap{max-width:840px}
+    h1{margin:0;font:600 20px var(--disp);color:var(--head);letter-spacing:.02em;text-transform:uppercase}
+    .subtitle{margin:9px 0 0;font:400 13px var(--body);color:var(--muted);line-height:1.5;max-width:640px}
+    .hr{height:1px;background:var(--line);margin:18px 0 20px}
+    .banner{display:flex;gap:11px;border-radius:12px;padding:13px 16px;margin-bottom:18px;font:400 12.5px var(--body);line-height:1.45}
+    .banner.err{background:var(--red-soft);border:1px solid #f5c9c9;color:#991b1b}
+    .overview{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:var(--rail);border:1px solid var(--line);border-radius:12px;padding:12px 18px;margin-bottom:18px}
+    .ov{display:flex;align-items:center;gap:7px} .ov .d{width:8px;height:8px;border-radius:50%;flex:none} .ov b{font:700 13px var(--disp);color:var(--head)} .ov span{font:500 12px var(--body);color:var(--sub)}
+    .cards{display:flex;flex-direction:column;gap:12px}
+    .icard{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden}
+    .icard.attn{border-color:#f0d0d0}
+    .icard-head{display:flex;align-items:center;gap:14px;padding:0 16px;height:64px;cursor:pointer}
+    .icard-glyph{width:34px;height:34px;border-radius:9px;background:#f0ede8;color:#8a8780;display:flex;align-items:center;justify-content:center;flex:none}
+    .icard-cat{width:150px;flex:none;font:600 12.5px var(--disp);letter-spacing:.04em;color:var(--head);text-transform:uppercase}
+    .icard-sub{flex:1;min-width:0;font:400 12px var(--body);color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pill{display:flex;align-items:center;gap:6px;font:600 10px var(--mono);letter-spacing:.04em;padding:4px 9px;border-radius:7px;flex:none} .pill .d{width:6px;height:6px;border-radius:50%}
+    .pill.active{color:var(--green);background:var(--green-soft)} .pill.active .d{background:var(--green)}
+    .pill.configured{color:var(--blue);background:var(--blue-soft)} .pill.configured .d{background:var(--blue)}
+    .pill.attention{color:var(--red);background:var(--red-soft)} .pill.attention .d{background:var(--red)}
+    .pill.notset{color:var(--muted);background:var(--line)} .pill.notset .d{background:#c4bfb4}
+    .tog{width:40px;height:23px;border-radius:12px;position:relative;flex:none;cursor:pointer}
+    .tog .k{position:absolute;top:2px;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.22);transition:left .15s}
+    .chev{color:#b0aca4;flex:none;display:flex}
+    .icard-body{border-top:1px solid var(--line);display:flex;flex-wrap:wrap}
+    .icol{width:50%;flex:none;padding:18px 20px} .icol.l{border-right:1px solid var(--line)} .icol.r{background:var(--rail)}
+    .icol-h{font:600 10.5px var(--mono);letter-spacing:.06em;color:#9a9690;margin-bottom:12px}
+    .field{margin-bottom:13px} .field label{display:flex;align-items:center;gap:6px;font:600 11.5px var(--body);color:var(--head);margin-bottom:6px}
+    .field .opt{font:600 8.5px var(--mono);color:#9a9690;background:var(--line);padding:2px 5px;border-radius:4px}
+    .field input,.field select{width:100%;height:37px;border:1px solid #e4e0d9;border-radius:9px;padding:0 12px;font:400 12.5px var(--body);color:var(--head);background:#fff}
+    .field input.mono{font-family:var(--mono);font-size:12px}
+    .field .help{font:400 11px var(--body);color:#9a9690;margin-top:4px}
+    .prov-row{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+    .prov-row select{flex:1;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 12px;font:500 12.5px var(--body);color:var(--head);background:#fff}
+    .health-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+    .health-row .hd{width:8px;height:8px;border-radius:50%;flex:none;margin-top:5px}
+    .health-k{font:400 10.5px var(--mono);letter-spacing:.03em;color:#9a9690}
+    .health-v{font:400 12px var(--mono);color:var(--head);margin-top:3px}
+    .btnrow{display:flex;align-items:center;gap:9px;margin-top:16px;flex-wrap:wrap}
+    .btn{height:36px;padding:0 15px;border-radius:9px;font:600 12px var(--body);cursor:pointer;border:1px solid transparent}
+    .btn.primary{background:var(--indigo);color:#fff} .btn.primary:hover{background:var(--indigo-hover)}
+    .btn.ghost{background:#fff;color:var(--indigo);border-color:#d8d4ee} .btn.ghost:hover{background:var(--indigo-soft)}
+    .btn.danger{background:#fff;color:var(--red);border-color:#f0c5c5} .btn.danger:hover{background:var(--red-soft)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .soon-strip{margin-top:26px}
+    .soon-h{font:600 10.5px var(--mono);letter-spacing:.06em;color:#b0aca4;margin-bottom:11px}
+    .soon-box{border:1px solid var(--line);border-radius:14px;background:var(--rail);padding:16px 18px}
+    .soon-chips{display:flex;flex-wrap:wrap;gap:9px}
+    .soon-chip{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 13px;opacity:.75;font:600 12px var(--body);color:var(--muted)}
+    .loading,.errbox{padding:50px;text-align:center;color:var(--muted2);font:400 13px var(--body)}
+    @media(max-width:760px){ .settings-body{flex-direction:column} .settings-nav{width:100%;height:auto;position:static;border-right:none;border-bottom:1px solid var(--line)} .content{padding:22px} .icol{width:100%} .icol.l{border-right:none;border-bottom:1px solid var(--line)} }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sb">
+      <div class="logo">R</div>
+      <a href="/dashboard.html" title="Dashboard"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1.2"/><rect x="11" y="3" width="6" height="6" rx="1.2"/><rect x="3" y="11" width="6" height="6" rx="1.2"/><rect x="11" y="11" width="6" height="6" rx="1.2"/></svg></a>
+      <a href="/orders.html" title="Orders"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.2 17 6v8l-7 3.8L3 14V6z"/><path d="M3 6l7 3.8L17 6"/><path d="M10 9.8V17.8"/></svg></a>
+      <a href="/inventory.html" title="Inventory"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5 17.5 6 10 9.5 2.5 6z"/><path d="M2.5 10 10 13.5 17.5 10"/><path d="M2.5 14 10 17.5 17.5 14"/></svg></a>
+      <a href="/people-list.html" title="People"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6.5" r="2.6"/><path d="M2.4 16c0-2.9 2-4.5 4.6-4.5S11.6 13.1 11.6 16"/><path d="M12.6 4.2a2.5 2.5 0 0 1 0 4.8M14 11.6c2 .4 3.5 1.9 3.5 4.4"/></svg></a>
+      <a href="/analytics.html" title="Analytics"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17V3"/><path d="M3 17h14"/><rect x="6" y="10" width="2.6" height="4"/><rect x="10.5" y="6.5" width="2.6" height="7.5"/></svg></a>
+      <div style="flex:1"></div>
+      <a href="/settings.html" class="active" title="Settings"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M2.5 10h2.2M15.3 10h2.2M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/></svg></a>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="crumb"><span>Settings</span><span style="color:#cfcbc3">›</span><span>Advanced</span><span style="color:#cfcbc3">›</span><span class="cur">Integrations</span></div>
+      </header>
+      <div class="settings-body">
+        <nav class="settings-nav"><div class="snav-title">SETTINGS</div><div id="snav-list"></div></nav>
+        <div class="content">
+          <div class="wrap">
+            <h1>Integrations</h1>
+            <p class="subtitle">Pick a provider for each channel, configure credentials, and enable it. Credentials are encrypted and masked after saving — RentalOS never hardcodes a provider.</p>
+            <div class="hr"></div>
+            <div id="loading" class="loading">Loading integrations…</div>
+            <div id="error" class="errbox" style="display:none"></div>
+            <div id="body" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { api, ensureAuth } from '/_lib/api.js';
+    function escapeHtml(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+    function escapeAttr(s){ return escapeHtml(s).replace(/`/g,'&#96;'); }
+
+    const state = { adapters:[], encOk:true, sel:{}, expanded:{}, navCollapsed:{} };
+
+    // ---- unified settings nav (other items link back to settings.html) ----
+    const SNAV_ICON = (p)=>'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>';
+    const SETTINGS_NAV = [
+      { id:'general', name:'General', icon:'<rect x="4" y="4" width="7" height="7" rx="1.4"/><rect x="13" y="4" width="7" height="7" rx="1.4"/><rect x="4" y="13" width="7" height="7" rx="1.4"/><rect x="13" y="13" width="7" height="7" rx="1.4"/>', items:[['business','Business profile','/settings-business-profile.html']] },
+      { id:'financial', name:'Financial', icon:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14" r="1.4"/>', items:[['coupons','Coupons','/settings.html#coupons']] },
+      { id:'team', name:'Team & Access', icon:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.3 2.7-6 6-6"/><path d="M16 4.5a3 3 0 0 1 0 6"/><path d="M15 14c2.5.5 4.5 2.8 4.5 6"/>', items:[['users','Team members','/settings.html#users']] },
+      { id:'assets', name:'Assets', icon:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5"/><path d="M12 12v9"/>', items:[['locations','Locations','/settings.html#locations'],['tags','Tags','/settings.html#tags'],['custom-fields','Custom fields','/settings.html#custom-fields']] },
+      { id:'rental', name:'Rental Rules', icon:'<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v4h-4"/>', items:[['order-policies','Order policies','/settings-order-policies.html']] },
+      { id:'advanced', name:'Advanced', icon:'<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>', items:[['features','Feature flags','/settings.html#features'],['integrations','Integrations','']] },
+    ];
+    function renderSettingsNav(){
+      const host=document.getElementById('snav-list'); if(!host) return;
+      let html='';
+      for(const cat of SETTINGS_NAV){
+        const open=!state.navCollapsed[cat.id];
+        html+='<div class="snav-cat"><div class="snav-cat-head" data-snav-cat="'+cat.id+'"><span class="snav-cat-ic">'+SNAV_ICON(cat.icon)+'</span><span class="snav-cat-name">'+cat.name+'</span><span style="color:#c0bdb4;font-size:10px">'+(open?'▾':'▸')+'</span></div>';
+        if(open){ html+='<div class="snav-items">';
+          for(const it of cat.items){ const [key,label,href]=it;
+            if(!href) html+='<div class="snav-item active"><span class="snav-dot"></span>'+escapeHtml(label)+'</div>';
+            else html+='<a class="snav-item" href="'+href+'"><span class="snav-dot"></span>'+escapeHtml(label)+(href.indexOf('#')<0?'<span class="snav-ext">↗</span>':'')+'</a>';
+          }
+          html+='</div>';
+        }
+        html+='</div>';
+      }
+      host.innerHTML=html;
+      host.querySelectorAll('[data-snav-cat]').forEach(el=>el.addEventListener('click',()=>{ const id=el.dataset.snavCat; state.navCollapsed[id]=!state.navCollapsed[id]; renderSettingsNav(); }));
+    }
+
+    // ---- integrations ----
+    const CAT_ORDER = ['payment','whatsapp','email'];
+    const CAT_LABEL = { payment:'Payment gateway', whatsapp:'WhatsApp', email:'Email' };
+    const CAT_GLYPH = {
+      payment:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14" r="1.3"/>',
+      whatsapp:'<path d="M20 11.5a8 8 0 0 1-11.9 7L4 20l1.6-4A8 8 0 1 1 20 11.5z"/>',
+      email:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+    };
+    function glyph(p){ return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'; }
+    function inCat(cat){ return state.adapters.filter(a=>a.category===cat); }
+    function selectedProvider(cat){
+      const list=inCat(cat); if(!list.length) return null;
+      if(state.sel[cat]) return list.find(a=>a.provider===state.sel[cat]) || list[0];
+      const active=list.find(a=>a.configuration?.is_active);
+      const configured=list.find(a=>a.configuration?.credentials_saved);
+      return active || configured || list[0];
+    }
+    function statusOf(a){
+      const c=a.configuration;
+      if(c?.is_active) return { cls:'active', t:'ACTIVE' };
+      if(c?.last_test_status==='fail') return { cls:'attention', t:'ATTENTION' };
+      if(c?.credentials_saved || (c && Object.keys(c.config||{}).length)) return { cls:'configured', t:'CONFIGURED' };
+      return { cls:'notset', t:'NOT SET UP' };
+    }
+    // credential field input — ported from settings.html (data-kind = source bucket,
+    // blank credential keeps the saved secret; secrets never returned).
+    function fieldInput(f, savedConfig, credsSaved, kind){
+      const isCred = kind==='credential';
+      const cfgVal = isCred ? undefined : savedConfig?.[f.key];
+      let control;
+      if(f.type==='select'){
+        const opts=(f.options||[]).map(o=>`<option value="${escapeAttr(o)}"${cfgVal===o?' selected':''}>${escapeHtml(o)}</option>`).join('');
+        control=`<select data-key="${escapeAttr(f.key)}" data-kind="${kind}">${opts}</select>`;
+      } else if(f.type==='password'){
+        const ph=credsSaved?'(unchanged — leave blank to keep)':(f.placeholder||'');
+        control=`<input type="password" class="mono" data-key="${escapeAttr(f.key)}" data-kind="${kind}" placeholder="${escapeAttr(ph)}" autocomplete="new-password" value="">`;
+      } else {
+        const type=f.type==='email'?'email':(f.type==='url'?'url':'text');
+        const ph=(isCred&&credsSaved)?'(unchanged — leave blank to keep)':(f.placeholder||'');
+        control=`<input type="${type}" class="mono" data-key="${escapeAttr(f.key)}" data-kind="${kind}" placeholder="${escapeAttr(ph)}" value="${escapeAttr(cfgVal??'')}" autocomplete="off">`;
+      }
+      return `<div class="field"><label>${escapeHtml(f.label)}${f.required?'':'<span class="opt">OPTIONAL</span>'}</label>${control}${f.helpText?`<div class="help">${escapeHtml(f.helpText)}</div>`:''}</div>`;
+    }
+    function fmtWhen(iso){ if(!iso) return '—'; const d=new Date(iso); return isNaN(d)?String(iso):d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+
+    function render(){
+      const el=document.getElementById('body');
+      // overview
+      const configured=state.adapters.filter(a=>a.configuration?.credentials_saved).length;
+      const enabled=state.adapters.filter(a=>a.configuration?.is_active).length;
+      const attention=state.adapters.filter(a=>a.configuration?.last_test_status==='fail').length;
+      const available=state.adapters.filter(a=>a.implemented && !a.configuration?.credentials_saved).length;
+      let html='';
+      if(!state.encOk){
+        html+='<div class="banner err"><div><strong>⚠ Server encryption key is misconfigured.</strong> Saving credentials is disabled until <code>INTEGRATION_ENC_KEY</code> is set to a valid 64-char hex string in the deployment env, then redeployed.</div></div>';
+      }
+      html+='<div class="overview">'
+        +'<div class="ov"><span class="d" style="background:#059669"></span><b>'+configured+'</b><span>configured</span></div>'
+        +'<div class="ov"><span class="d" style="background:#4f46e5"></span><b>'+enabled+'</b><span>enabled</span></div>'
+        +'<div class="ov"><span class="d" style="background:'+(attention?'#dc2626':'#c4bfb4')+'"></span><b>'+attention+'</b><span>needs attention</span></div>'
+        +'<div class="ov"><span class="d" style="background:#b0aca4"></span><b>'+available+'</b><span>available</span></div>'
+      +'</div>';
+
+      html+='<div class="cards">';
+      for(const cat of CAT_ORDER){
+        const list=inCat(cat); if(!list.length) continue;
+        const a=selectedProvider(cat); const c=a.configuration; const st=statusOf(a);
+        const expanded=!!state.expanded[cat];
+        const savedConfig=c?.config||{}; const credsSaved=!!c?.credentials_saved;
+        const providerOpts=list.map(p=>`<option value="${escapeAttr(p.provider)}"${p.provider===a.provider?' selected':''}>${escapeHtml(p.displayName||p.provider)}${p.implemented?'':' (soon)'}</option>`).join('');
+        const canActivate=a.implemented && (credsSaved || a.provider==='noop');
+        const togBg = c?.is_active ? '#4f46e5' : '#cfc9be';
+        const togLeft = c?.is_active ? '19px' : '2px';
+
+        html+='<div class="icard'+(st.cls==='attention'?' attn':'')+'">'
+          +'<div class="icard-head" data-expand="'+cat+'">'
+            +'<span class="icard-glyph">'+glyph(CAT_GLYPH[cat])+'</span>'
+            +'<span class="icard-cat">'+escapeHtml(CAT_LABEL[cat])+'</span>'
+            +'<span class="icard-sub">'+escapeHtml((a.displayName||a.provider)+(c?.credentials_saved?' · configured':' · not set up')+(c?.test_mode?' · test mode':''))+'</span>'
+            +'<span class="pill '+st.cls+'"><span class="d"></span>'+st.t+'</span>'
+            +'<div class="tog" title="'+(canActivate?'':'Configure credentials first')+'" data-toggle="'+cat+'" style="background:'+togBg+';opacity:'+(canActivate?'1':'.5')+';cursor:'+(canActivate?'pointer':'not-allowed')+'"><span class="k" style="left:'+togLeft+'"></span></div>'
+            +'<span class="chev">'+glyph(expanded?'<path d="M18 15l-6-6-6 6"/>':'<path d="M6 9l6 6 6-6"/>')+'</span>'
+          +'</div>';
+
+        if(expanded){
+          const credFields=(a.credentialFields||[]).map(f=>fieldInput(f,savedConfig,credsSaved,'credential')).join('');
+          const confFields=(a.configFields||[]).map(f=>fieldInput(f,savedConfig,credsSaved,'config')).join('');
+          html+='<div class="icard-body" data-cat="'+cat+'" data-prov="'+escapeAttr(a.provider)+'">'
+            +'<div class="icol l">'
+              +'<div class="icol-h">PROVIDER &amp; CREDENTIALS</div>'
+              +'<div class="prov-row"><select data-provider-select="'+cat+'">'+providerOpts+'</select></div>'
+              +(a.implemented?'':'<div class="banner err" style="margin-bottom:12px;background:var(--amber-soft);border-color:#f0e2c8;color:#8a6a1e">This provider is coming soon and can’t be activated yet.</div>')
+              +(credFields||confFields?(credFields+confFields):'<div class="help" style="margin-bottom:12px">This adapter needs no configuration.</div>')
+              +'<div class="field" style="display:flex;align-items:center;gap:9px"><label style="margin:0">Test mode</label><input type="checkbox" data-testmode '+(c?.test_mode?'checked':'')+'></div>'
+              +'<div class="btnrow">'
+                +'<button class="btn primary" data-save '+(state.encOk?'':'disabled')+'>Save credentials</button>'
+                +'<button class="btn ghost" data-test>Test connection</button>'
+                +(credsSaved?'<button class="btn danger" data-remove>Remove</button>':'')
+              +'</div>'
+            +'</div>'
+            +'<div class="icol r">'
+              +'<div class="icol-h">HEALTH &amp; ACTIVITY</div>'
+              +'<div class="health-row"><span class="hd" style="background:'+(c?.last_test_status==='ok'?'#059669':(c?.last_test_status==='fail'?'#dc2626':'#c4bfb4'))+'"></span><div><div class="health-k">LAST TEST</div><div class="health-v">'+(c?.last_test_status?escapeHtml(c.last_test_status.toUpperCase())+' · '+fmtWhen(c.last_tested_at):'Never tested')+'</div></div></div>'
+              +(c?.last_test_message?'<div class="health-v" style="color:'+(c.last_test_status==='fail'?'#b91c1c':'#6b6860')+';margin-bottom:12px">'+escapeHtml(c.last_test_message)+'</div>':'')
+              +'<div class="health-row"><span class="hd" style="background:'+(c?.is_active?'#059669':'#c4bfb4')+'"></span><div><div class="health-k">STATUS</div><div class="health-v">'+(c?.is_active?'Active — receiving live sends':'Not active')+'</div></div></div>'
+              +'<div class="help" style="margin-top:8px">Only one provider per channel can be active. Activating a new one deactivates the previous.</div>'
+            +'</div>'
+          +'</div>';
+        }
+        html+='</div>';
+      }
+      html+='</div>';
+
+      // coming soon (aspirational — SMS + others not in the 3 backend categories)
+      html+='<div class="soon-strip"><div class="soon-h">COMING SOON</div><div class="soon-box"><div class="soon-chips">'
+        +['SMS (MSG91 / Twilio)','KYC verification','Accounting (Tally / Zoho)','Google Calendar','Slack'].map(n=>'<div class="soon-chip"><span style="width:8px;height:8px;border-radius:50%;background:#c4bfb4"></span>'+escapeHtml(n)+'</div>').join('')
+        +'</div><div class="help" style="margin-top:12px">v1 ships payment, WhatsApp and email adapters. More channels arrive in later updates.</div></div></div>';
+
+      el.innerHTML=html;
+      wire();
+    }
+
+    function wire(){
+      const el=document.getElementById('body');
+      el.querySelectorAll('[data-expand]').forEach(h=>h.addEventListener('click',(e)=>{
+        if(e.target.closest('[data-toggle]')) return; // toggle handled separately
+        const cat=h.dataset.expand; state.expanded[cat]=!state.expanded[cat]; render();
+      }));
+      el.querySelectorAll('[data-toggle]').forEach(t=>t.addEventListener('click',(e)=>{
+        e.stopPropagation();
+        const cat=t.dataset.toggle; const a=selectedProvider(cat); const c=a.configuration;
+        if(!(a.implemented && (c?.credentials_saved || a.provider==='noop'))) return;
+        doAction(cat,a.provider, c?.is_active?'deactivate':'activate');
+      }));
+      el.querySelectorAll('[data-provider-select]').forEach(s=>s.addEventListener('change',()=>{
+        state.sel[s.dataset.providerSelect]=s.value; render();
+      }));
+      el.querySelectorAll('[data-save]').forEach(b=>b.addEventListener('click',()=>saveCard(b)));
+      el.querySelectorAll('[data-test]').forEach(b=>b.addEventListener('click',()=>{ const body=b.closest('[data-cat]'); doAction(body.dataset.cat,body.dataset.prov,'test'); }));
+      el.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',()=>{ const body=b.closest('[data-cat]'); removeCard(body.dataset.cat,body.dataset.prov); }));
+    }
+
+    async function saveCard(btn){
+      const body=btn.closest('[data-cat]'); const cat=body.dataset.cat, prov=body.dataset.prov;
+      btn.disabled=true; btn.textContent='Saving…';
+      const credentials={}, config={};
+      body.querySelectorAll('[data-key]').forEach(el=>{ const k=el.dataset.key, kind=el.dataset.kind, v=el.value; if(kind==='credential'){ if(v!=='') credentials[k]=v; } else if(v!=='') config[k]=v; });
+      const test_mode=body.querySelector('[data-testmode]').checked;
+      const payload={ config, test_mode }; if(Object.keys(credentials).length) payload.credentials=credentials;
+      try{ await api.put('/api/integrations/'+cat+'/'+prov, payload); toast('Saved'); await reload(); }
+      catch(err){ btn.disabled=false; btn.textContent='Save credentials'; toast('Save failed: '+((err.body&&err.body.error)||err.message),true); }
+    }
+    async function doAction(cat,prov,action){
+      try{
+        const res=await api.post('/api/integrations/'+cat+'/'+prov+'/'+action,{});
+        if(action==='test') toast(res.ok?('Test passed — '+(res.message||'')):('Test failed — '+(res.message||'')), !res.ok);
+        else toast(action==='activate'?'Activated':'Deactivated');
+        await reload();
+      }catch(err){ toast('Could not '+action+': '+((err.body&&err.body.error)||err.message),true); }
+    }
+    async function removeCard(cat,prov){
+      if(!window.confirm('Remove this provider’s configuration? Saved credentials will be deleted.')) return;
+      try{ await api.del('/api/integrations/'+cat+'/'+prov); toast('Removed'); await reload(); }
+      catch(err){ toast('Could not remove: '+((err.body&&err.body.error)||err.message),true); }
+    }
+    async function reload(){ const r=await api.get('/api/integrations'); state.adapters=r.adapters||[]; state.encOk=r.enc_key_ok!==false; render(); }
+    function toast(msg,bad){ const t=document.createElement('div'); t.textContent=msg; t.style.cssText='position:fixed;bottom:24px;right:26px;z-index:130;background:#fff;border:1px solid '+(bad?'#f5c9c9':'#cdeede')+';border-left:4px solid '+(bad?'#dc2626':'#059669')+';border-radius:11px;padding:12px 16px;box-shadow:0 12px 30px rgba(32,32,88,.16);font:600 13px var(--body);color:#26235a;max-width:360px'; document.body.appendChild(t); setTimeout(()=>t.remove(),3400); }
+
+    (async function(){
+      renderSettingsNav();
+      try{ await ensureAuth(); const r=await api.get('/api/integrations'); state.adapters=r.adapters||[]; state.encOk=r.enc_key_ok!==false; }
+      catch(err){ document.getElementById('loading').style.display='none'; const e=document.getElementById('error'); e.style.display=''; e.textContent='Could not load integrations — '+((err.body&&err.body.error)||err.message||'error'); return; }
+      document.getElementById('loading').style.display='none';
+      document.getElementById('body').style.display='';
+      render();
+    })();
+  </script>
+</body>
+</html>
