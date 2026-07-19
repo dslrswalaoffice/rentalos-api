@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>Person · RentalOS</title>
+  <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f46e5'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <!--
+    Slice 1b · Person 360 (substrate: docs/design-substrate/sprint-1/person_360_dc.html).
+    READ-ONLY. Wired to GET /api/people/:id (no backend changes). Palette = the List
+    substrate reconciled as canonical (indigo #4f46e5, light rail) per Decision 2 — the
+    substrate's dark rail / #4148c9 accent are deliberately NOT used, so this page and
+    people-list.html share one nav shell.
+
+    Real data (verbatim from the endpoint): identity/contact, id-proof + phone-verified,
+    trust_score, tier, tags, recent orders, recent payments, created_at, internal note.
+    Everything the endpoint does NOT compute — LTV, avg order value, cancellation rate,
+    the 4-way trust breakdown, payment reliability / avg delay / credit limit, lifecycle
+    stage, the unified activity feed, deposits/forfeits, referrals, open damage — renders
+    as a "—" stub or a "Coming in a future slice" card (Decision 1 · stub, never fake).
+
+    Five cards carry real data: Identity & Contact, KYC & Trust, Relationship Summary,
+    Rental History, Payment Behavior. Five cards are collapsed future stubs: Deposits &
+    Forfeits, Communication, Notes, Open Items, Recommendations. No edit/mutate controls
+    anywhere; Start New Order is a disabled Item-12 blocked action ("Coming in Slice 2").
+  -->
+  <style>
+    :root{
+      --ink:#202058; --head:#26235a; --muted:#8a8780; --muted2:#9ca3af; --muted3:#6b7280; --sub:#6c6c82;
+      --indigo:#4f46e5; --indigo-hover:#3f37c9; --indigo-soft:rgba(79,70,229,.1);
+      --green:#059669; --blue:#2563eb; --amber:#d97706; --red:#dc2626; --grey:#6b7280;
+      --page:#f4f2ee; --card:#ffffff; --rail:#faf9f7; --line:#ece9e3; --line2:#f4f1ec; --field:#faf9f7;
+      --disp:'Space Grotesk',system-ui,sans-serif; --body:'Manrope',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--page);font-family:var(--body);color:var(--head);-webkit-font-smoothing:antialiased}
+    a{color:var(--indigo);text-decoration:none} a:hover{color:var(--indigo-hover)}
+    .shell{width:100%;max-width:1440px;margin:0 auto;display:flex;background:var(--card);min-height:100vh;position:relative}
+    /* icon rail (shared with people-list.html) */
+    .rail{width:60px;flex:none;background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;position:sticky;top:0;height:100vh}
+    .rail .logo{width:32px;height:32px;border-radius:8px;background:var(--ink);color:#fff;font:600 16px var(--disp);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+    .rail a{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690}
+    .rail a:hover{background:#f0eee9;color:var(--head)}
+    .rail a.active{background:var(--indigo-soft);color:var(--indigo)}
+    /* main */
+    main{flex:1;min-width:0;display:flex;flex-direction:column}
+    .topbar{height:56px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:0 22px;position:sticky;top:0;background:var(--card);z-index:40}
+    .tsearch{flex:1;max-width:520px;height:36px;border:1px solid var(--line);border-radius:9px;background:var(--field);display:flex;align-items:center;gap:9px;padding:0 12px;color:var(--muted2);font-size:13px}
+    .iconbtn{width:34px;height:34px;border-radius:8px;border:none;background:transparent;color:var(--muted3);display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .avatar-sm{width:28px;height:28px;border-radius:50%;background:#eef0f4;color:var(--ink);font:600 10px var(--disp);display:flex;align-items:center;justify-content:center}
+    /* sub-nav */
+    .subnav{height:44px;flex:none;border-bottom:1px solid #f0ede8;display:flex;align-items:center;gap:14px;padding:0 24px;position:sticky;top:56px;background:var(--card);z-index:39}
+    .backlink{display:flex;align-items:center;gap:6px;font:600 13px var(--body);color:var(--indigo)}
+    .crumb{font:600 11px var(--mono);letter-spacing:.04em;color:var(--muted2);display:flex;align-items:center;gap:7px}
+    .crumb .cur{color:var(--head)}
+    .divider{color:#d8d5cf}
+    /* sticky person header strip */
+    .pstrip{background:var(--card);border-bottom:1px solid var(--line);padding:16px 24px;position:sticky;top:100px;z-index:38;box-shadow:0 4px 14px rgba(32,32,88,.03)}
+    .pstrip-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+    .pav-lg{width:48px;height:48px;border-radius:13px;background:#eef0f4;display:flex;align-items:center;justify-content:center;font:600 18px var(--disp);color:var(--ink);flex:none}
+    .pname-lg{font:600 22px var(--disp);color:var(--ink);letter-spacing:-.01em}
+    .psub{font:400 13px var(--body);color:var(--sub)}
+    .btn-primary{display:flex;align-items:center;gap:8px;height:38px;padding:0 15px;background:var(--indigo);color:#fff;border:none;border-radius:10px;font:600 13px var(--body);cursor:pointer;box-shadow:0 2px 8px rgba(79,70,229,.28)}
+    .btn-primary[disabled]{background:#c9c6e8;cursor:not-allowed;box-shadow:none}
+    .btn-ghost{display:flex;align-items:center;gap:7px;height:38px;padding:0 13px;background:#fff;color:var(--head);border:1px solid #e4e0d9;border-radius:10px;font:600 13px var(--body);cursor:pointer}
+    .btn-ghost:hover{background:var(--field)}
+    /* trust chip */
+    .trustchip{display:flex;align-items:center;gap:7px;font:600 11px var(--body);color:var(--head);background:#fff;border:1px solid var(--line);padding:4px 9px;border-radius:20px}
+    .trustbar{display:inline-block;width:46px;height:5px;border-radius:3px;background:#eeeef3;overflow:hidden}
+    .trustbar span{display:block;height:100%;border-radius:3px;background:var(--green)}
+    /* segment pill */
+    .segpill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;font:600 10px var(--mono);letter-spacing:.04em;white-space:nowrap}
+    .segpill .dot{width:6px;height:6px;border-radius:50%;flex:none}
+    .seg-vip{background:rgba(5,150,105,.1);color:var(--green)} .seg-vip .dot{background:var(--green)}
+    .seg-premium{background:rgba(37,99,235,.1);color:var(--blue)} .seg-premium .dot{background:var(--blue)}
+    .seg-normal{background:rgba(107,114,128,.12);color:var(--grey)} .seg-normal .dot{background:var(--grey)}
+    /* body layout */
+    .content{flex:1;padding:22px 24px 60px}
+    .stepper{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);padding:18px 24px;margin-bottom:20px}
+    .two-col{display:flex;gap:20px;align-items:flex-start}
+    .maincol{flex:0 0 63%;max-width:63%;display:flex;flex-direction:column;gap:16px;min-width:0}
+    .sidecol{flex:1;min-width:0;position:sticky;top:180px;display:flex;flex-direction:column;gap:16px}
+    /* card */
+    .card{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden}
+    .card.stub{background:#faf9fd;border-style:dashed;border-color:#dcd8ea}
+    .chead{display:flex;align-items:center;gap:12px;padding:16px 22px;cursor:pointer;user-select:none}
+    .cdot{width:9px;height:9px;border-radius:50%;flex:none}
+    .ctitle{font:600 15px var(--disp);color:var(--head)}
+    .card.stub .ctitle{color:var(--muted2)}
+    .cmeta{margin-left:auto;font:500 11px var(--mono);color:var(--muted2)}
+    .ccount{font:600 11px var(--mono);color:var(--muted3);background:#eeeef3;padding:1px 7px;border-radius:10px}
+    .caret{color:var(--muted2);font-size:12px;margin-left:2px}
+    .cbody{padding:2px 22px 22px}
+    .card.collapsed .cbody{display:none}
+    .card.collapsed .cmeta{margin-left:auto}
+    .reserved{font:600 9px var(--mono);color:var(--muted2);background:#eeeef3;padding:2px 7px;border-radius:10px;letter-spacing:.06em}
+    /* field grids */
+    .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:15px 32px}
+    .flabel{font:600 10.5px var(--body);text-transform:uppercase;letter-spacing:.05em;color:var(--muted2);margin-bottom:4px}
+    .fval{font:600 13.5px var(--body);color:var(--ink);word-break:break-word}
+    .fval.mono{font:400 12.5px var(--mono);color:var(--head)}
+    .fval.norm{font-weight:400;color:var(--head)}
+    .hr{border-top:1px solid var(--line2);margin:18px 0 15px}
+    .badge-ok{display:inline-flex;align-items:center;gap:5px;font:600 11px var(--body);color:var(--green)}
+    .badge-muted{display:inline-flex;align-items:center;gap:5px;font:600 11px var(--body);color:var(--muted2)}
+    .kchip{display:flex;align-items:center;gap:8px;border:1px solid var(--line2);border-radius:10px;padding:9px 13px;font:600 12.5px var(--body);background:var(--field);color:var(--head)}
+    .stubnote{font:400 12.5px var(--body);color:var(--muted2);font-style:italic}
+    .stubbox{background:var(--field);border:1px dashed #dcd8ea;border-radius:12px;padding:16px 18px;font:400 12.5px var(--body);color:var(--muted2);font-style:italic}
+    /* metric tiles */
+    .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .tile{border:1px solid var(--line2);border-radius:12px;padding:14px}
+    .tlabel{font:500 9.5px var(--mono);letter-spacing:.06em;color:var(--muted2);text-transform:uppercase;margin-bottom:9px}
+    .tval{font:600 24px var(--disp);color:var(--ink);letter-spacing:-.01em}
+    .tval.dash{color:#c8ccd3;font-size:22px}
+    .tsub{margin-top:7px;font:400 11px var(--body);color:var(--muted2)}
+    /* table */
+    .htable{width:100%;border-collapse:collapse;font:400 12.5px var(--body)}
+    .htable th{font:500 9px var(--mono);letter-spacing:.06em;color:var(--muted2);text-transform:uppercase;text-align:left;padding:6px 8px 9px 0}
+    .htable td{padding:12px 8px 12px 0;border-top:1px solid var(--line2);color:var(--sub)}
+    .htable td.mono{font-family:var(--mono);font-weight:600;color:var(--head)}
+    .htable td.r{text-align:right}
+    .ostatus{display:inline-flex;align-items:center;gap:6px;font:600 10px var(--mono);border-radius:14px;padding:3px 9px;white-space:nowrap;text-transform:capitalize}
+    .ostatus .d{width:6px;height:6px;border-radius:50%}
+    /* payment rows */
+    .prow{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line2)}
+    .prow:first-child{border-top:none}
+    .pdir{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none}
+    .pdir.in{background:rgba(5,150,105,.12);color:var(--green)}
+    .pdir.out{background:rgba(220,38,38,.1);color:var(--red)}
+    /* sidebar */
+    .scard{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);padding:18px 20px}
+    .stitle{font:600 12px var(--disp);color:var(--head);margin-bottom:14px;text-transform:uppercase;letter-spacing:.05em}
+    .metarow{display:flex;align-items:flex-start;gap:10px}
+    .metarow+.metarow{margin-top:13px}
+    .mkey{width:92px;flex:none;font:600 11.5px var(--body);color:var(--muted2);padding-top:1px}
+    .mval{font:400 12.5px var(--body);color:var(--head);min-width:0}
+    .tag{font:600 10.5px var(--mono);color:var(--muted3);background:#eeeef3;padding:2px 8px;border-radius:5px}
+    .relrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line2);font:400 13px var(--body);color:var(--head)}
+    .relrow:first-child{border-top:none}
+    .ordchip{font:600 11px var(--mono);background:#eeeef3;border-radius:6px;padding:3px 8px;color:var(--head)}
+    /* states */
+    .loading{padding:60px;text-align:center;color:var(--muted2);font-size:13px}
+    .errbox{margin:40px auto;max-width:520px;padding:28px;text-align:center;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:14px}
+    .tooltip-wrap{position:relative;display:inline-flex}
+    .tooltip-wrap:hover .tt{opacity:1}
+    .tt{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font:500 11px var(--body);padding:5px 9px;border-radius:6px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s;z-index:5}
+    @media(max-width:980px){ .two-col{flex-direction:column} .maincol,.sidecol{flex:1 1 auto;max-width:100%;position:static} .fgrid,.tiles{grid-template-columns:1fr 1fr} }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- ICON RAIL (identical to people-list.html) -->
+    <aside class="rail">
+      <div class="logo">R</div>
+      <a href="/dashboard.html" title="Dashboard"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1.2"/><rect x="11" y="3" width="6" height="6" rx="1.2"/><rect x="3" y="11" width="6" height="6" rx="1.2"/><rect x="11" y="11" width="6" height="6" rx="1.2"/></svg></a>
+      <a href="/orders.html" title="Rentals"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.2 17 6v8l-7 3.8L3 14V6z"/><path d="M3 6l7 3.8L17 6"/><path d="M10 9.8V17.8"/></svg></a>
+      <a href="/inventory.html" title="Inventory"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5 17.5 6 10 9.5 2.5 6z"/><path d="M2.5 10 10 13.5 17.5 10"/><path d="M2.5 14 10 17.5 17.5 14"/></svg></a>
+      <a href="/people-list.html" class="active" title="People"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6.5" r="2.6"/><path d="M2.4 16c0-2.9 2-4.5 4.6-4.5S11.6 13.1 11.6 16"/><path d="M12.6 4.2a2.5 2.5 0 0 1 0 4.8M14 11.6c2 .4 3.5 1.9 3.5 4.4"/></svg></a>
+      <a href="/analytics.html" title="Insights"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17V3"/><path d="M3 17h14"/><rect x="6" y="10" width="2.6" height="4"/><rect x="10.5" y="6.5" width="2.6" height="7.5"/></svg></a>
+      <div style="flex:1"></div>
+      <a href="/settings.html" title="System"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M2.5 10h2.2M15.3 10h2.2M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/></svg></a>
+    </aside>
+
+    <main>
+      <!-- TOP BAR -->
+      <header class="topbar">
+        <button class="iconbtn" aria-label="Menu"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14"/></svg></button>
+        <div class="tsearch">
+          <svg width="16" height="16" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5"/><path d="M11.5 11.5 15 15"/></svg>
+          <span>Search anything</span>
+          <span style="margin-left:auto;font:600 10px var(--mono);color:#b6b3ad;border:1px solid #e4e0d9;border-radius:5px;padding:2px 6px">⌘K</span>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
+          <button class="iconbtn" aria-label="Notifications"><svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5a5 5 0 0 0-5 5c0 4-1.5 5.5-1.5 5.5h13S15 11.5 15 7.5a5 5 0 0 0-5-5z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg></button>
+          <span class="avatar-sm" id="me-initials">··</span>
+        </div>
+      </header>
+
+      <!-- SUB-NAV -->
+      <div class="subnav">
+        <a class="backlink" href="/people-list.html"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5 5 8l4.5 4.5"/></svg>People List</a>
+        <span class="divider">|</span>
+        <div class="crumb"><span>People</span><span class="divider">›</span><span class="cur" id="crumb-name">…</span></div>
+      </div>
+
+      <!-- STICKY PERSON HEADER STRIP -->
+      <div class="pstrip" id="pstrip" style="display:none">
+        <div class="pstrip-row">
+          <span class="pav-lg" id="ph-av">··</span>
+          <div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span class="pname-lg" id="ph-name">—</span>
+              <span id="ph-seg"></span>
+              <span id="ph-trust"></span>
+            </div>
+            <span class="psub" id="ph-sub"></span>
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:9px">
+            <div class="tooltip-wrap">
+              <button class="btn-primary" disabled><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M7.5 3v9M3 7.5h9"/></svg>Start New Order</button>
+              <span class="tt">Coming in Slice 2</span>
+            </div>
+            <a class="btn-ghost" id="ph-wa" target="_blank" rel="noopener" style="display:none"><svg width="15" height="15" fill="none" stroke="#059669" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l1.6-5A8 8 0 1 1 12 20a8 8 0 0 1-4-1z"/><path d="M8.5 9.5c0 3 2 5 5 5.5" stroke-width="1.3"/></svg>WhatsApp</a>
+            <a class="btn-ghost" id="ph-call" style="display:none"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 13.2v2.3a1.5 1.5 0 0 1-1.7 1.5 15 15 0 0 1-6.5-2.3 14.8 14.8 0 0 1-4.5-4.5A15 15 0 0 1 2.5 3.7 1.5 1.5 0 0 1 4 2h2.3a1.5 1.5 0 0 1 1.5 1.3c.1.75.3 1.45.55 2.1a1.5 1.5 0 0 1-.35 1.6l-1 1a12 12 0 0 0 4.5 4.5l1-1a1.5 1.5 0 0 1 1.6-.35c.65.25 1.35.45 2.1.55a1.5 1.5 0 0 1 1.3 1.55z"/></svg>Call</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div id="loading" class="loading">Loading person…</div>
+        <div id="error" class="errbox" style="display:none"></div>
+
+        <div id="body" style="display:none">
+          <!-- LIFECYCLE STEPPER — stub (Decision 1: not derived from tier) -->
+          <div class="stepper">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="cdot" style="background:#cdccdd"></span>
+                <span class="ctitle" style="font-size:14px;color:var(--muted2)">Lifecycle stage</span>
+                <span class="reserved">RESERVED</span>
+              </div>
+              <span class="stubnote">Lifecycle tracking arrives in a future slice</span>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <!-- MAIN COLUMN -->
+            <div class="maincol">
+
+              <!-- a) IDENTITY & CONTACT (real) -->
+              <div class="card" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:var(--indigo)"></span>
+                  <span class="ctitle">Identity &amp; Contact</span>
+                  <span class="cmeta" id="id-co"></span>
+                  <span class="caret">▾</span>
+                </div>
+                <div class="cbody" id="identity-body"></div>
+              </div>
+
+              <!-- b) KYC & TRUST (real proof + phone-verified + trust score; breakdown stubbed) -->
+              <div class="card" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:var(--green)"></span>
+                  <span class="ctitle">KYC &amp; Trust</span>
+                  <span id="kyc-badge"></span>
+                  <span class="cmeta" id="kyc-trust"></span>
+                  <span class="caret">▾</span>
+                </div>
+                <div class="cbody" id="kyc-body"></div>
+              </div>
+
+              <!-- c) RELATIONSHIP SUMMARY (total-rentals real; LTV/avg/cancellation stubbed) -->
+              <div class="card" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:var(--blue)"></span>
+                  <span class="ctitle">Relationship Summary</span>
+                  <span class="cmeta" id="rel-since"></span>
+                  <span class="caret">▾</span>
+                </div>
+                <div class="cbody" id="rel-body"></div>
+              </div>
+
+              <!-- d) RENTAL HISTORY (real) -->
+              <div class="card" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:var(--blue)"></span>
+                  <span class="ctitle">Rental History</span>
+                  <span class="ccount" id="rh-count">0</span>
+                  <span class="cmeta" id="rh-last"></span>
+                  <span class="caret">▾</span>
+                </div>
+                <div class="cbody" id="rental-body"></div>
+              </div>
+
+              <!-- e) PAYMENT BEHAVIOR (recent payments real; computed stats stubbed) -->
+              <div class="card" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:var(--green)"></span>
+                  <span class="ctitle">Payment Behavior</span>
+                  <span class="ccount" id="pay-count">0</span>
+                  <span class="cmeta" id="pay-last"></span>
+                  <span class="caret">▾</span>
+                </div>
+                <div class="cbody" id="payment-body"></div>
+              </div>
+
+              <!-- f–j) FUTURE-STUB CARDS (collapsed) -->
+              <div class="card stub collapsed" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:#cdccdd"></span>
+                  <span class="ctitle">Deposits &amp; Forfeits</span>
+                  <span class="reserved">RESERVED</span>
+                  <span class="cmeta"></span>
+                  <span class="caret">▸</span>
+                </div>
+                <div class="cbody"><span class="stubnote">Deposit &amp; forfeit history arrives in a future slice.</span></div>
+              </div>
+
+              <div class="card stub collapsed" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:#cdccdd"></span>
+                  <span class="ctitle">Communication</span>
+                  <span class="reserved">RESERVED</span>
+                  <span class="cmeta"></span>
+                  <span class="caret">▸</span>
+                </div>
+                <div class="cbody"><span class="stubnote">The unified communication thread arrives in a future slice.</span></div>
+              </div>
+
+              <div class="card stub collapsed" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:#cdccdd"></span>
+                  <span class="ctitle">Notes</span>
+                  <span class="reserved">RESERVED</span>
+                  <span class="cmeta"></span>
+                  <span class="caret">▸</span>
+                </div>
+                <div class="cbody"><span class="stubnote">Team notes &amp; @-mentions arrive in a future slice.</span></div>
+              </div>
+
+              <div class="card stub collapsed" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:#cdccdd"></span>
+                  <span class="ctitle">Open Items</span>
+                  <span class="reserved">RESERVED</span>
+                  <span class="cmeta"></span>
+                  <span class="caret">▸</span>
+                </div>
+                <div class="cbody"><span class="stubnote">Open orders, deposit holds &amp; recovery cases arrive in a future slice.</span></div>
+              </div>
+
+              <div class="card stub collapsed" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:#cdccdd"></span>
+                  <span class="ctitle">Recommendations</span>
+                  <span class="reserved">RESERVED</span>
+                  <span class="cmeta"></span>
+                  <span class="caret">▸</span>
+                </div>
+                <div class="cbody"><span class="stubnote">AI recommendations arrive in a future slice.</span></div>
+              </div>
+
+            </div>
+
+            <!-- SIDEBAR -->
+            <div class="sidecol">
+              <div class="scard">
+                <div class="stitle">Metadata</div>
+                <div id="meta-body"></div>
+              </div>
+
+              <div class="scard">
+                <div class="stitle">Related Objects</div>
+                <div id="related-body"></div>
+              </div>
+
+              <div class="scard">
+                <div class="stitle">Activity</div>
+                <div class="stubbox">The unified activity feed arrives in a future slice.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { api, ensureAuth, formatINR } from '/_lib/api.js';
+
+    function escapeHtml(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+    function escapeAttr(s){ return escapeHtml(s).replace(/`/g,'&#96;'); }
+    function initials(name){ const p=String(name||'').trim().split(/\s+/).filter(Boolean); if(!p.length) return '··'; return (p[0][0]+(p[1]?p[1][0]:'')).toUpperCase(); }
+    const dash = '<span style="color:#c8ccd3">—</span>';
+
+    function fmtDate(iso){ if(!iso) return null; const d=new Date(iso); if(isNaN(d)) return null; return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); }
+    function fmtRange(a,b){ const s=fmtDate(a), e=fmtDate(b); if(!s&&!e) return dash; return `${s||'—'} → ${e||'—'}`; }
+    function relTime(iso){ const d=fmtDate(iso); return d||'—'; }
+
+    function segPill(tier){
+      const t=String(tier||'').toLowerCase();
+      if(t==='vip')     return '<span class="segpill seg-vip"><span class="dot"></span>VIP</span>';
+      if(t==='premium') return '<span class="segpill seg-premium"><span class="dot"></span>PREMIUM</span>';
+      if(t==='normal')  return '<span class="segpill seg-normal"><span class="dot"></span>NORMAL</span>';
+      return '';
+    }
+    function trustChip(score){
+      if(score==null) return '';
+      const n=Math.max(0,Math.min(100,Number(score)));
+      return `<span class="trustchip">Trust ${escapeHtml(String(score))}/100<span class="trustbar"><span style="width:${n}%"></span></span></span>`;
+    }
+
+    // Physical-possession-agnostic order status → pill colours.
+    const ST = {
+      draft:['#6b7280','rgba(107,114,128,.12)'], quoted:['#6b7280','rgba(107,114,128,.12)'],
+      confirmed:['#2563eb','rgba(37,99,235,.1)'], dispatched:['#2563eb','rgba(37,99,235,.1)'],
+      active:['#2563eb','rgba(37,99,235,.1)'], returned:['#d97706','rgba(217,119,6,.12)'],
+      closed:['#059669','rgba(5,150,105,.1)'], cancelled:['#dc2626','rgba(220,38,38,.1)'],
+    };
+    function orderStatusPill(status){
+      const [c,bg]=ST[status]||['#6b7280','rgba(107,114,128,.12)'];
+      return `<span class="ostatus" style="color:${c};background:${bg}"><span class="d" style="background:${c}"></span>${escapeHtml(status||'—')}</span>`;
+    }
+
+    function maskProof(num){
+      const s=String(num||''); if(!s) return dash;
+      if(s.length<=4) return escapeHtml(s);
+      return escapeHtml(s.slice(0,2)) + '·'.repeat(Math.min(6,s.length-4)) + escapeHtml(s.slice(-2));
+    }
+
+    function fieldCell(label,valHtml){
+      return `<div><div class="flabel">${escapeHtml(label)}</div><div class="fval">${valHtml}</div></div>`;
+    }
+
+    function renderIdentity(p){
+      document.getElementById('id-co').textContent = p.company_name || '';
+      const addr = p.billing_address
+        || [p.address_line, [p.city,p.state].filter(Boolean).join(', '), p.postal_code].filter(Boolean).join(', ')
+        || null;
+      const ship = p.shipping_address || null;
+      const phoneVerified = p.phone_verified_at
+        ? '<span class="badge-ok"><svg width="12" height="12" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 4.8 9.2 2 6.5"/></svg>Verified</span>'
+        : '<span class="badge-muted">Unverified</span>';
+      const rows = [
+        fieldCell('Legal Name', escapeHtml(p.display_name || '—')),
+        fieldCell('Business', p.company_name ? escapeHtml(p.company_name) : dash),
+        fieldCell('GSTIN', p.gstin ? `<span class="fval mono">${escapeHtml(p.gstin)}</span>` : dash),
+        fieldCell('GST State', p.default_gst_state ? escapeHtml(p.default_gst_state) : dash),
+        fieldCell('Phone', p.phone ? `<span class="fval mono" style="font-weight:600">${escapeHtml(p.phone)}</span> &nbsp;${phoneVerified}` : dash),
+        fieldCell('Email', p.email ? `<span class="fval mono">${escapeHtml(p.email)}</span>` : dash),
+      ].join('');
+      let html = `<div class="fgrid">${rows}</div>`;
+      html += `<div class="hr"></div><div class="fgrid" style="grid-template-columns:1fr 1fr">`;
+      html += `<div><div class="flabel">Billing Address</div><div class="fval norm" style="line-height:1.5">${addr?escapeHtml(addr):dash}</div></div>`;
+      html += `<div><div class="flabel">Shipping Address</div><div class="fval norm" style="line-height:1.5">${ship?escapeHtml(ship):dash}</div></div>`;
+      html += `</div>`;
+      if (p.notes){
+        html += `<div class="hr"></div><div><div class="flabel">Internal Note</div><div class="fval norm" style="line-height:1.55">${escapeHtml(p.notes)}</div></div>`;
+      }
+      html += `<div class="hr"></div><div><div class="flabel">Notification Preferences</div><div class="stubnote" style="margin-top:6px">Channel preferences arrive in a future slice.</div></div>`;
+      document.getElementById('identity-body').innerHTML = html;
+    }
+
+    function renderKyc(p){
+      // Verified badge: driven by a real, present ID proof (never fabricated).
+      const hasProof = !!(p.id_proof_type || p.id_proof_number);
+      document.getElementById('kyc-badge').innerHTML = hasProof
+        ? '<span class="segpill seg-vip"><span class="dot"></span>ID ON FILE</span>'
+        : '<span class="segpill seg-normal"><span class="dot"></span>NO ID</span>';
+      document.getElementById('kyc-trust').textContent = p.trust_score==null ? 'Trust not scored' : `Trust ${p.trust_score}/100`;
+
+      let html = '';
+      const updated = fmtDate(p.trust_score_updated_at);
+      const proofType = p.id_proof_type ? String(p.id_proof_type).replace(/_/g,' ') : null;
+      html += `<div class="fgrid" style="margin-bottom:16px">`;
+      html += fieldCell('ID Proof Type', proofType ? `<span style="text-transform:uppercase">${escapeHtml(proofType)}</span>` : dash);
+      html += fieldCell('ID Proof Number', p.id_proof_number ? `<span class="fval mono">${maskProof(p.id_proof_number)}</span>` : dash);
+      html += fieldCell('Phone Verified', p.phone_verified_at ? escapeHtml(fmtDate(p.phone_verified_at)) : dash);
+      html += fieldCell('Trust Score', p.trust_score==null ? dash : `<span style="color:var(--green)">${escapeHtml(String(p.trust_score))}</span>/100${updated?` <span class="stubnote" style="font-weight:400">· ${escapeHtml(updated)}</span>`:''}`);
+      html += `</div>`;
+      // The 4-way trust breakdown (payment reliability / return timeliness / damage rate /
+      // communication) is NOT returned by the read-only endpoint → stubbed, never faked.
+      html += `<div class="stubbox">The weighted trust breakdown &amp; document viewer arrive in a future slice.</div>`;
+      document.getElementById('kyc-body').innerHTML = html;
+    }
+
+    function renderRelationship(p, orders){
+      document.getElementById('rel-since').textContent = p.created_at ? `Since ${fmtDate(p.created_at)}` : '';
+      // Total rentals: only the recent window (max 20) is returned, so label honestly.
+      const capped = orders.length >= 20;
+      const rentalsVal = `${orders.length}${capped?'+':''}`;
+      const tiles = [
+        { l:'LTV', v:dash, s:'Not computed yet', dashv:true },
+        { l:'Recent Rentals', v:escapeHtml(rentalsVal), s:capped?'last 20 loaded':'loaded' , dashv:false },
+        { l:'Avg Order Value', v:dash, s:'Not computed yet', dashv:true },
+        { l:'Cancellation Rate', v:dash, s:'Not computed yet', dashv:true },
+      ].map(t=>`<div class="tile"><div class="tlabel">${t.l}</div><div class="tval ${t.dashv?'dash':''}">${t.v}</div><div class="tsub">${t.s}</div></div>`).join('');
+      document.getElementById('rel-body').innerHTML = `<div class="tiles">${tiles}</div>`;
+    }
+
+    function renderRental(orders){
+      document.getElementById('rh-count').textContent = String(orders.length);
+      document.getElementById('rh-last').textContent = orders.length ? `Last · ${relTime(orders[0].rental_start)}` : 'No rentals';
+      if(!orders.length){
+        document.getElementById('rental-body').innerHTML = `<div class="stubnote">No rentals on record.</div>`;
+        return;
+      }
+      const rows = orders.map(o=>`<tr>
+        <td class="mono">#${escapeHtml(String(o.order_number))}</td>
+        <td>${orderStatusPill(o.status)}</td>
+        <td>${fmtRange(o.rental_start,o.rental_end)}</td>
+        <td class="mono r">${formatINR(o.total_paise||0)}</td>
+        <td class="r"><a href="/order.html?id=${escapeAttr(o.id)}">Open →</a></td>
+      </tr>`).join('');
+      document.getElementById('rental-body').innerHTML = `
+        <table class="htable">
+          <thead><tr><th>Order</th><th>Status</th><th>Dates</th><th style="text-align:right">Value</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${orders.length>=20?'<div class="stubnote" style="margin-top:12px">Showing the 20 most recent — full history arrives in a future slice.</div>':''}`;
+    }
+
+    function renderPayment(payments){
+      document.getElementById('pay-count').textContent = String(payments.length);
+      document.getElementById('pay-last').textContent = payments.length ? `Last · ${relTime(payments[0].occurred_at)}` : 'No payments';
+      // Computed stats (reliability / avg delay / credit limit / outstanding) aren't
+      // returned by the read-only endpoint → stubbed. Recent payments ARE real.
+      let html = `<div class="tiles" style="margin-bottom:16px">
+        <div class="tile"><div class="tlabel">Reliability</div><div class="tval dash">${dash}</div><div class="tsub">Not computed yet</div></div>
+        <div class="tile"><div class="tlabel">Avg Delay</div><div class="tval dash">${dash}</div><div class="tsub">Not computed yet</div></div>
+        <div class="tile"><div class="tlabel">Credit Limit</div><div class="tval dash">${dash}</div><div class="tsub">Not set</div></div>
+        <div class="tile"><div class="tlabel">Recent Paid</div><div class="tval dash">${dash}</div><div class="tsub">Not computed yet</div></div>
+      </div>`;
+      if(!payments.length){
+        html += `<div class="stubnote">No payments on record.</div>`;
+      } else {
+        html += `<div class="flabel" style="margin-bottom:6px">Recent Payments</div>`;
+        html += payments.slice(0,8).map(pay=>{
+          const inb = pay.direction==='in';
+          return `<div class="prow">
+            <span class="pdir ${inb?'in':'out'}">${inb?'↓':'↑'}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font:600 13px var(--body);color:var(--head)">${formatINR(pay.amount_paise||0)} <span style="font-weight:400;color:var(--muted2);text-transform:capitalize">· ${escapeHtml(pay.method||'—')}</span></div>
+              <div style="font:400 11px var(--mono);color:var(--muted2)">Order #${escapeHtml(String(pay.order_number))} · ${escapeHtml(relTime(pay.occurred_at))}</div>
+            </div>
+          </div>`;
+        }).join('');
+      }
+      document.getElementById('payment-body').innerHTML = html;
+    }
+
+    function renderMeta(p, tags){
+      const rows = [];
+      rows.push(`<div class="metarow"><span class="mkey">Segment</span><span class="mval">${p.tier?segPill(p.tier):dash}</span></div>`);
+      rows.push(`<div class="metarow"><span class="mkey">Source</span><span class="mval">${dash}</span></div>`);
+      rows.push(`<div class="metarow"><span class="mkey">Referred by</span><span class="mval">${dash}</span></div>`);
+      const tagHtml = (tags && tags.length)
+        ? `<span style="display:flex;gap:6px;flex-wrap:wrap">${tags.map(t=>`<span class="tag">${escapeHtml(t.name||'')}</span>`).join('')}</span>`
+        : dash;
+      rows.push(`<div class="metarow"><span class="mkey">Tags</span><span class="mval">${tagHtml}</span></div>`);
+      rows.push(`<div class="metarow"><span class="mkey">Roles</span><span class="mval">${(p.roles&&p.roles.length)?`<span style="display:flex;gap:6px;flex-wrap:wrap">${p.roles.map(r=>`<span class="tag" style="text-transform:uppercase">${escapeHtml(r)}</span>`).join('')}</span>`:dash}</span></div>`);
+      rows.push(`<div class="metarow"><span class="mkey">Created</span><span class="mval">${p.created_at?escapeHtml(fmtDate(p.created_at)):dash}</span></div>`);
+      rows.push(`<div class="metarow"><span class="mkey">Updated</span><span class="mval">${p.updated_at?escapeHtml(fmtDate(p.updated_at)):dash}</span></div>`);
+      document.getElementById('meta-body').innerHTML = rows.join('');
+    }
+
+    function renderRelated(orders){
+      let html = '';
+      const chips = orders.slice(0,6).map(o=>`<a class="ordchip" href="/order.html?id=${escapeAttr(o.id)}">#${escapeHtml(String(o.order_number))}</a>`).join(' ');
+      html += `<div class="relrow" style="display:block">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px"><span style="color:var(--muted2)"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.8-4.1L2.5 5.5"/><path d="M2.5 2.5v3h3"/><path d="M8 5v3l2 1.3"/></svg></span><span style="flex:1;font-size:13px">Recent orders</span></div>
+        <div style="padding-left:26px">${orders.length?chips:dash}</div>
+      </div>`;
+      html += `<div class="relrow"><span style="flex:1">Active deposit holds</span><span style="font:600 11px var(--mono);color:var(--muted2)">${dash}</span></div>`;
+      html += `<div class="relrow"><span style="flex:1">Open damage</span><span style="font:600 11px var(--mono);color:var(--muted2)">${dash}</span></div>`;
+      html += `<div class="relrow"><span style="flex:1">Referrals made</span><span style="font:600 11px var(--mono);color:var(--muted2)">${dash}</span></div>`;
+      document.getElementById('related-body').innerHTML = html;
+    }
+
+    function renderHeader(p){
+      document.getElementById('ph-av').textContent = initials(p.display_name);
+      document.getElementById('ph-name').textContent = p.display_name || 'Unnamed';
+      document.getElementById('crumb-name').textContent = p.display_name || 'Person';
+      document.title = `${p.display_name || 'Person'} · RentalOS`;
+      document.getElementById('ph-seg').innerHTML = segPill(p.tier);
+      document.getElementById('ph-trust').innerHTML = trustChip(p.trust_score);
+      const subParts = [p.company_name].filter(Boolean);
+      document.getElementById('ph-sub').textContent = subParts.join(' · ');
+      // Read-only quick-contact links built from the real phone (no mutation).
+      if(p.phone){
+        const digits = String(p.phone).replace(/[^\d]/g,'');
+        const wa = document.getElementById('ph-wa'); wa.href = `https://wa.me/${digits}`; wa.style.display='';
+        const call = document.getElementById('ph-call'); call.href = `tel:${escapeAttr(p.phone)}`; call.style.display='';
+      }
+      document.getElementById('pstrip').style.display='';
+    }
+
+    function wireToggles(){
+      document.querySelectorAll('[data-toggle]').forEach(h=>{
+        h.addEventListener('click', ()=>{
+          const card = h.closest('[data-card]');
+          card.classList.toggle('collapsed');
+          const caret = h.querySelector('.caret');
+          if(caret) caret.textContent = card.classList.contains('collapsed') ? '▸' : '▾';
+        });
+      });
+    }
+
+    async function load(){
+      const id = new URLSearchParams(location.search).get('id');
+      if(!id){
+        document.getElementById('loading').style.display='none';
+        const e=document.getElementById('error'); e.style.display=''; e.innerHTML='No person selected. <a href="/people-list.html">Back to People List</a>.';
+        return;
+      }
+      let data;
+      try { data = await api.get('/api/people/' + encodeURIComponent(id)); }
+      catch(err){
+        document.getElementById('loading').style.display='none';
+        const e=document.getElementById('error'); e.style.display='';
+        const code=(err.body&&err.body.error)||err.message||'error';
+        e.innerHTML = (err.status===404)
+          ? 'Person not found. <a href="/people-list.html">Back to People List</a>.'
+          : `Could not load this person — ${escapeHtml(code)}. <a href="/people-list.html">Back to People List</a>.`;
+        return;
+      }
+      const p = data.person || {};
+      const orders = data.orders || [];
+      const payments = data.payments || [];
+      const tags = data.tags || [];
+
+      renderHeader(p);
+      renderIdentity(p);
+      renderKyc(p);
+      renderRelationship(p, orders);
+      renderRental(orders);
+      renderPayment(payments);
+      renderMeta(p, tags);
+      renderRelated(orders);
+      wireToggles();
+
+      document.getElementById('loading').style.display='none';
+      document.getElementById('body').style.display='';
+    }
+
+    (async function(){
+      try {
+        const { user } = await ensureAuth();
+        document.getElementById('me-initials').textContent = initials(user && (user.display_name || user.email));
+      } catch { /* ensureAuth redirects on failure */ }
+      await load();
+    })();
+  </script>
+</body>
+</html>
