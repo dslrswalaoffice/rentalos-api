@@ -6,6 +6,11 @@ You are working on **RentalOS**, a rental management SaaS being built for **DSLR
 
 ---
 
+## Standing Directive (per Jul 19 2026)
+Every proposal must pre-check against 9 alignment gates in docs/RENTALOS_CONSTITUTION.md before implementation. New patterns require proof of failed reuse attempts.
+
+---
+
 ## Product context documents
 
 Three project documents shape RentalOS direction. Every task should acknowledge them:
