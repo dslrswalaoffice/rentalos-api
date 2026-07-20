@@ -139,6 +139,10 @@ const ORDER_POLICY_SETTINGS_KEYS = [
   // above. Absent → the engine keeps its current settings.tax fallback (no
   // money-math change until it's explicitly configured + M2 lands).
   'tax_policy',
+  // Sub-slice 2.4 — deposit + inspection policy (DS-10.2). Same Rule-D trap:
+  // must be listed here or a settings save strips the seeded policy AND GET
+  // won't read it back (the deposit endpoints + composer read it for defaults).
+  'deposit_policy',
 ] as const;
 
 async function loadWorkspaceRow(workspaceId: string): Promise<WorkspaceRow | null> {
@@ -314,6 +318,7 @@ const patchSchema = z.object({
     quote_policy:        z.record(z.string(), z.any()).optional(),
     substitution_policy: z.record(z.string(), z.any()).optional(), // Sub-slice 2.3
     damage_policy:       z.record(z.string(), z.any()).optional(), // Sub-slice 2.3
+    deposit_policy:      z.record(z.string(), z.any()).optional(), // Sub-slice 2.4
     // Tax editor (Tax-M1). Typed because it is money config: GST rates as basis
     // points (int, 0–2800 = up to the 28% slab), HSN/SAC as short strings.
     // Whole-object replace on save — the editor sends the complete object.
