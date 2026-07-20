@@ -106,3 +106,26 @@ test('tax_policy survives normalizeSettings; absent stays omitted (Tax-M1, Rule 
   const bare = normalizeSettings({ billing: {} }) as any;
   assert.equal(bare.tax_policy, undefined);
 });
+
+// Deposit policy (Sub-slice 2.4) — settings.deposit_policy must survive
+// normalizeSettings (same Rule D trap) so the deposit endpoints + composer read
+// back the seeded DS-10.2 config (calculation method, thresholds, custody rules,
+// cheque-bounce). If dropped, a settings save wipes the seeded policy.
+test('deposit_policy survives normalizeSettings; absent stays omitted (SS-2.4, Rule D)', () => {
+  const raw = {
+    deposit_policy: {
+      calculation_method: 'percentage_of_rental_value',
+      default_percentage_bps: 3000,
+      approval_thresholds_paise: { damage_forfeit_manager_limit: 2500000, full_deposit_forfeit_requires: 'owner' },
+      custody_rules: { cash_holder_subroles: ['owner', 'manager', 'accounts'] },
+      cheque_bounce: { bounce_fee_paise: 50000, retain_from_deposit: true },
+    },
+  };
+  const out = normalizeSettings(raw) as any;
+  assert.equal(out.deposit_policy?.default_percentage_bps, 3000, 'deposit_policy dropped or value lost');
+  assert.equal(out.deposit_policy?.approval_thresholds_paise?.full_deposit_forfeit_requires, 'owner');
+  assert.equal(out.deposit_policy?.custody_rules?.cash_holder_subroles?.[2], 'accounts');
+  assert.equal(out.deposit_policy?.cheque_bounce?.retain_from_deposit, true);
+  // Absent → omitted (no injected default; endpoints keep their own fallback).
+  assert.equal((normalizeSettings({ billing: {} }) as any).deposit_policy, undefined);
+});
