@@ -1,25 +1,29 @@
 // ============================================================================
-// /_lib/shell.js — Canonical RentalOS app shell (icon rail + top-bar).
+// /_lib/shell.js — Canonical RentalOS app shell (icon rail + optional top-bar).
 // ----------------------------------------------------------------------------
-// Foundation Slice F1. Single source of truth for the left navigation and the
-// top-bar, so the 8-module nav + terminology can never drift across pages again
-// (before this, every page inlined its own rail — some said "Customers", some
-// "People"; Finance + Communications were missing; markup varied).
+// Foundation Slice. Single source of truth for the left navigation, so the
+// 8-module nav + terminology can never drift across pages again (before this,
+// every page inlined its own rail — some said "Customers", some "People";
+// Finance + Communications were missing; markup + active colours varied).
 //
 // NOT a new pattern: every page already imports ES modules from /_lib (api.js).
 // This is that same pattern applied to markup. Usage on any operational page:
 //
 //     import { renderShell } from '/_lib/shell.js';
-//     renderShell('people');   // pass the active module key
+//     renderShell('orders');                    // rail + canonical top-bar
+//     renderShell('orders', { topbar: false }); // rail only — keep page's own top-bar
 //
-// It injects <aside class="rail"> as the first child of .shell and
-// <header class="topbar"> as the first child of <main>, reusing the .rail /
-// .topbar / .iconbtn / .tsearch / .avatar-sm classes each page already defines.
-// CSS stays page-local for now (centralising it is a bounded follow-up step);
-// this step removes the MARKUP duplication, which is where the drift lived.
+// F2a hardening (self-contained):
+//   * Mounts flexibly: wrapper = `.shell` OR `.app`; content = its <main>.
+//   * Injects its OWN rail CSS (once) so the rail looks identical on every page
+//     regardless of that page's legacy sidebar CSS — cascade-authoritative
+//     because the <style> is appended after the page's inline styles.
+//   * `topbar: false` skips the top-bar entirely (for pages whose top-bar
+//     carries page-specific wiring — a functional notification bell, a different
+//     avatar id — that this step must not disturb).
 //
-// The avatar (#me-initials) is rendered as a placeholder; each page's existing
-// ensureAuth() flow still populates it (unchanged).
+// The avatar (#me-initials, only when the top-bar is rendered) is a placeholder;
+// the page's existing ensureAuth() flow still populates it.
 // ============================================================================
 
 // 8 modules, new terminology (Constitution §6 / Gate 9). `href: null` marks a
@@ -51,7 +55,7 @@ function navItem(m, activeKey) {
   const icon = SVG(m.icon);
   if (!m.href) {
     // Coming-soon module: disabled, visible, explained (Item 12 blocked action).
-    return `<div class="ri" title="${m.label} — coming soon" style="opacity:.4;cursor:not-allowed">${icon}</div>`;
+    return `<div class="ri soon" title="${m.label} — coming soon">${icon}</div>`;
   }
   const active = m.key === activeKey ? ' class="active"' : '';
   return `<a href="${m.href}"${active} title="${m.label}">${icon}</a>`;
@@ -82,17 +86,52 @@ function topbarHTML() {
   </header>`;
 }
 
+// Canonical rail CSS — Warm-Cream family (60px #faf9f7 rail, indigo-soft active).
+// Uses each page's design tokens when present, with literal fallbacks so it
+// renders correctly even on pages that don't define them (e.g. orders uses
+// --surface-1, not --rail). Injected once; appended after page styles so it is
+// cascade-authoritative for .rail.
+const RAIL_CSS = `
+.rail{width:60px;flex:none;background:var(--rail,#faf9f7);border-right:1px solid var(--line,var(--border,#ece9e3));display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;position:sticky;top:0;height:100vh}
+.rail .logo{width:32px;height:32px;border-radius:8px;background:var(--ink,#202058);color:#fff;font:600 16px var(--disp,'Space Grotesk',system-ui,sans-serif);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.rail a,.rail .ri{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690}
+.rail a:hover{background:#f0eee9;color:var(--head,#26235a)}
+.rail a.active{background:var(--indigo-soft,rgba(79,70,229,.1));color:var(--indigo,#4f46e5)}
+.rail .ri.soon{opacity:.4;cursor:not-allowed}
+`;
+
+const TOPBAR_CSS = `
+.topbar{height:56px;flex:none;border-bottom:1px solid var(--line,var(--border,#ece9e3));display:flex;align-items:center;gap:16px;padding:0 22px}
+.topbar .tsearch{flex:1;max-width:520px;height:36px;border:1px solid var(--line,#ece9e3);border-radius:9px;background:var(--field,#faf9f7);display:flex;align-items:center;gap:9px;padding:0 12px;color:var(--muted2,#9ca3af);font-size:13px}
+.topbar .iconbtn{width:34px;height:34px;border-radius:8px;border:none;background:transparent;color:var(--muted3,#6b7280);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.topbar .avatar-sm{width:28px;height:28px;border-radius:50%;background:#eef0f4;color:var(--ink,#202058);font:600 10px var(--disp,'Space Grotesk',system-ui,sans-serif);display:flex;align-items:center;justify-content:center}
+`;
+
+function injectCSSOnce(id, css) {
+  if (document.getElementById(id)) return;
+  const style = document.createElement('style');
+  style.id = id;
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
 /**
- * Inject the canonical rail + top-bar into the current page.
- * @param {string} activeKey one of: dashboard|orders|assets|people|finance|insights|comms|system
+ * Inject the canonical rail (and optionally the top-bar) into the current page.
+ * @param {string} activeKey  dashboard|orders|assets|people|finance|insights|comms|system
+ * @param {{topbar?: boolean}} [opts]  topbar defaults to true; set false to keep the page's own top-bar
  */
-export function renderShell(activeKey) {
-  const shell = document.querySelector('.shell');
-  const main = shell && shell.querySelector('main');
-  if (!shell || !main) {
-    console.warn('[shell] expected .shell > main; shell not injected');
+export function renderShell(activeKey, opts = {}) {
+  const withTopbar = opts.topbar !== false;
+  const wrapper = document.querySelector('.shell, .app');
+  const main = wrapper && wrapper.querySelector('main');
+  if (!wrapper || !main) {
+    console.warn('[shell] expected .shell/.app > main; shell not injected');
     return;
   }
-  main.insertAdjacentHTML('afterbegin', topbarHTML());
-  shell.insertAdjacentHTML('afterbegin', railHTML(activeKey));
+  injectCSSOnce('rentalos-shell-rail-css', RAIL_CSS);
+  if (withTopbar) {
+    injectCSSOnce('rentalos-shell-topbar-css', TOPBAR_CSS);
+    main.insertAdjacentHTML('afterbegin', topbarHTML());
+  }
+  wrapper.insertAdjacentHTML('afterbegin', railHTML(activeKey));
 }
