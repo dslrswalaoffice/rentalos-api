@@ -243,14 +243,25 @@
       const rowsEl = document.getElementById('rows');
       const list = state.all; // server already filtered by role+search
       if (!list.length){
-        rowsEl.innerHTML = `<div class="empty"><div class="ic"><svg width="26" height="26" fill="none" stroke="#c9c5bd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><path d="M3 20c0-3.6 3-6.5 7-6.5"/><circle cx="17" cy="9" r="2.4"/></svg></div>${state.search || state.role ? 'No people match this view yet.' : 'No people yet.'}</div>`;
+        // Item 18 three-category empty state: Filtered (search active) vs
+        // Cleared (view chip active, zero results) vs Fresh (no filters at all).
+        let emptyMsg;
+        if (state.search) emptyMsg = 'No people match filters.';
+        else if (state.role) { const lbl = (ROLE_CHIPS.find(c => c.key === state.role) || {}).label || 'matching'; emptyMsg = `No ${lbl.toLowerCase()} right now.`; }
+        else emptyMsg = 'No people yet.';
+        rowsEl.innerHTML = `<div class="empty"><div class="ic"><svg width="26" height="26" fill="none" stroke="#c9c5bd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><path d="M3 20c0-3.6 3-6.5 7-6.5"/><circle cx="17" cy="9" r="2.4"/></svg></div>${emptyMsg}</div>`;
         document.getElementById('paginfo').textContent = '';
         return;
       }
       rowsEl.innerHTML = list.map(rowHtml).join('');
       document.getElementById('paginfo').innerHTML = `Showing <span style="font-family:var(--mono);color:#6b7280">1–${list.length}</span> of <span style="font-family:var(--mono);color:#6b7280">${list.length}</span>`;
       rowsEl.querySelectorAll('.row').forEach(r => r.addEventListener('click', () => {
-        location.href = '/person-360.html?id=' + encodeURIComponent(r.getAttribute('data-id'));
+        // Carry the active filter state so Person 360's back link can restore it (G-A).
+        const fq = new URLSearchParams();
+        if (state.role) fq.set('role', state.role);
+        if (state.search) fq.set('search', state.search);
+        const from = '/people-list.html' + (fq.toString() ? '?' + fq.toString() : '');
+        location.href = '/person-360.html?id=' + encodeURIComponent(r.getAttribute('data-id')) + '&from=' + encodeURIComponent(from);
       }));
     }
 
@@ -262,7 +273,14 @@
       const q = qs.toString();
       let data;
       try { data = await api.get('/api/people' + (q ? '?' + q : '')); }
-      catch (err) { document.getElementById('rows').innerHTML = `<div class="empty">Could not load people — ${escapeHtml((err.body && err.body.error) || err.message || 'error')}</div>`; document.getElementById('count').textContent = ''; return; }
+      catch (err) {
+        const msg = escapeHtml((err.body && err.body.error) || err.message || 'error');
+        document.getElementById('rows').innerHTML = `<div class="empty">Could not load people — ${msg}.<div style="margin-top:14px"><button class="ghostbtn" id="retry-btn" style="display:inline-flex">Retry</button></div></div>`;
+        document.getElementById('count').textContent = '';
+        const rb = document.getElementById('retry-btn');
+        if (rb) rb.addEventListener('click', load);
+        return;
+      }
       state.all = data.people || [];
       // by_role from the endpoint (workspace-wide counts, independent of the filter).
       state.byRole = Object.assign({ __all: (data.people || []).length }, data.by_role || {});
@@ -292,6 +310,10 @@
         const { user } = await ensureAuth();
         document.getElementById('me-initials').textContent = initials(user && (user.display_name || user.email));
       } catch { /* ensureAuth redirects on failure */ }
+      // Hydrate filter state from the URL so back-nav from Person 360 restores it (G-A).
+      const params = new URLSearchParams(location.search);
+      if (params.get('role')) state.role = params.get('role');
+      if (params.get('search')) { state.search = params.get('search'); document.getElementById('search').value = state.search; }
       // First load: capture the true all-count for the "All" chip.
       await load();
       state.byRole.__all = state.all.length;
