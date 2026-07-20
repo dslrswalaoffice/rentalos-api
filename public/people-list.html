@@ -162,7 +162,7 @@
 
   <script type="module">
     import { api, ensureAuth } from '/_lib/api.js';
-    import { renderShell } from '/_lib/shell.js';
+    import { renderShell } from '/_lib/shell.js?v=2';
     renderShell('people');
 
     function escapeHtml(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
