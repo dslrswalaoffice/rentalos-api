@@ -1,3 +1,5 @@
+// IMPORTANT: When shell.js contents change materially, bump the ?v=N query in ALL consumer imports.
+// Current consumers (as of this commit): people-list.html, person-360.html, orders.html, new-order.html.
 // ============================================================================
 // /_lib/shell.js — Canonical RentalOS app shell (icon rail + optional top-bar).
 // ----------------------------------------------------------------------------
