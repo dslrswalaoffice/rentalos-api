@@ -252,6 +252,32 @@ export const dispatches = new Hono<Env>();
 dispatches.use('*', sessionMiddleware, requireAuth);
 dispatches.use('*', idempotencyMiddleware);
 
+// GET /:dispatchId — read a dispatch + its order summary + the workspace policy
+// (powers /dispatch.html). Any authenticated member may view (reads are requireAuth
+// per repo convention); GET is exempt from the idempotency middleware.
+dispatches.get('/:dispatchId', async (c) => {
+  const session = c.get('session')!;
+  const workspaceId = session.workspace.id;
+  const rows = await query<{
+    id: string; dispatch_number: string | null; recipient_type: string; status: string;
+    delegate_name: string | null; delegate_phone: string | null; delegate_relationship: string | null; delegate_id_proof_url: string | null;
+    order_id: string; order_number: number; order_status: string; customer_name: string | null; customer_phone: string | null;
+  }>(sql`
+    SELECT d.id, d.dispatch_number, d.recipient_type, d.status,
+           d.delegate_name, d.delegate_phone, d.delegate_relationship, d.delegate_id_proof_url,
+           d.order_id, o.order_number, o.status::text AS order_status,
+           p.display_name AS customer_name, p.phone AS customer_phone
+    FROM dispatches d
+    JOIN orders o ON o.id = d.order_id AND o.workspace_id = d.workspace_id
+    LEFT JOIN people p ON p.id = o.customer_person_id
+    WHERE d.id = ${c.req.param('dispatchId')}::uuid AND d.workspace_id = ${workspaceId}::uuid
+    LIMIT 1
+  `);
+  if (!rows.length) return c.json(err('dispatch_not_found', 'Dispatch not found'), 404);
+  const policy = await loadPolicy(workspaceId);
+  return c.json({ dispatch: rows[0], policy }, 200);
+});
+
 // POST /:dispatchId/recipient — record recipient type + delegate info.
 dispatches.post('/:dispatchId/recipient', requirePermission('dispatch.execute'), async (c) => {
   const session = c.get('session')!;

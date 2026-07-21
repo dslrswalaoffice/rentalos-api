@@ -375,6 +375,7 @@ function renderStrip(){
     +(S.approvals&&S.approvals.length?'<span class="appchip" data-approval="'+escapeAttr(S.approvals[0].id)+'">⚠ Approval pending — '+escapeHtml((S.approvals[0].approver_role_required||'').replace(/^\w/,c=>c.toUpperCase()))+'</span>':'')
     +'<div style="margin-left:auto;display:flex;align-items:center;gap:10px;position:relative">'
       +'<button class="btn btn-primary" data-cta '+(cta.disabled?'disabled':'')+(cta.soon?' title="Not available in this view yet"':'')+'>'+I('truck',17)+escapeHtml(cta.label)+'</button>'
+      +(['confirmed','allocated'].includes(resolvedStatus())?'<button class="btn btn-secondary" data-act="start-dispatch">'+I('truck',16)+'Start Dispatch</button>':'')
       +'<button class="btn btn-secondary" data-secondary="contact">'+I('chat',16)+'Contact</button>'
       +'<button class="iconbtn" data-overflow>⋯</button>'
       +(S.overflow?renderOverflow():'')
@@ -940,6 +941,7 @@ async function handleAct(kind,el){
     case 'call': if(o.customer_phone)window.location.href='tel:'+o.customer_phone;break;
     case 'contact': toast('Contact '+(o.customer_name||'customer'));break;
     case 'extend': openExtensionModal();break;
+    case 'start-dispatch': doStartDispatch();break;
     case 'send-update-inline': openSendUpdateModal();break;
     case 'substitute': openSubstitutionModal(el&&el.getAttribute('data-item'));break;
     case 'report-damage': openDamageModal(el&&el.getAttribute('data-item'));break;
@@ -957,6 +959,28 @@ async function handleAct(kind,el){
       catch(err){toast('Could not save note: '+(err.body&&err.body.error||err.message),'err');}
       break;}
     default: break;
+  }
+}
+
+// Item 12 Blocked-Action: gate "Start Dispatch", then open a dispatch record and
+// navigate to the capture flow. Session 1 wires the real payment (deposit) check;
+// KYC + equipment-ready gates land in Session 2 with their data signals.
+async function doStartDispatch(){
+  const o=S.order;
+  const reasons=[];
+  const req=Number(o.deposit_required_paise||0);
+  const ds=o.deposit_status||'none';
+  if(req>0 && (ds==='none'||ds==='pending')){
+    reasons.push({message:'Deposit not yet collected — ₹'+Math.round(req/100).toLocaleString('en-IN')+' required before handover.',severity:'attention',fix_link_target:'#card-deposits'});
+  }
+  if(reasons.length){ S.blocker={title:'Cannot start dispatch',reasons,total:reasons.length}; renderStrip(); return; }
+  try{
+    const r=await api.post('/api/orders/'+S.id+'/dispatches',{});
+    const id=r.dispatch&&r.dispatch.id;
+    if(!id)throw new Error('no dispatch id returned');
+    window.location.href='/dispatch.html?dispatch_id='+encodeURIComponent(id);
+  }catch(err){
+    toast('Could not start dispatch: '+((err.body&&err.body.error&&(err.body.error.message||err.body.error))||err.message),'err');
   }
 }
 
