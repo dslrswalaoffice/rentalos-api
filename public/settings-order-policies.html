@@ -74,12 +74,10 @@ select{font-family:var(--mono);font-size:13px;color:var(--head);border:1px solid
 <div class="toast-wrap" id="toasts"></div>
 <script type="module">
 import { api, ensureAuth } from '/_lib/api.js';
-import { renderShell, mountUserMenu } from '/_lib/shell.js?v=5';
-// Bare page → wrapped in .shell so the shared rail mounts. No real top-bar here,
-// so the account menu rides in the .subnav breadcrumb bar (cosmetic alignment
-// flagged for the follow-up).
-renderShell('system', { topbar: false });
-mountUserMenu('.subnav');
+import { renderShell } from '/_lib/shell.js?v=6';
+// Canonical rail + top-bar. The bottom savebar stays for Save changes; the
+// in-page .subnav keeps its "‹ Settings" back link below the canonical top-bar.
+renderShell('system', { topbar: true, breadcrumb: 'System › Order policies' });
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function toast(m,k){const w=document.getElementById('toasts');const e=document.createElement('div');e.className='toast'+(k?' '+k:'');e.textContent=m;w.appendChild(e);setTimeout(()=>e.remove(),3200);}
 function n(v,d){const x=Number(v);return isFinite(x)?x:(d||0);}

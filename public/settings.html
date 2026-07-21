@@ -307,30 +307,8 @@
     <!-- Rail injected by /_lib/shell.js (renderShell('system', { topbar: false })). -->
 
     <main class="main">
-      <header class="topbar">
-        <div class="page-title-block">
-          <div class="kicker" id="tb-kicker">Settings</div>
-          <div class="page-title">Settings</div>
-        </div>
-        <div class="topbar-actions" id="tb-actions">
-          <div class="notif-bell-wrap">
-            <button class="notif-bell" id="notif-bell" aria-label="Notifications">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2a7 7 0 0 0-7 7v3.6L3 15h18l-2-2.4V9a7 7 0 0 0-7-7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-                <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.5"/>
-              </svg>
-              <span class="notif-badge" id="notif-badge" hidden>0</span>
-            </button>
-            <div class="notif-drawer" id="notif-drawer" hidden>
-              <header class="notif-drawer-head">
-                <h3>Notifications</h3>
-                <button class="notif-mark-all" id="notif-mark-all">Mark all read</button>
-              </header>
-              <div class="notif-drawer-body" id="notif-drawer-body"></div>
-            </div>
-          </div>
-</div>
-      </header>
+      <!-- Canonical top-bar injected by /_lib/shell.js (renderShell('system', { topbar: true, breadcrumb: 'System' })).
+           Per-tab Save/Discard render into the canonical #tb-actions slot via renderTopbar(). -->
       <div class="settings-body">
         <nav class="settings-nav">
           <div class="snav-title">SETTINGS</div>
@@ -357,13 +335,11 @@
 
   <script type="module">
     import { api, ensureAuth } from '/_lib/api.js';
-    import { renderShell, mountUserMenu } from '/_lib/shell.js?v=5';
+    import { renderShell } from '/_lib/shell.js?v=6';
 
-    // Icon rail (keep this page's own top-bar → notification bell + per-tab save
-    // actions in #tb-actions). Mount the account menu on the .topbar header, NOT
-    // in #tb-actions — renderTopbar() rewrites that container's innerHTML per tab.
-    renderShell('system', { topbar: false });
-    mountUserMenu('.topbar');
+    // Canonical rail + top-bar. Per-tab Save/Discard render into the canonical
+    // #tb-actions slot via renderTopbar(); the shell's bell handles notifications.
+    renderShell('system', { topbar: true, breadcrumb: 'System' });
 
     const state = { data: null, tab: 'workspace', form: null, baseline: null, integrations: null, members: null, invites: null, inviteLink: null, navCollapsed: {}, navSearch: '' };
 
@@ -394,8 +370,9 @@
     // ---------- identity ----------
     function hydrateIdentity() {
       const ws = state.data.workspace;
-      // Workspace + account identity now live in the shared rail/account menu.
-      document.getElementById('tb-kicker').textContent = `${ws.legal_name || 'Workspace'}${ws.city ? ' · ' + ws.city : (ws.place_of_supply ? ' · ' + ws.place_of_supply : '')}`;
+      // Workspace context now shows in the canonical breadcrumb; update it live.
+      const crumb = document.querySelector('.topbar .tb-crumb');
+      if (crumb) crumb.textContent = `System · ${ws.legal_name || 'Workspace'}${ws.city ? ' · ' + ws.city : (ws.place_of_supply ? ' · ' + ws.place_of_supply : '')}`;
     }
 
     function isOwner() { return state.data?.current_user?.role === 'owner'; }

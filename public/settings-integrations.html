@@ -112,9 +112,7 @@
     <!-- Rail injected by /_lib/shell.js (renderShell('system', { topbar: false })). Replaces the old drifted inline rail. -->
 
     <main class="main">
-      <header class="topbar">
-        <div class="crumb"><span>Settings</span><span style="color:#cfcbc3">›</span><span>Advanced</span><span style="color:#cfcbc3">›</span><span class="cur">Integrations</span></div>
-      </header>
+      <!-- Canonical top-bar injected by /_lib/shell.js (renderShell('system', { topbar: true, breadcrumb: 'System › Integrations' })). -->
       <div class="settings-body">
         <nav class="settings-nav"><div class="snav-title">SETTINGS</div><div id="snav-list"></div></nav>
         <div class="content">
@@ -133,12 +131,10 @@
 
   <script type="module">
     import { api, ensureAuth } from '/_lib/api.js';
-    import { renderShell, mountUserMenu } from '/_lib/shell.js?v=5';
+    import { renderShell } from '/_lib/shell.js?v=6';
 
-    // Shared icon rail replaces the old inline (drifted) rail. Keep this page's
-    // own top-bar; mount the account menu on the .topbar header.
-    renderShell('system', { topbar: false });
-    mountUserMenu('.topbar');
+    // Canonical rail + top-bar.
+    renderShell('system', { topbar: true, breadcrumb: 'System › Integrations' });
     function escapeHtml(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
     function escapeAttr(s){ return escapeHtml(s).replace(/`/g,'&#96;'); }
 
