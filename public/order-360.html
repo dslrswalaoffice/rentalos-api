@@ -36,10 +36,13 @@ a:hover{color:var(--info-hover)}
 .uc{text-transform:uppercase}
 
 /* layout */
-.subnav{background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 26px;height:46px;font-size:13px;position:sticky;top:0;z-index:39}
+/* PR-2 — order-360 gains the shared 60px icon rail + canonical top-bar. */
+.shell{display:flex;min-height:100vh}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
 .crumbs{font-family:var(--mono);font-size:12px;color:var(--neutral);display:flex;gap:7px;align-items:center}
 .crumbs .cur{color:var(--head);font-weight:600}
-.orderstrip{background:var(--bg);border-bottom:1px solid var(--border);padding:16px 26px;position:sticky;top:46px;z-index:38;box-shadow:0 4px 14px rgba(32,32,88,.03)}
+/* orderstrip now sticks below the 60px canonical top-bar (was 46px subnav). */
+.orderstrip{background:var(--bg);border-bottom:1px solid var(--border);padding:16px 26px;position:sticky;top:60px;z-index:38;box-shadow:0 4px 14px rgba(32,32,88,.03)}
 .striprow{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .ordernum{font-family:var(--mono);font-weight:600;font-size:23px;color:var(--ink);letter-spacing:-.5px}
 .vsep{width:1px;height:24px;background:var(--border)}
@@ -243,18 +246,24 @@ a:hover{color:var(--info-hover)}
 </style>
 </head>
 <body>
-<div class="subnav">
-  <a href="/orders.html"><span id="crumb-back">‹ Back to Orders</span></a>
-  <span style="color:var(--neutral-border)">|</span>
-  <div class="crumbs"><span>Rentals</span><span style="color:var(--neutral-border)">›</span><span>Orders</span><span style="color:var(--neutral-border)">›</span><span class="cur" id="crumb-order">…</span></div>
+<!-- Rail + canonical top-bar injected by /_lib/shell.js (renderShell('orders', { topbar: true, breadcrumb })).
+     The breadcrumb ("Orders › #<order>") replaces the old subnav; the linked "Orders" is the back path. -->
+<div class="shell">
+  <main class="main">
+    <div id="strip"></div>
+    <div class="wrap"><div id="app"></div></div>
+  </main>
 </div>
-<div id="strip"></div>
-<div class="wrap"><div id="app"></div></div>
 <div class="toast-wrap" id="toasts"></div>
 <div id="modalRoot"></div>
 
 <script type="module">
 import { api, ensureAuth, formatINR } from '/_lib/api.js';
+import { renderShell } from '/_lib/shell.js?v=6';
+
+// Canonical rail + top-bar. Breadcrumb starts as a linked "Orders" (back path)
+// and gains the order number once the order loads (see the crumb update in load()).
+renderShell('orders', { topbar: true, breadcrumb: '<a href="/orders.html" style="color:inherit;text-decoration:none">Orders</a>' });
 
 // ------------------------------------------------------------------ utils
 function escapeHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -966,7 +975,8 @@ async function load(){
   api.get('/api/orders/'+S.id+'/substitutions').then(r=>{S.substitutions=r.substitutions||[];render();}).catch(()=>{});
   api.get('/api/orders/'+S.id+'/damage-incidents').then(r=>{S.damage=r.damage_incidents||[];render();}).catch(()=>{});
   if(S.quotes.length&&!S.activeQuoteTab)S.activeQuoteTab=S.quotes[S.quotes.length-1].id;
-  document.getElementById('crumb-order').textContent='#'+data.order.order_number;
+  const _crumb=document.querySelector('.topbar .tb-crumb');
+  if(_crumb)_crumb.innerHTML='<a href="/orders.html" style="color:inherit;text-decoration:none">Orders</a> &rsaquo; #'+escapeHtml(data.order.order_number);
   // Communications (customer-facing deliveries) — best-effort, non-blocking.
   api.get('/api/orders/'+S.id+'/communications').then(r=>{S.comms=r.communications||[];render();}).catch(()=>{});
   render();
