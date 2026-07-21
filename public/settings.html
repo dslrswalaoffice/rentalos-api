@@ -49,7 +49,7 @@
     button,a{transition:background-color .14s,color .14s,border-color .14s,box-shadow .16s}
     ::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-thumb{background:#d3d7dd;border-radius:7px;border:3px solid transparent;background-clip:padding-box}
 
-    .app{display:grid;grid-template-columns:var(--sb-w) minmax(0,1fr);min-height:100dvh}
+    .app{display:flex;min-height:100dvh}
     /* sidebar (from orders.html) */
     .sb{background:var(--side);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 14px 14px;position:sticky;top:0;height:100dvh;overflow-y:auto}
     .sb-brand{display:flex;align-items:center;gap:10px;padding:6px 6px 20px}
@@ -72,7 +72,7 @@
     .sb-user-name{font-size:12.5px;font-weight:600;color:var(--ink)}
     .sb-user-role{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-top:1px}
 
-    .main{min-width:0;background:var(--bg);display:flex;flex-direction:column}
+    .main{flex:1;min-width:0;background:var(--bg);display:flex;flex-direction:column}
     .topbar{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:40}
     .kicker{font-family:var(--font-mono);font-size:9.5px;font-weight:600;letter-spacing:.14em;color:var(--muted-soft);text-transform:uppercase}
     .page-title{font-family:var(--font-display);font-weight:600;font-size:17px;letter-spacing:-.005em;color:var(--ink);margin-top:1px}
@@ -304,39 +304,9 @@
   </head>
 <body>
   <div class="app">
-    <aside class="sb">
-      <div class="sb-brand">
-        <span class="logo">R</span>
-        <span class="word">RentalOS</span>
-        <span class="env">v0.1</span>
-      </div>
-      <a href="/new-order.html" class="sb-item new" style="margin-bottom:6px;">
-        <span class="tile">NB</span><span>New order</span>
-      </a>
-      <button class="sb-workspace" type="button" aria-label="Switch workspace">
-        <span class="sb-workspace-name" id="ws-name">DSLRSWALA</span>
-        <span class="sb-workspace-loc" id="ws-loc">Vadodara</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-      <nav class="sb-nav" aria-label="Main">
-        <a href="/dashboard.html" class="sb-item"><span class="tile">DB</span><span>Dashboard</span></a>
-        <a href="/orders.html" class="sb-item"><span class="tile">RN</span><span>Orders</span></a>
-        <a href="/inventory.html" class="sb-item"><span class="tile">IN</span><span>Inventory</span></a>
-        <a href="/people-list.html" class="sb-item"><span class="tile">PE</span><span>People</span></a>
-        <a href="/calendar.html" class="sb-item"><span class="tile">CL</span><span>Calendar</span></a>
-        <a href="/analytics.html" class="sb-item"><span class="tile">AN</span><span>Analytics</span></a>
-        <a href="/settings.html" class="sb-item active" aria-current="page"><span class="tile">SY</span><span>Settings</span></a>
-      </nav>
-      <div class="sb-user">
-        <span class="sb-user-avatar" id="user-avatar">A</span>
-        <div class="sb-user-info">
-          <div class="sb-user-name" id="user-name">Aamir</div>
-          <div class="sb-user-role" id="user-role">OWNER</div>
-        </div>
-      </div>
-    </aside>
+    <!-- Rail injected by /_lib/shell.js (renderShell('system', { topbar: false })). -->
 
-    <div class="main">
+    <main class="main">
       <header class="topbar">
         <div class="page-title-block">
           <div class="kicker" id="tb-kicker">Settings</div>
@@ -382,11 +352,18 @@
           </div>
         </div>
       </div>
-    </div>
+    </main>
   </div>
 
   <script type="module">
     import { api, ensureAuth } from '/_lib/api.js';
+    import { renderShell, mountUserMenu } from '/_lib/shell.js?v=5';
+
+    // Icon rail (keep this page's own top-bar → notification bell + per-tab save
+    // actions in #tb-actions). Mount the account menu on the .topbar header, NOT
+    // in #tb-actions — renderTopbar() rewrites that container's innerHTML per tab.
+    renderShell('system', { topbar: false });
+    mountUserMenu('.topbar');
 
     const state = { data: null, tab: 'workspace', form: null, baseline: null, integrations: null, members: null, invites: null, inviteLink: null, navCollapsed: {}, navSearch: '' };
 
@@ -416,14 +393,8 @@
 
     // ---------- identity ----------
     function hydrateIdentity() {
-      const cu = state.data.current_user;
       const ws = state.data.workspace;
-      document.getElementById('ws-name').textContent = state.data.workspace.legal_name || 'Workspace';
-      document.getElementById('ws-loc').textContent = ws.city || ws.place_of_supply || '';
-      const first = (cu.display_name || '').split(' ')[0] || 'You';
-      document.getElementById('user-name').textContent = first;
-      document.getElementById('user-role').textContent = (cu.role || '').toUpperCase();
-      document.getElementById('user-avatar').textContent = first[0]?.toUpperCase() ?? 'U';
+      // Workspace + account identity now live in the shared rail/account menu.
       document.getElementById('tb-kicker').textContent = `${ws.legal_name || 'Workspace'}${ws.city ? ' · ' + ws.city : (ws.place_of_supply ? ' · ' + ws.place_of_supply : '')}`;
     }
 
