@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Manrope',sans-serif;background:#efece6;color:#202058;-webkit-font-smoothing:antialiased}
+  a{color:#4f46e5;text-decoration:none}
+  a:hover{color:#4338ca}
+  ::placeholder{color:#9ca3af}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#d8d3c8;border-radius:6px;border:2px solid #efece6}
+  @keyframes pulseNode{0%{box-shadow:0 0 0 0 rgba(79,70,229,.4)}70%{box-shadow:0 0 0 9px rgba(79,70,229,0)}100%{box-shadow:0 0 0 0 rgba(79,70,229,0)}}
+</style>
+</helmet>
+
+<div style="width:1440px;max-width:100%;margin:0 auto;background:#efece6;min-height:100vh;display:flex;flex-direction:column">
+
+  <!-- ============ REGION 1 · STICKY TOP BAR ============ -->
+  <div style="position:sticky;top:0;z-index:50;height:52px;flex:none;background:#fff;border-bottom:1px solid #e7e4de;display:flex;align-items:center;gap:16px;padding:0 26px">
+    <a href="#" onClick="{{ backToOrder }}" style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#4f46e5">
+      <span dangerouslySetInnerHTML="{{ backIcon }}" style="display:flex"></span>Back to Order #BK2214
+    </a>
+    <sc-if value="{{ inProgress }}" hint-placeholder-val="{{ true }}">
+      <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:20px;background:#fffbeb;border:1px solid #fcd9a4;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#d97706">
+        <span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span>DISPATCH IN PROGRESS · UNSAVED
+      </span>
+    </sc-if>
+    <div style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:12px;color:#9ca3af;display:flex;gap:7px;align-items:center">
+      <span>Rentals</span><span style="color:#cfc9bd">&rsaquo;</span><span>Orders</span><span style="color:#cfc9bd">&rsaquo;</span><span>BK2214</span><span style="color:#cfc9bd">&rsaquo;</span><span style="color:#26235a;font-weight:600">Dispatch #01</span>
+    </div>
+  </div>
+
+  <!-- ============ REGION 2 · STICKY PROGRESS HEADER ============ -->
+  <div style="position:sticky;top:52px;z-index:49;flex:none;background:#fff;border-bottom:1px solid #e7e4de;padding:18px 26px 20px;box-shadow:0 4px 14px rgba(32,32,88,.03)">
+    <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe">
+            <span style="width:7px;height:7px;border-radius:50%;background:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.18)"></span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.11em;color:#4f46e5">DISPATCH &mdash; ORDER #BK2214</span>
+          </span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af">DISPATCH-2026-0029-01</span>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px;color:#4b4b63">
+          <span style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px;color:#202058">Rahul Malhotra</span>
+          <span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:6px;background:#fffbeb;border:1px solid #fcd9a4;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#d97706">&#9733; VIP</span>
+          <span style="color:#cfc9bd">&middot;</span><span>1 item</span>
+          <span style="color:#cfc9bd">&middot;</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#26235a">Jul 15 &rarr; Jul 28</span>
+          <span style="font-size:12px;color:#9ca3af">(13 days)</span>
+        </div>
+      </div>
+      <div style="text-align:right;flex:none">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af;margin-bottom:2px">PHASE <span style="color:#4f46e5;font-weight:700">{{ phaseNum }} of 3</span></div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:600;color:#202058;letter-spacing:-.01em">{{ phaseLabel }}</div>
+      </div>
+    </div>
+
+    <!-- 3-PHASE PROGRESS BAR -->
+    <div style="margin-top:18px;display:flex;align-items:center">
+      <sc-for list="{{ phases }}" as="p" hint-placeholder-count="3">
+        <div onClick="{{ p.go }}" style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:none;cursor:pointer;width:120px">
+          <div dangerouslySetInnerHTML="{{ p.node }}" style="display:flex;align-items:center;justify-content:center"></div>
+          <div style="text-align:center;line-height:1.2">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;letter-spacing:.1em;color:{{ p.numColor }}">PHASE {{ p.n }}</div>
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:{{ p.labelColor }};white-space:nowrap">{{ p.label }}</div>
+          </div>
+        </div>
+        <sc-if value="{{ p.hasConn }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:1;height:3px;border-radius:2px;margin:0 4px;margin-bottom:34px;background:{{ p.conn }}"></div>
+        </sc-if>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ============ REGION 3 · PHASE BODY ============ -->
+  <div style="flex:1;padding:24px 26px 110px">
+
+    <!-- ####################### PHASE 1 · PREPARE ####################### -->
+    <sc-if value="{{ isP1 }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;gap:22px;align-items:flex-start">
+
+        <!-- LEFT 60% -->
+        <div style="flex:0 0 60%;max-width:60%;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:-2px">
+            <span style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;color:#26235a">Line items to dispatch</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#6b7280;background:#e9e5dd;padding:1px 8px;border-radius:10px">1</span>
+          </div>
+
+          <!-- LINE ITEM CARD -->
+          <div style="background:#fff;border:1.5px solid #c7d2fe;border-radius:14px;box-shadow:0 0 0 4px rgba(79,70,229,.05);overflow:hidden">
+            <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;background:linear-gradient(180deg,#f5f5ff,#fff);border-bottom:1px solid #eef0ff">
+              <span style="width:9px;height:9px;border-radius:50%;background:#4f46e5;flex:none"></span>
+              <span style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15.5px;color:#202058">Nanlite FS 300</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6b7280;background:#f3f1ec;border:1px solid #e7e4de;padding:2px 8px;border-radius:6px">Qty 1</span>
+              <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:{{ p1StatusBg }};border:1px solid {{ p1StatusBorder }}">
+                <span style="width:7px;height:7px;border-radius:50%;background:{{ p1StatusDot }}"></span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:{{ p1StatusColor }}">{{ p1StatusLabel }}</span>
+              </span>
+            </div>
+
+            <div style="padding:20px;display:flex;flex-direction:column;gap:22px">
+
+              <!-- UNIT SELECTION -->
+              <div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:11px">Which physical unit are you dispatching? <span style="color:#dc2626">*</span></div>
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <sc-for list="{{ units }}" as="u" hint-placeholder-count="3">
+                    <div onClick="{{ u.pick }}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:11px;border:1.5px solid {{ u.border }};background:{{ u.bg }};cursor:{{ u.cursor }}">
+                      <span style="width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ u.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ u.dot }}"></span></span>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:{{ u.idColor }}">{{ u.id }}</span>
+                      <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:{{ u.metaColor }}">{{ u.meta }}</span>
+                        <sc-if value="{{ u.selected }}" hint-placeholder-val="{{ true }}"><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.08em;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;padding:2px 7px;border-radius:5px">SELECTED</span></sc-if>
+                      </span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <!-- CONDITION PHOTOS -->
+              <div>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px">
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af">Pre-dispatch condition check <span style="color:#dc2626">*</span></div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:{{ prepPhotoColor }}">{{ prepPhotoCount }} of 6 photos</div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+                  <sc-for list="{{ prepPhotos }}" as="ph" hint-placeholder-count="6">
+                    <sc-if value="{{ ph.filled }}" hint-placeholder-val="{{ true }}">
+                      <div style="position:relative;aspect-ratio:4/3;border-radius:11px;background:linear-gradient(135deg,#e9e6df,#d6d1c7);border:1px solid #d9d6cf;overflow:hidden;display:flex;align-items:flex-end">
+                        <div style="position:absolute;top:8px;left:8px;color:#a8a496;display:flex"><span dangerouslySetInnerHTML="{{ camIconSm }}" style="display:flex"></span></div>
+                        <div style="width:100%;padding:5px 8px;background:linear-gradient(transparent,rgba(0,0,0,.5));font-family:'JetBrains Mono',monospace;font-size:9px;color:#fff">{{ ph.ts }}</div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ ph.empty }}" hint-placeholder-val="{{ false }}">
+                      <div onClick="{{ addPrepPhoto }}" style="aspect-ratio:4/3;border-radius:11px;border:1.5px dashed #cfcbc2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:#9ca3af;cursor:pointer;background:#faf9f6" style-hover="border-color:#4f46e5;color:#4f46e5">
+                        <span dangerouslySetInnerHTML="{{ camIcon }}" style="display:flex"></span>
+                        <span style="font-size:11px;font-weight:600">Add photo</span>
+                      </div>
+                    </sc-if>
+                  </sc-for>
+                </div>
+                <div style="margin-top:8px;font-size:11.5px;color:#9ca3af">Minimum 3 photos required to proceed &middot; tap opens device camera.</div>
+              </div>
+
+              <!-- WORKING CONDITION -->
+              <div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Working condition <span style="color:#dc2626">*</span></div>
+                <div style="display:flex;flex-direction:column;gap:2px">
+                  <sc-for list="{{ conditions }}" as="c" hint-placeholder-count="3">
+                    <div onClick="{{ c.pick }}" style="display:flex;align-items:flex-start;gap:11px;padding:9px 8px;border-radius:9px;cursor:pointer" style-hover="background:#faf9f6">
+                      <span style="margin-top:1px;width:18px;height:18px;flex:none;border-radius:50%;border:2px solid {{ c.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ c.dot }}"></span></span>
+                      <div style="font-size:13.5px;color:{{ c.color }};font-weight:{{ c.weight }}">{{ c.label }} <sc-if value="{{ c.hasHint }}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;font-weight:600;color:#dc2626">&middot; {{ c.hint }}</span></sc-if></div>
+                    </div>
+                  </sc-for>
+                </div>
+                <sc-if value="{{ showMajorBlock }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:11px;display:flex;gap:12px;padding:14px 15px;border-radius:11px;background:#fef2f2;border:1px solid #fbcaca">
+                    <span style="flex:none;color:#dc2626;margin-top:1px"><span dangerouslySetInnerHTML="{{ warnIcon }}" style="display:flex"></span></span>
+                    <div style="flex:1">
+                      <div style="font-size:13px;font-weight:700;color:#b91c1c">Cannot dispatch this item</div>
+                      <div style="margin-top:4px;font-size:12.5px;color:#7f1d1d;line-height:1.5">A major issue blocks Phase 2. Route this line item through the Substitution flow to swap in a working unit, or skip it from this dispatch.</div>
+                      <button onClick="{{ reportSub }}" style="margin-top:10px;display:inline-flex;align-items:center;gap:7px;background:#fff;color:#dc2626;border:1px solid #fbcaca;padding:7px 13px;border-radius:9px;font-family:'Manrope',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer" style-hover="background:#fef2f2">
+                        <span dangerouslySetInnerHTML="{{ swapIcon }}" style="display:flex"></span>Report substitution needed
+                      </button>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+
+              <!-- ACCESSORIES -->
+              <div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Accessories included</div>
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <sc-for list="{{ accessories }}" as="a" hint-placeholder-count="4">
+                    <div onClick="{{ a.toggle }}" style="display:flex;align-items:center;gap:11px;cursor:pointer">
+                      <span style="width:19px;height:19px;flex:none;border-radius:5px;border:1.5px solid {{ a.border }};background:{{ a.bg }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ a.check }}"></span></span>
+                      <span style="font-size:13.5px;color:{{ a.textColor }};font-weight:{{ a.weight }}">{{ a.label }}</span>
+                      <sc-if value="{{ a.missing }}" hint-placeholder-val="{{ false }}">
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.05em;color:#d97706;background:#fffbeb;border:1px solid #fcd9a4;padding:2px 8px;border-radius:5px">MISSING &middot; report to Shoaib</span>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <!-- NOTES -->
+              <div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Notes <span style="color:#c9c5bd;font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>
+                <textarea placeholder="Any observations before handover&hellip;" style="width:100%;min-height:64px;resize:vertical;padding:11px 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:'Manrope',sans-serif;font-size:13.5px;line-height:1.5;color:#26235a;outline:none" style-focus="border-color:#4f46e5"></textarea>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT 40% -->
+        <div style="flex:1;min-width:0;position:sticky;top:210px;display:flex;flex-direction:column;gap:16px">
+
+          <!-- ORDER SUMMARY -->
+          <div style="background:#fff;border:1px solid #e7e4de;border-radius:14px;padding:18px 20px">
+            <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12px;color:#26235a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px">Order Summary</div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex"><span style="width:90px;flex:none;font-size:11.5px;color:#9ca3af;font-weight:600;padding-top:1px">Customer</span><span style="font-size:13px;color:#26235a">Rahul Malhotra <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:#d97706;background:#fffbeb;border:1px solid #fcd9a4;padding:1px 6px;border-radius:5px">VIP</span></span></div>
+              <div style="display:flex"><span style="width:90px;flex:none;font-size:11.5px;color:#9ca3af;font-weight:600">Order</span><span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#26235a">#BK2214</span></div>
+              <div style="display:flex"><span style="width:90px;flex:none;font-size:11.5px;color:#9ca3af;font-weight:600">Window</span><span style="font-size:12.5px;color:#26235a"><span style="font-family:'JetBrains Mono',monospace">Jul 15 &rarr; Jul 28</span> <span style="color:#9ca3af">(13 days)</span></span></div>
+              <div style="display:flex"><span style="width:90px;flex:none;font-size:11.5px;color:#9ca3af;font-weight:600">Pickup</span><span style="font-size:12.5px;color:#26235a">Warehouse counter <span style="color:#9ca3af">(self-pickup)</span></span></div>
+            </div>
+
+            <!-- DEPOSIT WARNING -->
+            <div style="margin-top:14px;border-radius:11px;background:#fffbeb;border:1px solid #fcd9a4;padding:13px 14px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="color:#d97706;display:flex"><span dangerouslySetInnerHTML="{{ warnIcon }}" style="display:flex"></span></span>
+                <span style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#b45309">Deposit</span>
+                <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#202058">&#8377;25,000</span>
+              </div>
+              <div style="margin-top:8px;font-size:12px;color:#92400e;line-height:1.5"><span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:#b45309">NOT YET COLLECTED</span> &mdash; must be collected before Phase 3 completes.</div>
+            </div>
+          </div>
+
+          <!-- SPECIAL NOTES -->
+          <div style="background:#fff;border:1px solid #e7e4de;border-radius:14px;padding:18px 20px">
+            <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12px;color:#26235a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:11px">Special notes from order</div>
+            <div style="font-size:13px;color:#3a3a58;line-height:1.6;background:#faf9f6;border:1px solid #eeece6;border-radius:10px;padding:12px 13px;border-left:3px solid #4f46e5">&ldquo;Client shoot at outdoor location Jul 16&ndash;17. Please include extra battery.&rdquo;</div>
+          </div>
+
+          <!-- ITEM ACTIONS -->
+          <div style="background:#fff;border:1px solid #e7e4de;border-radius:14px;padding:18px 20px">
+            <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12px;color:#26235a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:13px">Actions</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <button onClick="{{ noop }}" style="display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:#fff;color:#6b7280;border:1px solid #e7e4de;padding:11px 13px;border-radius:10px;font-family:'Manrope',sans-serif;font-weight:600;font-size:13px;cursor:pointer" style-hover="border-color:#202058;color:#202058">
+                <span dangerouslySetInnerHTML="{{ skipIcon }}" style="display:flex"></span>Skip this item <span style="margin-left:auto;font-size:11px;font-weight:400;color:#9ca3af">not dispatched now</span>
+              </button>
+              <button onClick="{{ reportSub }}" style="display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:#fff;color:#6b7280;border:1px solid #e7e4de;padding:11px 13px;border-radius:10px;font-family:'Manrope',sans-serif;font-weight:600;font-size:13px;cursor:pointer" style-hover="border-color:#202058;color:#202058">
+                <span dangerouslySetInnerHTML="{{ swapIcon }}" style="display:flex"></span>Report substitution <span style="margin-left:auto;font-size:11px;font-weight:400;color:#9ca3af">route to modal</span>
+              </button>
+            </div>
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f2f0eb">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="color:{{ prepDoneColor }};display:flex"><span dangerouslySetInnerHTML="{{ prepDoneIcon }}" style="display:flex"></span></span>
+                <span style="font-size:12.5px;color:#6b7280"><span style="font-weight:700;color:{{ prepDoneColor }};font-family:'JetBrains Mono',monospace">{{ prepReadyCount }} of 1</span> items prepared</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ####################### PHASE 2 · HANDOVER ####################### -->
+    <sc-if value="{{ isP2 }}" hint-placeholder-val="{{ false }}">
+      <div style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+
+        <!-- SECTION A · WHO IS PICKING UP -->
+        <div style="background:#fff;border:1px solid #e7e4de;border-radius:14px;padding:20px 22px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:14px">A &middot; Who is picking up? <span style="color:#dc2626">*</span></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div onClick="{{ pickSelf }}" style="border-radius:11px;border:1.5px solid {{ selfBorder }};background:{{ selfBg }};padding:14px 15px;cursor:pointer">
+              <div style="display:flex;align-items:center;gap:11px">
+                <span style="width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ selfRing }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ selfDot }}"></span></span>
+                <span style="font-size:14px;font-weight:600;color:#202058">Customer himself</span>
+                <span style="font-size:13px;color:#6b7280">(Rahul Malhotra)</span>
+              </div>
+              <div style="margin-top:8px;margin-left:30px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#6b7280">
+                <span dangerouslySetInnerHTML="{{ idIcon }}" style="display:flex;color:#059669"></span>Verified by ID: <span style="color:#26235a;font-weight:600">Aadhaar on file</span> &middot; show ID at counter
+              </div>
+            </div>
+
+            <div onClick="{{ pickDelegate }}" style="border-radius:11px;border:1.5px solid {{ delBorder }};background:{{ delBg }};padding:14px 15px;cursor:pointer">
+              <div style="display:flex;align-items:center;gap:11px">
+                <span style="width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ delRing }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ delDot }}"></span></span>
+                <span style="font-size:14px;font-weight:600;color:#202058">Delegate</span>
+                <span style="font-size:13px;color:#6b7280">someone on the customer's behalf</span>
+              </div>
+
+              <sc-if value="{{ isDelegate }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:14px;margin-left:30px;display:flex;flex-direction:column;gap:13px">
+                  <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <div style="flex:1;min-width:200px">
+                      <div style="font-size:11.5px;font-weight:600;color:#6b7280;margin-bottom:6px">Delegate name</div>
+                      <input placeholder="Full name" style="width:100%;height:40px;padding:0 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:'Manrope',sans-serif;font-size:13.5px;color:#26235a;outline:none" style-focus="border-color:#4f46e5">
+                    </div>
+                    <div style="flex:1;min-width:200px">
+                      <div style="font-size:11.5px;font-weight:600;color:#6b7280;margin-bottom:6px">Delegate phone</div>
+                      <input placeholder="+91" style="width:100%;height:40px;padding:0 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:13.5px;color:#26235a;outline:none" style-focus="border-color:#4f46e5">
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size:11.5px;font-weight:600;color:#6b7280;margin-bottom:6px">Delegate ID type</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <sc-for list="{{ delegateIdTypes }}" as="d" hint-placeholder-count="4">
+                        <div onClick="{{ d.pick }}" style="padding:8px 13px;border-radius:9px;border:1px solid {{ d.border }};background:{{ d.bg }};color:{{ d.color }};font-size:12.5px;font-weight:{{ d.weight }};cursor:pointer">{{ d.label }}</div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <div style="flex:1;min-width:200px">
+                      <div style="font-size:11.5px;font-weight:600;color:#6b7280;margin-bottom:6px">Delegate ID photo</div>
+                      <div style="height:74px;border-radius:10px;border:1.5px dashed #cfcbc2;display:flex;align-items:center;justify-content:center;gap:8px;color:#9ca3af;cursor:pointer;background:#faf9f6" style-hover="border-color:#4f46e5;color:#4f46e5"><span dangerouslySetInnerHTML="{{ camIcon }}" style="display:flex"></span><span style="font-size:12px;font-weight:600">Upload / capture</span></div>
+                    </div>
+                    <div style="flex:1;min-width:200px">
+                      <div style="font-size:11.5px;font-weight:600;color:#6b7280;margin-bottom:6px">Customer authorization</div>
+                      <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <sc-for list="{{ authMethods }}" as="m" hint-placeholder-count="3">
+                          <div onClick="{{ m.pick }}" style="padding:8px 12px;border-radius:9px;border:1px solid {{ m.border }};background:{{ m.bg }};color:{{ m.color }};font-size:12px;font-weight:{{ m.weight }};cursor:pointer">{{ m.label }}</div>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:10px;padding:12px 14px;border-radius:10px;background:#fffbeb;border:1px solid #fcd9a4">
+                    <span style="flex:none;color:#d97706;margin-top:1px"><span dangerouslySetInnerHTML="{{ warnIcon }}" style="display:flex"></span></span>
+                    <div style="font-size:12.5px;color:#92400e;line-height:1.5">Delegate pickup requires customer approval. OTP below is sent to the <strong>customer's</strong> phone, not the delegate's.</div>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION B · OTP VERIFICATION -->
+        <div style="background:#fff;border:1px solid #e7e4de;border-radius:14px;padding:20px 22px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af">B &middot; OTP Verification <span style="color:#dc2626">*</span></div>
+            <sc-if value="{{ otpVerified }}" hint-placeholder-val="{{ false }}">
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:#ecfdf5;border:1px solid #a7f3d0;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#059669"><span dangerouslySetInnerHTML="{{ checkIconSm }}"></span>VERIFIED</span>
+            </sc-if>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:#4b4b63;margin-bottom:14px">
+            <span dangerouslySetInnerHTML="{{ phoneIcon }}" style="display:flex;color:#6b7280"></span>
+            Customer phone on file: <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:#26235a">+91-98XXX-XX123</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;padding:2px 7px;border-radius:5px">SMS</span>
+          </div>
+
+          <sc-if value="{{ otpIdle }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ sendOtp }}" style="display:inline-flex;align-items:center;gap:9px;background:#4f46e5;color:#fff;border:none;padding:11px 18px;border-radius:10px;font-family:'Manrope',sans-serif;font-weight:700;font-size:13.5px;cursor:pointer;box-shadow:0 2px 8px rgba(79,70,229,.28)" style-hover="background:#4338ca">
+              <span dangerouslySetInnerHTML="{{ smsIcon }}" style="display:flex"></span>Send OTP via SMS
+            </button>
+          </sc-if>
+
+          <sc-if value="{{ otpSent }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="display:flex;align-items:center;gap:9px;padding:11px 13px;border-radius:10px;background:#eef2ff;border:1px solid #c7d2fe;margin-bottom:16px">
+                <span dangerouslySetInnerHTML="{{ smsIcon }}" style="display:flex;color:#4f46e5"></span>
+                <span style="font-size:13px;color:#3730a3;font-weight:600">OTP sent to customer's phone</span>
+              </div>
+              <div style="font-size:12px;color:#6b7280;margin-bottom:9px">Enter the 6-digit code received:</div>
+              <div style="display:flex;gap:9px;margin-bottom:14px">
+                <sc-for list="{{ otpBoxes }}" as="b" hint-placeholder-count="6">
+                  <input value="{{ b.val }}" onInput="{{ b.onInput }}" ref="{{ b.ref }}" inputMode="numeric" maxLength="1" style="width:48px;height:56px;text-align:center;border:1.5px solid {{ b.border }};border-radius:11px;font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;color:#202058;outline:none;background:{{ b.bg }}" style-focus="border-color:#4f46e5">
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:center;gap:16px">
+                <button onClick="{{ sendOtp }}" style="background:none;border:none;font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:600;color:#4f46e5;cursor:pointer;padding:0" style-hover="color:#4338ca">Resend OTP</button>
+                <span style="font-size:11.5px;color:#9ca3af">available after 30s</span>
+                <button onClick="{{ skipOtp }}" style="margin-left:auto;background:none;border:none;font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:600;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline" style-hover="color:#202058">Skip OTP &mdash; verbal confirmation</button>
+              </div>
+              <sc-if value="{{ otpSkipped }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:12px;display:flex;gap:10px;padding:12px 14px;border-radius:10px;background:#fffbeb;border:1px solid #fcd9a4;font-size:12.5px;color:#92400e;line-height:1.5"><span style="flex:none;color:#d97706"><span dangerouslySetInnerHTML="{{ warnIcon }}" style="display:flex"></span></span>Verbal confirmation recorded &mdash; requires reason + Shoaib's approval on the audit log.</div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- SECTION C · HANDOVER PHOTOS -->
+        <div style="background:#fff;border:1px solid #e7e4de;border-radius:14px;padding:20px 22px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:6px">C &middot; Handover condition photos</div>
+          <div style="font-size:12.5px;color:#6b7280;margin-bottom:14px">Capture final condition with the customer witnessing &mdash; prevents later disputes.</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:#202058">Nanlite FS 300</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6b7280">NNL-FS-300-001</span>
+            <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:{{ handoverPhotoColor }}">{{ handoverPhotoCount }} of 3 captured</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+            <sc-for list="{{ handoverPhotos }}" as="ph" hint-placeholder-count="3">
+              <sc-if value="{{ ph.filled }}" hint-placeholder-val="{{ false }}">
+                <div style="position:relative;aspect-ratio:4/3;border-radius:11px;background:linear-gradient(135deg,#e9e6df,#d6d1c7);border:1px solid #d9d6cf;overflow:hidden;display:flex;align-items:flex-end">
+                  <div style="position:absolute;top:8px;left:8px;color:#a8a496;display:flex"><span dangerouslySetInnerHTML="{{ camIconSm }}" style="display:flex"></span></div>
+                  <div style="width:100%;padding:5px 8px;background:linear-gradient(transparent,rgba(0,0,0,.5));font-family:'JetBrains Mono',monospace;font-size:9px;color:#fff">{{ ph.label }}</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ ph.empty }}" hint-placeholder-val="{{ true }}">
+                <div onClick="{{ addHandoverPhoto }}" style="aspect-ratio:4/3;border-radius:11px;border:1.5px dashed #cfcbc2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:#9ca3af;cursor:pointer;background:#faf9f6" style-hover="border-color:#4f46e5;color:#4f46e5">
+                  <span dangerouslySetInnerHTML="{{ camIcon }}" style="display:flex"></span>
+                  <span style="font-size:11px;font-weight:600">{{ ph.label }}</span>
+                </div>
+              </sc-if>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- SECTION D · SIGNATURE -->
+        <div style="background:#fff;border:1px solid #e7e4de;border-radius:14px;padding:20px 22px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af">D &middot; Customer signature <span style="color:#dc2626">*</span></div>
+            <sc-if value="{{ signatureCaptured }}" hint-placeholder-val="{{ false }}">
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:#ecfdf5;border:1px solid #a7f3d0;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#059669"><span dangerouslySetInnerHTML="{{ checkIconSm }}"></span>CAPTURED</span>
+            </sc-if>
+          </div>
+          <div style="position:relative;border-radius:12px;border:1.5px solid {{ sigBorder }};background:#faf9f6;overflow:hidden">
+            <canvas ref="{{ sigRef }}" width="700" height="170" style="display:block;width:100%;height:170px;cursor:crosshair;touch-action:none"></canvas>
+            <div style="position:absolute;left:0;right:0;bottom:14px;text-align:center;font-size:12.5px;color:#b6b1a6;pointer-events:none">Sign here to acknowledge pickup</div>
+            <div style="position:absolute;left:22px;right:22px;bottom:44px;height:1px;background:#dcd7cc;pointer-events:none"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:11px;margin-top:12px">
+            <button onClick="{{ clearSig }}" style="background:#fff;color:#6b7280;border:1px solid #e7e4de;padding:9px 15px;border-radius:9px;font-family:'Manrope',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer" style-hover="border-color:#202058;color:#202058">Clear</button>
+            <button onClick="{{ confirmSig }}" style="background:#4f46e5;color:#fff;border:none;padding:9px 16px;border-radius:9px;font-family:'Manrope',sans-serif;font-weight:600;font-size:12.5px;cursor:pointer" style-hover="background:#4338ca">Confirm signature</button>
+            <sc-if value="{{ signatureCaptured }}" hint-placeholder-val="{{ false }}">
+              <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:#6b7280">Signed Jul 15, 2026 &middot; 10:32 AM &middot; Warehouse counter (Vadodara)</span>
+            </sc-if>
+          </div>
+        </div>
+
+        <!-- SECTION E · DEPOSIT CHECK -->
+        <div style="background:#fff;border:1px solid {{ depCardBorder }};border-radius:14px;padding:20px 22px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:14px">E &middot; Deposit collection <span style="color:#dc2626">*</span></div>
+
+          <sc-if value="{{ depositPending }}" hint-placeholder-val="{{ true }}">
+            <div>
+              <div style="display:flex;gap:11px;padding:14px 15px;border-radius:11px;background:#fffbeb;border:1px solid #fcd9a4;margin-bottom:14px">
+                <span style="flex:none;color:#d97706;margin-top:1px"><span dangerouslySetInnerHTML="{{ warnIcon }}" style="display:flex"></span></span>
+                <div style="flex:1">
+                  <div style="display:flex;align-items:center;gap:10px"><span style="font-size:13px;font-weight:700;color:#b45309">Order deposit not yet collected</span><span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;color:#202058">&#8377;25,000</span></div>
+                  <div style="margin-top:4px;font-size:12.5px;color:#92400e;line-height:1.5">Cannot proceed to Phase 3 without the deposit collected or waived by the owner.</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <button onClick="{{ collectDeposit }}" style="display:inline-flex;align-items:center;gap:8px;background:#4f46e5;color:#fff;border:none;padding:11px 16px;border-radius:10px;font-family:'Manrope',sans-serif;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(79,70,229,.28)" style-hover="background:#4338ca"><span dangerouslySetInnerHTML="{{ depositIcon }}" style="display:flex"></span>Collect Deposit Now</button>
+                <button onClick="{{ depositAlready }}" style="background:#fff;color:#26235a;border:1px solid #e7e4de;padding:11px 15px;border-radius:10px;font-family:'Manrope',sans-serif;font-weight:600;font-size:13px;cursor:pointer" style-hover="border-color:#202058">Deposit already collected</button>
+              </div>
+              <div style="margin-top:10px;font-size:11.5px;color:#9ca3af">&ldquo;Collect Deposit Now&rdquo; opens the New Deposit Modal. &ldquo;Already collected&rdquo; verifies a linked DEP-2026-XXXX.</div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ depositCollected }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:13px;padding:14px 16px;border-radius:11px;background:#ecfdf5;border:1px solid #a7f3d0">
+              <span style="width:34px;height:34px;flex:none;border-radius:9px;background:#d1fae5;color:#059669;display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ checkIcon }}" style="display:flex"></span></span>
+              <div style="flex:1">
+                <div style="font-size:13.5px;font-weight:700;color:#065f46">Deposit collected &middot; &#8377;25,000</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#059669;margin-top:2px">DEP-2026-0029-01 &middot; cash &middot; linked to this dispatch</div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ####################### PHASE 3 · CONFIRM ####################### -->
+    <sc-if value="{{ isP3 }}" hint-placeholder-val="{{ false }}">
+      <div style="max-width:920px;margin:0 auto;display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+
+        <!-- LEFT: SUMMARY + AFTER -->
+        <div style="flex:1;min-width:340px;display:flex;flex-direction:column;gap:16px">
+
+          <!-- SECTION A · DISPATCH SUMMARY -->
+          <div style="background:#fff;border:1px solid #e7e4de;border-radius:14px;overflow:hidden">
+            <div style="padding:16px 20px;border-bottom:1px solid #f2f0eb;display:flex;align-items:center;gap:10px">
+              <span style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;color:#202058">Dispatch Summary</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6b7280;background:#f3f1ec;border:1px solid #e7e4de;padding:2px 8px;border-radius:6px">#DISPATCH-2026-0029-01</span>
+            </div>
+            <div style="padding:18px 20px;display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex"><span style="width:130px;flex:none;font-size:12px;color:#9ca3af;font-weight:600">Customer</span><span style="font-size:13px;color:#26235a">Rahul Malhotra <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:#d97706;background:#fffbeb;border:1px solid #fcd9a4;padding:1px 6px;border-radius:5px">VIP</span></span></div>
+              <div style="display:flex"><span style="width:130px;flex:none;font-size:12px;color:#9ca3af;font-weight:600">Order</span><span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#26235a">#BK2214</span></div>
+              <div style="display:flex"><span style="width:130px;flex:none;font-size:12px;color:#9ca3af;font-weight:600">Dispatched by</span><span style="font-size:12.5px;color:#26235a">Ruhan &middot; <span style="font-family:'JetBrains Mono',monospace">Jul 15, 2026 &middot; 10:35 AM</span></span></div>
+              <div style="display:flex"><span style="width:130px;flex:none;font-size:12px;color:#9ca3af;font-weight:600">Pickup by</span><span style="font-size:12.5px;color:#26235a">Customer himself</span></div>
+              <div style="display:flex"><span style="width:130px;flex:none;font-size:12px;color:#9ca3af;font-weight:600">Verification</span><span style="font-size:12.5px;color:#059669;font-weight:600">OTP verified at 10:32 AM</span></div>
+
+              <div style="margin-top:6px;border:1px solid #eeece6;border-radius:11px;padding:13px 14px;background:#faf9f6">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.1em;color:#9ca3af;margin-bottom:9px">ITEMS DISPATCHED (1)</div>
+                <div style="font-size:13.5px;font-weight:600;color:#202058">Nanlite FS 300 <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#6b7280">NNL-FS-300-001</span></div>
+                <div style="margin-top:7px;display:flex;flex-direction:column;gap:5px;font-size:12px;color:#6b7280">
+                  <div>Condition: <span style="color:#059669;font-weight:600">All functions working</span></div>
+                  <div>Handover photos: <span style="color:#26235a;font-weight:600">3 captured</span></div>
+                  <div>Accessories: <span style="color:#26235a;font-weight:600">3 of 4 included</span> <span style="color:#d97706">(extra battery missing)</span></div>
+                </div>
+              </div>
+
+              <div style="display:flex;margin-top:2px"><span style="width:130px;flex:none;font-size:12px;color:#9ca3af;font-weight:600">Deposit collected</span><span style="font-size:12.5px;color:#26235a"><span style="font-family:'JetBrains Mono',monospace;font-weight:600">&#8377;25,000</span> &middot; DEP-2026-0029-01 &middot; cash</span></div>
+              <div style="display:flex"><span style="width:130px;flex:none;font-size:12px;color:#9ca3af;font-weight:600">Signature</span><span style="font-size:12.5px;color:#26235a">Captured &middot; <a href="#" onClick="{{ noop }}">view</a></span></div>
+              <div style="display:flex"><span style="width:130px;flex:none;font-size:12px;color:#9ca3af;font-weight:600">Return expected</span><span style="font-size:12.5px;color:#26235a"><span style="font-family:'JetBrains Mono',monospace">Jul 28, 2026</span> (13 days)</span></div>
+            </div>
+          </div>
+
+          <!-- SECTION C · WHAT HAPPENS AFTER -->
+          <div style="background:#fff;border:1px solid #e7e4de;border-radius:14px;padding:18px 20px">
+            <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;color:#26235a;margin-bottom:13px">On completing this dispatch</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <sc-for list="{{ afterItems }}" as="a" hint-placeholder-count="6">
+                <div style="display:flex;align-items:flex-start;gap:10px;font-size:12.5px;color:#3a3a58;line-height:1.45">
+                  <span style="flex:none;color:#059669;margin-top:1px"><span dangerouslySetInnerHTML="{{ checkIconSm }}"></span></span>
+                  <span dangerouslySetInnerHTML="{{ a.text }}"></span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f2f0eb;font-size:11.5px;color:#9ca3af;line-height:1.55">Next for customer: receives slip &middot; rental runs Jul 15&ndash;28 &middot; returns to warehouse by end date. <span style="color:#b45309">No automated notification fires on dispatch (v1).</span></div>
+          </div>
+        </div>
+
+        <!-- RIGHT: SLIP -->
+        <div style="flex:0 0 320px;max-width:320px;display:flex;flex-direction:column;gap:16px">
+          <div style="background:#fff;border:1px solid #e7e4de;border-radius:14px;padding:18px 20px">
+            <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;color:#26235a;margin-bottom:13px">Dispatch slip</div>
+            <!-- SLIP PREVIEW (thermal) -->
+            <div style="background:#fbfaf7;border:1px dashed #cfc9bd;border-radius:10px;padding:16px 15px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#26235a;line-height:1.7">
+              <div style="text-align:center;font-weight:700;font-size:13px;letter-spacing:.05em;color:#202058">DSLRSWALA</div>
+              <div style="text-align:center;font-size:10px;color:#9ca3af;margin-bottom:8px">Dispatch #DISPATCH-2026-0029-01</div>
+              <div style="border-top:1px dashed #d9d3c7;margin:6px 0"></div>
+              <div>Order #BK2214</div>
+              <div>Rahul Malhotra</div>
+              <div style="border-top:1px dashed #d9d3c7;margin:6px 0"></div>
+              <div>Nanlite FS 300</div>
+              <div style="color:#6b7280">NNL-FS-300-001</div>
+              <div>Rental: Jul 15 &ndash; Jul 28</div>
+              <div>Deposit: &#8377;25,000 (cash)</div>
+              <div style="border-top:1px dashed #d9d3c7;margin:6px 0"></div>
+              <div style="color:#b45309">Return by: Jul 28, 8:00 PM</div>
+              <div style="color:#9ca3af">Late fee: &#8377;500/day after due</div>
+              <div style="margin-top:12px;color:#9ca3af">Signature:</div>
+              <div style="border-bottom:1px solid #c9c3b6;height:20px;margin-top:2px"></div>
+            </div>
+
+            <!-- DELIVERY -->
+            <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ deliveryOpts }}" as="d" hint-placeholder-count="3">
+                <div onClick="{{ d.toggle }}" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                  <span style="width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid {{ d.border }};background:{{ d.bg }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ d.check }}"></span></span>
+                  <span style="font-size:12.5px;color:{{ d.color }}">{{ d.label }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <button onClick="{{ noop }}" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#fff;color:#26235a;border:1px solid #e7e4de;padding:11px;border-radius:10px;font-family:'Manrope',sans-serif;font-weight:600;font-size:13px;cursor:pointer" style-hover="border-color:#202058"><span dangerouslySetInnerHTML="{{ printIcon }}" style="display:flex"></span>Print Slip</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <!-- ============ STICKY FOOTER ============ -->
+  <div style="position:sticky;bottom:0;z-index:48;flex:none;background:#fbfaf7;border-top:1px solid #e7e1d6;padding:15px 26px;display:flex;align-items:center;gap:16px;box-shadow:0 -4px 16px rgba(32,32,88,.05)">
+    <button onClick="{{ footerBack }}" style="display:inline-flex;align-items:center;gap:8px;border:1px solid #e7e4de;background:#fff;cursor:pointer;font-family:'Manrope',sans-serif;font-size:13px;font-weight:600;color:#6b7280;padding:11px 17px;border-radius:10px" style-hover="border-color:#202058;color:#202058">
+      <span dangerouslySetInnerHTML="{{ backIcon }}" style="display:flex"></span>{{ footerBackLabel }}
+    </button>
+
+    <div style="margin:0 auto;display:flex;align-items:center;gap:10px">
+      <sc-if value="{{ blockedHint }}" hint-placeholder-val="{{ false }}">
+        <span style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#b45309"><span dangerouslySetInnerHTML="{{ lockIcon }}" style="display:flex"></span>{{ blockedHintText }}</span>
+      </sc-if>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <sc-if value="{{ showSaveProgress }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ noop }}" style="border:1px solid #e7e4de;background:#fff;cursor:pointer;font-family:'Manrope',sans-serif;font-size:13px;font-weight:600;color:#26235a;padding:11px 16px;border-radius:10px" style-hover="border-color:#202058">Save Progress</button>
+      </sc-if>
+      <button onClick="{{ primaryAction }}" style="display:inline-flex;align-items:center;gap:9px;border:none;cursor:{{ primaryCursor }};background:{{ primaryBg }};color:{{ primaryColor }};font-family:'Manrope',sans-serif;font-size:14px;font-weight:700;padding:12px 22px;border-radius:10px;box-shadow:{{ primaryShadow }}">
+        {{ primaryLabel }}<span dangerouslySetInnerHTML="{{ primaryIcon }}" style="display:flex"></span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SUCCESS OVERLAY ============ -->
+<sc-if value="{{ completed }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:100;background:rgba(38,35,90,.42);display:flex;align-items:center;justify-content:center;padding:24px">
+    <div style="width:440px;max-width:100%;background:#fff;border-radius:16px;box-shadow:0 24px 64px -12px rgba(24,22,60,.5);padding:32px 30px;text-align:center">
+      <div style="width:64px;height:64px;margin:0 auto 18px;border-radius:50%;background:#ecfdf5;border:1px solid #a7f3d0;display:flex;align-items:center;justify-content:center;color:#059669"><span dangerouslySetInnerHTML="{{ bigCheck }}" style="display:flex"></span></div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:20px;color:#202058">Dispatch complete</div>
+      <div style="margin-top:8px;font-size:13.5px;color:#6b7280;line-height:1.55">Order <span style="font-family:'JetBrains Mono',monospace;color:#26235a;font-weight:600">#BK2214</span> is now <span style="color:#059669;font-weight:600">Dispatched</span>. Slip generated and emailed to rahul@example.com.</div>
+      <div style="margin-top:16px;display:flex;flex-direction:column;gap:7px;text-align:left;background:#faf9f6;border:1px solid #eeece6;border-radius:11px;padding:14px 15px">
+        <sc-for list="{{ afterItems }}" as="a" hint-placeholder-count="6">
+          <div style="display:flex;align-items:flex-start;gap:9px;font-size:12px;color:#3a3a58;line-height:1.4"><span style="flex:none;color:#059669;margin-top:1px"><span dangerouslySetInnerHTML="{{ checkIconSm }}"></span></span><span dangerouslySetInnerHTML="{{ a.text }}"></span></div>
+        </sc-for>
+      </div>
+      <button onClick="{{ backToOrder }}" style="margin-top:20px;width:100%;background:#4f46e5;color:#fff;border:none;padding:13px;border-radius:10px;font-family:'Manrope',sans-serif;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 2px 8px rgba(79,70,229,.28)" style-hover="background:#4338ca">Return to Order 360</button>
+    </div>
+  </div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1180},&quot;startPhase&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;1&quot;,&quot;2&quot;,&quot;3&quot;],&quot;default&quot;:&quot;1&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Scenario&quot;},&quot;startCondition&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;working&quot;,&quot;minor&quot;,&quot;major&quot;],&quot;default&quot;:&quot;working&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Scenario&quot;},&quot;depositCollected&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Scenario&quot;}}">
+class Component extends DCLogic {
+  state = {
+    phase: null,
+    selectedUnit: 'NNL-FS-300-001',
+    workingCondition: null,
+    accessories: { cable: true, softbox: true, case: true, battery: false },
+    prepPhotos: 3,
+    handoverPhotos: 0,
+    pickup: 'self',
+    delegateId: 'aadhaar',
+    authMethod: 'whatsapp',
+    otpState: 'idle',
+    otp: ['', '', '', '', '', ''],
+    otpVerified: false,
+    otpSkipped: false,
+    signatureCaptured: false,
+    deposit: null,
+    delivery: { print: true, email: true, sms: false },
+    completed: false,
+  };
+
+  ic(path, w) { return { __html: '<svg width="' + (w || 18) + '" height="' + (w || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>' }; }
+  dot(active, color) { color = color || '#4f46e5'; return { __html: active ? '<span style="width:8px;height:8px;border-radius:50%;background:' + color + '"></span>' : '' }; }
+  chk(on, color) { color = color || '#fff'; return { __html: on ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : '' }; }
+
+  // ---------- signature canvas ----------
+  wireSig(canvas) {
+    if (!canvas || canvas.__wired) return;
+    canvas.__wired = true;
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#202058'; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    let drawing = false;
+    const pt = (e) => {
+      const r = canvas.getBoundingClientRect();
+      const t = e.touches ? e.touches[0] : e;
+      return { x: (t.clientX - r.left) * (canvas.width / r.width), y: (t.clientY - r.top) * (canvas.height / r.height) };
+    };
+    const start = (e) => { drawing = true; const p = pt(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); this._ink = true; e.preventDefault(); };
+    const move = (e) => { if (!drawing) return; const p = pt(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); };
+    const end = () => { drawing = false; };
+    canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove', move, { passive: false });
+    canvas.addEventListener('touchend', end);
+    this._sigCanvas = canvas; this._sigCtx = ctx;
+  }
+  clearSig = () => { if (this._sigCtx && this._sigCanvas) this._sigCtx.clearRect(0, 0, this._sigCanvas.width, this._sigCanvas.height); this._ink = false; this.setState({ signatureCaptured: false }); };
+  confirmSig = () => { if (this._ink) this.setState({ signatureCaptured: true }); };
+
+  renderVals() {
+    const s = this.state;
+    const phase = s.phase ?? Number(this.props.startPhase ?? 1);
+    const cond = s.workingCondition ?? (this.props.startCondition ?? 'working');
+    const depState = s.deposit ?? (this.props.depositCollected ? 'collected' : 'pending');
+    const go = (n) => () => this.setState({ phase: n });
+
+    // ----- progress bar -----
+    const phaseDefs = [{ n: 1, label: 'Prepare' }, { n: 2, label: 'Handover' }, { n: 3, label: 'Confirm' }];
+    const phases = phaseDefs.map((p, i) => {
+      const done = p.n < phase, current = p.n === phase;
+      let node;
+      if (done) node = '<div style="width:38px;height:38px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
+      else if (current) node = '<div style="width:40px;height:40px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;font-family:\'JetBrains Mono\',monospace;font-weight:700;font-size:16px;animation:pulseNode 2.2s infinite">' + p.n + '</div>';
+      else node = '<div style="width:38px;height:38px;border-radius:50%;background:#fff;border:2px solid #d7d3ca;color:#b6b1a6;display:flex;align-items:center;justify-content:center;font-family:\'JetBrains Mono\',monospace;font-weight:600;font-size:15px">' + p.n + '</div>';
+      return {
+        n: p.n, label: p.label, go: go(p.n),
+        node: { __html: node },
+        hasConn: i < 2,
+        conn: p.n < phase ? '#4f46e5' : '#e0dccf',
+        numColor: (done || current) ? '#4f46e5' : '#b6b1a6',
+        labelColor: current ? '#202058' : done ? '#4f46e5' : '#9ca3af',
+      };
+    });
+
+    // ----- phase 1: units -----
+    const unitDefs = [
+      { id: 'NNL-FS-300-001', meta: 'Available · last used Jul 10', ok: true },
+      { id: 'NNL-FS-300-002', meta: 'Available · last used Jul 12', ok: true },
+      { id: 'NNL-FS-300-003', meta: 'Maintenance until Jul 18', ok: false },
+    ];
+    const units = unitDefs.map(u => {
+      const selected = u.id === s.selectedUnit;
+      return {
+        id: u.id, meta: u.meta, selected,
+        pick: u.ok ? () => this.setState({ selectedUnit: u.id }) : () => {},
+        cursor: u.ok ? 'pointer' : 'not-allowed',
+        border: selected ? '#4f46e5' : '#e7e4de',
+        bg: selected ? '#f5f5ff' : (u.ok ? '#fff' : '#faf9f6'),
+        ring: selected ? '#4f46e5' : (u.ok ? '#cfcbc2' : '#e0dccf'),
+        dot: this.dot(selected),
+        idColor: u.ok ? '#202058' : '#b6b1a6',
+        metaColor: u.ok ? '#6b7280' : '#d97706',
+      };
+    });
+
+    // ----- phase 1: photos -----
+    const prepPhotos = Array.from({ length: 6 }, (_, i) => ({ filled: i < s.prepPhotos, empty: i >= s.prepPhotos, ts: 'Jul 15 · 10:2' + i }));
+    const addPrepPhoto = () => this.setState(p => ({ prepPhotos: Math.min(6, p.prepPhotos + 1) }));
+
+    // ----- phase 1: conditions -----
+    const condDefs = [
+      { key: 'working', label: 'All functions working', color: '#059669' },
+      { key: 'minor', label: 'Minor issue — note it below', color: '#d97706' },
+      { key: 'major', label: 'Major issue — cannot dispatch', color: '#dc2626', hint: 'blocks Phase 2' },
+    ];
+    const conditions = condDefs.map(c => {
+      const on = c.key === cond;
+      return {
+        label: c.label, pick: () => this.setState({ workingCondition: c.key }),
+        ring: on ? c.color : '#cfcbc2', dot: this.dot(on, c.color),
+        color: on ? c.color : '#4b4b63', weight: on ? '600' : '400',
+        hasHint: !!c.hint && on, hint: c.hint || '',
+      };
+    });
+    const showMajorBlock = cond === 'major';
+
+    // ----- phase 1: accessories -----
+    const accDefs = [
+      { key: 'cable', label: 'Power cable' }, { key: 'softbox', label: 'Softbox diffuser' },
+      { key: 'case', label: 'Carry case' }, { key: 'battery', label: 'Extra battery', canMiss: true },
+    ];
+    const accessories = accDefs.map(a => {
+      const on = s.accessories[a.key];
+      return {
+        label: a.label, toggle: () => this.setState(p => ({ accessories: { ...p.accessories, [a.key]: !p.accessories[a.key] } })),
+        border: on ? '#4f46e5' : '#c9c5bc', bg: on ? '#4f46e5' : '#fff', check: this.chk(on),
+        textColor: on ? '#26235a' : '#9ca3af', weight: on ? '500' : '400',
+        missing: a.canMiss && !on,
+      };
+    });
+
+    // status pill for line item
+    const p1Ready = cond === 'working' || cond === 'minor';
+    const p1Status = cond === 'major' ? { label: 'BLOCKED', color: '#dc2626', bg: '#fef2f2', border: '#fbcaca', dot: '#dc2626' }
+      : p1Ready ? { label: 'READY', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', dot: '#059669' }
+      : { label: 'IN PROGRESS', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe', dot: '#4f46e5' };
+
+    // ----- phase 2: delegate -----
+    const idDefs = [['aadhaar', 'Aadhaar'], ['voter', 'Voter ID'], ['dl', 'Driving License'], ['company', 'Company ID']];
+    const delegateIdTypes = idDefs.map(([k, l]) => {
+      const on = k === s.delegateId;
+      return { label: l, pick: () => this.setState({ delegateId: k }), border: on ? '#4f46e5' : '#e2dfd8', bg: on ? '#eef2ff' : '#fff', color: on ? '#4f46e5' : '#6b7280', weight: on ? '600' : '500' };
+    });
+    const authDefs = [['whatsapp', 'WhatsApp'], ['email', 'Email'], ['call', 'Call']];
+    const authMethods = authDefs.map(([k, l]) => {
+      const on = k === s.authMethod;
+      return { label: l, pick: () => this.setState({ authMethod: k }), border: on ? '#4f46e5' : '#e2dfd8', bg: on ? '#eef2ff' : '#fff', color: on ? '#4f46e5' : '#6b7280', weight: on ? '600' : '500' };
+    });
+
+    // ----- phase 2: otp -----
+    const otpBoxes = s.otp.map((d, i) => ({
+      val: d, ref: (el) => { (this._otpEls = this._otpEls || [])[i] = el; },
+      onInput: (e) => {
+        const v = (e.target.value || '').replace(/\D/g, '').slice(-1);
+        const otp = [...this.state.otp]; otp[i] = v;
+        const full = otp.join('').length === 6;
+        this.setState({ otp, otpVerified: full || this.state.otpVerified });
+        if (v && i < 5 && this._otpEls && this._otpEls[i + 1]) this._otpEls[i + 1].focus();
+      },
+      border: d ? '#4f46e5' : '#d9d6cf', bg: d ? '#f5f5ff' : '#fff',
+    }));
+
+    // ----- phase 2: handover photos -----
+    const hoLabels = ['Front', 'Side', 'Accessories'];
+    const handoverPhotos = hoLabels.map((l, i) => ({ filled: i < s.handoverPhotos, empty: i >= s.handoverPhotos, label: i < s.handoverPhotos ? '10:3' + i + ' AM · ' + l : l }));
+    const addHandoverPhoto = () => this.setState(p => ({ handoverPhotos: Math.min(3, p.handoverPhotos + 1) }));
+
+    // ----- phase 3: delivery -----
+    const delDefs = [['print', 'Print at counter (thermal)'], ['email', 'Email to rahul@example.com'], ['sms', 'SMS with return reminder link']];
+    const deliveryOpts = delDefs.map(([k, l]) => {
+      const on = s.delivery[k];
+      return { label: l, toggle: () => this.setState(p => ({ delivery: { ...p.delivery, [k]: !p.delivery[k] } })), border: on ? '#4f46e5' : '#c9c5bc', bg: on ? '#4f46e5' : '#fff', check: this.chk(on), color: on ? '#26235a' : '#9ca3af' };
+    });
+    const afterDefs = [
+      'Order status &rarr; <strong>Dispatched</strong>',
+      'Item status &rarr; <strong>On rent</strong>',
+      'Deposit linked to this dispatch event',
+      'Asset last-used date updated (<span style="font-family:\'JetBrains Mono\',monospace">NNL-FS-300-001</span>)',
+      'Return reminder scheduled for Jul 27 (T-1)',
+      'Timeline events created in Order 360',
+    ];
+    const afterItems = afterDefs.map(t => ({ text: { __html: t } }));
+
+    // ----- blocking + footer -----
+    const p1Blocked = cond === 'major' || s.prepPhotos < 3 || !cond;
+    const p2Blocked = !(s.otpVerified) || !s.signatureCaptured || depState !== 'collected';
+
+    let footerBackLabel, footerBack, primaryLabel, primaryAction, primaryIcon, blockedHint = false, blockedHintText = '', showSaveProgress = true;
+    const arrowR = this.ic('<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>', 16);
+    const emptyIcon = { __html: '' };
+
+    if (phase === 1) {
+      footerBackLabel = 'Back to Order'; footerBack = this.backToOrder;
+      primaryLabel = 'Next: Handover'; primaryIcon = arrowR;
+      primaryAction = p1Blocked ? () => {} : go(2);
+      if (p1Blocked) { blockedHint = true; blockedHintText = cond === 'major' ? 'Resolve the major issue to continue' : s.prepPhotos < 3 ? 'Add at least 3 condition photos' : 'Set working condition to continue'; }
+    } else if (phase === 2) {
+      footerBackLabel = 'Back to Prepare'; footerBack = go(1);
+      primaryLabel = 'Next: Confirm'; primaryIcon = arrowR;
+      primaryAction = p2Blocked ? () => {} : go(3);
+      if (p2Blocked) {
+        blockedHint = true;
+        blockedHintText = !s.otpVerified ? 'Verify OTP (or skip with approval)' : !s.signatureCaptured ? 'Capture customer signature' : 'Collect deposit to continue';
+      }
+    } else {
+      footerBackLabel = 'Back to Handover'; footerBack = go(2);
+      primaryLabel = 'Complete Dispatch'; primaryIcon = emptyIcon; showSaveProgress = false;
+      primaryAction = () => this.setState({ completed: true });
+    }
+    const blocked = (phase === 1 && p1Blocked) || (phase === 2 && p2Blocked);
+
+    return {
+      // header/nav
+      phaseNum: phase, phaseLabel: phaseDefs[phase - 1].label, phases,
+      isP1: phase === 1, isP2: phase === 2, isP3: phase === 3,
+      inProgress: !s.completed,
+      backToOrder: this.backToOrder, noop: () => {},
+      // phase 1
+      units, prepPhotos, addPrepPhoto,
+      prepPhotoCount: s.prepPhotos, prepPhotoColor: s.prepPhotos >= 3 ? '#059669' : '#d97706',
+      conditions, showMajorBlock, accessories,
+      p1StatusLabel: p1Status.label, p1StatusColor: p1Status.color, p1StatusBg: p1Status.bg, p1StatusBorder: p1Status.border, p1StatusDot: p1Status.dot,
+      prepReadyCount: p1Ready ? 1 : 0, prepDoneColor: p1Ready ? '#059669' : '#9ca3af',
+      prepDoneIcon: p1Ready ? this.ic('<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>', 16) : this.ic('<circle cx="12" cy="12" r="9"/>', 16),
+      reportSub: () => {},
+      // phase 2
+      pickSelf: () => this.setState({ pickup: 'self' }), pickDelegate: () => this.setState({ pickup: 'delegate' }),
+      isDelegate: s.pickup === 'delegate',
+      selfBorder: s.pickup === 'self' ? '#4f46e5' : '#e7e4de', selfBg: s.pickup === 'self' ? '#f5f5ff' : '#fff', selfRing: s.pickup === 'self' ? '#4f46e5' : '#cfcbc2', selfDot: this.dot(s.pickup === 'self'),
+      delBorder: s.pickup === 'delegate' ? '#4f46e5' : '#e7e4de', delBg: s.pickup === 'delegate' ? '#f5f5ff' : '#fff', delRing: s.pickup === 'delegate' ? '#4f46e5' : '#cfcbc2', delDot: this.dot(s.pickup === 'delegate'),
+      delegateIdTypes, authMethods,
+      otpIdle: s.otpState === 'idle', otpSent: s.otpState === 'sent', otpBoxes,
+      otpVerified: s.otpVerified, otpSkipped: s.otpSkipped,
+      sendOtp: () => this.setState({ otpState: 'sent' }),
+      skipOtp: () => this.setState({ otpState: 'sent', otpVerified: true, otpSkipped: true }),
+      handoverPhotos, addHandoverPhoto, handoverPhotoCount: s.handoverPhotos, handoverPhotoColor: s.handoverPhotos >= 3 ? '#059669' : '#9ca3af',
+      sigRef: (el) => this.wireSig(el), clearSig: this.clearSig, confirmSig: this.confirmSig,
+      signatureCaptured: s.signatureCaptured, sigBorder: s.signatureCaptured ? '#a7f3d0' : '#d9d6cf',
+      depositPending: depState !== 'collected', depositCollected: depState === 'collected',
+      depCardBorder: depState === 'collected' ? '#e7e4de' : '#fcd9a4',
+      collectDeposit: () => this.setState({ deposit: 'collected' }), depositAlready: () => this.setState({ deposit: 'collected' }),
+      // phase 3
+      afterItems, deliveryOpts, completed: s.completed,
+      // footer
+      footerBackLabel, footerBack, showSaveProgress,
+      primaryLabel, primaryAction, primaryIcon,
+      primaryBg: blocked ? '#e5e1d8' : '#4f46e5', primaryColor: blocked ? '#a8a496' : '#fff',
+      primaryCursor: blocked ? 'not-allowed' : 'pointer', primaryShadow: blocked ? 'none' : '0 2px 8px rgba(79,70,229,.3)',
+      blockedHint, blockedHintText,
+      // icons
+      backIcon: this.ic('<polyline points="15 18 9 12 15 6"/>', 15),
+      camIcon: this.ic('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>', 22),
+      camIconSm: this.ic('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>', 17),
+      warnIcon: this.ic('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>', 17),
+      swapIcon: this.ic('<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>', 15),
+      skipIcon: this.ic('<polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/>', 15),
+      checkIcon: this.ic('<polyline points="20 6 9 17 4 12"/>', 18),
+      checkIconSm: this.ic('<polyline points="20 6 9 17 4 12"/>', 13),
+      phoneIcon: this.ic('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>', 16),
+      smsIcon: this.ic('<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/>', 16),
+      idIcon: this.ic('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="12" r="2"/><path d="M14 10h4M14 14h4M5 16c.5-1.5 2-2 4-2"/>', 15),
+      depositIcon: this.ic('<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/>', 15),
+      printIcon: this.ic('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>', 16),
+      lockIcon: this.ic('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', 14),
+      bigCheck: this.ic('<polyline points="20 6 9 17 4 12"/>', 30),
+    };
+  }
+
+  backToOrder = () => { this.setState({ completed: false }); };
+}
+</script>
+</body>
+</html>
