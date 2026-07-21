@@ -37,6 +37,7 @@ import {
 } from '../lib/approvals.js';
 import { applyExtensionEffects, applyCancellationEffects } from '../lib/order_actions.js';
 import { emitCustomerNotification } from '../lib/notify.js';
+import { commitDispatchToPhysicalState } from '../lib/dispatch_commit.js';
 
 // ============================================================================
 // src/routes/orders.ts
@@ -320,8 +321,6 @@ async function loadItems(orderId: string) {
 // handler's own comment).
 // ============================================================================
 
-type AssignedAsset = { asset_id: string; asset_code: string; item_id: string };
-
 /** Physical units pinned to an order (order_assets), for the detail response. */
 async function loadOrderAssets(orderId: string, workspaceId: string) {
   return await query<{
@@ -338,122 +337,6 @@ async function loadOrderAssets(orderId: string, workspaceId: string) {
       AND oa.workspace_id = ${workspaceId}::uuid
     ORDER BY a.asset_code ASC
   `);
-}
-
-/** Pin physical units for one dispatched rental line: order_assets row +
- *  asset.status='out'. Tracked products only (bulk have no serialized units).
- *  Explicit ids are validated (in-workspace, right product, currently
- *  available); otherwise auto-assign available units at the pickup location up
- *  to the line quantity. Returns the units actually pinned (may be fewer than
- *  quantity if the product is short — the advisory model dispatches anyway). */
-async function pinAssetsForItem(args: {
-  workspaceId: string; orderId: string; itemId: string;
-  productId: string; quantity: number;
-  pickupLocationId: string | null;
-  explicitAssetIds?: string[];
-}): Promise<AssignedAsset[]> {
-  const prodRows = await query<{ tracking_method: string | null; nature: string }>(sql`
-    SELECT tracking_method::text AS tracking_method, nature::text AS nature FROM products
-    WHERE id = ${args.productId}::uuid AND workspace_id = ${args.workspaceId}::uuid
-    LIMIT 1
-  `);
-  if (!prodRows.length) return [];
-  const nature = prodRows[0]!.nature;
-  const isBulk = prodRows[0]!.tracking_method === 'bulk';
-
-  // SERVICE: nothing physical to dispatch.
-  if (nature === 'service') return [];
-
-  // SALE — dispatch PERMANENTLY removes stock (Sub-turn 13). This is the ONLY
-  // place the sale/rental behaviours diverge: a rental reserves and comes back;
-  // a sale is decremented/retired and never returns.
-  if (nature === 'sale') {
-    if (isBulk) {
-      // Decrement on-hand at the pickup location. Clamped at 0 (never negative).
-      await sql`
-        UPDATE stock_levels
-           SET quantity = GREATEST(0, quantity - ${args.quantity}::int)
-         WHERE product_id = ${args.productId}::uuid
-           AND location_id = ${args.pickupLocationId}::uuid
-      `;
-      return [];
-    }
-    // Serialized sale: retire the units sold (status='retired' + soft-delete),
-    // recording which units on order_assets. They never rejoin availability.
-    const sold = await query<{ id: string; asset_code: string }>(sql`
-      SELECT id, asset_code FROM assets
-      WHERE workspace_id = ${args.workspaceId}::uuid
-        AND product_id = ${args.productId}::uuid
-        AND deleted_at IS NULL
-        AND status = 'available'::asset_status
-        AND (${args.pickupLocationId}::uuid IS NULL OR location_id = ${args.pickupLocationId}::uuid)
-      ORDER BY asset_code ASC
-      LIMIT ${args.quantity}::int
-    `);
-    const soldOut: AssignedAsset[] = [];
-    for (const a of sold) {
-      await sql`
-        INSERT INTO order_assets (workspace_id, order_id, order_item_id, asset_id, status, dispatched_at)
-        VALUES (${args.workspaceId}::uuid, ${args.orderId}::uuid, ${args.itemId}::uuid,
-                ${a.id}::uuid, 'dispatched'::order_asset_status, now())
-        ON CONFLICT (order_id, asset_id) DO NOTHING
-      `;
-      await sql`
-        UPDATE assets SET status = 'retired'::asset_status, deleted_at = now(), updated_at = now()
-        WHERE id = ${a.id}::uuid AND workspace_id = ${args.workspaceId}::uuid
-          AND status = 'available'::asset_status
-      `;
-      soldOut.push({ asset_id: a.id, asset_code: a.asset_code, item_id: args.itemId });
-    }
-    return soldOut;
-  }
-
-  // RENTAL: bulk has no serialized units to pin (the reservation blocks it).
-  if (isBulk) return [];
-
-  let chosen: { id: string; asset_code: string }[] = [];
-  if (args.explicitAssetIds && args.explicitAssetIds.length) {
-    const ids = [...new Set(args.explicitAssetIds)];
-    chosen = await query<{ id: string; asset_code: string }>(sql`
-      SELECT id, asset_code FROM assets
-      WHERE workspace_id = ${args.workspaceId}::uuid
-        AND product_id = ${args.productId}::uuid
-        AND deleted_at IS NULL
-        AND status = 'available'::asset_status
-        AND id::text = ANY(string_to_array(${ids.join(',')}::text, ','))
-      ORDER BY asset_code ASC
-    `);
-  } else {
-    chosen = await query<{ id: string; asset_code: string }>(sql`
-      SELECT id, asset_code FROM assets
-      WHERE workspace_id = ${args.workspaceId}::uuid
-        AND product_id = ${args.productId}::uuid
-        AND deleted_at IS NULL
-        AND status = 'available'::asset_status
-        AND (${args.pickupLocationId}::uuid IS NULL OR location_id = ${args.pickupLocationId}::uuid)
-      ORDER BY asset_code ASC
-      LIMIT ${args.quantity}::int
-    `);
-  }
-
-  const pinned: AssignedAsset[] = [];
-  for (const a of chosen) {
-    // Idempotent against races: skip a unit already on this order, and only flip
-    // a still-available unit to 'out'.
-    await sql`
-      INSERT INTO order_assets (workspace_id, order_id, order_item_id, asset_id, status, dispatched_at)
-      VALUES (${args.workspaceId}::uuid, ${args.orderId}::uuid, ${args.itemId}::uuid,
-              ${a.id}::uuid, 'dispatched'::order_asset_status, now())
-      ON CONFLICT (order_id, asset_id) DO NOTHING
-    `;
-    await sql`
-      UPDATE assets SET status = 'out'::asset_status, updated_at = now()
-      WHERE id = ${a.id}::uuid AND workspace_id = ${args.workspaceId}::uuid
-        AND status = 'available'::asset_status
-    `;
-    pinned.push({ asset_id: a.id, asset_code: a.asset_code, item_id: args.itemId });
-  }
-  return pinned;
 }
 
 type Disposition = { asset_id: string; asset_code: string; outcome: string; downtime_id: string | null };
@@ -2727,52 +2610,26 @@ orders.post('/:id/dispatch', requirePermission('dispatch.execute'), async (c) =>
     receivedBy = parsed.data.received_by_user_id;
   }
 
-  // Per-item UPDATE (avoids the JS-array-param serialization gotcha called out
-  // in CLAUDE.md). The status guard makes each write idempotent against a race.
-  for (const itemId of requested) {
-    await sql`
-      UPDATE order_items SET
-        status              = 'dispatched'::order_item_status,
-        dispatched_at       = now(),
-        handed_to           = ${handed_to ?? null}::text,
-        received_by_user_id = ${receivedBy}::uuid,
-        dispatch_notes      = ${dispatch_notes ?? null}::text,
-        updated_at          = now()
-      WHERE id = ${itemId}::uuid
-        AND workspace_id = ${session.workspace.id}::uuid
-        AND status = 'pending_dispatch'::order_item_status
-    `;
-  }
-
-  // Pin physical units (Sub-turn 12b): order_assets rows + asset.status='out'.
-  // Tracked rental lines only; bulk/non-rental lines are skipped inside the
-  // helper. Explicit picks come from the request; otherwise auto-assign.
+  // Physical commit — SHARED with the Slice 4 Session 2 dispatch/complete flow
+  // (src/lib/dispatch_commit.ts): per-item status → dispatched, order_assets pins
+  // + asset.status='out' for tracked rental lines, and the order pre-dispatch
+  // advance. Explicit unit picks come from the request; omitted lines auto-assign.
   const assignmentsMap = new Map<string, string[]>();
   for (const a of parsed.data.assignments ?? []) assignmentsMap.set(a.item_id, a.asset_ids);
-  const assignedAssets: AssignedAsset[] = [];
-  for (const itemId of requested) {
-    const it = byId.get(itemId)!;
-    if (it.item_type !== 'rental' || !it.product_id) continue;
-    const pinned = await pinAssetsForItem({
-      workspaceId: session.workspace.id,
-      orderId: id,
-      itemId,
-      productId: it.product_id,
-      quantity: Number(it.quantity),
-      pickupLocationId: order.pickup_location_id ?? null,
-      explicitAssetIds: assignmentsMap.get(itemId),
-    });
-    assignedAssets.push(...pinned);
-  }
-
-  // Auto-advance order status if it's still pre-dispatch.
-  const orderStatusChanged = ['draft', 'quoted', 'confirmed'].includes(order.status);
-  if (orderStatusChanged) {
-    await sql`
-      UPDATE orders SET status = 'dispatched'::order_status, updated_at = now()
-      WHERE id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
-    `;
-  }
+  const { assignedAssets, orderStatusChanged } = await commitDispatchToPhysicalState({
+    workspaceId: session.workspace.id,
+    orderId: id,
+    fromStatus: order.status,
+    items: requested.map((itemId) => {
+      const it = byId.get(itemId)!;
+      return { id: itemId, item_type: it.item_type, product_id: it.product_id, quantity: Number(it.quantity) };
+    }),
+    handedTo: handed_to ?? null,
+    receivedByUserId: receivedBy,
+    dispatchNotes: dispatch_notes ?? null,
+    pickupLocationId: order.pickup_location_id ?? null,
+    assignments: assignmentsMap,
+  });
 
   const payload: Record<string, unknown> = {
     item_ids: requested,
