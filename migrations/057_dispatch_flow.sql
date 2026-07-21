@@ -1,40 +1,8 @@
--- 057_dispatch_flow.sql — Slice 4 Session 1: structured dispatch/handover capture.
--- ---------------------------------------------------------------------------
--- Replaces the WhatsApp-photos-and-verbal handover with a structured 60–120s
--- capture flow (3 phases: Prepare → Handover → Confirm; substrate
--- docs/design-substrate/sprint-1/dispatch_ui_dc.html). This migration is the
--- schema foundation only — endpoints land in Phase 3, UI in Phase 4.
---
--- Reconciled to SHIPPED reality (Phase 1 review, Aamir-approved):
---   • dispatch is now a FIRST-CLASS `dispatches` table (multiple per order),
---     not the idealized spec's implicit entity. Photos/OTP/signatures FK into it.
---   • child photos reference `order_items` (the real table), NOT `order_line_items`.
---   • signatures are a NEW `dispatch_signatures` table — deliberately NOT an
---     extension of `order_contracts` (Sub-turn 6e): a witnessed "acknowledge
---     pickup" canvas is a different semantic from a signed rental agreement.
---   • mutations will emit `order_events` + `audit_events` (repo two-row
---     convention); there is no `dispatch_events` table.
---   • permission gate is the existing `dispatch.execute` key (not a new one).
---   • photos/ID/signature images go to Vercel Blob (reuse inventory.ts pattern);
---     these columns hold the resulting URLs.
---
--- BACKWARD-COMPAT DECISION (Aamir asked to flag it here):
---   The existing inline `POST /api/orders/:id/dispatch` (Sub-turn 12b —
---   allocates order_assets, flips asset status, writes one batch order_event)
---   is KEPT WORKING UNCHANGED. Slice 4 is purely ADDITIVE: the new
---   `POST /api/orders/:orderId/dispatches` creates a dispatch record, capture
---   endpoints append to it, and `.../complete` finalizes + transitions order
---   state. Rationale: the legacy endpoint backs the current order-360 quick
---   dispatch and the 12b tests; breaking it risks regressions with no upside in
---   Session 1. A later sub-turn may refactor the legacy endpoint to internally
---   open a `dispatches` row (deprecation path) — NOT done here.
---
--- Transaction-safe: only CREATE TABLE / CREATE INDEX (non-CONCURRENTLY) /
--- UPDATE. No ALTER TYPE / no CONCURRENTLY, so the runner applies + records it
--- atomically. CHECK constraints (text), never native enums, per Constitution.
--- ---------------------------------------------------------------------------
+-- 057_dispatch_flow.sql: Slice 4 Session 1 structured dispatch/handover capture.
+-- Adds dispatches + dispatch_photos + dispatch_otp_verifications +
+-- dispatch_signatures and seeds workspaces.settings.dispatch_return_policy.
 
--- 1. dispatches — one row per dispatch batch (an order can have several).
+-- 1. dispatches - one row per dispatch batch (an order can have several).
 CREATE TABLE IF NOT EXISTS dispatches (
   id                    uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id          uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -66,7 +34,7 @@ CREATE TABLE IF NOT EXISTS dispatches (
 COMMENT ON TABLE dispatches IS
   'Slice 4: a structured dispatch/handover batch. Multiple per order. Capture (photos/otp/signatures) FKs here. Completion transitions the order to dispatched. Additive to the legacy POST /orders/:id/dispatch (kept for backward compat).';
 
--- 2. dispatch_photos — condition/handover photos (Vercel Blob URLs).
+-- 2. dispatch_photos - condition/handover photos (Vercel Blob URLs).
 CREATE TABLE IF NOT EXISTS dispatch_photos (
   id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id        uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -90,7 +58,7 @@ CREATE TABLE IF NOT EXISTS dispatch_photos (
 
 COMMENT ON COLUMN dispatch_photos.photo_url IS 'Vercel Blob URL (multi-tenant path prefix), or a data URI for the v1 fallback.';
 
--- 3. dispatch_otp_verifications — OTP send/verify/skip audit per dispatch.
+-- 3. dispatch_otp_verifications - OTP send/verify/skip audit per dispatch.
 CREATE TABLE IF NOT EXISTS dispatch_otp_verifications (
   id                uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id      uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -110,7 +78,7 @@ CREATE TABLE IF NOT EXISTS dispatch_otp_verifications (
 
 COMMENT ON COLUMN dispatch_otp_verifications.provider_ref IS 'External message id (e.g. WATI) when sent via a real provider. NULL when skipped or no provider configured.';
 
--- 4. dispatch_signatures — witnessed pickup acknowledgement (NEW, not order_contracts).
+-- 4. dispatch_signatures - witnessed pickup acknowledgement (NEW, not order_contracts).
 CREATE TABLE IF NOT EXISTS dispatch_signatures (
   id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id        uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -126,7 +94,7 @@ CREATE TABLE IF NOT EXISTS dispatch_signatures (
   created_at          timestamptz NOT NULL DEFAULT now()
 );
 
--- 5. Indexes — (workspace_id, status) for the dispatch list; (dispatch_id) for children.
+-- 5. Indexes - (workspace_id, status) for the dispatch list; (dispatch_id) for children.
 CREATE INDEX IF NOT EXISTS idx_dispatches_ws_status   ON dispatches (workspace_id, status);
 CREATE INDEX IF NOT EXISTS idx_dispatches_order        ON dispatches (order_id);
 CREATE UNIQUE INDEX IF NOT EXISTS dispatches_number_uidx
@@ -157,4 +125,5 @@ SET settings = jsonb_set(
     )
   ),
   true
-);
+)
+WHERE jsonb_typeof(COALESCE(settings, '{}'::jsonb)) = 'object';
