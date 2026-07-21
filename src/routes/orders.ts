@@ -28,6 +28,7 @@ import { idempotencyMiddleware } from '../lib/idempotency.js';
 import { quoteVersions } from './quote_versions.js';
 import { orderSubstitutions } from './substitutions.js';
 import { orderDamage } from './damage.js';
+import { orderDispatches } from './dispatches.js';
 import {
   createApprovalRequest,
   evaluateExtensionApproval,
@@ -3293,3 +3294,4 @@ orders.route('/', quoteVersions);
 // separately in app.ts (distinct prefix — no double-mount risk).
 orders.route('/', orderSubstitutions);
 orders.route('/', orderDamage);
+orders.route('/', orderDispatches);
