@@ -394,41 +394,9 @@
 
     <!-- ============ MAIN ============ -->
     <main class="main">
-      <header class="topbar">
-        <div class="page-title-block">
-          <div class="kicker">Inventory</div>
-          <div class="page-title">Your catalog</div>
-        </div>
-
-        <label class="search" for="search-input">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
-          <input id="search-input" type="search" placeholder="Search gear by name or SKU…" autocomplete="off">
-        </label>
-
-        <div class="topbar-actions">
-          <div class="notif-bell-wrap">
-            <button class="notif-bell" id="notif-bell" aria-label="Notifications">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2a7 7 0 0 0-7 7v3.6L3 15h18l-2-2.4V9a7 7 0 0 0-7-7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-                <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.5"/>
-              </svg>
-              <span class="notif-badge" id="notif-badge" hidden>0</span>
-            </button>
-            <div class="notif-drawer" id="notif-drawer" hidden>
-              <header class="notif-drawer-head">
-                <h3>Notifications</h3>
-                <button class="notif-mark-all" id="notif-mark-all">Mark all read</button>
-              </header>
-              <div class="notif-drawer-body" id="notif-drawer-body"></div>
-            </div>
-          </div>
-
-          <button class="primary-cta" id="btn-add">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-            Add product
-          </button>
-        </div>
-      </header>
+      <!-- Canonical top-bar injected by /_lib/shell.js (renderShell('assets', { topbar: true, breadcrumb: 'Assets' })).
+           The "Add product" CTA is injected into the canonical #tb-actions slot (see script); the catalog
+           search moved into the content filter row below (it filters the table, so it stays with the content). -->
 
       <div class="content">
         <div class="content-head">
@@ -436,6 +404,10 @@
             <h3 style="display:inline;">Catalog</h3>
             <span class="sub" id="catalog-summary">loading…</span>
           </div>
+          <label class="search" for="search-input" style="margin-left:auto;max-width:320px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
+            <input id="search-input" type="search" placeholder="Search gear by name or SKU…" autocomplete="off">
+          </label>
           <div class="category-chips" id="category-chips"></div>
         </div>
         <!-- Sub-turn 11 — capital / idle-capital + bulk cost entry (owner/manager). -->
@@ -940,12 +912,15 @@
 
   <script type="module">
     import { api, ensureAuth, formatINR, rupeesToPaise } from '/_lib/api.js';
-    import { renderShell, mountUserMenu } from '/_lib/shell.js?v=5';
+    import { renderShell } from '/_lib/shell.js?v=6';
 
-    // Icon rail (keep this page's own top-bar → its functional notification bell),
-    // plus the shared account menu mounted into the existing top-bar actions.
-    renderShell('assets', { topbar: false });
-    mountUserMenu('.topbar-actions');
+    // Canonical rail + top-bar. The "Add product" CTA renders into the canonical
+    // #tb-actions slot; the shell provides search pill, notification bell, avatar.
+    renderShell('assets', { topbar: true, breadcrumb: 'Assets' });
+    {
+      const tba = document.getElementById('tb-actions');
+      if (tba) tba.innerHTML = `<button class="primary-cta" id="btn-add"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Add product</button>`;
+    }
 
     // ---------- state ----------
     let allProducts = [];
