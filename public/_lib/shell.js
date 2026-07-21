@@ -1,5 +1,6 @@
 // IMPORTANT: When shell.js contents change materially, bump the ?v=N query in ALL consumer imports.
-// Current consumers (as of this commit): people-list.html, person-360.html, orders.html, new-order.html.
+// Current consumers (?v=5): people-list.html, person-360.html, orders.html, new-order.html,
+// dashboard.html, inventory.html.
 // ============================================================================
 // /_lib/shell.js — Canonical RentalOS app shell (icon rail + optional top-bar).
 // ----------------------------------------------------------------------------
@@ -76,6 +77,25 @@ function railHTML(activeKey) {
   </aside>`;
 }
 
+// The avatar + dropdown, extracted so it can mount either inside the canonical
+// top-bar (topbarHTML) OR into a page's OWN top-bar via mountUserMenu() — the
+// F2b-3 case: Family-A pages keep their functional notification bell + page
+// actions and only borrow the account menu. Self-contained: no `.topbar`
+// dependency in its markup or CSS (see USER_MENU_CSS).
+function userMenuHTML() {
+  return `<div class="shell-user">
+    <button class="avatar-sm" id="me-initials" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">··</button>
+    <div class="shell-user-menu" id="shell-user-menu" role="menu" hidden>
+      <div class="shell-user-head">
+        <span class="shell-user-name" id="shell-user-name">…</span>
+        <span class="shell-user-role" id="shell-user-role"></span>
+      </div>
+      <a class="shell-user-item" role="menuitem" href="/settings.html">System settings</a>
+      <button class="shell-user-item" role="menuitem" id="shell-signout" type="button">Sign out</button>
+    </div>
+  </div>`;
+}
+
 function topbarHTML() {
   return `<header class="topbar">
     <button class="iconbtn" aria-label="Menu"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14"/></svg></button>
@@ -86,17 +106,7 @@ function topbarHTML() {
     </div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
       <button class="iconbtn" aria-label="Notifications"><svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5a5 5 0 0 0-5 5c0 4-1.5 5.5-1.5 5.5h13S15 11.5 15 7.5a5 5 0 0 0-5-5z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg></button>
-      <div class="shell-user">
-        <button class="avatar-sm" id="me-initials" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">··</button>
-        <div class="shell-user-menu" id="shell-user-menu" role="menu" hidden>
-          <div class="shell-user-head">
-            <span class="shell-user-name" id="shell-user-name">…</span>
-            <span class="shell-user-role" id="shell-user-role"></span>
-          </div>
-          <a class="shell-user-item" role="menuitem" href="/settings.html">System settings</a>
-          <button class="shell-user-item" role="menuitem" id="shell-signout" type="button">Sign out</button>
-        </div>
-      </div>
+      ${userMenuHTML()}
     </div>
   </header>`;
 }
@@ -154,20 +164,29 @@ const RAIL_CSS = `
 .rail .ri.soon{opacity:.4;cursor:not-allowed}
 `;
 
+// Base top-bar chrome ONLY (canonical top-bar pages). Deliberately does NOT
+// include the account-menu rules — those live in USER_MENU_CSS so a page that
+// keeps its OWN top-bar (mountUserMenu) can borrow the menu without inheriting
+// these `.topbar{}` box rules, which would fight its existing top-bar layout.
 const TOPBAR_CSS = `
 .topbar{height:56px;flex:none;border-bottom:1px solid var(--line,var(--border,#ece9e3));display:flex;align-items:center;gap:16px;padding:0 22px}
 .topbar .tsearch{flex:1;max-width:520px;height:36px;border:1px solid var(--line,#ece9e3);border-radius:9px;background:var(--field,#faf9f7);display:flex;align-items:center;gap:9px;padding:0 12px;color:var(--muted2,#9ca3af);font-size:13px}
 .topbar .iconbtn{width:34px;height:34px;border-radius:8px;border:none;background:transparent;color:var(--muted3,#6b7280);display:flex;align-items:center;justify-content:center;cursor:pointer}
-.topbar .avatar-sm{width:28px;height:28px;border-radius:50%;background:#eef0f4;color:var(--ink,#202058);font:600 10px var(--disp,'Space Grotesk',system-ui,sans-serif);display:flex;align-items:center;justify-content:center}
-.topbar .shell-user{position:relative}
-.topbar .shell-user > .avatar-sm{border:none;cursor:pointer}
-.topbar .shell-user-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:190px;background:#fff;border:1px solid var(--line,#ece9e3);border-radius:10px;box-shadow:0 12px 32px rgba(32,32,88,.14);padding:6px;z-index:60}
-.topbar .shell-user-menu[hidden]{display:none}
-.topbar .shell-user-head{display:flex;flex-direction:column;gap:2px;padding:8px 10px 10px;border-bottom:1px solid var(--line2,#f0ede8);margin-bottom:4px}
-.topbar .shell-user-name{font:600 13px var(--body,system-ui,sans-serif);color:var(--head,#26235a)}
-.topbar .shell-user-role{font:500 11px var(--body,system-ui,sans-serif);color:var(--muted2,#9ca3af);text-transform:capitalize}
-.topbar .shell-user-item{display:block;width:100%;text-align:left;padding:8px 10px;border:none;background:none;border-radius:7px;font:500 13px var(--body,system-ui,sans-serif);color:var(--head,#26235a);cursor:pointer;text-decoration:none}
-.topbar .shell-user-item:hover{background:var(--field,#f4f2ee)}
+`;
+
+// Account-menu styling — container-agnostic (no `.topbar` prefix) so it renders
+// identically whether it sits in the canonical top-bar or a page's own top-bar.
+// `.shell-user*` / `.avatar-sm` are shell-owned class names no page defines.
+const USER_MENU_CSS = `
+.shell-user{position:relative;display:inline-flex}
+.avatar-sm{width:28px;height:28px;border-radius:50%;background:#eef0f4;color:var(--ink,#202058);font:600 10px var(--disp,'Space Grotesk',system-ui,sans-serif);display:flex;align-items:center;justify-content:center;border:none;cursor:pointer}
+.shell-user-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:190px;background:#fff;border:1px solid var(--line,#ece9e3);border-radius:10px;box-shadow:0 12px 32px rgba(32,32,88,.14);padding:6px;z-index:60}
+.shell-user-menu[hidden]{display:none}
+.shell-user-head{display:flex;flex-direction:column;gap:2px;padding:8px 10px 10px;border-bottom:1px solid var(--line2,#f0ede8);margin-bottom:4px}
+.shell-user-name{font:600 13px var(--body,system-ui,sans-serif);color:var(--head,#26235a)}
+.shell-user-role{font:500 11px var(--body,system-ui,sans-serif);color:var(--muted2,#9ca3af);text-transform:capitalize}
+.shell-user-item{display:block;width:100%;text-align:left;padding:8px 10px;border:none;background:none;border-radius:7px;font:500 13px var(--body,system-ui,sans-serif);color:var(--head,#26235a);cursor:pointer;text-decoration:none}
+.shell-user-item:hover{background:var(--field,#f4f2ee)}
 `;
 
 function injectCSSOnce(id, css) {
@@ -194,8 +213,28 @@ export function renderShell(activeKey, opts = {}) {
   injectCSSOnce('rentalos-shell-rail-css', RAIL_CSS);
   if (withTopbar) {
     injectCSSOnce('rentalos-shell-topbar-css', TOPBAR_CSS);
+    injectCSSOnce('rentalos-shell-usermenu-css', USER_MENU_CSS);
     main.insertAdjacentHTML('afterbegin', topbarHTML());
     wireUserMenu();
   }
   wrapper.insertAdjacentHTML('afterbegin', railHTML(activeKey));
+}
+
+/**
+ * Mount ONLY the account menu (avatar + dropdown) into a page's own top-bar.
+ * For F2b-3 Family-A pages that render the rail with `{topbar: false}` (to keep
+ * their functional notification bell + page actions) but still want the shared
+ * account menu. Idempotent per page — call once.
+ * @param {Element|string} target  container element or selector to append into
+ */
+export function mountUserMenu(target) {
+  const container = typeof target === 'string' ? document.querySelector(target) : target;
+  if (!container) {
+    console.warn('[shell] mountUserMenu: container not found');
+    return;
+  }
+  if (document.getElementById('me-initials')) return; // already mounted
+  injectCSSOnce('rentalos-shell-usermenu-css', USER_MENU_CSS);
+  container.insertAdjacentHTML('beforeend', userMenuHTML());
+  wireUserMenu();
 }
