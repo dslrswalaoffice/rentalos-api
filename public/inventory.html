@@ -73,8 +73,7 @@
 
     /* ========== app shell ========== */
     .app {
-      display: grid;
-      grid-template-columns: var(--sb-w) minmax(0, 1fr);
+      display: flex;
       min-height: 100dvh;
     }
 
@@ -103,7 +102,7 @@
     .sb-user-role { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; margin-top: 1px; }
 
     /* ========== main region ========== */
-    .main { min-width: 0; background: var(--bg); display: flex; flex-direction: column; }
+    .main { flex: 1; min-width: 0; background: var(--bg); display: flex; flex-direction: column; }
 
     .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--card); position: sticky; top: 0; z-index: 40; }
     .kicker { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.14em; color: var(--muted-soft); text-transform: uppercase; }
@@ -391,46 +390,10 @@
   </head>
 <body>
   <div class="app">
-    <!-- ============ SIDEBAR ============ -->
-    <aside class="sb">
-      <div class="sb-brand">
-        <span class="logo">R</span>
-        <span class="word">RentalOS</span>
-        <span class="env">v0.1</span>
-      </div>
-
-      <a href="/new-order.html" class="sb-item new" style="margin-bottom:6px;">
-        <span class="tile">NB</span>
-        <span>New order</span>
-      </a>
-
-      <button class="sb-workspace" type="button" aria-label="Switch workspace">
-        <span class="sb-workspace-name" id="ws-name">DSLRSWALA</span>
-        <span class="sb-workspace-loc" id="ws-loc">Vadodara</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-
-      <nav class="sb-nav" aria-label="Main">
-        <a href="/dashboard.html" class="sb-item"><span class="tile">DB</span><span>Dashboard</span></a>
-        <a href="/orders.html" class="sb-item"><span class="tile">RN</span><span>Orders</span></a>
-        <a href="/inventory.html" class="sb-item active" aria-current="page"><span class="tile">IN</span><span>Inventory</span></a>
-        <a href="/people-list.html" class="sb-item"><span class="tile">PE</span><span>People</span></a>
-        <a href="/calendar.html" class="sb-item"><span class="tile">CL</span><span>Calendar</span></a>
-        <a href="/analytics.html" class="sb-item"><span class="tile">AN</span><span>Analytics</span></a>
-        <a href="/settings.html" class="sb-item"><span class="tile">SY</span><span>Settings</span></a>
-      </nav>
-
-      <div class="sb-user">
-        <span class="sb-user-avatar" id="user-avatar">A</span>
-        <div class="sb-user-info">
-          <div class="sb-user-name" id="user-name">Aamir</div>
-          <div class="sb-user-role" id="user-role">OWNER</div>
-        </div>
-      </div>
-    </aside>
+    <!-- Rail injected by /_lib/shell.js (renderShell('assets', { topbar: false })). -->
 
     <!-- ============ MAIN ============ -->
-    <div class="main">
+    <main class="main">
       <header class="topbar">
         <div class="page-title-block">
           <div class="kicker">Inventory</div>
@@ -500,7 +463,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </main>
   </div>
 
   <!-- ============ ADD PRODUCT MODAL ============ -->
@@ -977,6 +940,12 @@
 
   <script type="module">
     import { api, ensureAuth, formatINR, rupeesToPaise } from '/_lib/api.js';
+    import { renderShell, mountUserMenu } from '/_lib/shell.js?v=5';
+
+    // Icon rail (keep this page's own top-bar → its functional notification bell),
+    // plus the shared account menu mounted into the existing top-bar actions.
+    renderShell('assets', { topbar: false });
+    mountUserMenu('.topbar-actions');
 
     // ---------- state ----------
     let allProducts = [];
@@ -998,14 +967,9 @@
     let currentRole = null; // Sub-turn 11 — gates cost UI (owner/manager only)
     const canManageCost = () => currentRole === 'owner' || currentRole === 'manager';
     async function hydrateIdentity() {
-      const { user, workspace } = await ensureAuth();
+      const { user } = await ensureAuth();
       currentRole = user.role;
-      document.getElementById('ws-name').textContent = workspace.name;
-      document.getElementById('ws-loc').textContent = workspace.location || '';
-      const first = (user.displayName || '').split(' ')[0] || 'You';
-      document.getElementById('user-name').textContent = first;
-      document.getElementById('user-role').textContent = user.role.toUpperCase();
-      document.getElementById('user-avatar').textContent = first[0]?.toUpperCase() ?? 'U';
+      // Workspace + account identity now live in the shared rail/account menu.
     }
 
     // ---------- fetch + render ----------
