@@ -81,6 +81,11 @@ type PaymentRow = {
   received_by: string | null;
   occurred_at: string;
   created_at: string;
+  // SS-2.4 (migrations 055/056) — deposit-only metadata (NULL on rental rows).
+  deposit_number: string | null;
+  method_reference: Record<string, unknown> | null;
+  cheque_status: string | null;
+  custody_holder_user_id: string | null;
 };
 
 // ----------------------------------------------------------------------------
@@ -293,15 +298,20 @@ payments.get('/:orderId', async (c) => {
   if (!order) return c.json({ error: 'not_found' }, 404);
 
   const rows = await query<
-    PaymentRow & { received_by_name: string | null; within_window: boolean; is_owner: boolean }
+    PaymentRow & {
+      received_by_name: string | null; within_window: boolean; is_owner: boolean;
+      custody_holder_name: string | null;
+    }
   >(sql`
     SELECT
       p.*,
-      u.display_name AS received_by_name,
+      u.display_name  AS received_by_name,
+      cu.display_name AS custody_holder_name,
       (p.created_at > now() - interval '5 minutes') AS within_window,
       (p.received_by = ${session.user.id}::uuid)     AS is_owner
     FROM payments p
-    LEFT JOIN users u ON u.id = p.received_by
+    LEFT JOIN users u  ON u.id  = p.received_by
+    LEFT JOIN users cu ON cu.id = p.custody_holder_user_id
     WHERE p.order_id = ${orderId}::uuid
       AND p.workspace_id = ${session.workspace.id}::uuid
     ORDER BY p.occurred_at DESC, p.created_at DESC
@@ -326,6 +336,46 @@ payments.get('/:orderId', async (c) => {
     };
   });
 
+  // SS-2.4 P2a — Deposit Hold 360 block. Derived from the deposit-kind payments
+  // (the shipped 6d model), never a separate deposit_holds table. The anchor is
+  // the first 'deposit' row (carries the DP-number + custody + cheque state).
+  const DEP_KINDS = ['deposit', 'deposit_refund', 'deposit_forfeit'];
+  const depRows = rows.filter((r) => DEP_KINDS.includes(r.payment_kind) && r.status === 'completed');
+  const sumKind = (k: string) =>
+    depRows.filter((r) => r.payment_kind === k).reduce((s, r) => s + Number(r.amount_paise), 0);
+  const heldPaise = sumKind('deposit');
+  const releasedPaise = sumKind('deposit_refund');
+  const forfeitedPaise = sumKind('deposit_forfeit');
+  // Anchor = earliest 'deposit' row (rows are DESC, so take the last deposit).
+  const depositAnchors = depRows.filter((r) => r.payment_kind === 'deposit');
+  const anchor = depositAnchors[depositAnchors.length - 1] ?? null;
+
+  const deposit =
+    depRows.length === 0 && Number(order.deposit_required_paise) === 0
+      ? null
+      : {
+          deposit_number: anchor?.deposit_number ?? null,
+          status: order.deposit_status,
+          required_paise: Number(order.deposit_required_paise),
+          held_paise: heldPaise,
+          released_paise: releasedPaise,
+          forfeited_paise: forfeitedPaise,
+          net_held_paise: heldPaise - releasedPaise - forfeitedPaise,
+          custody_holder_user_id: anchor?.custody_holder_user_id ?? null,
+          custody_holder_name: anchor?.custody_holder_name ?? null,
+          cheque_status: anchor?.cheque_status ?? null,
+          method_reference: anchor?.method_reference ?? null,
+          // Deposit event trail = the deposit-kind payment rows (most-recent first).
+          events: depRows.map((r) => ({
+            payment_id: r.id,
+            payment_kind: r.payment_kind,
+            amount_paise: Number(r.amount_paise),
+            method: r.method,
+            cheque_status: r.cheque_status,
+            occurred_at: r.occurred_at,
+          })),
+        };
+
   return c.json({
     order: {
       id: order.id,
@@ -337,19 +387,25 @@ payments.get('/:orderId', async (c) => {
       deposit_status: order.deposit_status,
     },
     payments: paymentsOut,
+    deposit,
   });
 });
 
 // ============================================================================
 // POST /:orderId — record a new payment (direction 'in')
 // ============================================================================
-const createSchema = z.object({
+export const paymentCreateSchema = z.object({
   amount_paise: z.number().int().positive(),
   method:       z.enum(METHODS),
   reference:    z.string().max(200).optional(),
   notes:        z.string().max(1000).optional(),
   occurred_at:  z.string().datetime().optional(),
   payment_kind: z.enum(['rental', 'deposit', 'deposit_refund', 'deposit_forfeit']).default('rental'),
+  // SS-2.4 P2a — deposit-only cheque/custody metadata (ignored for rental kind).
+  // method_reference holds UPI ref / cheque number / bank txn id etc.
+  method_reference:       z.record(z.string(), z.any()).optional(),
+  cheque_status:          z.enum(['pending', 'deposited', 'cleared', 'bounced', 're_presented']).optional(),
+  custody_holder_user_id: z.string().uuid().optional(),
 });
 
 // Deposit-kind → audit event + which direction the cash moves. deposit_refund
@@ -366,7 +422,7 @@ payments.post('/:orderId', requirePermission('payments.record'), async (c) => {
   const orderId = c.req.param('orderId');
 
   const body = await c.req.json().catch(() => null);
-  const parsed = createSchema.safeParse(body);
+  const parsed = paymentCreateSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
   }
@@ -409,10 +465,32 @@ payments.post('/:orderId', requirePermission('payments.record'), async (c) => {
   const direction = kind === 'deposit_refund' ? 'out' : 'in';
   const occurredAt = input.occurred_at ?? new Date().toISOString();
 
+  // SS-2.4 P2a — deposit-only metadata. A fresh 'deposit' anchors a deposit hold:
+  // mint a human number DP-YYYY-{order#}-{seq} (seq = nth deposit on this order).
+  // Cheque deposits default cheque_status to 'pending'. Rental / refund / forfeit
+  // rows leave all of these NULL.
+  let depositNumber: string | null = null;
+  if (kind === 'deposit') {
+    const seqRow = await query<{ n: number }>(sql`
+      SELECT COUNT(*)::int AS n FROM payments
+      WHERE order_id = ${orderId}::uuid AND workspace_id = ${session.workspace.id}::uuid
+        AND payment_kind = 'deposit'
+    `);
+    const seq = Number(seqRow[0]?.n ?? 0) + 1;
+    const year = new Date(occurredAt).getUTCFullYear();
+    depositNumber = `DP-${year}-${String(order.order_number).padStart(4, '0')}-${seq}`;
+  }
+  const chequeStatus = kind === 'deposit'
+    ? (input.cheque_status ?? (input.method === 'cheque' ? 'pending' : null))
+    : null;
+  const custodyHolder = kind === 'deposit' ? (input.custody_holder_user_id ?? null) : null;
+  const methodRef = isDeposit && input.method_reference ? JSON.stringify(input.method_reference) : null;
+
   const inserted = await query<PaymentRow>(sql`
     INSERT INTO payments (
       workspace_id, order_id, amount_paise, direction, method, payment_kind,
-      reference, status, notes, received_by, occurred_at
+      reference, status, notes, received_by, occurred_at,
+      deposit_number, method_reference, cheque_status, custody_holder_user_id
     ) VALUES (
       ${session.workspace.id}::uuid,
       ${orderId}::uuid,
@@ -424,7 +502,11 @@ payments.post('/:orderId', requirePermission('payments.record'), async (c) => {
       'completed'::payment_status,
       ${input.notes ?? null}::text,
       ${session.user.id}::uuid,
-      ${occurredAt}::timestamptz
+      ${occurredAt}::timestamptz,
+      ${depositNumber}::text,
+      ${methodRef}::jsonb,
+      ${chequeStatus}::text,
+      ${custodyHolder}::uuid
     )
     RETURNING *
   `);

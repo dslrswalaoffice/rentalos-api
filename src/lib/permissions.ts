@@ -44,6 +44,8 @@ export const PERMISSIONS = {
   'payments.record':        'Record payments',
   'payments.refund':        'Issue refunds',
   'deposits.retain':        'Retain part or all of a security deposit',
+  'deposits.transfer_custody':'Transfer physical custody of a cash/cheque deposit',
+  'inspections.perform':    'Perform return inspections and record outcomes',
   'invoices.manage':        'Create and void invoices',
   // Inventory
   'inventory.view':         'View products and stock',
@@ -70,8 +72,8 @@ export const ALL_PERMISSION_KEYS = Object.keys(PERMISSIONS) as PermissionKey[];
 // Grouping for the Team editor UI (label → keys). Order matters for rendering.
 export const PERMISSION_GROUPS: { label: string; keys: PermissionKey[] }[] = [
   { label: 'Orders',    keys: ['orders.view','orders.create','orders.edit','orders.cancel','orders.revert_status','orders.override_period','orders.override_price','orders.apply_discount'] },
-  { label: 'Operations', keys: ['dispatch.execute','returns.execute','damage.record','substitutions.manage','substitutions.financial','damage.resolve_financial','damage.approve'] },
-  { label: 'Money',     keys: ['payments.record','payments.refund','deposits.retain','invoices.manage'] },
+  { label: 'Operations', keys: ['dispatch.execute','returns.execute','damage.record','substitutions.manage','substitutions.financial','damage.resolve_financial','damage.approve','inspections.perform'] },
+  { label: 'Money',     keys: ['payments.record','payments.refund','deposits.retain','deposits.transfer_custody','invoices.manage'] },
   { label: 'Inventory', keys: ['inventory.view','inventory.manage','inventory.pricing','inventory.costs'] },
   { label: 'People',    keys: ['people.view','people.manage','people.view_sensitive'] },
   { label: 'Insight',   keys: ['reports.view','reports.export','audit.view'] },
@@ -91,7 +93,8 @@ export const PRESETS: { owner: '*'; manager: PermissionKey[]; staff: PermissionK
     'orders.apply_discount',
     'dispatch.execute', 'returns.execute', 'damage.record',
     'substitutions.manage', 'substitutions.financial', 'damage.resolve_financial',
-    'payments.record', 'payments.refund', 'deposits.retain', 'invoices.manage',
+    'inspections.perform',
+    'payments.record', 'payments.refund', 'deposits.retain', 'deposits.transfer_custody', 'invoices.manage',
     'inventory.view', 'inventory.manage', 'inventory.pricing',
     'people.view', 'people.manage', 'people.view_sensitive',
     'reports.view', 'reports.export',
@@ -100,6 +103,9 @@ export const PRESETS: { owner: '*'; manager: PermissionKey[]; staff: PermissionK
   staff: [
     'orders.view', 'orders.create', 'orders.edit',
     'dispatch.execute', 'returns.execute', 'damage.record',
+    // Warehouse (Irfan) performs return inspections — but NOT custody transfer
+    // (cash/cheque custody stays owner/manager/accounts per deposit_policy).
+    'inspections.perform',
     // Operational swaps only — staff (warehouse) can create/execute substitutions
     // but NOT the financial ones, and NEVER touches damage financial resolution.
     'substitutions.manage',
