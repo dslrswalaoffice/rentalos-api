@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<!--
+  Inspection Modal — v1 design (post-return detailed inspection)
+  Author: Claude Design for Aamir Patel / DSLRSWALA
+  Scope: Per-item inspection · DS-2 Dispatch/Return Domain
+  Reference: Follows RentalOS v2 (Damage Incident + Substitution modals)
+
+  Primary state: Order #BK2214 · Nanlite FS 300 · all-pass except carry case
+  missing → standard release, ₹500 forfeit, ₹24,500 release.
+
+  Interactive: component checklist drives the auto-calculated Findings summary
+  (component status, overall result suggestion, forfeit) live. Tap any photo to
+  enlarge the before/after pair. Resolution choice swaps the footer CTA and, for
+  "Route to Damage Incident", reveals the pre-fill preview.
+
+  Tweaks: `scenario` (standard / damage_found / escalation) presets the checklist;
+  `itemMode` (single / multi) shows the compact multi-item progress bar.
+
+  MOBILE (<768px): modal full-screen; photo comparison stacks (dispatch above,
+  return below); checklist single-column; findings as auto-expanded accordion;
+  sticky footer with thumb-reach primary CTA.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Manrope',sans-serif;background:#efece6}
+  a{color:#4f46e5;text-decoration:none}
+  a:hover{color:#4338ca}
+  ::placeholder{color:#9ca3af}
+</style>
+</helmet>
+<div style="position:relative;width:1440px;min-height:1320px;background:#efece6;overflow:hidden;font-family:'Manrope',sans-serif">
+
+  <!-- ===== BACKDROP: Order 360 (blurred + dimmed) ===== -->
+  <div style="position:absolute;inset:0;filter:blur(3px);opacity:.6;pointer-events:none;user-select:none">
+    <div style="height:52px;background:#fff;border-bottom:1px solid #e6e3dc;display:flex;align-items:center;gap:28px;padding:0 32px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#202058">RentalOS</div>
+      <div style="display:flex;gap:22px;font-size:13px;color:#6b7280;font-weight:500">
+        <span>Dashboard</span><span style="color:#202058;font-weight:600">Orders</span><span>Inventory</span><span>Customers</span><span>Reports</span>
+      </div>
+      <div style="margin-left:auto;width:30px;height:30px;border-radius:50%;background:#d9d5cd"></div>
+    </div>
+    <div style="height:64px;background:#fff;border-bottom:1px solid #e6e3dc;display:flex;align-items:center;gap:16px;padding:0 32px">
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:600;font-size:15px;color:#26235a">BK2214</div>
+      <div style="color:#c9c5bd">&middot;</div>
+      <div style="font-size:14px;color:#26235a;font-weight:600">Rahul Malhotra</div>
+      <div style="color:#c9c5bd">&middot;</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:#f0fdf4;color:#059669;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em">&#9679; RETURNED</div>
+      <div style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:16px;color:#202058">&#8377;28,000</div>
+    </div>
+    <div style="display:flex;gap:24px;padding:28px 32px">
+      <div style="flex:2;display:flex;flex-direction:column;gap:16px">
+        <div style="height:140px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:220px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:180px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px">
+        <div style="height:120px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:260px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;inset:0;background:rgba(38,35,90,.30);pointer-events:none"></div>
+
+  <!-- ===== MODAL ===== -->
+  <div style="position:absolute;top:40px;left:50%;transform:translateX(-50%);width:720px;max-height:1240px;background:#fff;border-radius:14px;box-shadow:0 24px 64px -12px rgba(24,22,60,.45),0 8px 24px -8px rgba(24,22,60,.30);display:flex;flex-direction:column;overflow:hidden">
+
+    <!-- HEADER (sticky) -->
+    <div style="flex:none;padding:24px 28px 18px;border-bottom:1px solid #eeece6">
+      <div style="display:flex;align-items:flex-start;gap:16px">
+        <div style="flex:1">
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;margin-bottom:11px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#4f46e5"></span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.13em;color:#4f46e5">INSPECTION</span>
+          </div>
+          <h2 style="margin:0 0 6px;font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:600;letter-spacing:-.01em;color:#202058">Post-return inspection</h2>
+          <div style="font-size:13px;color:#6b7280">
+            Order <span style="font-family:'JetBrains Mono',monospace;color:#26235a;font-weight:600">#BK2214</span>
+            &middot; Return <span style="font-family:'JetBrains Mono',monospace;color:#26235a;font-weight:600">#01</span>
+            &middot; Rahul Malhotra <span style="display:inline-flex;align-items:center;padding:1px 7px;margin-left:2px;border-radius:5px;background:#fffbeb;border:1px solid #fcd9a4;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#d97706;vertical-align:middle">VIP</span>
+          </div>
+        </div>
+        <button onClick="{{ noop }}" style="width:32px;height:32px;flex:none;border:1px solid #e7e4de;background:#fff;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280;transition:all .15s" style-hover="background:#f3f1ec;color:#202058">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- MULTI-ITEM PROGRESS BAR (compact) -->
+      <sc-if value="{{ isMulti }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:16px;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #eeece6;border-radius:11px;background:#faf9f7">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:#9ca3af;flex:none">INSPECTING</span>
+          <div style="flex:1;display:flex;align-items:center;gap:7px;overflow:hidden">
+            <sc-for list="{{ itemBar }}" as="it" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:7px;padding:5px 10px;border-radius:8px;border:1px solid {{ it.border }};background:{{ it.bg }};white-space:nowrap;min-width:0">
+                <span style="width:16px;height:16px;flex:none;border-radius:50%;border:2px solid {{ it.ring }};background:{{ it.fill }};display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:{{ it.numColor }}"><span dangerouslySetInnerHTML="{{ it.mark }}"></span></span>
+                <span style="font-size:11.5px;font-weight:{{ it.weight }};color:{{ it.color }};overflow:hidden;text-overflow:ellipsis">{{ it.name }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#4f46e5;flex:none">Item 1 of 3</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isSingle }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-top:14px;display:flex;align-items:center;gap:9px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#9ca3af">
+          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:6px;background:#eef2ff;color:#4f46e5;font-weight:700">1</span>
+          <span>of 1 item to inspect &middot; Nanlite FS 300 rental</span>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- BODY (scrollable) -->
+    <div style="flex:1;overflow-y:auto;padding:0 28px">
+
+      <!-- ===== SECTION 1 · ITEM UNDER INSPECTION ===== -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:14px">ITEM UNDER INSPECTION</div>
+        <div style="display:flex;gap:16px">
+          <div style="width:76px;height:76px;flex:none;border-radius:12px;background:#f3f1ec;border:1px solid #e7e4de;display:flex;align-items:center;justify-content:center;color:#b6b1a6">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:700;color:#202058">Nanlite FS 300 <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:#6b7280;margin-left:4px">NNL-FS-300-001</span></div>
+            <div style="margin-top:9px;display:grid;grid-template-columns:1fr 1fr;gap:9px 20px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="color:#9ca3af">Dispatched</span><span style="font-family:'JetBrains Mono',monospace;color:#26235a;font-weight:600">Jul 15</span><span style="color:#9ca3af">(13 days)</span></div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="color:#9ca3af">Returned</span><span style="font-family:'JetBrains Mono',monospace;color:#26235a;font-weight:600">Jul 28 &middot; 4:00 PM</span></div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="color:#9ca3af">Handover photos</span><span style="font-family:'JetBrains Mono',monospace;color:#26235a;font-weight:600">3 on file</span></div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="color:#9ca3af">Return photos</span><span style="font-family:'JetBrains Mono',monospace;color:#26235a;font-weight:600">3 on file</span></div>
+            </div>
+            <div style="margin-top:11px;display:inline-flex;align-items:center;gap:8px;padding:6px 11px;border-radius:9px;background:#ecfdf5;border:1px solid #a7f3d0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span style="font-size:12px;color:#065f46"><span style="font-weight:700">Dispatch condition:</span> all functions working</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SECTION 2 · BEFORE / AFTER PHOTO COMPARISON ===== -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af">BEFORE / AFTER COMPARISON</div>
+          <div style="font-size:11.5px;color:#9ca3af">Tap any photo to enlarge</div>
+        </div>
+        <div style="display:flex;gap:16px">
+          <!-- DISPATCH column -->
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px">
+              <span style="width:6px;height:6px;border-radius:50%;background:#6b7280"></span>
+              <span style="font-size:12px;font-weight:700;color:#26235a">Dispatch</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af">Jul 15</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+              <sc-for list="{{ dispatchPhotos }}" as="p" hint-placeholder-count="3">
+                <div onClick="{{ p.open }}" style="position:relative;aspect-ratio:4/3;border-radius:10px;background:linear-gradient(135deg,#e9e6df,#d3cfc6);border:1px solid #d9d6cf;overflow:hidden;cursor:zoom-in;display:flex;align-items:flex-end" style-hover="border-color:#4f46e5">
+                  <div style="position:absolute;top:7px;left:7px;color:#a8a496;display:flex"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+                  <div style="width:100%;padding:5px 7px;background:linear-gradient(transparent,rgba(0,0,0,.5));font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#fff">{{ p.label }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <!-- divider arrow -->
+          <div style="flex:none;display:flex;align-items:center;padding-top:26px;color:#c9c5bd">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </div>
+          <!-- RETURN column -->
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px">
+              <span style="width:6px;height:6px;border-radius:50%;background:#4f46e5"></span>
+              <span style="font-size:12px;font-weight:700;color:#26235a">Return</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af">Jul 28</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+              <sc-for list="{{ returnPhotos }}" as="p" hint-placeholder-count="3">
+                <div onClick="{{ p.open }}" style="position:relative;aspect-ratio:4/3;border-radius:10px;background:linear-gradient(135deg,#e9e6df,#d3cfc6);border:1px solid {{ p.border }};overflow:hidden;cursor:zoom-in;display:flex;align-items:flex-end" style-hover="border-color:#4f46e5">
+                  <div style="position:absolute;top:7px;left:7px;color:#a8a496;display:flex"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+                  <sc-if value="{{ p.flag }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:absolute;top:7px;right:7px;display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;background:#dc2626;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;color:#fff">DAMAGE</div>
+                  </sc-if>
+                  <div style="width:100%;padding:5px 7px;background:linear-gradient(transparent,rgba(0,0,0,.5));font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#fff">{{ p.label }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <!-- Additional inspection photos -->
+        <div style="margin-top:16px;display:flex;align-items:center;gap:12px">
+          <button onClick="{{ addPhoto }}" style="display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border:1.5px dashed #cfcbc2;background:#fff;border-radius:9px;cursor:pointer;font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:600;color:#6b7280;transition:all .15s" style-hover="border-color:#4f46e5;color:#4f46e5">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add inspection photo
+          </button>
+          <span style="font-size:12px;color:#9ca3af">Photos taken during this inspection &middot; <span style="font-family:'JetBrains Mono',monospace;color:#6b7280;font-weight:600">{{ addedCount }} added</span></span>
+        </div>
+      </div>
+
+      <!-- ===== SECTION 3 · COMPONENT CHECKLIST ===== -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:6px">COMPONENT-LEVEL CHECK</div>
+        <div style="font-size:12.5px;color:#6b7280;margin-bottom:16px">For Nanlite FS 300, verify each component. Findings below update as you go.</div>
+
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <sc-for list="{{ checklist }}" as="g" hint-placeholder-count="3">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#202058;margin-bottom:8px">{{ g.title }}</div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{ g.options }}" as="o" hint-placeholder-count="3">
+                  <div onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:11px;padding:8px;border-radius:9px;cursor:pointer" style-hover="background:#faf9f6">
+                    <span style="width:17px;height:17px;flex:none;border-radius:50%;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ o.dot }}"></span></span>
+                    <span style="font-size:13px;color:{{ o.color }};font-weight:{{ o.weight }}">{{ o.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+
+          <!-- Accessories returned -->
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#202058;margin-bottom:10px">Accessories returned</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ accessories }}" as="a" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <span style="flex:1;font-size:13px;color:#26235a">{{ a.label }}</span>
+                  <div style="display:flex;gap:6px">
+                    <sc-for list="{{ a.segs }}" as="sg" hint-placeholder-count="3">
+                      <div onClick="{{ sg.pick }}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid {{ sg.border }};background:{{ sg.bg }};color:{{ sg.color }};font-size:12px;font-weight:{{ sg.weight }};cursor:pointer;transition:all .12s">
+                        <span style="width:12px;height:12px;flex:none;border-radius:50%;border:2px solid {{ sg.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ sg.dot }}"></span></span>
+                        {{ sg.label }}
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- Test result -->
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#202058;margin-bottom:8px">Test result on live footage</div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <sc-for list="{{ testOptions }}" as="o" hint-placeholder-count="2">
+                <div onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:11px;padding:8px;border-radius:9px;cursor:pointer" style-hover="background:#faf9f6">
+                  <span style="width:17px;height:17px;flex:none;border-radius:50%;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ o.dot }}"></span></span>
+                  <span style="font-size:13px;color:{{ o.color }};font-weight:{{ o.weight }}">{{ o.label }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SECTION 4 · FINDINGS SUMMARY (auto-calculated) ===== -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af">INSPECTION FINDINGS</div>
+          <span style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;background:#eef2ff;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:#4f46e5">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
+            AUTO
+          </span>
+        </div>
+
+        <!-- Component status list -->
+        <div style="border:1px solid #eeece6;border-radius:12px;overflow:hidden;margin-bottom:16px">
+          <sc-for list="{{ findings }}" as="f" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 14px;border-top:1px solid {{ f.divider }};background:{{ f.bg }}">
+              <span style="width:19px;height:19px;flex:none;border-radius:50%;background:{{ f.iconBg }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ f.icon }}"></span></span>
+              <span style="flex:1;font-size:13px;font-weight:600;color:#26235a">{{ f.label }}</span>
+              <span style="font-size:12.5px;font-weight:600;color:{{ f.statusColor }}">{{ f.status }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- Overall result -->
+        <div style="font-size:12.5px;font-weight:700;color:#202058;margin-bottom:9px">Overall result</div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:16px">
+          <sc-for list="{{ overallOptions }}" as="o" hint-placeholder-count="3">
+            <div onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:11px;padding:9px 8px;border-radius:9px;cursor:pointer" style-hover="background:#faf9f6">
+              <span style="width:17px;height:17px;flex:none;border-radius:50%;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ o.dot }}"></span></span>
+              <span style="font-size:13px;color:{{ o.color }};font-weight:{{ o.weight }}">{{ o.label }}</span>
+              <sc-if value="{{ o.suggested }}" hint-placeholder-val="{{ false }}">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;color:#4f46e5;padding:2px 7px;border-radius:6px;background:#eef2ff">SUGGESTED</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- Recommended deposit action -->
+        <div style="border:1px solid #e7e2d8;border-radius:12px;background:{{ depositBg }};padding:16px 18px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:{{ depositLabelColor }};margin-bottom:12px">Recommended deposit action</div>
+          <sc-if value="{{ hasForfeit }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:12.5px;color:#6b7280;margin-bottom:12px;line-height:1.5">{{ forfeitReason }}</div>
+          </sc-if>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px;color:#4b4b63">Deposit held</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#202058">&#8377;25,000</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:13px;color:#4b4b63">Suggested forfeit</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <button onClick="{{ forfeitDown }}" style="width:24px;height:24px;border:1px solid #e2dfd8;background:#fff;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280" style-hover="border-color:#4f46e5;color:#4f46e5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:{{ forfeitColor }};min-width:64px;text-align:right">&minus;&#8377;{{ forfeitText }}</span>
+                <button onClick="{{ forfeitUp }}" style="width:24px;height:24px;border:1px solid #e2dfd8;background:#fff;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280" style-hover="border-color:#4f46e5;color:#4f46e5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              </div>
+            </div>
+            <div style="border-top:1px dashed #d9d2c4;margin:2px 0"></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:14px;font-weight:700;color:#202058">Deposit release</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#059669">&#8377;{{ releaseText }}</span></div>
+          </div>
+          <div style="margin-top:11px;font-size:11.5px;color:#9ca3af">Released on order close, per deposit policy.</div>
+        </div>
+      </div>
+
+      <!-- ===== SECTION 5 · RESOLUTION PATH ===== -->
+      <div style="padding:22px 0 26px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:14px">COMPLETE INSPECTION WITH</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <sc-for list="{{ resolutions }}" as="r" hint-placeholder-count="4">
+            <div onClick="{{ r.pick }}" style="display:flex;gap:13px;padding:14px 15px;border-radius:12px;border:1.5px solid {{ r.border }};background:{{ r.bg }};cursor:pointer;transition:all .15s" style-hover="border-color:#a5b4fc">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ r.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ r.dot }}"></span></span>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                  <span style="font-size:13.5px;font-weight:600;color:{{ r.titleColor }}">{{ r.title }}</span>
+                  <sc-if value="{{ r.hasBadge }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:{{ r.badgeBg }};border:1px solid {{ r.badgeBorder }};font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.05em;color:{{ r.badgeColor }}">{{ r.badge }}</span>
+                  </sc-if>
+                </div>
+                <div style="margin-top:5px;display:flex;flex-direction:column;gap:3px">
+                  <sc-for list="{{ r.lines }}" as="ln" hint-placeholder-count="2">
+                    <div style="font-size:12.5px;color:#6b7280;line-height:1.45">{{ ln.text }}</div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- Route-to-Damage pre-fill preview -->
+        <sc-if value="{{ showDamagePrefill }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px;border:1px solid #fbcaca;border-radius:12px;background:#fef2f2;padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span style="font-size:13px;font-weight:700;color:#991b1b">Damage Incident Modal will open pre-filled</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px 20px">
+              <sc-for list="{{ prefillRows }}" as="pr" hint-placeholder-count="4">
+                <div style="display:flex;flex-direction:column;gap:2px">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#c2696a">{{ pr.k }}</span>
+                  <span style="font-size:12.5px;font-weight:600;color:#26235a">{{ pr.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top:12px;font-size:11.5px;color:#b45309">Item goes to <span style="font-weight:700">hold</span> state until the incident is documented and investigated.</div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <!-- FOOTER (sticky) -->
+    <div style="flex:none;border-top:1px solid #ece6db;padding:15px 24px;display:flex;align-items:center;gap:16px;background:#fbfaf7">
+      <button style="display:inline-flex;align-items:center;border:none;background:none;cursor:pointer;font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:600;color:#6b7280;padding:8px 4px" style-hover="color:#202058">Cancel</button>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af;margin:0 auto">{{ footerNote }}</div>
+      <button style="display:inline-flex;align-items:center;gap:8px;border:none;cursor:pointer;background:{{ ctaBg }};color:#fff;font-family:'Manrope',sans-serif;font-size:14px;font-weight:700;padding:12px 22px;border-radius:10px;box-shadow:0 2px 8px {{ ctaShadow }};transition:background .15s" style-hover="{{ ctaHover }}">
+        <span dangerouslySetInnerHTML="{{ ctaIcon }}"></span>
+        {{ ctaLabel }}
+      </button>
+    </div>
+  </div>
+
+  <!-- ===== PHOTO LIGHTBOX ===== -->
+  <sc-if value="{{ lightboxOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeLightbox }}" style="position:absolute;inset:0;z-index:60;background:rgba(16,14,40,.78);display:flex;align-items:center;justify-content:center;padding:48px;cursor:zoom-out">
+      <div style="width:920px;max-width:100%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 32px 80px -16px rgba(0,0,0,.5)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #eeece6">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:#202058">Before / after &middot; {{ lightboxLabel }}</span>
+          </div>
+          <button onClick="{{ closeLightbox }}" style="width:30px;height:30px;border:1px solid #e7e4de;background:#fff;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280" style-hover="background:#f3f1ec;color:#202058"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+        <div style="display:flex;gap:2px;background:#eeece6">
+          <div style="flex:1;background:#fff;padding:16px">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:11px"><span style="width:6px;height:6px;border-radius:50%;background:#6b7280"></span><span style="font-size:12px;font-weight:700;color:#26235a">Dispatch</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af">Jul 15</span></div>
+            <div style="aspect-ratio:4/3;border-radius:12px;background:linear-gradient(135deg,#e9e6df,#cfcbc2);border:1px solid #d9d6cf;display:flex;align-items:center;justify-content:center;color:#a8a496"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+          </div>
+          <div style="flex:1;background:#fff;padding:16px">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:11px"><span style="width:6px;height:6px;border-radius:50%;background:#4f46e5"></span><span style="font-size:12px;font-weight:700;color:#26235a">Return</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af">Jul 28</span></div>
+            <div style="position:relative;aspect-ratio:4/3;border-radius:12px;background:linear-gradient(135deg,#e9e6df,#cfcbc2);border:1px solid {{ lightboxReturnBorder }};display:flex;align-items:center;justify-content:center;color:#a8a496">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <sc-if value="{{ lightboxFlag }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;background:#dc2626;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.05em;color:#fff">DAMAGE VISIBLE</div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1320},&quot;scenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;standard&quot;,&quot;damage_found&quot;,&quot;escalation&quot;],&quot;default&quot;:&quot;standard&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Scenario&quot;},&quot;itemMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;single&quot;,&quot;multi&quot;],&quot;default&quot;:&quot;single&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Scenario&quot;}}">
+class Component extends DCLogic {
+  // Local state holds ONLY user overrides (null = follow scenario default).
+  state = {
+    scenarioSeen: null,
+    housing: null, power: null, light: null,
+    acc: {}, // per-key overrides
+    test: null,
+    overallOverride: null,
+    resolution: null,
+    forfeitOverride: null,
+    added: 0,
+    lightbox: null, // { label, flag }
+  };
+
+  ACC_COST = { power_cable: 300, softbox: 1500, carry_case: 500, extra_battery: 1800 };
+  ACC_LABEL = { power_cable: 'Power cable', softbox: 'Softbox diffuser', carry_case: 'Carry case', extra_battery: 'Extra battery' };
+
+  scenarioBase(sc) {
+    if (sc === 'damage_found') return {
+      housing: 'major', power: 'pass', light: 'pass',
+      acc: { power_cable: 'yes', softbox: 'yes', carry_case: 'yes', extra_battery: 'yes' },
+      test: 'recorded', resolution: 'route_damage' };
+    if (sc === 'escalation') return {
+      housing: 'broken', power: 'dead', light: 'reduced',
+      acc: { power_cable: 'yes', softbox: 'damaged', carry_case: 'no', extra_battery: 'yes' },
+      test: 'defer', resolution: 'escalate' };
+    return {
+      housing: 'pass', power: 'pass', light: 'pass',
+      acc: { power_cable: 'yes', softbox: 'yes', carry_case: 'no', extra_battery: 'yes' },
+      test: 'recorded', resolution: 'standard' };
+  }
+
+  radioDot(active, color) {
+    color = color || '#4f46e5';
+    return { __html: active ? `<span style="display:block;width:8px;height:8px;border-radius:50%;background:${color}"></span>` : '' };
+  }
+  smallDot(active, color) {
+    color = color || '#4f46e5';
+    return { __html: active ? `<span style="display:block;width:6px;height:6px;border-radius:50%;background:${color}"></span>` : '' };
+  }
+  fmt(n) { return n.toLocaleString('en-IN'); }
+
+  // severity for a component value: 'ok' | 'warn' | 'fail'
+  sev(group, v) {
+    if (group === 'housing') return v === 'pass' ? 'ok' : v === 'cosmetic' ? 'warn' : 'fail';
+    if (group === 'power') return v === 'pass' ? 'ok' : v === 'issues' ? 'warn' : 'fail';
+    if (group === 'light') return v === 'pass' ? 'ok' : v === 'reduced' ? 'warn' : 'fail';
+    return 'ok';
+  }
+
+  renderVals() {
+    const s = this.state;
+    const TONE = {
+      success: '#059669', warn: '#d97706', danger: '#dc2626', neutral: '#6b7280',
+    };
+    // Effective values = scenario default, overridden by any user edits.
+    const sc = this.props.scenario ?? 'standard';
+    const base = this.scenarioBase(sc);
+    const eff = {
+      housing: s.housing ?? base.housing,
+      power: s.power ?? base.power,
+      light: s.light ?? base.light,
+      test: s.test ?? base.test,
+      resolution: s.resolution ?? base.resolution,
+      acc: { ...base.acc, ...s.acc },
+    };
+
+    // ---------- multi-item bar ----------
+    const isMulti = (this.props.itemMode ?? 'single') === 'multi';
+    const itemsMeta = [
+      { name: 'Nanlite FS 300', status: 'current' },
+      { name: 'Sony 24-70mm', status: 'todo' },
+      { name: 'Manfrotto tripod', status: 'todo' },
+    ];
+    const itemBar = itemsMeta.map(it => {
+      const cur = it.status === 'current';
+      return {
+        name: it.name,
+        border: cur ? '#c7d2fe' : '#eeece6',
+        bg: cur ? '#eef2ff' : '#fff',
+        ring: cur ? '#4f46e5' : '#d7d3ca',
+        fill: cur ? '#4f46e5' : '#fff',
+        numColor: cur ? '#fff' : '#9ca3af',
+        mark: { __html: cur ? '1' : (it === itemsMeta[1] ? '2' : '3') },
+        color: cur ? '#202058' : '#9ca3af',
+        weight: cur ? '700' : '500',
+      };
+    });
+
+    // ---------- photos ----------
+    const returnDamaged = eff.housing !== 'pass' || eff.power !== 'pass' || eff.light !== 'pass';
+    const openLb = (label, flag) => () => this.setState({ lightbox: { label, flag } });
+    const dispatchPhotos = [
+      { label: 'Front', open: openLb('Front', false) },
+      { label: 'Side', open: openLb('Side', false) },
+      { label: 'Accessories', open: openLb('Accessories', false) },
+    ];
+    const returnPhotos = [
+      { label: 'Front', flag: returnDamaged, border: returnDamaged ? '#fbcaca' : '#d9d6cf', open: openLb('Front', returnDamaged) },
+      { label: 'Side', flag: false, border: '#d9d6cf', open: openLb('Side', false) },
+      { label: 'Accessories', flag: false, border: '#d9d6cf', open: openLb('Accessories', false) },
+    ];
+
+    // ---------- checklist groups ----------
+    const groupDefs = [
+      { key: 'housing', title: 'Housing & Body', opts: [
+        ['pass', 'Pass — No damage', 'success'],
+        ['cosmetic', 'Cosmetic scratches (minor)', 'warn'],
+        ['major', 'Dents or cracks (major)', 'danger'],
+        ['broken', 'Broken parts', 'danger'],
+      ]},
+      { key: 'power', title: 'Power & Functions', opts: [
+        ['pass', 'Pass — Powers on, all buttons work', 'success'],
+        ['issues', 'Powers on but issues', 'warn'],
+        ['dead', "Doesn't power on", 'danger'],
+      ]},
+      { key: 'light', title: 'Light Output', opts: [
+        ['pass', 'Pass — Full brightness range', 'success'],
+        ['reduced', 'Reduced output', 'warn'],
+        ['dead', "Doesn't produce light", 'danger'],
+      ]},
+    ];
+    const checklist = groupDefs.map(g => ({
+      title: g.title,
+      options: g.opts.map(([v, label, tone]) => {
+        const on = eff[g.key] === v;
+        const c = on ? TONE[tone] : '#6b7280';
+        return {
+          label,
+          pick: () => this.setState({ [g.key]: v, overallOverride: null, forfeitOverride: null }),
+          ring: on ? TONE[tone] : '#cfcbc2',
+          dot: this.radioDot(on, TONE[tone]),
+          color: c, weight: on ? '600' : '400',
+        };
+      }),
+    }));
+
+    // ---------- accessories ----------
+    const accKeys = ['power_cable', 'softbox', 'carry_case', 'extra_battery'];
+    const segDefs = [['yes', 'Yes', 'success'], ['no', 'No', 'danger'], ['damaged', 'Damaged', 'warn']];
+    const accessories = accKeys.map(k => ({
+      label: this.ACC_LABEL[k],
+      segs: segDefs.map(([v, label, tone]) => {
+        const on = eff.acc[k] === v;
+        return {
+          label,
+          pick: () => this.setState(p => ({ acc: { ...p.acc, [k]: v }, overallOverride: null, forfeitOverride: null })),
+          border: on ? TONE[tone] : '#e2dfd8',
+          bg: on ? (tone === 'success' ? '#ecfdf5' : tone === 'danger' ? '#fef2f2' : '#fffbeb') : '#fff',
+          color: on ? TONE[tone] : '#6b7280',
+          weight: on ? '600' : '500',
+          ring: on ? TONE[tone] : '#cfcbc2',
+          dot: this.smallDot(on, TONE[tone]),
+        };
+      }),
+    }));
+
+    // ---------- test result ----------
+    const testDefs = [
+      ['recorded', 'Recorded test clip — all works'],
+      ['defer', 'Cannot test on-site (defer to workshop)'],
+    ];
+    const testOptions = testDefs.map(([v, label]) => {
+      const on = eff.test === v;
+      return {
+        label,
+        pick: () => this.setState({ test: v, overallOverride: null }),
+        ring: on ? '#4f46e5' : '#cfcbc2',
+        dot: this.radioDot(on),
+        color: on ? '#202058' : '#6b7280', weight: on ? '600' : '400',
+      };
+    });
+
+    // ---------- findings (auto) ----------
+    const iconFor = (sv) => {
+      if (sv === 'ok') return { __html: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>` };
+      if (sv === 'warn') return { __html: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>` };
+      return { __html: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>` };
+    };
+    const iconBgFor = (sv) => sv === 'ok' ? '#059669' : sv === 'warn' ? '#d97706' : '#dc2626';
+    const statusColorFor = (sv) => sv === 'ok' ? '#059669' : sv === 'warn' ? '#b45309' : '#dc2626';
+
+    // accessories aggregate
+    const badAcc = accKeys.filter(k => eff.acc[k] !== 'yes');
+    const accDamaged = accKeys.some(k => eff.acc[k] === 'damaged');
+    let accSev = 'ok', accStatus = 'All returned';
+    if (badAcc.length) {
+      accSev = accDamaged ? 'warn' : 'warn';
+      const parts = badAcc.map(k => `${this.ACC_LABEL[k]} ${eff.acc[k] === 'no' ? 'missing' : 'damaged'}`);
+      accStatus = parts.join(', ');
+    }
+    const testSev = eff.test === 'defer' ? 'warn' : 'ok';
+
+    const findingDefs = [
+      { label: 'Housing & Body', sv: this.sev('housing', eff.housing), status: { ok: 'Pass', warn: 'Cosmetic', fail: eff.housing === 'broken' ? 'Broken parts' : 'Major damage' }[this.sev('housing', eff.housing)] },
+      { label: 'Power & Functions', sv: this.sev('power', eff.power), status: { ok: 'Pass', warn: 'Minor issue', fail: 'Fault' }[this.sev('power', eff.power)] },
+      { label: 'Light Output', sv: this.sev('light', eff.light), status: { ok: 'Pass', warn: 'Reduced', fail: 'No output' }[this.sev('light', eff.light)] },
+      { label: 'Accessories', sv: accSev, status: accStatus },
+      { label: 'Live footage test', sv: testSev, status: testSev === 'ok' ? 'Recorded — works' : 'Deferred to workshop' },
+    ];
+    const findings = findingDefs.map((f, i) => ({
+      label: f.label, status: f.status,
+      icon: iconFor(f.sv), iconBg: iconBgFor(f.sv), statusColor: statusColorFor(f.sv),
+      divider: i === 0 ? 'transparent' : '#f1efe9',
+      bg: f.sv === 'fail' ? '#fef6f6' : f.sv === 'warn' ? '#fefaf2' : '#fff',
+    }));
+
+    // overall suggestion
+    const anyFail = findingDefs.some(f => f.sv === 'fail');
+    const anyWarn = findingDefs.some(f => f.sv === 'warn');
+    const suggested = anyFail ? 'fail_damage' : 'pass_minor';
+    const overall = s.overallOverride || suggested;
+
+    const overallDefs = [
+      ['pass_minor', anyWarn ? 'Pass — minor issue' : 'Pass — no issues'],
+      ['pass_adjustment', 'Pass with adjustment (deposit forfeit)'],
+      ['fail_damage', 'Fail — Damage incident required'],
+    ];
+    const overallOptions = overallDefs.map(([v, label]) => {
+      const on = overall === v;
+      const color = v === 'fail_damage' ? (on ? '#dc2626' : '#6b7280') : (on ? '#202058' : '#6b7280');
+      const ring = v === 'fail_damage' ? (on ? '#dc2626' : '#cfcbc2') : (on ? '#4f46e5' : '#cfcbc2');
+      const dotColor = v === 'fail_damage' ? '#dc2626' : '#4f46e5';
+      return {
+        label,
+        pick: () => this.setState({ overallOverride: v }),
+        ring, dot: this.radioDot(on, dotColor), color, weight: on ? '600' : '400',
+        suggested: v === suggested,
+      };
+    });
+
+    // ---------- forfeit ----------
+    let computedForfeit = 0;
+    const reasons = [];
+    accKeys.forEach(k => {
+      if (eff.acc[k] !== 'yes') { computedForfeit += this.ACC_COST[k]; reasons.push(`${this.ACC_LABEL[k]} ${eff.acc[k] === 'no' ? 'missing' : 'damaged'} = ₹${this.fmt(this.ACC_COST[k])} replacement`); }
+    });
+    if (eff.housing === 'cosmetic') { computedForfeit += 1000; reasons.push('Cosmetic wear = ₹1,000'); }
+    const forfeit = s.forfeitOverride != null ? s.forfeitOverride : computedForfeit;
+    const release = Math.max(0, 25000 - forfeit);
+    const hasForfeit = forfeit > 0;
+
+    // ---------- resolution paths ----------
+    const resDefs = [
+      { id: 'standard', title: 'Standard release (with minor adjustments)', badge: 'Within staff authority', badgeTone: 'success',
+        lines: [ hasForfeit ? `Forfeit ₹${this.fmt(forfeit)}, release ₹${this.fmt(release)} to customer` : `Release full ₹25,000 to customer`, 'Item status: Ready for next rental' ] },
+      { id: 'route_damage', title: 'Route to Damage Incident Modal', badge: 'Full documentation', badgeTone: 'danger',
+        lines: [ 'For major damage requiring investigation', 'Opens Damage Incident pre-filled · item goes to hold' ] },
+      { id: 'maintenance', title: 'Route to Maintenance', badge: null,
+        lines: [ 'Functional but needs cleaning / service', 'Full deposit release · item to maintenance queue' ] },
+      { id: 'escalate', title: 'Escalate to owner', badge: 'Beyond staff authority', badgeTone: 'warn',
+        lines: [ 'Complex case for owner review', 'Deposit remains held until reviewed' ] },
+    ];
+    const resolutions = resDefs.map(r => {
+      const on = eff.resolution === r.id;
+      const badgeMap = {
+        success: { badgeBg: '#ecfdf5', badgeBorder: '#a7f3d0', badgeColor: '#059669' },
+        danger: { badgeBg: '#fef2f2', badgeBorder: '#fbcaca', badgeColor: '#dc2626' },
+        warn: { badgeBg: '#fffbeb', badgeBorder: '#fcd9a4', badgeColor: '#d97706' },
+      };
+      const bm = badgeMap[r.badgeTone] || badgeMap.success;
+      return {
+        pick: () => this.setState({ resolution: r.id }),
+        border: on ? '#4f46e5' : '#e6e3dc',
+        bg: on ? '#f5f5ff' : '#fff',
+        ring: on ? '#4f46e5' : '#cfcbc2',
+        dot: this.radioDot(on),
+        title: r.title, titleColor: on ? '#202058' : '#4b4b63',
+        hasBadge: !!r.badge, badge: r.badge || '',
+        badgeBg: bm.badgeBg, badgeBorder: bm.badgeBorder, badgeColor: bm.badgeColor,
+        lines: r.lines.map(text => ({ text })),
+      };
+    });
+
+    // ---------- damage pre-fill ----------
+    const showDamagePrefill = eff.resolution === 'route_damage';
+    const sevLabel = anyFail ? (eff.housing === 'broken' || eff.power === 'dead' ? 'Total loss / Catastrophic' : 'Major') : 'Minor';
+    const compType = eff.power === 'dead' || eff.light === 'dead' ? 'Operational failure' : eff.housing !== 'pass' ? 'Impact / drop damage' : 'Wear & tear dispute';
+    const prefillRows = [
+      { k: 'Item', v: 'Nanlite FS 300 · NNL-FS-300-001' },
+      { k: 'Incident type', v: compType },
+      { k: 'Severity', v: sevLabel },
+      { k: 'Photos carried over', v: `${3 + s.added} on file` },
+    ];
+
+    // ---------- CTA ----------
+    let ctaLabel = 'Complete Inspection', ctaBg = '#4f46e5', ctaShadow = 'rgba(79,70,229,.3)', ctaHover = 'background:#4338ca';
+    let ctaIconHtml = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+    if (eff.resolution === 'route_damage') {
+      ctaLabel = 'Send to Damage Flow'; ctaBg = '#dc2626'; ctaShadow = 'rgba(220,38,38,.3)'; ctaHover = 'background:#b91c1c';
+      ctaIconHtml = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
+    } else if (eff.resolution === 'maintenance') {
+      ctaLabel = 'Create Maintenance Ticket';
+      ctaIconHtml = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2-2 2.6-2.6z"/></svg>`;
+    } else if (eff.resolution === 'escalate') {
+      ctaLabel = 'Escalate to Owner'; ctaBg = '#d97706'; ctaShadow = 'rgba(217,119,6,.3)'; ctaHover = 'background:#b45309';
+      ctaIconHtml = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`;
+    }
+
+    return {
+      noop: () => {},
+      isMulti, isSingle: !isMulti, itemBar,
+      dispatchPhotos, returnPhotos,
+      addedCount: s.added,
+      addPhoto: () => this.setState(p => ({ added: p.added + 1 })),
+      checklist, accessories, testOptions,
+      findings, overallOptions,
+      hasForfeit, forfeitReason: reasons.join(' · '),
+      forfeitText: this.fmt(forfeit), releaseText: this.fmt(release),
+      forfeitColor: hasForfeit ? '#d97706' : '#6b7280',
+      forfeitUp: () => this.setState(p => ({ forfeitOverride: (p.forfeitOverride != null ? p.forfeitOverride : computedForfeit) + 100 })),
+      forfeitDown: () => this.setState(p => ({ forfeitOverride: Math.max(0, (p.forfeitOverride != null ? p.forfeitOverride : computedForfeit) - 100) })),
+      depositBg: anyFail ? '#fef6f6' : hasForfeit ? 'rgba(217,119,6,.045)' : '#f6faf7',
+      depositLabelColor: anyFail ? '#b91c1c' : hasForfeit ? '#b45309' : '#047857',
+      resolutions, showDamagePrefill, prefillRows,
+      footerNote: isMulti ? 'Item 1 of 3' : 'Return #01 · single item',
+      ctaLabel, ctaBg, ctaShadow, ctaHover, ctaIcon: { __html: ctaIconHtml },
+      lightboxOpen: !!s.lightbox,
+      lightboxLabel: s.lightbox ? s.lightbox.label : '',
+      lightboxFlag: s.lightbox ? s.lightbox.flag : false,
+      lightboxReturnBorder: s.lightbox && s.lightbox.flag ? '#fbcaca' : '#d9d6cf',
+      closeLightbox: () => this.setState({ lightbox: null }),
+    };
+  }
+}
+</script>
+</body>
+</html>
