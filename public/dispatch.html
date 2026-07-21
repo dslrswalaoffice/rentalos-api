@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#202058">
+<title>Dispatch · RentalOS</title>
+<link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f46e5'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ED%3C/text%3E%3C/svg%3E">
+<!--
+  /dispatch.html — Slice 4 Session 1. Structured dispatch/handover flow.
+  Visual language: docs/design-substrate/sprint-1/dispatch_ui_dc.html (3-phase
+  Prepare -> Handover -> Confirm). Session 1 ships Phase 2 · Section A (Recipient)
+  fully functional; the rest render as "Coming in Session 2" placeholders.
+  Rail + canonical top-bar via /_lib/shell.js (renderShell('orders', {topbar:true})).
+-->
+<style>
+  :root{
+    --page:#efece6; --card:#fff; --ink:#202058; --head:#26235a; --line:#e7e4de; --line2:#f2f0eb;
+    --muted:#6b7280; --muted2:#9ca3af; --field:#faf9f6; --rail:#faf9f7; --disp:'Space Grotesk',system-ui,sans-serif;
+    --body:'Manrope',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+    --indigo:#4f46e5; --indigo-hover:#4338ca; --indigo-soft:#eef2ff; --indigo-border:#c7d2fe;
+    --amber:#d97706; --amber-soft:#fffbeb; --amber-border:#fcd9a4; --green:#059669; --green-soft:#ecfdf5; --green-border:#a7f3d0;
+    --danger:#dc2626;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--page);font-family:var(--body);color:var(--ink);-webkit-font-smoothing:antialiased}
+  a{color:var(--indigo);text-decoration:none}
+  .shell{display:flex;min-height:100vh}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+
+  /* progress header */
+  .phasebar{background:#fff;border-bottom:1px solid var(--line);padding:18px 26px 20px;position:sticky;top:60px;z-index:30;box-shadow:0 4px 14px rgba(32,32,88,.03)}
+  .phasebar-top{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:var(--indigo-soft);border:1px solid var(--indigo-border)}
+  .pill .d{width:7px;height:7px;border-radius:50%;background:var(--indigo);box-shadow:0 0 0 3px rgba(79,70,229,.18)}
+  .pill span{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.11em;color:var(--indigo)}
+  .cust{margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px;color:#4b4b63}
+  .cust .name{font-family:var(--disp);font-weight:600;font-size:16px;color:var(--ink)}
+  .phase-label{text-align:right;flex:none}
+  .phase-label .k{font-family:var(--mono);font-size:11px;color:var(--muted2);margin-bottom:2px}
+  .phase-label .v{font-family:var(--disp);font-size:22px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+  .phases{margin-top:18px;display:flex;align-items:center}
+  .phase{display:flex;flex-direction:column;align-items:center;gap:8px;flex:none;width:120px}
+  .phase .node{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:15px}
+  .phase.cur .node{width:40px;height:40px;background:var(--indigo);color:#fff}
+  .phase.up .node{background:#fff;border:2px solid #d7d3ca;color:#b6b1a6}
+  .phase .n{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.1em}
+  .phase .l{font-family:var(--disp);font-size:13px;font-weight:600;white-space:nowrap}
+  .phase.cur .n{color:var(--indigo)} .phase.cur .l{color:var(--ink)}
+  .phase.up .n,.phase.up .l{color:var(--muted2)}
+  .conn{flex:1;height:3px;border-radius:2px;margin:0 4px 34px;background:#e0dccf}
+
+  /* body */
+  .body{flex:1;padding:24px 26px 120px;max-width:780px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .card.active{border:1.5px solid var(--indigo-border);box-shadow:0 0 0 4px rgba(79,70,229,.05)}
+  .sec-label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-bottom:14px}
+  .req{color:var(--danger)}
+  .opt{font-size:12px;font-weight:600;color:var(--muted2);background:var(--line2);padding:2px 8px;border-radius:10px}
+  .choice{border-radius:11px;border:1.5px solid var(--line);background:#fff;padding:14px 15px;cursor:pointer;transition:border-color .12s,background .12s}
+  .choice.on{border-color:var(--indigo);background:#f5f5ff}
+  .choice-row{display:flex;align-items:center;gap:11px}
+  .radio{width:19px;height:19px;flex:none;border-radius:50%;border:2px solid #cfcbc2;display:flex;align-items:center;justify-content:center}
+  .choice.on .radio{border-color:var(--indigo)}
+  .radio .dot{width:8px;height:8px;border-radius:50%;background:var(--indigo);display:none}
+  .choice.on .radio .dot{display:block}
+  .choice .t{font-size:14px;font-weight:600;color:var(--ink)}
+  .choice .s{font-size:13px;color:var(--muted)}
+  .delegate{margin-top:14px;margin-left:30px;display:flex;flex-direction:column;gap:13px}
+  .frow{display:flex;gap:12px;flex-wrap:wrap}
+  .field{flex:1;min-width:200px}
+  .field .lbl{font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:6px}
+  input,select{width:100%;height:40px;padding:0 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:var(--body);font-size:13.5px;color:var(--head);background:#fff;outline:none}
+  input:focus,select:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+  .drop{height:74px;border-radius:10px;border:1.5px dashed #cfcbc2;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted2);cursor:pointer;background:var(--field);font-size:12px;font-weight:600}
+  .drop.has{border-style:solid;border-color:var(--green-border);background:var(--green-soft);color:var(--green)}
+  .warn{display:flex;gap:10px;padding:12px 14px;border-radius:10px;background:var(--amber-soft);border:1px solid var(--amber-border);font-size:12.5px;color:#92400e;line-height:1.5}
+  .soon{opacity:.85}
+  .soon .badge{display:inline-block;font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.08em;color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-border);padding:2px 8px;border-radius:6px;margin-left:8px}
+  .soon .msg{margin-top:8px;font-size:12.5px;color:var(--muted);line-height:1.5}
+  .done{display:flex;align-items:center;gap:8px;color:var(--green);font-size:12.5px;font-weight:600}
+
+  /* footer */
+  .footer{position:sticky;bottom:0;z-index:20;background:#fbfaf7;border-top:1px solid #e7e1d6;padding:15px 26px;display:flex;align-items:center;gap:16px;box-shadow:0 -4px 16px rgba(32,32,88,.05)}
+  .btn{border:none;cursor:pointer;font-family:var(--body);font-weight:700;font-size:14px;padding:12px 22px;border-radius:10px}
+  .btn.primary{background:var(--indigo);color:#fff;box-shadow:0 2px 8px rgba(79,70,229,.28)}
+  .btn.primary:hover{background:var(--indigo-hover)}
+  .btn.primary:disabled{background:#e5e1d8;color:#a8a496;cursor:not-allowed;box-shadow:none}
+  .btn.ghost{background:#fff;color:var(--muted);border:1px solid var(--line)}
+  .btn.ghost:hover{border-color:var(--ink);color:var(--ink)}
+  .loading{padding:60px;text-align:center;color:var(--muted2);font-family:var(--mono);font-size:13px}
+  .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--head);color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;box-shadow:0 8px 24px rgba(32,32,88,.24);z-index:200;opacity:0;transition:opacity .2s}
+  .toast.show{opacity:1}
+  .toast.ok{background:var(--green)} .toast.err{background:var(--danger)}
+</style>
+</head>
+<body>
+<!-- Rail + canonical top-bar injected by /_lib/shell.js (renderShell('orders', {topbar:true, breadcrumb})). -->
+<div class="shell">
+  <main class="main">
+    <div class="phasebar" id="phasebar" style="display:none"></div>
+    <div class="body" id="body"><div class="loading">Loading dispatch…</div></div>
+    <div class="footer" id="footer" style="display:none">
+      <a class="btn ghost" id="back" href="#">‹ Back to Order</a>
+      <div style="margin-left:auto"></div>
+      <button class="btn primary" id="save" disabled>Save recipient</button>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { api, ensureAuth } from '/_lib/api.js';
+import { renderShell } from '/_lib/shell.js?v=6';
+
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const $ = (id) => document.getElementById(id);
+function toast(msg, kind){ const t=$('toast'); t.textContent=msg; t.className='toast show'+(kind?' '+kind:''); setTimeout(()=>{t.className='toast'+(kind?' '+kind:'');},2600); }
+
+renderShell('orders', { topbar: true, breadcrumb: '<a href="/orders.html" style="color:inherit;text-decoration:none">Orders</a> &rsaquo; Dispatch' });
+
+const S = { id:null, d:null, policy:null, pickup:'customer', idProofUrl:null };
+
+const PHASES = [
+  { n:1, label:'Prepare', state:'up' },
+  { n:2, label:'Handover', state:'cur' },
+  { n:3, label:'Confirm', state:'up' },
+];
+
+function renderPhasebar(){
+  const d=S.d;
+  $('phasebar').style.display='block';
+  const nodes = PHASES.map((p,i)=>{
+    const cls = p.state==='cur' ? 'cur' : 'up';
+    const conn = i<2 ? '<div class="conn"></div>' : '';
+    return `<div class="phase ${cls}"><div class="node">${p.n}</div>`
+      + `<div style="text-align:center;line-height:1.2"><div class="n">PHASE ${p.n}</div><div class="l">${p.label}</div></div></div>${conn}`;
+  }).join('');
+  $('phasebar').innerHTML =
+    `<div class="phasebar-top">
+       <div style="flex:1;min-width:0">
+         <span class="pill"><span class="d"></span><span>DISPATCH &mdash; ORDER #${esc(d.order_number)}</span></span>
+         <div class="cust"><span class="name">${esc(d.customer_name||'Customer')}</span>
+           <span style="color:#cfc9bd">&middot;</span><span style="font-family:var(--mono);font-size:12px">${esc(d.dispatch_number||'')}</span></div>
+       </div>
+       <div class="phase-label"><div class="k">PHASE <span style="color:var(--indigo);font-weight:700">2 of 3</span></div><div class="v">Handover</div></div>
+     </div>
+     <div class="phases">${nodes}</div>`;
+}
+
+function renderBody(){
+  const d=S.d, del=S.pickup==='delegate';
+  const idRequired = !!(S.policy && S.policy.delegate_requires_id_proof);
+  const REL = [['assistant','Assistant'],['driver','Driver'],['family','Family'],['colleague','Colleague'],['other','Other']];
+  const done = d.status==='handover' || d.status==='confirmed' || d.status==='completed';
+
+  const sectionA = `
+    <div class="card active" id="sec-a">
+      <div class="sec-label">A &middot; Who is picking up? <span class="req">*</span></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="choice ${S.pickup==='customer'?'on':''}" data-pick="customer">
+          <div class="choice-row"><span class="radio"><span class="dot"></span></span>
+            <span class="t">Customer</span><span class="s">(${esc(d.customer_name||'on file')})</span></div>
+        </div>
+        <div class="choice ${del?'on':''}" data-pick="delegate">
+          <div class="choice-row"><span class="radio"><span class="dot"></span></span>
+            <span class="t">Delegate</span><span class="s">someone on the customer's behalf</span></div>
+          ${del ? `
+          <div class="delegate">
+            <div class="frow">
+              <div class="field"><div class="lbl">Delegate name <span class="req">*</span></div><input id="del-name" placeholder="Full name" value="${esc(d.delegate_name||'')}"></div>
+              <div class="field"><div class="lbl">Delegate phone <span class="req">*</span></div><input id="del-phone" placeholder="+91" value="${esc(d.delegate_phone||'')}"></div>
+            </div>
+            <div class="frow">
+              <div class="field"><div class="lbl">Relationship</div><select id="del-rel">${REL.map(([v,l])=>`<option value="${v}" ${d.delegate_relationship===v?'selected':''}>${l}</option>`).join('')}</select></div>
+              <div class="field"><div class="lbl">ID proof ${idRequired?'<span class="req">*</span>':'<span class="opt">optional</span>'}</div>
+                <label class="drop ${S.idProofUrl?'has':''}" id="id-drop">${S.idProofUrl?'✓ ID captured':'Upload / capture'}<input type="file" accept="image/*" id="id-file" style="display:none"></label></div>
+            </div>
+            <div class="warn">Delegate pickup requires customer approval. In Session 2 the OTP is sent to the <strong>customer's</strong> phone, not the delegate's.</div>
+          </div>` : ''}
+        </div>
+      </div>
+      ${done ? '<div style="margin-top:12px" class="done">✓ Recipient recorded</div>' : ''}
+    </div>`;
+
+  const placeholders = [
+    ['B','OTP verification'],['C','Handover condition photos'],['D','Customer signature'],['E','Deposit collection'],
+  ].map(([k,t])=>`<div class="card soon"><div class="sec-label">${k} &middot; ${t} <span class="badge">SESSION 2</span></div>
+      <div class="msg">Coming in the Session 2 handoff — this step captures once the full 6-step flow lands.</div></div>`).join('');
+
+  $('body').innerHTML = sectionA + placeholders;
+  $('footer').style.display='flex';
+  $('save').disabled = false;
+}
+
+function wireBody(){
+  $('body').addEventListener('click',(e)=>{
+    const pick=e.target.closest('[data-pick]');
+    if(pick){ S.pickup=pick.getAttribute('data-pick'); renderBody(); return; }
+  });
+  $('body').addEventListener('change',(e)=>{
+    if(e.target.id==='id-file'){
+      const f=e.target.files&&e.target.files[0]; if(!f)return;
+      const r=new FileReader(); r.onload=()=>{ S.idProofUrl=r.result; renderBody(); }; r.readAsDataURL(f);
+    }
+  });
+}
+
+async function save(){
+  const btn=$('save'); btn.disabled=true; btn.textContent='Saving…';
+  const payload={ recipient_type:S.pickup };
+  if(S.pickup==='delegate'){
+    payload.delegate_name=($('del-name')||{}).value||'';
+    payload.delegate_phone=($('del-phone')||{}).value||'';
+    payload.delegate_relationship=($('del-rel')||{}).value||'other';
+    if(S.idProofUrl)payload.delegate_id_proof_url=S.idProofUrl;
+    if(!payload.delegate_name||!payload.delegate_phone){ toast('Delegate name and phone are required','err'); btn.disabled=false; btn.textContent='Save recipient'; return; }
+  }
+  try{
+    const r=await api.post('/api/dispatches/'+S.id+'/recipient', payload);
+    S.d=r.dispatch||S.d;
+    toast('Recipient recorded — Section B unlocks in Session 2','ok');
+    renderPhasebar(); renderBody();
+    btn.textContent='Saved ✓';
+  }catch(err){
+    toast('Could not save: '+((err.body&&err.body.error&&err.body.error.message)||err.message||'error'),'err');
+    btn.disabled=false; btn.textContent='Save recipient';
+  }
+}
+
+(async function boot(){
+  await ensureAuth();
+  const qs=new URLSearchParams(location.search);
+  S.id=qs.get('dispatch_id')||qs.get('id');
+  if(!S.id){ $('body').innerHTML='<div class="loading">Missing dispatch_id.</div>'; return; }
+  let res;
+  try{ res=await api.get('/api/dispatches/'+S.id); }
+  catch(err){ $('body').innerHTML='<div class="loading">Dispatch not found.</div>'; return; }
+  S.d=res.dispatch; S.policy=res.policy; S.pickup=S.d.recipient_type||'customer';
+  const crumb=document.querySelector('.topbar .tb-crumb');
+  if(crumb)crumb.innerHTML='<a href="/orders.html" style="color:inherit;text-decoration:none">Orders</a> &rsaquo; '
+    +'<a href="/order-360.html?id='+esc(S.d.order_id)+'" style="color:inherit;text-decoration:none">#'+esc(S.d.order_number)+'</a> &rsaquo; Dispatch';
+  $('back').href='/order-360.html?id='+esc(S.d.order_id);
+  renderPhasebar(); renderBody(); wireBody();
+  $('save').addEventListener('click',save);
+})();
+</script>
+</body>
+</html>

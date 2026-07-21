@@ -27,6 +27,7 @@ import { approvals } from './routes/approvals.js';
 import { standbys } from './routes/standbys.js';
 import { substitutions } from './routes/substitutions.js';
 import { damageIncidents } from './routes/damage.js';
+import { dispatches } from './routes/dispatches.js';
 // quoteVersions is folded into the orders router (src/routes/orders.ts), not
 // mounted here — see the note by the /api/orders mount below (Bug A, PR #80).
 import { publicQuotes } from './routes/public_quotes.js';
@@ -94,6 +95,10 @@ app.route('/api/standbys', standbys);
 // their own session + idempotency middleware safely.
 app.route('/api/substitutions', substitutions);
 app.route('/api/damage-incidents', damageIncidents);
+// Slice 4 — id-scoped dispatch capture (/api/dispatches/:dispatchId/...). The
+// order-scoped POST /api/orders/:orderId/dispatches is FOLDED into the orders
+// router (see orders.ts). Distinct prefix → own session + idempotency middleware.
+app.route('/api/dispatches', dispatches);
 // Quote-version routes (/api/orders/:id/quote-versions) are folded INTO the
 // orders router (see src/routes/orders.ts → `orders.route('/', quoteVersions)`),
 // NOT mounted here. A second `app.route('/api/orders', quoteVersions)` made the
