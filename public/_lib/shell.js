@@ -31,6 +31,9 @@
 // 8 modules, new terminology (Constitution §6 / Gate 9). `href: null` marks a
 // module whose page doesn't exist yet — rendered as a disabled Item-12 "coming
 // soon" action rather than a dead link. System is pinned to the bottom.
+// The user menu (avatar dropdown) reuses the shared data layer — no new dep.
+import { api, ensureAuth } from './api.js';
+
 const NAV_TOP = [
   { key: 'dashboard', label: 'Dashboard', href: '/dashboard.html',
     icon: '<rect x="3" y="3" width="6" height="6" rx="1.2"/><rect x="11" y="3" width="6" height="6" rx="1.2"/><rect x="3" y="11" width="6" height="6" rx="1.2"/><rect x="11" y="11" width="6" height="6" rx="1.2"/>' },
@@ -83,9 +86,58 @@ function topbarHTML() {
     </div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
       <button class="iconbtn" aria-label="Notifications"><svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5a5 5 0 0 0-5 5c0 4-1.5 5.5-1.5 5.5h13S15 11.5 15 7.5a5 5 0 0 0-5-5z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg></button>
-      <span class="avatar-sm" id="me-initials">··</span>
+      <div class="shell-user">
+        <button class="avatar-sm" id="me-initials" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">··</button>
+        <div class="shell-user-menu" id="shell-user-menu" role="menu" hidden>
+          <div class="shell-user-head">
+            <span class="shell-user-name" id="shell-user-name">…</span>
+            <span class="shell-user-role" id="shell-user-role"></span>
+          </div>
+          <a class="shell-user-item" role="menuitem" href="/settings.html">System settings</a>
+          <button class="shell-user-item" role="menuitem" id="shell-signout" type="button">Sign out</button>
+        </div>
+      </div>
     </div>
   </header>`;
+}
+
+// Tiny initials helper for the avatar (name → up to 2 letters).
+function initials(name) {
+  const p = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return p.length ? (p[0][0] + (p[1] ? p[1][0] : '')).toUpperCase() : '··';
+}
+
+// Wire the top-bar avatar dropdown: toggle on click, close on outside-click/Esc,
+// lazy-load name/role on first open (no fetch until the user actually opens it),
+// Sign out → POST /api/auth/logout then back to the sign-in page.
+function wireUserMenu() {
+  const btn = document.getElementById('me-initials');
+  const menu = document.getElementById('shell-user-menu');
+  if (!btn || !menu) return;
+  let loaded = false;
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+    btn.setAttribute('aria-expanded', String(!menu.hidden));
+    if (!menu.hidden && !loaded) {
+      loaded = true;
+      try {
+        const { user } = await ensureAuth();
+        const name = (user && (user.display_name || user.email)) || 'Account';
+        document.getElementById('shell-user-name').textContent = name;
+        document.getElementById('shell-user-role').textContent = (user && user.role) || '';
+        if (btn.textContent === '··') btn.textContent = initials(name);
+      } catch { /* ensureAuth redirects on auth failure */ }
+    }
+  });
+  document.addEventListener('click', (e) => { if (!menu.hidden && !e.target.closest('.shell-user')) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  const out = document.getElementById('shell-signout');
+  if (out) out.addEventListener('click', async () => {
+    try { await api.post('/api/auth/logout', {}); } catch { /* fall through to redirect */ }
+    window.location.href = '/index.html';
+  });
 }
 
 // Canonical rail CSS — Warm-Cream family (60px #faf9f7 rail, indigo-soft active).
@@ -107,6 +159,15 @@ const TOPBAR_CSS = `
 .topbar .tsearch{flex:1;max-width:520px;height:36px;border:1px solid var(--line,#ece9e3);border-radius:9px;background:var(--field,#faf9f7);display:flex;align-items:center;gap:9px;padding:0 12px;color:var(--muted2,#9ca3af);font-size:13px}
 .topbar .iconbtn{width:34px;height:34px;border-radius:8px;border:none;background:transparent;color:var(--muted3,#6b7280);display:flex;align-items:center;justify-content:center;cursor:pointer}
 .topbar .avatar-sm{width:28px;height:28px;border-radius:50%;background:#eef0f4;color:var(--ink,#202058);font:600 10px var(--disp,'Space Grotesk',system-ui,sans-serif);display:flex;align-items:center;justify-content:center}
+.topbar .shell-user{position:relative}
+.topbar .shell-user > .avatar-sm{border:none;cursor:pointer}
+.topbar .shell-user-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:190px;background:#fff;border:1px solid var(--line,#ece9e3);border-radius:10px;box-shadow:0 12px 32px rgba(32,32,88,.14);padding:6px;z-index:60}
+.topbar .shell-user-menu[hidden]{display:none}
+.topbar .shell-user-head{display:flex;flex-direction:column;gap:2px;padding:8px 10px 10px;border-bottom:1px solid var(--line2,#f0ede8);margin-bottom:4px}
+.topbar .shell-user-name{font:600 13px var(--body,system-ui,sans-serif);color:var(--head,#26235a)}
+.topbar .shell-user-role{font:500 11px var(--body,system-ui,sans-serif);color:var(--muted2,#9ca3af);text-transform:capitalize}
+.topbar .shell-user-item{display:block;width:100%;text-align:left;padding:8px 10px;border:none;background:none;border-radius:7px;font:500 13px var(--body,system-ui,sans-serif);color:var(--head,#26235a);cursor:pointer;text-decoration:none}
+.topbar .shell-user-item:hover{background:var(--field,#f4f2ee)}
 `;
 
 function injectCSSOnce(id, css) {
@@ -134,6 +195,7 @@ export function renderShell(activeKey, opts = {}) {
   if (withTopbar) {
     injectCSSOnce('rentalos-shell-topbar-css', TOPBAR_CSS);
     main.insertAdjacentHTML('afterbegin', topbarHTML());
+    wireUserMenu();
   }
   wrapper.insertAdjacentHTML('afterbegin', railHTML(activeKey));
 }
