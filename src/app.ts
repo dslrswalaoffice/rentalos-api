@@ -27,6 +27,8 @@ import { approvals } from './routes/approvals.js';
 import { standbys } from './routes/standbys.js';
 import { substitutions } from './routes/substitutions.js';
 import { damageIncidents } from './routes/damage.js';
+import { returns } from './routes/returns.js';
+import { inspections } from './routes/inspections.js';
 import { dispatches } from './routes/dispatches.js';
 // quoteVersions is folded into the orders router (src/routes/orders.ts), not
 // mounted here — see the note by the /api/orders mount below (Bug A, PR #80).
@@ -95,6 +97,11 @@ app.route('/api/standbys', standbys);
 // their own session + idempotency middleware safely.
 app.route('/api/substitutions', substitutions);
 app.route('/api/damage-incidents', damageIncidents);
+// Slice 5 — id-scoped return + inspection routes. The order-scoped
+// POST /api/orders/:orderId/returns is FOLDED into the orders router (orders.ts),
+// NOT mounted here (own-prefix middleware, same pattern as dispatches/substitutions).
+app.route('/api/returns', returns);
+app.route('/api/inspections', inspections);
 // Slice 4 — id-scoped dispatch capture (/api/dispatches/:dispatchId/...). The
 // order-scoped POST /api/orders/:orderId/dispatches is FOLDED into the orders
 // router (see orders.ts). Distinct prefix → own session + idempotency middleware.
