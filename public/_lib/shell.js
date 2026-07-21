@@ -1,6 +1,9 @@
 // IMPORTANT: When shell.js contents change materially, bump the ?v=N query in ALL consumer imports.
-// Current consumers (?v=5): people-list.html, person-360.html, orders.html, new-order.html,
-// dashboard.html, inventory.html.
+// ?v=6 (canonical top-bar contract): people-list, person-360, orders, new-order, calendar, analytics
+//   render the full canonical top-bar via renderShell(key,{topbar:true,breadcrumb}).
+// Still ?v=5 (topbar:false + mountUserMenu, unchanged behavior — safe against the new file):
+//   dashboard, inventory, settings, settings-business-profile, settings-integrations,
+//   settings-order-policies. These migrate to the canonical top-bar in PR-1b.
 // ============================================================================
 // /_lib/shell.js — Canonical RentalOS app shell (icon rail + optional top-bar).
 // ----------------------------------------------------------------------------
@@ -96,20 +99,131 @@ function userMenuHTML() {
   </div>`;
 }
 
-function topbarHTML() {
+// Canonical top-bar contract (Foundation top-bar lock — PR-1). 60px. Layout:
+//   left  → breadcrumb (passed per page via renderShell(key,{breadcrumb}))
+//   slot  → #tb-actions (page-specific buttons; the page's own JS populates it)
+//   right → global search (⌘K) · approvals badge · notification bell · avatar
+// Search + approvals are deliberate placeholders ("coming soon"); the bell is
+// wired to the real /api/notifications backend; the avatar reuses userMenuHTML.
+function topbarHTML(breadcrumb) {
   return `<header class="topbar">
-    <button class="iconbtn" aria-label="Menu"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14"/></svg></button>
-    <div class="tsearch">
-      <svg width="16" height="16" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5"/><path d="M11.5 11.5 15 15"/></svg>
-      <span>Search anything</span>
-      <span style="margin-left:auto;font:600 10px var(--mono,'JetBrains Mono',monospace);color:#b6b3ad;border:1px solid #e4e0d9;border-radius:5px;padding:2px 6px">⌘K</span>
-    </div>
-    <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
-      <button class="iconbtn" aria-label="Notifications"><svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5a5 5 0 0 0-5 5c0 4-1.5 5.5-1.5 5.5h13S15 11.5 15 7.5a5 5 0 0 0-5-5z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg></button>
+    <div class="tb-crumb">${breadcrumb || ''}</div>
+    <div class="tb-actions" id="tb-actions"></div>
+    <div class="tb-right">
+      <button class="tb-search" id="tb-search" type="button" aria-label="Search">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5"/><path d="M11.5 11.5 15 15"/></svg>
+        <span>Search anything</span>
+        <span class="tb-kbd">⌘K</span>
+      </button>
+      <button class="tb-icon" id="tb-approvals" type="button" aria-label="Approvals" title="Approvals">
+        <svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 8.5 15 16 5.5"/></svg>
+        <span class="tb-badge" id="tb-approvals-badge" hidden>0</span>
+      </button>
+      <div class="tb-bell-wrap">
+        <button class="tb-icon" id="tb-bell" type="button" aria-label="Notifications" title="Notifications">
+          <svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5a5 5 0 0 0-5 5c0 4-1.5 5.5-1.5 5.5h13S15 11.5 15 7.5a5 5 0 0 0-5-5z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg>
+          <span class="tb-badge" id="tb-bell-badge" hidden>0</span>
+        </button>
+        <div class="tb-drawer" id="tb-bell-drawer" hidden>
+          <header class="tb-drawer-head"><h3>Notifications</h3><button class="tb-mark-all" id="tb-bell-markall" type="button">Mark all read</button></header>
+          <div class="tb-drawer-body" id="tb-bell-body"></div>
+        </div>
+      </div>
       ${userMenuHTML()}
     </div>
-  </header>`;
+  </header>
+  <div class="tb-modal-backdrop" id="tb-modal" hidden>
+    <div class="tb-modal" role="dialog" aria-modal="true" aria-labelledby="tb-modal-title">
+      <div class="tb-modal-title" id="tb-modal-title">Coming soon</div>
+      <div class="tb-modal-body" id="tb-modal-body"></div>
+      <div class="tb-modal-foot"><button class="tb-modal-close" id="tb-modal-close" type="button">Got it</button></div>
+    </div>
+  </div>`;
 }
+
+const escHTML = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// A shared "coming soon" modal used by the search pill + approvals badge.
+function openComingSoon(title, body) {
+  const m = document.getElementById('tb-modal');
+  if (!m) return;
+  document.getElementById('tb-modal-title').textContent = title;
+  document.getElementById('tb-modal-body').textContent = body;
+  m.hidden = false;
+}
+function closeComingSoon() { const m = document.getElementById('tb-modal'); if (m) m.hidden = true; }
+
+// Search pill → placeholder modal; ⌘K / Ctrl-K opens it too.
+function wireSearch() {
+  const pill = document.getElementById('tb-search');
+  if (!pill) return;
+  const open = () => openComingSoon('Global search', 'Global search is coming soon — you’ll be able to jump to any order, customer, or asset from here.');
+  pill.addEventListener('click', open);
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); open(); }
+  });
+  const closeBtn = document.getElementById('tb-modal-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeComingSoon);
+  const backdrop = document.getElementById('tb-modal');
+  if (backdrop) backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeComingSoon(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeComingSoon(); });
+}
+
+// Approvals badge → placeholder modal (no live count yet).
+function wireApprovals() {
+  const btn = document.getElementById('tb-approvals');
+  if (!btn) return;
+  btn.addEventListener('click', () => openComingSoon('Approvals', 'The approvals inbox is coming soon — pending extensions, cancellations, and discount overrides will surface here.'));
+}
+
+// Notification bell → drawer wired to the real /api/notifications backend
+// (GET list + unread-count, POST read + mark-all-read). Fail-soft placeholder.
+function wireBell() {
+  const bell = document.getElementById('tb-bell');
+  const drawer = document.getElementById('tb-bell-drawer');
+  const badge = document.getElementById('tb-bell-badge');
+  const body = document.getElementById('tb-bell-body');
+  const markAll = document.getElementById('tb-bell-markall');
+  if (!bell || !drawer || !body) return;
+  let pollTimer = null;
+  const setBadge = (n) => { if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); badge.hidden = false; } else { badge.hidden = true; } };
+  const timeAgo = (iso) => {
+    const d = (Date.parse(iso) || 0); if (!d) return '';
+    const mins = Math.floor((Date.now() - d) / 60000);
+    if (mins < 1) return 'just now'; if (mins < 60) return mins + 'm ago';
+    const hrs = Math.floor(mins / 60); if (hrs < 24) return hrs + 'h ago';
+    return Math.floor(hrs / 24) + 'd ago';
+  };
+  const fetchCount = async () => {
+    try { const r = await fetch('/api/notifications/unread-count', { credentials: 'include' }); if (!r.ok) return; const { count } = await r.json(); setBadge(count || 0); } catch {}
+  };
+  const renderList = (items) => {
+    if (!items || !items.length) { body.innerHTML = '<div class="tb-notif-empty">No notifications yet</div>'; return; }
+    body.innerHTML = items.map((n) => `<div class="tb-notif${n.read_at ? '' : ' unread'}" data-id="${escHTML(n.id)}" data-link="${escHTML(n.link_url || '')}">
+      <div class="tb-notif-title">${escHTML(n.title)}</div>${n.body ? `<div class="tb-notif-body">${escHTML(n.body)}</div>` : ''}
+      <div class="tb-notif-meta">${escHTML(n.actor_name || 'System')} · ${escHTML(timeAgo(n.created_at))}</div></div>`).join('');
+    body.querySelectorAll('.tb-notif').forEach((el) => el.addEventListener('click', () => {
+      const id = el.dataset.id, link = el.dataset.link;
+      if (el.classList.contains('unread')) fetch(`/api/notifications/${id}/read`, { method: 'POST', credentials: 'include' }).then(fetchCount).catch(() => {});
+      if (link) window.location.href = link;
+    }));
+  };
+  const loadList = async () => {
+    body.innerHTML = '<div class="tb-notif-empty">Loading…</div>';
+    try { const r = await fetch('/api/notifications?limit=20', { credentials: 'include' }); if (!r.ok) throw 0; const { notifications } = await r.json(); renderList(notifications); }
+    catch { body.innerHTML = '<div class="tb-notif-empty">No notifications yet</div>'; }
+  };
+  bell.addEventListener('click', (e) => { e.stopPropagation(); if (drawer.hidden) { drawer.hidden = false; loadList(); } else { drawer.hidden = true; } });
+  document.addEventListener('click', (e) => { if (!drawer.hidden && !drawer.contains(e.target) && !bell.contains(e.target)) drawer.hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') drawer.hidden = true; });
+  if (markAll) markAll.addEventListener('click', async () => { try { await fetch('/api/notifications/mark-all-read', { method: 'POST', credentials: 'include' }); await fetchCount(); await loadList(); } catch {} });
+  const startPoll = () => { if (!pollTimer) pollTimer = setInterval(() => { if (!document.hidden) fetchCount(); }, 60000); };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { clearInterval(pollTimer); pollTimer = null; } else { fetchCount(); startPoll(); } });
+  fetchCount(); startPoll();
+}
+
+// Wire the whole canonical top-bar (search · approvals · bell · avatar).
+function wireTopbar() { wireSearch(); wireApprovals(); wireBell(); wireUserMenu(); }
 
 // Tiny initials helper for the avatar (name → up to 2 letters).
 function initials(name) {
@@ -164,14 +278,44 @@ const RAIL_CSS = `
 .rail .ri.soon{opacity:.4;cursor:not-allowed}
 `;
 
-// Base top-bar chrome ONLY (canonical top-bar pages). Deliberately does NOT
-// include the account-menu rules — those live in USER_MENU_CSS so a page that
-// keeps its OWN top-bar (mountUserMenu) can borrow the menu without inheriting
-// these `.topbar{}` box rules, which would fight its existing top-bar layout.
+// Canonical top-bar contract (60px). Breadcrumb left · #tb-actions slot ·
+// right cluster (search · approvals · bell · avatar). Injected once and appended
+// after page styles so it is cascade-authoritative for `.topbar`. Does NOT
+// include the account-menu rules — those live in USER_MENU_CSS (shared with the
+// mountUserMenu path).
 const TOPBAR_CSS = `
-.topbar{height:56px;flex:none;border-bottom:1px solid var(--line,var(--border,#ece9e3));display:flex;align-items:center;gap:16px;padding:0 22px}
-.topbar .tsearch{flex:1;max-width:520px;height:36px;border:1px solid var(--line,#ece9e3);border-radius:9px;background:var(--field,#faf9f7);display:flex;align-items:center;gap:9px;padding:0 12px;color:var(--muted2,#9ca3af);font-size:13px}
-.topbar .iconbtn{width:34px;height:34px;border-radius:8px;border:none;background:transparent;color:var(--muted3,#6b7280);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.topbar{height:60px;flex:none;background:var(--card,#fff);border-bottom:1px solid var(--line,var(--border,#ece9e3));display:flex;align-items:center;gap:16px;padding:0 22px;position:sticky;top:0;z-index:40}
+.topbar .tb-crumb{font:600 13.5px var(--body,system-ui,sans-serif);color:var(--head,#26235a);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar .tb-actions{display:flex;align-items:center;gap:9px;margin-left:12px}
+.topbar .tb-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.topbar .tb-search{display:flex;align-items:center;gap:9px;height:36px;padding:0 12px;min-width:200px;border:1px solid var(--line,#ece9e3);border-radius:9px;background:var(--field,#faf9f7);color:var(--muted2,#9ca3af);font:400 13px var(--body,system-ui,sans-serif);cursor:pointer}
+.topbar .tb-search:hover{border-color:var(--border-strong,#d8dbe0)}
+.topbar .tb-search .tb-kbd{margin-left:auto;font:600 10px var(--mono,'JetBrains Mono',monospace);color:#b6b3ad;border:1px solid #e4e0d9;border-radius:5px;padding:2px 6px}
+.topbar .tb-icon{position:relative;width:36px;height:36px;border-radius:9px;border:none;background:transparent;color:var(--muted3,#6b7280);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.topbar .tb-icon:hover{background:var(--field,#f4f2ee);color:var(--head,#26235a)}
+.topbar .tb-badge{position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:9px;background:var(--bad-solid,#dc2626);color:#fff;font:600 10px var(--mono,'JetBrains Mono',monospace);display:flex;align-items:center;justify-content:center;line-height:1}
+.topbar .tb-badge[hidden]{display:none}
+.tb-bell-wrap{position:relative}
+.tb-drawer{position:absolute;top:calc(100% + 8px);right:0;width:360px;max-height:480px;background:#fff;border:1px solid var(--line,#ece9e3);border-radius:10px;box-shadow:0 12px 32px rgba(32,32,88,.16);z-index:60;display:flex;flex-direction:column;overflow:hidden}
+.tb-drawer[hidden]{display:none}
+.tb-drawer-head{padding:12px 16px;border-bottom:1px solid var(--line,#ece9e3);display:flex;align-items:center;justify-content:space-between}
+.tb-drawer-head h3{margin:0;font:600 14px var(--disp,'Space Grotesk',system-ui,sans-serif);color:var(--head,#26235a)}
+.tb-mark-all{border:none;background:none;color:var(--indigo,#4f46e5);font:600 12px var(--body,system-ui,sans-serif);cursor:pointer}
+.tb-drawer-body{flex:1;overflow-y:auto;padding:4px 0}
+.tb-notif{padding:11px 16px;border-bottom:1px solid var(--line2,#f0ede8);cursor:pointer}
+.tb-notif:hover{background:var(--field,#f7f6f3)}
+.tb-notif.unread{background:var(--indigo-soft,#eef2ff)}
+.tb-notif-title{font:600 12.5px var(--body,system-ui,sans-serif);color:var(--head,#26235a)}
+.tb-notif-body{font:400 12px var(--body,system-ui,sans-serif);color:var(--muted3,#6b7280);margin-top:2px}
+.tb-notif-meta{font:500 10.5px var(--mono,'JetBrains Mono',monospace);color:var(--muted2,#9ca3af);margin-top:4px}
+.tb-notif-empty{padding:32px 16px;text-align:center;color:var(--muted2,#9ca3af);font:400 12.5px var(--body,system-ui,sans-serif)}
+.tb-modal-backdrop{position:fixed;inset:0;background:rgba(24,26,40,.44);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
+.tb-modal-backdrop[hidden]{display:none}
+.tb-modal{background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(32,32,88,.28);max-width:400px;width:100%;padding:22px 24px}
+.tb-modal-title{font:600 16px var(--disp,'Space Grotesk',system-ui,sans-serif);color:var(--head,#26235a);margin-bottom:8px}
+.tb-modal-body{font:400 13.5px var(--body,system-ui,sans-serif);color:var(--muted3,#6b7280);line-height:1.5}
+.tb-modal-foot{margin-top:18px;display:flex;justify-content:flex-end}
+.tb-modal-close{height:38px;padding:0 18px;border:none;border-radius:9px;background:var(--indigo,#4f46e5);color:#fff;font:600 12.5px var(--body,system-ui,sans-serif);cursor:pointer}
 `;
 
 // Account-menu styling — container-agnostic (no `.topbar` prefix) so it renders
@@ -198,9 +342,12 @@ function injectCSSOnce(id, css) {
 }
 
 /**
- * Inject the canonical rail (and optionally the top-bar) into the current page.
+ * Inject the canonical rail (and optionally the canonical top-bar) into the page.
  * @param {string} activeKey  dashboard|orders|assets|people|finance|insights|comms|system
- * @param {{topbar?: boolean}} [opts]  topbar defaults to true; set false to keep the page's own top-bar
+ * @param {{topbar?: boolean, breadcrumb?: string}} [opts]
+ *   topbar defaults to true (renders the locked contract: breadcrumb · #tb-actions
+ *   slot · search · approvals · bell · avatar). Set false to keep the page's own
+ *   top-bar. breadcrumb is the left-hand label/HTML (e.g. 'Orders' or 'Orders › #24').
  */
 export function renderShell(activeKey, opts = {}) {
   const withTopbar = opts.topbar !== false;
@@ -214,8 +361,8 @@ export function renderShell(activeKey, opts = {}) {
   if (withTopbar) {
     injectCSSOnce('rentalos-shell-topbar-css', TOPBAR_CSS);
     injectCSSOnce('rentalos-shell-usermenu-css', USER_MENU_CSS);
-    main.insertAdjacentHTML('afterbegin', topbarHTML());
-    wireUserMenu();
+    main.insertAdjacentHTML('afterbegin', topbarHTML(opts.breadcrumb));
+    wireTopbar();
   }
   wrapper.insertAdjacentHTML('afterbegin', railHTML(activeKey));
 }
