@@ -157,13 +157,7 @@
 
     <!-- ============ MAIN ============ -->
     <main class="main">
-      <header class="topbar">
-        <div class="page-title-block">
-          <div class="kicker">Analytics</div>
-          <div class="page-title">Business performance</div>
-        </div>
-        <div class="topbar-actions"></div>
-      </header>
+      <!-- Canonical top-bar injected by /_lib/shell.js (renderShell('insights', { topbar: true, breadcrumb: 'Insights' })). -->
 
       <div class="content" id="content">
         <!-- Range selector -->
@@ -288,12 +282,11 @@
 
   <script type="module">
     import { api, ensureAuth, formatINR } from '/_lib/api.js';
-    import { renderShell, mountUserMenu } from '/_lib/shell.js?v=5';
+    import { renderShell } from '/_lib/shell.js?v=6';
 
-    // Icon rail (keep this page's own top-bar → title + range selector),
-    // plus the shared account menu mounted into the existing top-bar actions.
-    renderShell('insights', { topbar: false });
-    mountUserMenu('.topbar-actions');
+    // Canonical rail + top-bar (the time-range selector lives in the content, not
+    // the top-bar, so this page adopts the full canonical top-bar cleanly).
+    renderShell('insights', { breadcrumb: 'Insights' });
 
     const state = {
       range: getPresetRange('30d'),

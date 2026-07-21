@@ -229,17 +229,7 @@ button{font-family:inherit}
 
   <!-- MAIN -->
   <main class="main">
-    <header class="topbar">
-      <div class="search">
-        <svg width="16" height="16" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5"/><path d="M11.5 11.5 15 15"/></svg>
-        <span>Search anything</span>
-        <span class="kbd">⌘K</span>
-      </div>
-      <div class="right">
-        <button class="iconbtn" title="Notifications"><svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5a5 5 0 0 0-5 5c0 4-1.5 5.5-1.5 5.5h13S15 11.5 15 7.5a5 5 0 0 0-5-5z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg></button>
-        <div class="userchip"><span class="av" id="user-initials">··</span><svg width="14" height="14" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l3 3 3-3"/></svg></div>
-      </div>
-    </header>
+    <!-- Canonical top-bar injected by /_lib/shell.js (renderShell('orders', { topbar: true, breadcrumb: 'Orders' })). -->
     <div class="subnav"><span>Rentals &rsaquo; Orders</span><a href="/calendar.html" style="margin-left:auto;font:600 10px 'JetBrains Mono';letter-spacing:.08em;text-transform:uppercase;color:#4f46e5;text-decoration:none">Calendar view &rsaquo;</a></div>
 
     <div class="scroll">
@@ -341,8 +331,8 @@ button{font-family:inherit}
 
 <script type="module">
 import { api, ensureAuth, formatINR } from '/_lib/api.js';
-import { renderShell } from '/_lib/shell.js?v=5';
-renderShell('orders', { topbar: false });
+import { renderShell } from '/_lib/shell.js?v=6';
+renderShell('orders', { topbar: true, breadcrumb: 'Orders' });
 
 // ---------------------------------------------------------------------------
 // State
@@ -415,8 +405,8 @@ let loading = false;
 // ---------------------------------------------------------------------------
 (async () => {
   try {
-    const { user } = await ensureAuth();
-    document.getElementById('user-initials').textContent = initials(user?.name || user?.email || '');
+    await ensureAuth();
+    // Account avatar now lives in the canonical top-bar (shell.js).
   } catch { return; }
   buildViews();
   buildStatusOpts();

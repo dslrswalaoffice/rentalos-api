@@ -162,8 +162,8 @@
 
   <script type="module">
     import { api, ensureAuth } from '/_lib/api.js';
-    import { renderShell } from '/_lib/shell.js?v=5';
-    renderShell('people');
+    import { renderShell } from '/_lib/shell.js?v=6';
+    renderShell('people', { breadcrumb: 'People' });
 
     function escapeHtml(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
     function escapeAttr(s){ return escapeHtml(s).replace(/`/g,'&#96;'); }
