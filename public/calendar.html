@@ -233,31 +233,13 @@
 
     <!-- ============ MAIN ============ -->
     <main class="main">
-      <header class="topbar">
-        <div class="page-title-block">
-          <div class="kicker"><a href="/orders.html" style="color:inherit;text-decoration:none">Orders</a> &rsaquo; Calendar</div>
+      <!-- Canonical top-bar injected by /_lib/shell.js (renderShell('orders', { topbar: true, breadcrumb: 'Orders › Calendar' })).
+           Calendar's own controls (range title · prev/today/next · view switch) moved into the content toolbar below. -->
+
+      <div class="content">
+        <div class="cal-toolbar" style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap;">
           <div class="page-title" id="range-title">Loading…</div>
-        </div>
-
-        <div class="topbar-actions">
-          <div class="notif-bell-wrap">
-            <button class="notif-bell" id="notif-bell" aria-label="Notifications">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2a7 7 0 0 0-7 7v3.6L3 15h18l-2-2.4V9a7 7 0 0 0-7-7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-                <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.5"/>
-              </svg>
-              <span class="notif-badge" id="notif-badge" hidden>0</span>
-            </button>
-            <div class="notif-drawer" id="notif-drawer" hidden>
-              <header class="notif-drawer-head">
-                <h3>Notifications</h3>
-                <button class="notif-mark-all" id="notif-mark-all">Mark all read</button>
-              </header>
-              <div class="notif-drawer-body" id="notif-drawer-body"></div>
-            </div>
-          </div>
-
-          <div class="cal-nav">
+          <div class="cal-nav" style="margin-left:auto;">
             <button class="cal-btn" id="nav-prev" aria-label="Previous">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
@@ -272,9 +254,6 @@
             <button data-view="month">Month</button>
           </div>
         </div>
-      </header>
-
-      <div class="content">
         <div class="cal-card" id="cal-card">
           <div class="cal-legend">
             <span class="legend-item"><span class="legend-swatch" style="background:var(--warn-soft);box-shadow:inset 0 0 0 1px rgba(138,90,18,0.28);"></span>Quoted</span>
@@ -298,12 +277,12 @@
 
   <script type="module">
     import { api, ensureAuth } from '/_lib/api.js';
-    import { renderShell, mountUserMenu } from '/_lib/shell.js?v=5';
+    import { renderShell } from '/_lib/shell.js?v=6';
 
     // Calendar is an Orders planning view (F2b-2) → 'orders' rail item active.
-    // Keep this page's own top-bar (functional notification bell) + shared account menu.
-    renderShell('orders', { topbar: false });
-    mountUserMenu('.topbar-actions');
+    // Canonical rail + top-bar; the calendar's range title + nav + view switch live
+    // in the content toolbar; the shell provides search, notification bell, avatar.
+    renderShell('orders', { topbar: true, breadcrumb: 'Orders &rsaquo; Calendar' });
 
     const MS_DAY = 24 * 60 * 60 * 1000;
 

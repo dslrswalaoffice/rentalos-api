@@ -224,23 +224,9 @@
   <!-- Icon rail injected by /_lib/shell.js (Foundation F2a); page keeps its own top-bar -->
 
   <!-- MAIN COLUMN -->
-  <div class="col">
-    <!-- TOP BAR -->
-    <header class="topbar">
-      <span class="burger"><span></span><span></span><span></span></span>
-      <div class="searchbar">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
-        <span class="ph">Search orders, customers, inventory…</span>
-        <span class="kbd">⌘K</span>
-      </div>
-      <div class="topright">
-        <div class="bell">
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.7"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
-          <span class="dot"></span>
-        </div>
-        <div class="avatar"><span id="userInitials">··</span></div>
-      </div>
-    </header>
+  <main class="col">
+    <!-- Canonical top-bar injected by /_lib/shell.js (renderShell('orders', { topbar: true, breadcrumb: 'New order' })).
+         .col is now the main element so the shell mounts the top-bar here (not inside the scroll body). -->
 
     <!-- SUB-NAV -->
     <div class="subnav">
@@ -252,7 +238,7 @@
     </div>
 
     <!-- SCROLL BODY -->
-    <main class="scrollbody">
+    <div class="scrollbody">
       <div class="wrap">
 
         <div class="topstrip">
@@ -452,7 +438,7 @@
         </section>
 
       </div>
-    </main>
+    </div>
 
     <!-- STICKY FOOTER -->
     <footer class="footer">
@@ -466,7 +452,7 @@
         </button>
       </div>
     </footer>
-  </div>
+  </main>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -474,8 +460,8 @@
 <script type="module">
 import { api, ensureAuth, formatINR } from '/_lib/api.js';
 import { standbyHoldDefaultMinutes, holdLabel } from '/_lib/standby-defaults.js';
-import { renderShell } from '/_lib/shell.js?v=5';
-renderShell('orders', { topbar: false });
+import { renderShell } from '/_lib/shell.js?v=6';
+renderShell('orders', { topbar: true, breadcrumb: 'New order' });
 
 // ============================================================================
 // State
@@ -506,9 +492,7 @@ let session = null;
 (async function boot() {
   const auth = await ensureAuth();
   session = auth;
-  const initials = (auth.user?.display_name || auth.user?.email || '?')
-    .split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
-  document.getElementById('userInitials').textContent = initials || '··';
+  // Account avatar now lives in the canonical top-bar (shell.js).
   wireEvents();
   render();
   // Configurability rule: standby defaults come from workspace.settings, never

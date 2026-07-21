@@ -1001,48 +1001,8 @@
 
     <!-- =========================================== MAIN =========================================== -->
     <main class="main">
-      <!-- ================ top bar ================ -->
-      <header class="topbar">
-        <div class="greeting-block">
-          <div class="greeting-kicker">Dashboard</div>
-          <div class="greeting" id="greeting">Good evening, Aamir</div>
-        </div>
-
-        <label class="search" for="global-search">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3-3"></path></svg>
-          <input id="global-search" type="search" placeholder="Search orders, clients, gear…" autocomplete="off">
-          <kbd>⌘K</kbd>
-        </label>
-
-        <div class="topbar-actions">
-          <div class="notif-bell-wrap">
-            <button class="notif-bell" id="notif-bell" aria-label="Notifications">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2a7 7 0 0 0-7 7v3.6L3 15h18l-2-2.4V9a7 7 0 0 0-7-7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-                <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.5"/>
-              </svg>
-              <span class="notif-badge" id="notif-badge" hidden>0</span>
-            </button>
-            <div class="notif-drawer" id="notif-drawer" hidden>
-              <header class="notif-drawer-head">
-                <h3>Notifications</h3>
-                <button class="notif-mark-all" id="notif-mark-all">Mark all read</button>
-              </header>
-              <div class="notif-drawer-body" id="notif-drawer-body"></div>
-            </div>
-          </div>
-
-          <span class="dash-updated" id="dash-updated"></span>
-          <button class="iconbtn" id="dash-refresh" aria-label="Refresh dashboard" title="Refresh">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-          </button>
-
-          <a href="/new-order.html" class="primary-cta">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
-            New order
-          </a>
-        </div>
-      </header>
+      <!-- Canonical top-bar injected by /_lib/shell.js (renderShell('dashboard', { topbar: true, breadcrumb: 'Dashboard' })).
+           Refresh + last-updated + New-order CTA are injected into the canonical #tb-actions slot (see script). -->
 
       <!-- ================ content ================ -->
       <div class="content">
@@ -1061,12 +1021,18 @@
 
   <script type="module">
     import { ensureAuth, formatINR, installPrefetch } from '/_lib/api.js';
-    import { renderShell, mountUserMenu } from '/_lib/shell.js?v=5';
+    import { renderShell } from '/_lib/shell.js?v=6';
 
-    // Icon rail (keep this page's own top-bar → its functional notification bell),
-    // plus the shared account menu mounted into the existing top-bar actions.
-    renderShell('dashboard', { topbar: false });
-    mountUserMenu('.topbar-actions');
+    // Canonical rail + top-bar. Dashboard's page actions (last-updated · refresh ·
+    // New order) render into the canonical #tb-actions slot; the shell provides
+    // the search pill, notification bell, and avatar.
+    renderShell('dashboard', { topbar: true, breadcrumb: 'Dashboard' });
+    {
+      const tba = document.getElementById('tb-actions');
+      if (tba) tba.innerHTML = `<span class="dash-updated" id="dash-updated"></span>`
+        + `<button class="iconbtn" id="dash-refresh" aria-label="Refresh dashboard" title="Refresh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>`
+        + `<a href="/new-order.html" class="primary-cta"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>New order</a>`;
+    }
 
     // Prefetch a linked order's detail page when a widget row is hovered (PR4).
     installPrefetch(el => el.dataset.href || null);
@@ -1236,20 +1202,11 @@
       else if (h < 17) g = `Good afternoon, ${firstName}`;
       else if (h < 22) g = `Good evening, ${firstName}`;
       else g = `Working late, ${firstName}`;
-      document.getElementById('greeting').textContent = g;
+      // Greeting now rides in the canonical breadcrumb.
+      const crumb = document.querySelector('.topbar .tb-crumb');
+      if (crumb) crumb.textContent = g;
     })();
-
-    // ---------- keyboard shortcut: / or ⌘K to focus search ----------
-    document.addEventListener('keydown', function (e) {
-      const isMetaK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
-      const isSlash = e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey;
-      const tag = (e.target && e.target.tagName || '').toLowerCase();
-      const inField = tag === 'input' || tag === 'textarea';
-      if (isMetaK || (isSlash && !inField)) {
-        e.preventDefault();
-        document.getElementById('global-search').focus();
-      }
-    });
+    // Global-search shortcut removed — the canonical top-bar owns ⌘K.
 
   
     // ========== notifications bell + drawer (Sub-turn 5d) ==========
