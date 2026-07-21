@@ -1,7 +1,7 @@
 import { sql, query } from '../db.js';
 import { decryptJson } from './crypto.js';
 import { findAdapter } from './adapters/registry.js';
-import type { EmailAdapter } from './adapters/types.js';
+import type { EmailAdapter, WhatsAppAdapter } from './adapters/types.js';
 
 // ============================================================================
 // Email dispatch (Sub-slice 2.1.5)
@@ -42,6 +42,51 @@ async function loadActiveEmailAdapter(workspaceId: string): Promise<LoadedEmail 
   } catch (err) {
     console.error('[notify] loadActiveEmailAdapter failed', err);
     return null;
+  }
+}
+
+/**
+ * Send a pre-approved WhatsApp template via the workspace's ACTIVE whatsapp
+ * adapter (decrypts credentials the same way the email loader does). Returns
+ * `provider_not_configured` when no real WhatsApp integration is active (a noop
+ * adapter counts as not-configured for a real send), else the adapter's own
+ * sent/failed result — never a silent success. Reused by the dispatch OTP send.
+ * Fail-safe: any unexpected error surfaces as a `failed` result, never throws.
+ */
+export async function sendWhatsAppTemplate(
+  workspaceId: string,
+  args: { to: string; templateName: string; languageCode?: string; variables: Record<string, string> },
+): Promise<{ status: 'sent' | 'failed' | 'provider_not_configured'; messageId?: string; error?: string }> {
+  try {
+    const rows = await query<{ provider: string; credentials_b64: string | null; config: Record<string, unknown> }>(sql`
+      SELECT provider, encode(credentials_encrypted, 'base64') AS credentials_b64, config
+      FROM workspace_integrations
+      WHERE workspace_id = ${workspaceId}::uuid AND category = 'whatsapp' AND is_active = true
+      LIMIT 1
+    `);
+    const row = rows[0];
+    if (!row || row.provider === 'noop') return { status: 'provider_not_configured' };
+    const adapter = findAdapter('whatsapp', row.provider) as WhatsAppAdapter | null;
+    if (!adapter) return { status: 'provider_not_configured' };
+    let credentials: Record<string, string> = {};
+    if (row.credentials_b64) {
+      try { credentials = (decryptJson(Buffer.from(row.credentials_b64, 'base64')) as Record<string, string>) ?? {}; }
+      catch (err) {
+        console.error('[notify] whatsapp credential decrypt failed', err);
+        return { status: 'failed', error: 'credential_decrypt_failed' };
+      }
+    }
+    return await adapter.sendTemplate({
+      to: args.to,
+      templateName: args.templateName,
+      languageCode: args.languageCode,
+      variables: args.variables,
+      credentials,
+      config: row.config ?? {},
+    });
+  } catch (err) {
+    console.error('[notify] sendWhatsAppTemplate failed', err);
+    return { status: 'failed', error: 'send_error' };
   }
 }
 

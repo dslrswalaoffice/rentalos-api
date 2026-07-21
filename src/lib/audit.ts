@@ -114,6 +114,9 @@ export type AuditEventType =
   | 'orders.invoice.generated'
   | 'orders.invoice.status.changed'
   | 'orders.invoice.status.forced'
+  | 'dispatches.items_recorded'
+  | 'dispatches.serial_verified'
+  | 'dispatches.condition_recorded'
   | 'orders.dispatch.batch'
   | 'orders.dispatch.reverted'
   // Slice 4 — structured dispatch/handover flow (dispatches table).

@@ -36,6 +36,8 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { z } from 'zod';
+import { randomInt } from 'node:crypto';
+import bcrypt from 'bcryptjs';
 import { put } from '@vercel/blob';
 import { sql, query } from '../db.js';
 import {
@@ -45,6 +47,8 @@ import {
 import { requirePermission } from '../lib/permissions.js';
 import { idempotencyMiddleware } from '../lib/idempotency.js';
 import { audit, type AuditEventType } from '../lib/audit.js';
+import { commitDispatchToPhysicalState } from '../lib/dispatch_commit.js';
+import { emitCustomerNotification, sendWhatsAppTemplate } from '../lib/notify.js';
 
 type SessionVar = { sessionId: string; user: SessionUser; workspace: SessionWorkspace } | null;
 type Env = { Variables: { session: SessionVar } };
@@ -64,14 +68,23 @@ export const PHOTO_TYPES = ['equipment', 'serial', 'accessory', 'damage', 'other
 export const OTP_SEND_CHANNELS = ['whatsapp', 'sms', 'voice'] as const;
 export const SIGNATURE_TYPES = ['digital_draw', 'paper_photo'] as const;
 
+export const CONDITION_VALUES = ['pristine', 'good', 'minor_wear', 'damage_flagged'] as const;
+
 // Default policy — used when workspace.settings.dispatch_return_policy is absent
-// (mirrors the migration 057 seed; config-first, never hardcoded downstream).
+// (mirrors the migration 057 + 058 seed; config-first, never hardcoded downstream).
 const DEFAULT_POLICY = {
   photos_required_per_item: 2,
+  photos_required_per_item_type: { equipment: 1, serial: 1 } as Record<string, number>,
   signature_required: true,
   signature_types_allowed: ['digital_draw', 'paper_photo'] as string[],
+  signature_skip_requires_reason: true,
   otp_required: true,
   otp_fallback_when_no_provider: 'allow_skip_with_reason',
+  otp_valid_for_session_only: true,
+  otp_skip_requires_approval_over_paise: 25000,
+  // WhatsApp template (pre-approved) used to send the OTP; workspace-editable.
+  otp_template_name: 'dispatch_otp',
+  customer_notification_channels: ['whatsapp', 'email'] as string[],
   delegate_pickup_allowed: true,
   delegate_requires_id_proof: false,
   gps_capture_at_dispatch: false,
@@ -119,12 +132,36 @@ export const otpSkipSchema = z.object({
   skip_reason: z.string().min(1).max(200),
   skip_reason_notes: z.string().max(2000).nullish(),
 });
-export const signatureSchema = z.object({
-  signature_type: z.enum(SIGNATURE_TYPES),
-  signature_base64: z.string().min(16),
-  content_type: z.string().max(80).optional(),
+// Session 2 — signature now supports a policy-gated skip (signature_base64 omitted
+// when skipped; a skip_reason is required when the policy demands one).
+export const signatureSchema = z
+  .object({
+    signature_type: z.enum(SIGNATURE_TYPES).optional(),
+    signature_base64: z.string().min(16).optional(),
+    content_type: z.string().max(80).optional(),
+    skipped: z.boolean().optional(),
+    skip_reason: z.string().min(1).max(300).nullish(),
+  })
+  .refine((v) => v.skipped === true || (!!v.signature_type && !!v.signature_base64), {
+    message: 'signature_type and signature_base64 are required unless skipped',
+    path: ['signature_base64'],
+  });
+
+export const completeSchema = z
+  .object({ item_ids: z.array(z.string().uuid()).optional() })
+  .passthrough();
+
+// Session 2 — Section B (equipment checklist) schemas.
+export const itemsChecklistSchema = z.object({
+  item_ids: z.array(z.string().uuid()).min(1),
 });
-export const completeSchema = z.object({}).passthrough();
+export const serialSchema = z.object({
+  captured_serial: z.string().min(1).max(120),
+  override: z.boolean().optional(),
+});
+export const conditionSchema = z.object({
+  condition: z.enum(CONDITION_VALUES),
+});
 
 // ---------------------------------------------------------------------------
 // Shared helpers (inline — no new lib abstraction per Session-1 rules).
@@ -150,6 +187,51 @@ async function loadPolicy(workspaceId: string): Promise<DispatchPolicy> {
     FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
   `);
   return { ...DEFAULT_POLICY, ...(rows[0]?.policy ?? {}) };
+}
+
+// Section B persistence (reconciled to the shipped order_items schema — no new
+// per-dispatch item table): the captured serial lives in order_items.dispatch_notes,
+// the dispatch condition in order_items.condition_notes. Photo counts per type come
+// from dispatch_photos for THIS dispatch. The wizard reads this back on reload.
+type DispatchItemRow = {
+  id: string; description: string; quantity: number; item_type: string;
+  product_id: string | null; status: string;
+  dispatch_notes: string | null; condition_notes: string | null;
+  expected_serials: string[] | null;
+  equipment_photos: number; serial_photos: number; total_photos: number;
+};
+
+async function loadDispatchItems(workspaceId: string, orderId: string, dispatchId: string) {
+  return await query<DispatchItemRow>(sql`
+    SELECT oi.id, oi.description, oi.quantity, oi.item_type::text AS item_type,
+           oi.product_id, oi.status::text AS status,
+           oi.dispatch_notes, oi.condition_notes,
+           (SELECT json_agg(a.serial_number ORDER BY a.asset_code)
+              FROM assets a
+              WHERE a.product_id = oi.product_id AND a.workspace_id = ${workspaceId}::uuid
+                AND a.deleted_at IS NULL AND a.serial_number IS NOT NULL
+                AND a.status = 'available'::asset_status) AS expected_serials,
+           COALESCE((SELECT COUNT(*) FROM dispatch_photos dp
+              WHERE dp.dispatch_id = ${dispatchId}::uuid AND dp.order_item_id = oi.id
+                AND dp.photo_type = 'equipment'), 0)::int AS equipment_photos,
+           COALESCE((SELECT COUNT(*) FROM dispatch_photos dp
+              WHERE dp.dispatch_id = ${dispatchId}::uuid AND dp.order_item_id = oi.id
+                AND dp.photo_type = 'serial'), 0)::int AS serial_photos,
+           COALESCE((SELECT COUNT(*) FROM dispatch_photos dp
+              WHERE dp.dispatch_id = ${dispatchId}::uuid AND dp.order_item_id = oi.id), 0)::int AS total_photos
+    FROM order_items oi
+    WHERE oi.order_id = ${orderId}::uuid AND oi.workspace_id = ${workspaceId}::uuid
+      AND oi.item_type = 'rental'
+    ORDER BY oi.sort_order ASC, oi.created_at ASC
+  `);
+}
+
+// Mask a phone for display: keep the last 4 digits (+91 98****5678).
+function maskPhone(phone: string | null): string | null {
+  if (!phone) return null;
+  const s = String(phone);
+  if (s.length <= 4) return s;
+  return s.slice(0, Math.max(0, s.length - 8)).replace(/./g, '*') + '****' + s.slice(-4);
 }
 
 // Two-row write: order_events (timeline) + audit_events (security). order_events
@@ -274,8 +356,31 @@ dispatches.get('/:dispatchId', async (c) => {
     LIMIT 1
   `);
   if (!rows.length) return c.json(err('dispatch_not_found', 'Dispatch not found'), 404);
+  const d = rows[0]!;
   const policy = await loadPolicy(workspaceId);
-  return c.json({ dispatch: rows[0], policy }, 200);
+  const items = await loadDispatchItems(workspaceId, d.order_id, d.id);
+
+  // Latest OTP + signature state so the wizard rehydrates on reload.
+  const otp = await query<{ id: string; otp_verified: boolean; otp_sent_via: string | null; skip_reason: string | null; otp_sent_to_phone: string | null }>(sql`
+    SELECT id, otp_verified, otp_sent_via, skip_reason, otp_sent_to_phone
+    FROM dispatch_otp_verifications WHERE dispatch_id = ${d.id}::uuid
+    ORDER BY created_at DESC LIMIT 1
+  `);
+  const sig = await query<{ id: string; signature_type: string | null; signature_url: string | null; skipped: boolean; skip_reason: string | null }>(sql`
+    SELECT id, signature_type, signature_url, skipped, skip_reason
+    FROM dispatch_signatures WHERE dispatch_id = ${d.id}::uuid
+    ORDER BY created_at DESC LIMIT 1
+  `);
+  const o = otp[0] ?? null;
+  return c.json({
+    dispatch: { ...d, customer_phone_masked: maskPhone(d.customer_phone) },
+    policy,
+    items,
+    otp_state: o
+      ? { verified: o.otp_verified, skipped: o.otp_sent_via === 'skipped', skip_reason: o.skip_reason, sent_to: maskPhone(o.otp_sent_to_phone) }
+      : null,
+    signature_state: sig[0] ?? null,
+  }, 200);
 });
 
 // POST /:dispatchId/recipient — record recipient type + delegate info.
@@ -321,6 +426,139 @@ dispatches.post('/:dispatchId/recipient', requirePermission('dispatch.execute'),
   });
 
   return c.json({ dispatch: updated[0] }, 200);
+});
+
+// POST /:dispatchId/items — record the checklist scope (which items go out now).
+// Supports partial dispatch: only the passed item_ids are in scope. Persistence of
+// which subset rides on the timeline event + the frontend passes item_ids to
+// /complete; the per-item serial/condition live on the order_items rows (below).
+dispatches.post('/:dispatchId/items', requirePermission('dispatch.execute'), async (c) => {
+  const session = c.get('session')!;
+  const workspaceId = session.workspace.id;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const d = await loadDispatch(workspaceId, c.req.param('dispatchId'));
+  if (!d) return c.json(err('dispatch_not_found', 'Dispatch not found'), 404);
+
+  let body: unknown = {};
+  try { body = await c.req.json(); } catch { body = {}; }
+  const parsed = itemsChecklistSchema.safeParse(body);
+  if (!parsed.success) return c.json(err('invalid_body', 'Invalid items payload', parsed.error.issues), 400);
+
+  // Validate every id is a rental line on this order.
+  const valid = await query<{ id: string }>(sql`
+    SELECT id FROM order_items
+    WHERE order_id = ${d.order_id}::uuid AND workspace_id = ${workspaceId}::uuid
+      AND item_type = 'rental' AND id::text = ANY(string_to_array(${parsed.data.item_ids.join(',')}::text, ','))
+  `);
+  const validIds = new Set(valid.map((r) => r.id));
+  const unknown = parsed.data.item_ids.filter((x) => !validIds.has(x));
+  if (unknown.length) return c.json(err('invalid_item_ids', 'Some items are not rental lines on this order', unknown), 400);
+
+  await recordDispatchEvent({
+    workspaceId, orderId: d.order_id, actorUserId: session.user.id,
+    timelineType: 'order.dispatch.items', auditType: 'dispatches.items_recorded',
+    payload: { dispatch_id: d.id, item_ids: parsed.data.item_ids, count: parsed.data.item_ids.length },
+    ip: ipAddress, ua: userAgent,
+  });
+  const items = await loadDispatchItems(workspaceId, d.order_id, d.id);
+  return c.json({ status: 'recorded', item_ids: parsed.data.item_ids, items }, 200);
+});
+
+// POST /:dispatchId/items/:itemId/serial — capture + QR-verify a unit serial.
+// Match = an AVAILABLE asset of this product carries that serial. A mismatch is
+// advisory: it persists only when override=true (the operator confirmed). The
+// captured serial is stored on order_items.dispatch_notes so it rehydrates.
+dispatches.post('/:dispatchId/items/:itemId/serial', requirePermission('dispatch.execute'), async (c) => {
+  const session = c.get('session')!;
+  const workspaceId = session.workspace.id;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const d = await loadDispatch(workspaceId, c.req.param('dispatchId'));
+  if (!d) return c.json(err('dispatch_not_found', 'Dispatch not found'), 404);
+  const itemId = c.req.param('itemId');
+
+  let body: unknown = {};
+  try { body = await c.req.json(); } catch { body = {}; }
+  const parsed = serialSchema.safeParse(body);
+  if (!parsed.success) return c.json(err('invalid_body', 'Invalid serial payload', parsed.error.issues), 400);
+  const captured = parsed.data.captured_serial.trim();
+
+  const item = await query<{ id: string; product_id: string | null }>(sql`
+    SELECT id, product_id FROM order_items
+    WHERE id = ${itemId}::uuid AND order_id = ${d.order_id}::uuid AND workspace_id = ${workspaceId}::uuid
+      AND item_type = 'rental' LIMIT 1
+  `);
+  if (!item.length) return c.json(err('item_not_found', 'Rental item not found on this order'), 404);
+
+  // Match against an available serialized unit of this product.
+  const matchRow = await query<{ asset_code: string }>(sql`
+    SELECT asset_code FROM assets
+    WHERE workspace_id = ${workspaceId}::uuid AND product_id = ${item[0]!.product_id}::uuid
+      AND deleted_at IS NULL AND status = 'available'::asset_status
+      AND lower(serial_number) = lower(${captured}::text)
+    LIMIT 1
+  `);
+  const matched = matchRow.length > 0;
+
+  // Mismatch without an override → advisory 409 with the expected serials so the
+  // UI can show the warning modal. Nothing persisted until the operator overrides.
+  if (!matched && parsed.data.override !== true) {
+    const expected = await query<{ serial_number: string | null }>(sql`
+      SELECT serial_number FROM assets
+      WHERE workspace_id = ${workspaceId}::uuid AND product_id = ${item[0]!.product_id}::uuid
+        AND deleted_at IS NULL AND status = 'available'::asset_status AND serial_number IS NOT NULL
+      ORDER BY asset_code ASC
+    `);
+    return c.json({
+      status: 'mismatch',
+      matched: false,
+      captured_serial: captured,
+      expected_serials: expected.map((e) => e.serial_number).filter(Boolean),
+    }, 409);
+  }
+
+  const note = matched ? captured : `${captured} (override: no available unit matches)`;
+  await sql`
+    UPDATE order_items SET dispatch_notes = ${note}::text, updated_at = now()
+    WHERE id = ${itemId}::uuid AND workspace_id = ${workspaceId}::uuid
+  `;
+  await recordDispatchEvent({
+    workspaceId, orderId: d.order_id, actorUserId: session.user.id,
+    timelineType: 'order.dispatch.serial', auditType: 'dispatches.serial_verified',
+    payload: { dispatch_id: d.id, item_id: itemId, captured_serial: captured, matched, override: parsed.data.override === true },
+    ip: ipAddress, ua: userAgent,
+  });
+  return c.json({ status: matched ? 'matched' : 'overridden', matched, captured_serial: captured, asset_code: matchRow[0]?.asset_code ?? null }, 200);
+});
+
+// POST /:dispatchId/items/:itemId/condition — record the dispatch condition.
+dispatches.post('/:dispatchId/items/:itemId/condition', requirePermission('dispatch.execute'), async (c) => {
+  const session = c.get('session')!;
+  const workspaceId = session.workspace.id;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const d = await loadDispatch(workspaceId, c.req.param('dispatchId'));
+  if (!d) return c.json(err('dispatch_not_found', 'Dispatch not found'), 404);
+  const itemId = c.req.param('itemId');
+
+  let body: unknown = {};
+  try { body = await c.req.json(); } catch { body = {}; }
+  const parsed = conditionSchema.safeParse(body);
+  if (!parsed.success) return c.json(err('invalid_body', 'Invalid condition payload', parsed.error.issues), 400);
+
+  const updated = await query<{ id: string }>(sql`
+    UPDATE order_items SET condition_notes = ${parsed.data.condition}::text, updated_at = now()
+    WHERE id = ${itemId}::uuid AND order_id = ${d.order_id}::uuid AND workspace_id = ${workspaceId}::uuid
+      AND item_type = 'rental'
+    RETURNING id
+  `);
+  if (!updated.length) return c.json(err('item_not_found', 'Rental item not found on this order'), 404);
+
+  await recordDispatchEvent({
+    workspaceId, orderId: d.order_id, actorUserId: session.user.id,
+    timelineType: 'order.dispatch.condition', auditType: 'dispatches.condition_recorded',
+    payload: { dispatch_id: d.id, item_id: itemId, condition: parsed.data.condition },
+    ip: ipAddress, ua: userAgent,
+  });
+  return c.json({ status: 'recorded', item_id: itemId, condition: parsed.data.condition }, 200);
 });
 
 // POST /:dispatchId/photos — capture a condition/handover photo.
@@ -382,46 +620,65 @@ dispatches.post('/:dispatchId/otp', requirePermission('dispatch.execute'), async
   const parsed = otpSendSchema.safeParse(body);
   if (!parsed.success) return c.json(err('invalid_body', 'Invalid OTP payload', parsed.error.issues), 400);
   const channel = parsed.data.channel ?? 'whatsapp';
-
-  // Look up the active adapter for the channel's category (whatsapp/sms → whatsapp bucket in v1).
-  const active = await query<{ provider: string }>(sql`
-    SELECT provider FROM workspace_integrations
-    WHERE workspace_id = ${workspaceId}::uuid AND category = 'whatsapp'::text AND is_active = true
-    LIMIT 1
-  `);
   const policy = await loadPolicy(workspaceId);
 
-  if (!active.length) {
-    // No provider — do NOT record a send row. Frontend offers skip-with-reason if policy allows.
+  const custPhone = await query<{ phone: string | null }>(sql`
+    SELECT p.phone FROM orders o LEFT JOIN people p ON p.id = o.customer_person_id
+    WHERE o.id = ${d.order_id}::uuid AND o.workspace_id = ${workspaceId}::uuid LIMIT 1
+  `);
+  const phone = custPhone[0]?.phone ?? null;
+
+  // REAL crypto: mint a 6-digit code (crypto.randomInt, not Math.random), bcrypt-hash
+  // it, and store ONLY the hash + a generation timestamp. The plaintext is sent to the
+  // customer and never persisted (Q3: session-based validity, no timer expiry).
+  const code = String(randomInt(100000, 1000000));
+  const codeHash = await bcrypt.hash(code, 10);
+
+  // Attempt the real WhatsApp send via the active adapter (reuses notify.ts →
+  // decrypts creds, calls the WATI template). No active real provider → do NOT
+  // store a row; the frontend offers skip-with-reason if policy allows.
+  let sendResult: { status: 'sent' | 'failed' | 'provider_not_configured'; messageId?: string; error?: string } =
+    { status: 'provider_not_configured' };
+  if (phone) {
+    sendResult = await sendWhatsAppTemplate(workspaceId, {
+      to: phone,
+      templateName: policy.otp_template_name,
+      variables: { '1': code },
+    });
+  } else {
+    sendResult = { status: 'failed', error: 'customer_has_no_phone' };
+  }
+
+  if (sendResult.status === 'provider_not_configured') {
     return c.json({
       status: 'provider_not_configured',
       fallback_allowed: policy.otp_fallback_when_no_provider === 'allow_skip_with_reason',
     }, 200);
   }
 
-  // Provider present. Session 1 records the send intent (operator-attestation model —
-  // the real templated WATI send + code storage lands in Session 2). provider_ref is a
-  // placeholder correlation id until the adapter call is wired.
-  const providerRef = `pending-${d.id.slice(0, 8)}-${session.user.id.slice(0, 8)}`;
-  const custPhone = await query<{ phone: string | null }>(sql`
-    SELECT p.phone FROM orders o LEFT JOIN people p ON p.id = o.customer_person_id
-    WHERE o.id = ${d.order_id}::uuid AND o.workspace_id = ${workspaceId}::uuid LIMIT 1
-  `);
+  // A send was attempted (sent OR failed) — record the OTP row with the hash so a
+  // 'sent' code can be verified. A 'failed' send is surfaced honestly (Q6: no
+  // silent failures) and the operator can re-send or skip.
   const otp = await query<{ id: string }>(sql`
     INSERT INTO dispatch_otp_verifications
-      (workspace_id, dispatch_id, otp_sent_to_phone, otp_sent_via, provider_ref)
-    VALUES (${workspaceId}::uuid, ${d.id}::uuid, ${custPhone[0]?.phone ?? null}::text, ${channel}::text, ${providerRef}::text)
+      (workspace_id, dispatch_id, otp_sent_to_phone, otp_sent_via, otp_code_hash, otp_generated_at, provider_ref)
+    VALUES (${workspaceId}::uuid, ${d.id}::uuid, ${phone}::text, ${channel}::text,
+            ${codeHash}::text, now(), ${sendResult.messageId ?? null}::text)
     RETURNING id
   `);
 
   await recordDispatchEvent({
     workspaceId, orderId: d.order_id, actorUserId: session.user.id,
     timelineType: 'order.dispatch.otp_sent', auditType: 'dispatches.otp_sent',
-    payload: { dispatch_id: d.id, otp_id: otp[0]!.id, channel, provider: active[0]!.provider },
+    payload: { dispatch_id: d.id, otp_id: otp[0]!.id, channel, send_status: sendResult.status },
     ip: ipAddress, ua: userAgent,
   });
 
-  return c.json({ status: 'sent', otp_id: otp[0]!.id, channel, provider: active[0]!.provider }, 201);
+  if (sendResult.status === 'failed') {
+    return c.json({ status: 'send_failed', otp_id: otp[0]!.id, error: sendResult.error ?? 'send_error',
+      fallback_allowed: policy.otp_fallback_when_no_provider === 'allow_skip_with_reason' }, 200);
+  }
+  return c.json({ status: 'sent', otp_id: otp[0]!.id, channel, sent_to: maskPhone(phone) }, 201);
 });
 
 // POST /:dispatchId/otp/verify — mark the latest OTP verified (operator attestation).
@@ -437,14 +694,21 @@ dispatches.post('/:dispatchId/otp/verify', requirePermission('dispatch.execute')
   const parsed = otpVerifySchema.safeParse(body);
   if (!parsed.success) return c.json(err('invalid_body', 'Invalid OTP code', parsed.error.issues), 400);
 
-  // Latest un-skipped OTP row for this dispatch.
-  const rows = await query<{ id: string }>(sql`
-    SELECT id FROM dispatch_otp_verifications
+  // Latest un-skipped OTP row for this dispatch (session-based validity: the code
+  // stays valid until the dispatch completes — no timer expiry, Q3).
+  const rows = await query<{ id: string; otp_code_hash: string | null }>(sql`
+    SELECT id, otp_code_hash FROM dispatch_otp_verifications
     WHERE dispatch_id = ${d.id}::uuid AND workspace_id = ${workspaceId}::uuid
       AND otp_sent_via <> 'skipped'
     ORDER BY created_at DESC LIMIT 1
   `);
   if (!rows.length) return c.json(err('no_otp_to_verify', 'No OTP has been sent for this dispatch'), 409);
+  if (!rows[0]!.otp_code_hash) return c.json(err('no_otp_to_verify', 'No verifiable OTP code on record — re-send'), 409);
+
+  // Real bcrypt comparison against the stored hash. A wrong code is a 401 (the
+  // frontend caps retries at 3 before forcing a re-send or skip).
+  const ok = await bcrypt.compare(parsed.data.code, rows[0]!.otp_code_hash);
+  if (!ok) return c.json(err('otp_incorrect', 'The code does not match. Check with the customer and retry.'), 401);
 
   await sql`
     UPDATE dispatch_otp_verifications SET otp_verified = true, otp_verified_at = now()
@@ -479,21 +743,36 @@ dispatches.post('/:dispatchId/otp/skip', requirePermission('dispatch.execute'), 
     return c.json(err('otp_skip_not_allowed', 'OTP is required and skipping is disabled by policy'), 403);
   }
 
+  // Approval threshold: a skip on a high-value order is FLAGGED (requires_approval)
+  // — not blocked (Q4: skip is always allowed with a reason). The flag is recorded
+  // on the row + surfaced to the operator (Item 12). Routing to the approvals queue
+  // is a later slice; for now the flag makes the risk visible + auditable.
+  const ord = await query<{ total: number }>(sql`
+    SELECT COALESCE(SUM(chargeable_paise), 0)::bigint AS total FROM order_items
+    WHERE order_id = ${d.order_id}::uuid AND workspace_id = ${workspaceId}::uuid
+  `);
+  const orderTotal = Number(ord[0]?.total ?? 0);
+  const requiresApproval = orderTotal > Number(policy.otp_skip_requires_approval_over_paise);
+
+  const notes = requiresApproval
+    ? `${parsed.data.skip_reason_notes ?? ''}${parsed.data.skip_reason_notes ? ' | ' : ''}requires_approval (order ₹${Math.round(orderTotal / 100)})`
+    : parsed.data.skip_reason_notes ?? null;
+
   const otp = await query<{ id: string }>(sql`
     INSERT INTO dispatch_otp_verifications
       (workspace_id, dispatch_id, otp_sent_via, skip_reason, skip_reason_notes)
-    VALUES (${workspaceId}::uuid, ${d.id}::uuid, 'skipped'::text, ${parsed.data.skip_reason}::text, ${parsed.data.skip_reason_notes ?? null}::text)
+    VALUES (${workspaceId}::uuid, ${d.id}::uuid, 'skipped'::text, ${parsed.data.skip_reason}::text, ${notes}::text)
     RETURNING id
   `);
 
   await recordDispatchEvent({
     workspaceId, orderId: d.order_id, actorUserId: session.user.id,
     timelineType: 'order.dispatch.otp_skipped', auditType: 'dispatches.otp_skipped',
-    payload: { dispatch_id: d.id, otp_id: otp[0]!.id, skip_reason: parsed.data.skip_reason },
+    payload: { dispatch_id: d.id, otp_id: otp[0]!.id, skip_reason: parsed.data.skip_reason, requires_approval: requiresApproval },
     ip: ipAddress, ua: userAgent,
   });
 
-  return c.json({ status: 'skipped', otp_id: otp[0]!.id }, 201);
+  return c.json({ status: 'skipped', otp_id: otp[0]!.id, requires_approval: requiresApproval }, 201);
 });
 
 // POST /:dispatchId/signature — record a witnessed pickup signature.
@@ -509,15 +788,38 @@ dispatches.post('/:dispatchId/signature', requirePermission('dispatch.execute'),
   const parsed = signatureSchema.safeParse(body);
   if (!parsed.success) return c.json(err('invalid_body', 'Invalid signature payload', parsed.error.issues), 400);
   const p = parsed.data;
-
   const policy = await loadPolicy(workspaceId);
-  if (!policy.signature_types_allowed.includes(p.signature_type)) {
-    return c.json(err('signature_type_not_allowed', `Signature type ${p.signature_type} is not allowed by policy`), 403);
+
+  // SKIP path (Q5): policy-gated. When signature_skip_requires_reason is on, a
+  // skip_reason is mandatory. Stored as a skipped row (no image, no type).
+  if (p.skipped === true) {
+    if (policy.signature_skip_requires_reason && !p.skip_reason) {
+      return c.json(err('skip_reason_required', 'A reason is required to skip the signature', [{ code: 'skip_reason', message: 'Reason required' }]), 400);
+    }
+    const skipped = await query<{ id: string; captured_at: string }>(sql`
+      INSERT INTO dispatch_signatures
+        (workspace_id, dispatch_id, signature_type, signature_url, skipped, skip_reason, captured_by_user_id)
+      VALUES (${workspaceId}::uuid, ${d.id}::uuid, NULL, NULL, true, ${p.skip_reason ?? null}::text, ${session.user.id}::uuid)
+      RETURNING id, captured_at
+    `);
+    await recordDispatchEvent({
+      workspaceId, orderId: d.order_id, actorUserId: session.user.id,
+      timelineType: 'order.dispatch.signature', auditType: 'dispatches.signature_captured',
+      payload: { dispatch_id: d.id, signature_id: skipped[0]!.id, skipped: true, skip_reason: p.skip_reason ?? null },
+      ip: ipAddress, ua: userAgent,
+    });
+    return c.json({ signature: { id: skipped[0]!.id, skipped: true, skip_reason: p.skip_reason ?? null, captured_at: skipped[0]!.captured_at } }, 201);
+  }
+
+  // Captured path — signature_type + base64 guaranteed present by the schema refine.
+  const sigType = p.signature_type!;
+  if (!policy.signature_types_allowed.includes(sigType)) {
+    return c.json(err('signature_type_not_allowed', `Signature type ${sigType} is not allowed by policy`), 403);
   }
 
   let sigUrl: string;
   try {
-    sigUrl = await persistImage(workspaceId, d.id, 'signatures', p.signature_base64, p.content_type ?? 'image/png');
+    sigUrl = await persistImage(workspaceId, d.id, 'signatures', p.signature_base64!, p.content_type ?? 'image/png');
   } catch (e) {
     console.error('dispatch signature persist failed', e);
     return c.json(err('upload_failed', 'Could not store the signature'), 500);
@@ -525,24 +827,24 @@ dispatches.post('/:dispatchId/signature', requirePermission('dispatch.execute'),
 
   const inserted = await query<{ id: string; captured_at: string }>(sql`
     INSERT INTO dispatch_signatures
-      (workspace_id, dispatch_id, signature_type, signature_url, captured_by_user_id)
-    VALUES (${workspaceId}::uuid, ${d.id}::uuid, ${p.signature_type}::text, ${sigUrl}::text, ${session.user.id}::uuid)
+      (workspace_id, dispatch_id, signature_type, signature_url, skipped, captured_by_user_id)
+    VALUES (${workspaceId}::uuid, ${d.id}::uuid, ${sigType}::text, ${sigUrl}::text, false, ${session.user.id}::uuid)
     RETURNING id, captured_at
   `);
 
   await recordDispatchEvent({
     workspaceId, orderId: d.order_id, actorUserId: session.user.id,
     timelineType: 'order.dispatch.signature', auditType: 'dispatches.signature_captured',
-    payload: { dispatch_id: d.id, signature_id: inserted[0]!.id, signature_type: p.signature_type },
+    payload: { dispatch_id: d.id, signature_id: inserted[0]!.id, signature_type: sigType },
     ip: ipAddress, ua: userAgent,
   });
 
-  return c.json({ signature: { id: inserted[0]!.id, signature_type: p.signature_type, captured_at: inserted[0]!.captured_at } }, 201);
+  return c.json({ signature: { id: inserted[0]!.id, signature_type: sigType, captured_at: inserted[0]!.captured_at } }, 201);
 });
 
-// POST /:dispatchId/complete — verify required captures per policy, finalize, and
-// transition the order to dispatched. Blocked-Action pattern (Item 12): a 403 with
-// a structured reasons[] array when a required capture is missing.
+// POST /:dispatchId/complete — Phase 3 Confirm. Verify required captures per policy
+// (Item 12 Blocked-Action: a 403 with a structured reasons[] when short), then run
+// the shared physical commit + customer notification. Q7 atomic sequence.
 dispatches.post('/:dispatchId/complete', requirePermission('dispatch.execute'), async (c) => {
   const session = c.get('session')!;
   const workspaceId = session.workspace.id;
@@ -551,30 +853,63 @@ dispatches.post('/:dispatchId/complete', requirePermission('dispatch.execute'), 
   if (!d) return c.json(err('dispatch_not_found', 'Dispatch not found'), 404);
   if (d.status === 'completed') return c.json(err('already_completed', 'This dispatch is already completed'), 409);
 
+  let body: unknown = {};
+  try { body = await c.req.json(); } catch { body = {}; }
+  const parsedBody = completeSchema.safeParse(body);
+  if (!parsedBody.success) return c.json(err('invalid_body', 'Invalid complete payload', parsedBody.error.issues), 400);
+
   const policy = await loadPolicy(workspaceId);
   const reasons: { code: string; message: string; order_item_id?: string }[] = [];
 
-  // 1. photos_required_per_item — each rental line needs >= N photos referencing it.
-  if (policy.photos_required_per_item > 0) {
-    const shortfall = await query<{ order_item_id: string; n: number }>(sql`
-      SELECT oi.id AS order_item_id, COUNT(dp.id)::int AS n
-      FROM order_items oi
-      LEFT JOIN dispatch_photos dp
-        ON dp.order_item_id = oi.id AND dp.dispatch_id = ${d.id}::uuid
-      WHERE oi.order_id = ${d.order_id}::uuid AND oi.workspace_id = ${workspaceId}::uuid
-        AND oi.item_type = 'rental'
-      GROUP BY oi.id
-      HAVING COUNT(dp.id) < ${policy.photos_required_per_item}::int
-    `);
-    for (const s of shortfall) {
-      reasons.push({ code: 'photos_missing', message: `Item needs ${policy.photos_required_per_item} condition photos (has ${s.n})`, order_item_id: s.order_item_id });
+  // The pending rental lines to dispatch (optionally narrowed by body.item_ids).
+  const requestedIds = parsedBody.data.item_ids ? new Set(parsedBody.data.item_ids) : null;
+  const pending = await query<{ id: string; item_type: string; product_id: string | null; quantity: number }>(sql`
+    SELECT id, item_type::text AS item_type, product_id, quantity FROM order_items
+    WHERE order_id = ${d.order_id}::uuid AND workspace_id = ${workspaceId}::uuid
+      AND item_type = 'rental' AND status = 'pending_dispatch'::order_item_status
+    ORDER BY sort_order ASC, created_at ASC
+  `);
+  const items = requestedIds ? pending.filter((p) => requestedIds.has(p.id)) : pending;
+  if (!items.length) return c.json(err('nothing_to_dispatch', 'No pending rental items to dispatch on this order'), 409);
+  const scopeIds = items.map((i) => i.id);
+
+  // 1. Photos — per-type policy (photos_required_per_item_type) with a flat fallback.
+  const perType = policy.photos_required_per_item_type ?? {};
+  const usePerType = perType && Object.values(perType).some((n) => Number(n) > 0);
+  const counts = await query<{ order_item_id: string; equipment: number; serial: number; total: number }>(sql`
+    SELECT oi.id AS order_item_id,
+           COUNT(dp.id) FILTER (WHERE dp.photo_type = 'equipment')::int AS equipment,
+           COUNT(dp.id) FILTER (WHERE dp.photo_type = 'serial')::int AS serial,
+           COUNT(dp.id)::int AS total
+    FROM order_items oi
+    LEFT JOIN dispatch_photos dp ON dp.order_item_id = oi.id AND dp.dispatch_id = ${d.id}::uuid
+    WHERE oi.order_id = ${d.order_id}::uuid AND oi.workspace_id = ${workspaceId}::uuid
+      AND oi.id::text = ANY(string_to_array(${scopeIds.join(',')}::text, ','))
+    GROUP BY oi.id
+  `);
+  const byItem = new Map(counts.map((r) => [r.order_item_id, r]));
+  for (const it of items) {
+    const cnt = byItem.get(it.id) ?? { equipment: 0, serial: 0, total: 0 };
+    if (usePerType) {
+      const needEq = Number(perType.equipment ?? 0);
+      const needSer = Number(perType.serial ?? 0);
+      if (cnt.equipment < needEq) reasons.push({ code: 'photos_missing', message: `Item needs ${needEq} equipment photo(s) (has ${cnt.equipment})`, order_item_id: it.id });
+      if (cnt.serial < needSer) reasons.push({ code: 'photos_missing', message: `Item needs ${needSer} serial photo(s) (has ${cnt.serial})`, order_item_id: it.id });
+    } else if (policy.photos_required_per_item > 0 && cnt.total < policy.photos_required_per_item) {
+      reasons.push({ code: 'photos_missing', message: `Item needs ${policy.photos_required_per_item} condition photos (has ${cnt.total})`, order_item_id: it.id });
     }
   }
 
-  // 2. signature_required.
+  // 2. signature_required — satisfied by a captured signature OR a policy-valid skip.
   if (policy.signature_required) {
-    const sig = await query<{ n: number }>(sql`SELECT COUNT(*)::int AS n FROM dispatch_signatures WHERE dispatch_id = ${d.id}::uuid`);
-    if ((sig[0]?.n ?? 0) === 0) reasons.push({ code: 'signature_missing', message: 'A customer signature is required before completing' });
+    const sig = await query<{ captured: number; skipped_ok: number }>(sql`
+      SELECT COUNT(*) FILTER (WHERE skipped = false AND signature_url IS NOT NULL)::int AS captured,
+             COUNT(*) FILTER (WHERE skipped = true AND (${policy.signature_skip_requires_reason}::boolean = false OR skip_reason IS NOT NULL))::int AS skipped_ok
+      FROM dispatch_signatures WHERE dispatch_id = ${d.id}::uuid
+    `);
+    if ((sig[0]?.captured ?? 0) === 0 && (sig[0]?.skipped_ok ?? 0) === 0) {
+      reasons.push({ code: 'signature_missing', message: 'A customer signature (or a skip with reason) is required' });
+    }
   }
 
   // 3. otp_required — satisfied by a verified OTP OR a recorded skip.
@@ -593,26 +928,96 @@ dispatches.post('/:dispatchId/complete', requirePermission('dispatch.execute'), 
     return c.json(err('dispatch_not_ready', 'Required handover steps are incomplete', reasons), 403);
   }
 
-  // Finalize + transition the order confirmed→dispatched (advisory; does not touch
-  // order_assets/asset status — that stays the legacy 12b flow, see file header).
+  // Recipient summary → order_items.handed_to (who physically received the gear).
+  const handedTo = d.recipient_type === 'delegate'
+    ? await query<{ n: string | null; ph: string | null }>(sql`SELECT delegate_name AS n, delegate_phone AS ph FROM dispatches WHERE id = ${d.id}::uuid`)
+        .then((r) => (r[0]?.n ? `${r[0].n}${r[0].ph ? ' (' + r[0].ph + ')' : ''} · delegate` : 'delegate'))
+    : await query<{ name: string | null }>(sql`SELECT p.display_name AS name FROM orders o LEFT JOIN people p ON p.id = o.customer_person_id WHERE o.id = ${d.order_id}::uuid`)
+        .then((r) => r[0]?.name ?? 'customer');
+
+  // Order status before the commit (for the event from/to + advance decision).
+  const before = await query<{ status: string; pickup_location_id: string | null }>(sql`
+    SELECT status::text AS status, pickup_location_id FROM orders
+    WHERE id = ${d.order_id}::uuid AND workspace_id = ${workspaceId}::uuid LIMIT 1
+  `);
+  const fromStatus = before[0]?.status ?? 'confirmed';
+
+  // Q7 atomic commit (Neon HTTP = idempotent statement sequence, every write guarded):
+  //  (1) dispatch → completed  (2..3) items → dispatched + assets 'out' via the SHARED
+  //  helper  (order → dispatched inside it). Then the completion event.
   await sql`
     UPDATE dispatches SET status = 'completed'::text, dispatch_completed_at = now(),
            completed_by_user_id = ${session.user.id}::uuid, updated_at = now()
     WHERE id = ${d.id}::uuid AND workspace_id = ${workspaceId}::uuid
   `;
-  const ord = await query<{ status: string }>(sql`
-    UPDATE orders SET status = CASE WHEN status = 'confirmed' THEN 'dispatched'::order_status ELSE status END,
-           updated_at = now()
-    WHERE id = ${d.order_id}::uuid AND workspace_id = ${workspaceId}::uuid
-    RETURNING status::text AS status
+  const commit = await commitDispatchToPhysicalState({
+    workspaceId,
+    orderId: d.order_id,
+    fromStatus,
+    items,
+    handedTo,
+    receivedByUserId: session.user.id,
+    dispatchNotes: null,
+    pickupLocationId: before[0]?.pickup_location_id ?? null,
+  });
+
+  // 6. Customer notification (Q6) — reuse emitCustomerNotification (whatsapp records
+  //    intent, email actually sends via SMTP). bypassPolicy: a completed dispatch
+  //    always notifies. notification_sent/reason is surfaced to the operator.
+  const cust = await query<{ person_id: string | null; phone: string | null; email: string | null; order_number: number; name: string | null }>(sql`
+    SELECT o.customer_person_id AS person_id, p.phone, p.email, o.order_number, p.display_name AS name
+    FROM orders o LEFT JOIN people p ON p.id = o.customer_person_id
+    WHERE o.id = ${d.order_id}::uuid AND o.workspace_id = ${workspaceId}::uuid LIMIT 1
   `);
+  const rentEnd = await query<{ return_date: string | null }>(sql`
+    SELECT to_char(rental_end, 'DD Mon YYYY') AS return_date FROM orders WHERE id = ${d.order_id}::uuid
+  `);
+  const channels = (policy.customer_notification_channels ?? ['whatsapp', 'email']).filter((ch): ch is 'whatsapp' | 'email' => ch === 'whatsapp' || ch === 'email');
+  const notify = await emitCustomerNotification({
+    workspaceId,
+    orderId: d.order_id,
+    personId: cust[0]?.person_id ?? null,
+    eventType: 'order.dispatch.completed',
+    message: `Your order #${cust[0]?.order_number ?? ''} has been dispatched (${d.dispatch_number}). ${items.length} item(s) on their way.`,
+    channels,
+    contact: { phone: cust[0]?.phone ?? null, email: cust[0]?.email ?? null },
+    bypassPolicy: true,
+    variables: {
+      order_number: cust[0]?.order_number ?? '',
+      dispatch_number: d.dispatch_number ?? '',
+      dispatch_date: new Date().toISOString().slice(0, 10),
+      item_count: items.length,
+      return_date: rentEnd[0]?.return_date ?? '',
+      customer_name: cust[0]?.name ?? '',
+    },
+  });
+  const notificationSent = notify.deliveries.some((x) => x.status === 'sent');
+  const notificationReason = notificationSent
+    ? null
+    : (notify.deliveries.find((x) => x.reason === 'no_active_adapter' || x.reason === 'noop_adapter')
+        ? 'provider_not_configured'
+        : (notify.deliveries[0]?.reason ?? 'not_sent'));
 
   await recordDispatchEvent({
     workspaceId, orderId: d.order_id, actorUserId: session.user.id,
     timelineType: 'order.dispatch.completed', auditType: 'dispatches.completed',
-    payload: { dispatch_id: d.id, dispatch_number: d.dispatch_number, order_status: ord[0]?.status ?? null },
+    payload: {
+      dispatch_id: d.id, dispatch_number: d.dispatch_number, order_status: commit.newStatus,
+      item_count: items.length, assigned_assets: commit.assignedAssets,
+      notification_sent: notificationSent, notification_reason: notificationReason,
+    },
     ip: ipAddress, ua: userAgent,
   });
 
-  return c.json({ status: 'completed', dispatch_id: d.id, order_status: ord[0]?.status ?? null }, 200);
+  return c.json({
+    status: 'completed',
+    dispatch_id: d.id,
+    dispatch_number: d.dispatch_number,
+    order_status: commit.newStatus,
+    item_count: items.length,
+    assigned_assets: commit.assignedAssets,
+    notification_sent: notificationSent,
+    notification_reason: notificationReason,
+    notification_channels: notify.deliveries.map((x) => ({ channel: x.channel, status: x.status, reason: x.reason })),
+  }, 200);
 });
