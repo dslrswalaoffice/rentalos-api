@@ -237,7 +237,9 @@
     </div>
   </div>
 
+  <div class="reminders-wrap no-print" id="deliveries-wrap"></div>
   <div class="reminders-wrap no-print" id="reminders-wrap"></div>
+  <div id="send-modal-root"></div>
 
   <!-- Regenerate modal -->
   <div class="modal-backdrop no-print" id="regen-modal">
@@ -313,6 +315,7 @@
       document.getElementById('doc').innerHTML = documentHtml(inv, snap);
       renderRemindersCard();
       loadReminders();
+      renderDeliveries();
     }
 
     // ---------- reminders (Sub-turn 6f) ----------
@@ -401,15 +404,20 @@
       const status = inv.status;
       const orderNo = inv.snapshot?.order?.order_number ?? state.orderLite?.order_number ?? '';
       const btns = [];
-      // Print — always
-      btns.push(`<button class="btn ghost" data-act="print">Print / Save as PDF</button>`);
+      // Slice 6: Download the generated PDF (generates on first click). Always.
+      btns.push(`<button class="btn ghost" data-act="pdf">Download PDF</button>`);
+      // Print — always (legacy fallback, print CSS intact)
+      btns.push(`<button class="btn ghost" data-act="print">Print</button>`);
       if (status !== 'cancelled' && status !== 'revised') {
         btns.push(`<button class="btn ghost" data-act="regen">Regenerate as R${nextRevision()}</button>`);
       }
       if (status === 'draft') {
-        btns.push(`<button class="btn primary" data-act="sent">Mark as Sent</button>`);
+        // Issue = generate PDF + draft->sent + auto-send (policy). Replaces the
+        // bare "Mark as Sent" status flip with the full Slice 6 issue flow.
+        btns.push(`<button class="btn primary" data-act="issue">Issue Invoice</button>`);
         btns.push(`<button class="btn danger" data-act="cancelled">Cancel</button>`);
       } else if (status === 'sent') {
+        btns.push(`<button class="btn primary" data-act="send">Send to Customer</button>`);
         const balZero = Number(state.orderLite?.balance_paise ?? 1) === 0
           && Number(state.orderLite?.paid_paise ?? 0) >= Number(inv.total_paise);
         btns.push(`<button class="btn ok" data-act="paid" ${balZero ? '' : 'disabled title="Order balance must be zero"'}>Mark as Paid</button>`);
@@ -435,7 +443,73 @@
     function handleAction(act) {
       if (act === 'print') { window.print(); return; }
       if (act === 'regen') { onRegenerate(); return; }
+      if (act === 'pdf') { doDownloadPdf(); return; }
+      if (act === 'issue') { doIssue(); return; }
+      if (act === 'send') { openSendModal(); return; }
       if (act === 'sent' || act === 'paid' || act === 'cancelled') { transition(act); return; }
+    }
+
+    const invBase = () => `/api/order-invoices/${encodeURIComponent(state.orderId)}/${encodeURIComponent(state.invoiceId)}`;
+
+    // Generate (idempotent) then open the stored PDF in a new tab.
+    async function doDownloadPdf() {
+      try {
+        showToast('Preparing PDF…');
+        const r = await api.post(`${invBase()}/pdf/generate`, {});
+        if (r.pdf_url) window.open(r.pdf_url, '_blank');
+        else showToast('PDF not available', 'err');
+      } catch (err) { showToast('Could not generate PDF: ' + (err.body?.error?.message || err.message), 'err'); }
+    }
+
+    // Issue: generate PDF + draft->sent + auto-send (policy). Surfaces delivery status.
+    async function doIssue() {
+      try {
+        const r = await api.post(`${invBase()}/issue`, {});
+        const d = r.delivery;
+        showToast(d?.any_sent ? 'Invoice issued + sent to customer' : 'Invoice issued (delivery pending/skipped)', d?.any_sent ? 'ok' : 'warn');
+        await load();
+      } catch (err) { showToast('Could not issue: ' + (err.body?.error?.message || err.message), 'err'); }
+    }
+
+    function openSendModal() {
+      const cust = state.invoice.snapshot?.customer || {};
+      const root = document.getElementById('send-modal-root');
+      root.innerHTML = `<div class="modal-backdrop no-print" style="display:flex"><div class="modal">
+        <h3 style="margin:0 0 12px;font-family:var(--font-display,inherit)">Send invoice to customer</h3>
+        <label style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="ch-wa" checked> WhatsApp ${cust.phone ? '(' + escapeHtml(cust.phone) + ')' : '<em>no phone on file</em>'}</label>
+        <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><input type="checkbox" id="ch-em" checked> Email ${cust.email ? '(' + escapeHtml(cust.email) + ')' : '<em>no email on file</em>'}</label>
+        <div class="field"><label style="font-size:12px;color:var(--muted-strong)">Recipient override (optional)</label><input id="send-override" placeholder="phone or email" style="width:100%;height:36px;padding:0 10px;border:1px solid #d9d6cf;border-radius:8px"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px"><button class="btn ghost" id="send-cancel">Cancel</button><button class="btn primary" id="send-go">Send</button></div>
+      </div></div>`;
+      document.getElementById('send-cancel').onclick = () => { root.innerHTML = ''; };
+      document.getElementById('send-go').onclick = async () => {
+        const channels = [];
+        if (document.getElementById('ch-wa').checked) channels.push('whatsapp');
+        if (document.getElementById('ch-em').checked) channels.push('email');
+        if (!channels.length) { showToast('Pick at least one channel', 'err'); return; }
+        const override = document.getElementById('send-override').value.trim() || null;
+        try {
+          const r = await api.post(`${invBase()}/send`, { channels, recipient_override: override });
+          root.innerHTML = '';
+          showToast(r.any_sent ? 'Invoice sent' : 'Send attempted — check delivery log', r.any_sent ? 'ok' : 'warn');
+          renderDeliveries();
+        } catch (err) { showToast('Send failed: ' + (err.body?.error?.message || err.message), 'err'); }
+      };
+    }
+
+    async function renderDeliveries() {
+      const wrap = document.getElementById('deliveries-wrap');
+      if (!wrap) return;
+      try {
+        const { deliveries } = await api.get(`${invBase()}/deliveries`);
+        if (!deliveries || !deliveries.length) { wrap.innerHTML = ''; return; }
+        const rows = deliveries.map(d => {
+          const cls = d.status === 'sent' || d.status === 'delivered' ? 'ok' : d.status === 'failed' ? 'bad' : 'muted';
+          return `<div class="rem-row"><span style="text-transform:capitalize">${escapeHtml(d.channel)}</span><span style="flex:1;color:var(--muted-strong);font-size:12px">${escapeHtml(d.recipient || '')}</span>
+            <span class="rem-status ${cls}">${escapeHtml(d.status)}</span>${d.failure_reason ? `<span class="rem-skip">${escapeHtml(d.failure_reason)}</span>` : ''}</div>`;
+        }).join('');
+        wrap.innerHTML = `<div class="rem-card"><div class="rem-head">Delivery history</div>${rows}</div>`;
+      } catch { wrap.innerHTML = ''; }
     }
 
     // ---------- document ----------
