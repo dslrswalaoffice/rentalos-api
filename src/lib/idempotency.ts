@@ -38,6 +38,33 @@ type Rec = {
   response_body: unknown;
 };
 
+/**
+ * Body-identity string folded into the idempotency request-hash.
+ *
+ * MULTIPART CAVEAT (the KYC-upload bug): a production request body is a one-shot
+ * network stream. Calling `clone().text()` on a `multipart/form-data` body drains
+ * that stream, so the handler's `c.req.formData()` then yields Files with no
+ * bytes and the downstream Vercel Blob `put()` fails. So for multipart we do NOT
+ * read the body — we hash a cheap surrogate (the Content-Length) instead:
+ *   - key-based dedup is preserved,
+ *   - a same-key retry of the identical upload (same length) still replays,
+ *   - a same-key reuse with a different payload (different length) is still
+ *     rejected as key-reused-with-different-body.
+ * Non-multipart requests keep the full-body hash (JSON callers unchanged), and
+ * the clone leaves the original body intact for the handler.
+ */
+export async function bodyHashInput(raw: Request): Promise<string> {
+  const contentType = (raw.headers.get('content-type') ?? '').toLowerCase();
+  if (contentType.startsWith('multipart/form-data')) {
+    return `multipart:${raw.headers.get('content-length') ?? ''}`;
+  }
+  try {
+    return await raw.clone().text();
+  } catch {
+    return '';
+  }
+}
+
 export const idempotencyMiddleware: MiddlewareHandler = async (c, next) => {
   const method = c.req.method.toUpperCase();
   // GET/HEAD/OPTIONS never mutate → exempt.
@@ -56,13 +83,8 @@ export const idempotencyMiddleware: MiddlewareHandler = async (c, next) => {
   const userId = session.user.id;
   const endpoint = `${method} ${c.req.path}`;
 
-  // Hash method + path + raw body (clone so the handler can still read it).
-  let bodyText = '';
-  try {
-    bodyText = await c.req.raw.clone().text();
-  } catch {
-    bodyText = '';
-  }
+  // Hash method + path + body identity (multipart-safe — see bodyHashInput).
+  const bodyText = await bodyHashInput(c.req.raw);
   const requestHash = createHash('sha256').update(`${endpoint}\n${bodyText}`).digest('hex');
 
   // Look up an existing record for this identity.
