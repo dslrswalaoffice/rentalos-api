@@ -312,14 +312,28 @@ payments.get('/:orderId/payment-options', async (c) => {
 
   // Which kinds this member may record. rental + deposit need payments.record;
   // deposit_refund / deposit_forfeit RELEASE held money → deposits.retain.
-  const heldRows = await query<{ sum: number }>(sql`
-    SELECT COALESCE(SUM(amount_paise), 0)::bigint AS sum FROM payments
+  // net_held = completed deposits − completed refunds − completed forfeits.
+  const depRows = await query<{ kind: string; sum: number }>(sql`
+    SELECT payment_kind AS kind, COALESCE(SUM(amount_paise), 0)::bigint AS sum FROM payments
     WHERE order_id = ${orderId}::uuid AND workspace_id = ${session.workspace.id}::uuid
-      AND status = 'completed' AND payment_kind = 'deposit'
+      AND status = 'completed' AND payment_kind IN ('deposit', 'deposit_refund', 'deposit_forfeit')
+    GROUP BY payment_kind
   `);
-  const hasDeposit = Number(heldRows[0]?.sum ?? 0) > 0;
+  const depSum = (k: string) => Number(depRows.find((r) => r.kind === k)?.sum ?? 0);
+  const netHeldPaise = depSum('deposit') - depSum('deposit_refund') - depSum('deposit_forfeit');
+  const hasDeposit = depSum('deposit') > 0;
   const canRecord = can(session, 'payments.record');
   const canRetain = can(session, 'deposits.retain');
+
+  // Forfeit reason taxonomy is config-driven (deposit_policy). Frontend renders
+  // the dropdown from this list; the display labels are formatted client-side.
+  const dpRows = await query<{ tax: string[] | null }>(sql`
+    SELECT ARRAY(SELECT jsonb_array_elements_text(COALESCE(settings->'deposit_policy'->'forfeit_reason_taxonomy', '[]'::jsonb)))::text[] AS tax
+    FROM workspaces WHERE id = ${session.workspace.id}::uuid LIMIT 1
+  `);
+  const forfeitTaxonomy = (dpRows[0]?.tax && dpRows[0].tax.length)
+    ? dpRows[0].tax
+    : ['damage_customer_liable', 'missing_accessories', 'late_return', 'other'];
 
   const kinds = [
     { kind: 'rental', label: 'Rental payment', allowed: canRecord, needs_deposit: false },
@@ -349,6 +363,9 @@ payments.get('/:orderId/payment-options', async (c) => {
     kinds,
     // Suggested prefill = outstanding rental balance (never negative).
     suggested_amount_paise: Math.max(0, Number(order.balance_paise)),
+    // Net deposit still held — the default amount for a release/forfeit.
+    net_held_deposit_paise: Math.max(0, netHeldPaise),
+    forfeit_reason_taxonomy: forfeitTaxonomy,
     auto_mark_paid_on_zero_balance: await autoMarkPaidEnabled(session.workspace.id),
   });
 });
@@ -805,4 +822,74 @@ payments.post('/:orderId/:paymentId/refund', requirePermission('payments.refund'
     },
     invoice_reconcile: commit.invoice_reconcile,
   }, 201);
+});
+
+// ============================================================================
+// POST /:orderId/:paymentId/complete — finalize a PENDING payment (Slice 7 S2).
+// ----------------------------------------------------------------------------
+// The deposit auto-release creates a deposit_refund with status='pending' (the
+// bank transfer is settled out-of-band). Accounts marks it 'completed' here,
+// optionally adjusting the amount first (Q3). Completing a deposit_refund flips
+// the deposit_status to 'released' via the shared commit. Gated by
+// deposits.retain (releasing held money). Only pending rows are completable.
+// ============================================================================
+export const completeSchema = z.object({
+  amount_paise: z.number().int().positive().optional(),
+  notes:        z.string().max(1000).optional(),
+});
+
+payments.post('/:orderId/:paymentId/complete', requirePermission('deposits.retain'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const orderId = c.req.param('orderId');
+  const paymentId = c.req.param('paymentId');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = completeSchema.safeParse(body ?? {});
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const input = parsed.data;
+
+  const order = await loadOrderLite(orderId, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+
+  const rows = await query<{ id: string; status: string; payment_kind: string; amount_paise: number }>(sql`
+    SELECT id, status::text AS status, payment_kind, amount_paise
+    FROM payments
+    WHERE id = ${paymentId}::uuid AND order_id = ${orderId}::uuid AND workspace_id = ${session.workspace.id}::uuid
+    LIMIT 1
+  `);
+  const p = rows[0];
+  if (!p) return c.json({ error: 'payment_not_found' }, 404);
+  if (p.status !== 'pending') return c.json({ error: 'not_pending', current_status: p.status }, 409);
+
+  const newAmount = input.amount_paise ?? Number(p.amount_paise);
+  await sql`
+    UPDATE payments SET
+      status      = 'completed'::payment_status,
+      amount_paise = ${newAmount}::bigint,
+      notes       = COALESCE(${input.notes ?? null}::text, notes),
+      occurred_at = now()
+    WHERE id = ${paymentId}::uuid AND workspace_id = ${session.workspace.id}::uuid AND status = 'pending'::payment_status
+  `;
+
+  const isDeposit = ['deposit', 'deposit_refund', 'deposit_forfeit'].includes(p.payment_kind);
+  const commit = await commitPaymentAndReconcile({
+    workspaceId: session.workspace.id, orderId, actorUserId: session.user.id, isDeposit, ipAddress, userAgent,
+  });
+
+  await audit({
+    workspaceId: session.workspace.id, actorUserId: session.user.id,
+    eventType: 'deposits.release_completed',
+    targetType: 'payment', targetId: paymentId,
+    payload: { order_id: orderId, payment_id: paymentId, payment_kind: p.payment_kind, amount_paise: newAmount, deposit_status: commit.deposit_status?.new ?? null },
+    ipAddress, userAgent,
+  });
+
+  return c.json({
+    ok: true,
+    payment_id: paymentId,
+    amount_paise: newAmount,
+    deposit_status: commit.deposit_status,
+    order: { id: order.id, order_number: order.order_number, paid_paise: commit.order.paid_paise, balance_paise: commit.order.balance_paise },
+  });
 });

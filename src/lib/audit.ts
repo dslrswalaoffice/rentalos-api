@@ -109,6 +109,8 @@ export type AuditEventType =
   | 'payments.deposit_recorded'
   | 'payments.deposit_refunded'
   | 'payments.deposit_forfeited'
+  | 'deposits.auto_release_initiated'
+  | 'deposits.release_completed'
   | 'orders.item.status.changed'
   | 'orders.item.status.forced'
   | 'orders.invoice.generated'

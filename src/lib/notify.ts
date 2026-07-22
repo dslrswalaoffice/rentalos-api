@@ -303,6 +303,15 @@ const TEMPLATES: Record<string, { title: string; body?: string }> = {
     title: 'Damage {incident_number} resolution needs approval · Order #{order_number}',
     body: '{resolution_summary} Requested by {actor_name}.',
   },
+  // Slice 7 Session 2 — deposit lifecycle (internal staff feed).
+  'deposit_released': {
+    title: 'Deposit released · Order #{order_number}',
+    body: '₹{deposit_amount} refund initiated via {refund_method}. Settlement ~{settlement_eta_days}d.',
+  },
+  'deposit_forfeited': {
+    title: 'Deposit forfeited · Order #{order_number}',
+    body: '₹{forfeit_amount} retained ({forfeit_reason_display}). ₹{refund_amount} refund initiated.',
+  },
 };
 
 // ============================================================================

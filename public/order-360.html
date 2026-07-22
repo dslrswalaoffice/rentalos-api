@@ -622,9 +622,20 @@ function cardDeposits(){
       +'<span class="money" style="font-size:15px;font-weight:600;color:var(--head)">'+formatINR(req)+'</span>'
       +'<span class="pill '+toneClass(DS_TONE[ds]||'neutral')+'"><span class="pdot"></span>'+escapeHtml(String(ds).replace(/_/g,' ').toUpperCase())+'</span>'
       +'</div>';
+    // Slice 7 S2 — auto-release awaiting settlement banner (pending deposit_refund).
+    const pend=pendingAutoRelease();
+    if(pend){
+      html+='<div class="paidrow" style="background:var(--info-bg);border:1px solid var(--info-border);flex-direction:column;align-items:stretch;margin-top:12px">'
+        +'<div style="display:flex;align-items:center;gap:12px"><span style="width:32px;height:32px;border-radius:8px;background:#fff;color:var(--info);display:flex;align-items:center;justify-content:center;flex:none">'+I('shield',16)+'</span>'
+        +'<div style="flex:1"><div style="font-weight:600;font-size:12.5px;color:var(--info)">Auto-release initiated after inspection pass</div>'
+        +'<div style="font-size:11.5px;color:var(--neutral);margin-top:2px">Awaiting settlement · '+escapeHtml(PM_METHOD_LABEL[pend.method]||pend.method)+'</div></div>'
+        +'<span class="money" style="font-size:14px;font-weight:600;color:var(--info)">'+formatINR(pend.amount_paise)+'</span></div>'
+        +'<div style="display:flex;gap:9px;margin-top:12px"><button class="btn btn-tiny btn-primary" data-act="complete-deposit-release" data-payment="'+escapeAttr(pend.id)+'">Mark settled</button></div>'
+        +'</div>';
+    }
     let actions='';
     if(ds==='none'||ds==='pending')actions='<button class="btn btn-tiny btn-primary" data-act="record-deposit">Record deposit</button>';
-    else if(ds==='held')actions='<button class="btn btn-tiny btn-secondary" data-act="release-deposit">Release</button><button class="btn btn-tiny btn-secondary" data-act="forfeit-deposit">Forfeit</button>';
+    else if(ds==='held'&&!pend)actions='<button class="btn btn-tiny btn-secondary" data-act="release-deposit">Release</button><button class="btn btn-tiny btn-secondary" data-act="forfeit-deposit">Forfeit</button>';
     if(actions)html+='<div style="display:flex;gap:9px;margin-top:12px">'+actions+'</div>';
     return html;
   };
@@ -973,9 +984,12 @@ async function handleAct(kind,el){
     case 'dmg-open': openDamageModal(null,el&&el.getAttribute('data-dmg'));break;
     case 'record-payment': openPaymentModal('rental');break;
     case 'record-deposit': openPaymentModal('deposit');break;
+    case 'release-deposit': openDepositAction('deposit_refund');break;
+    case 'forfeit-deposit': openDepositAction('deposit_forfeit');break;
+    case 'complete-deposit-release': doCompleteDepositRelease(el&&el.getAttribute('data-payment'));break;
     case 'refund-payment': openRefundModal(el&&el.getAttribute('data-payment'));break;
     case 'delete-payment': doDeletePayment(el&&el.getAttribute('data-payment'));break;
-    case 'add-line': case 'view-asset': case 'release-deposit': case 'forfeit-deposit': case 'dispatch-item':
+    case 'add-line': case 'view-asset': case 'dispatch-item':
       notInThisView(SOON_LABELS[kind]);break;
     case 'save-note':{
       const box=document.querySelector('[data-note-input]');const val=box?box.value.trim():'';
@@ -1284,8 +1298,9 @@ document.addEventListener('change',(e)=>{
   const key=f.getAttribute('data-mfield');
   if(key==='newEnd'){M.data.newEnd=e.target.value;recomputeExtension();}
   else if(key==='reasonTag'){M.data.reasonTag=e.target.value;if(M.kind==='extension')recomputeExtension();else{computeCancellation();renderCancellationModal();}}
-  else if(key==='pm_kind'){M.data.kind=e.target.value;M.data.preview=null;renderPaymentModal();schedulePaymentPreview();}
+  else if(key==='pm_kind'){M.data.kind=e.target.value;M.data.preview=null;if(M.data.kind==='deposit_forfeit'&&!M.data.forfeitReason){const t=forfeitTaxonomy();M.data.forfeitReason=t[0]||'';}renderPaymentModal();schedulePaymentPreview();}
   else if(key==='pm_method'){M.data.method=e.target.value;renderPaymentModal();schedulePaymentPreview();}
+  else if(key==='pm_forfeit_reason'){M.data.forfeitReason=e.target.value;updatePaymentFoot();}
   else if(key==='rf_method'){M.data.method=e.target.value;renderRefundModal();}
 });
 document.addEventListener('input',(e)=>{
@@ -1372,18 +1387,30 @@ function pmRefRequired(policy,method){
 }
 function pmAmountPaise(){const n=Number(M.data&&M.data.amountRupees);return isFinite(n)&&n>0?rupeesToPaise(n):0;}
 
-async function openPaymentModal(presetKind){
+// Slice 7 S2: forfeit-reason display labels (SET is config-driven from the
+// backend taxonomy; only the human formatting is client-side).
+const PM_FORFEIT_LABEL={damage_customer_liable:'Damage — customer liable',missing_accessories:'Missing accessories',late_return:'Late return',other:'Other'};
+const PM_KIND_TITLE={rental:'RECORD PAYMENT',deposit:'RECORD DEPOSIT',deposit_refund:'RELEASE DEPOSIT',deposit_forfeit:'FORFEIT DEPOSIT'};
+const PM_KIND_CTA={rental:'Record payment',deposit:'Record deposit',deposit_refund:'Release deposit',deposit_forfeit:'Forfeit deposit'};
+const PM_KIND_DONE={rental:'Payment recorded',deposit:'Deposit recorded',deposit_refund:'Deposit released',deposit_forfeit:'Deposit forfeited'};
+function forfeitTaxonomy(){const o=M.data&&M.data.options;return (o&&Array.isArray(o.forfeit_reason_taxonomy)&&o.forfeit_reason_taxonomy.length)?o.forfeit_reason_taxonomy:['damage_customer_liable','missing_accessories','late_return','other'];}
+
+// opts: { amountPaise, method, lockKind } — pre-fill for a deposit release/forfeit.
+async function openPaymentModal(presetKind,opts){
+  opts=opts||{};
   M.kind='payment';
-  M.data={kind:presetKind||'rental',amountRupees:'',method:'upi',reference:'',notes:'',
+  M.data={kind:presetKind||'rental',amountRupees:opts.amountPaise?String(paiseToRupees(opts.amountPaise)):'',
+    method:opts.method||'upi',reference:'',notes:'',forfeitReason:'',lockKind:!!opts.lockKind,
     options:null,preview:null,previewToken:0,previewTimer:null,idemKey:newIdempotencyKey(),loading:true};
   renderPaymentModal();
   try{
-    const opts=await api.get('/api/order-payments/'+S.id+'/payment-options');
-    M.data.options=opts;M.data.loading=false;
+    const o=await api.get('/api/order-payments/'+S.id+'/payment-options');
+    M.data.options=o;M.data.loading=false;
     // default method to first enabled; prefill rental amount with outstanding balance.
-    const methods=(opts.policy&&opts.policy.methods_enabled)||PM_ALL_METHODS;
+    const methods=(o.policy&&o.policy.methods_enabled)||PM_ALL_METHODS;
     if(methods.indexOf(M.data.method)<0)M.data.method=methods[0]||'upi';
-    if(M.data.kind==='rental'&&Number(opts.suggested_amount_paise)>0)M.data.amountRupees=String(paiseToRupees(opts.suggested_amount_paise));
+    if(M.data.kind==='rental'&&!M.data.amountRupees&&Number(o.suggested_amount_paise)>0)M.data.amountRupees=String(paiseToRupees(o.suggested_amount_paise));
+    if(M.data.kind==='deposit_forfeit'){const tax=forfeitTaxonomy();if(tax.length)M.data.forfeitReason=tax[0];}
     renderPaymentModal();schedulePaymentPreview();
   }catch(err){M.data.loading=false;showModalError(err,renderPaymentModal);}
 }
@@ -1397,6 +1424,7 @@ function paymentValid(){
   if(amt<=0)return false;
   const policy=d.options&&d.options.policy;
   if(pmRefRequired(policy,d.method)&&!(d.reference&&d.reference.trim()))return false;
+  if(d.kind==='deposit_forfeit'&&!(d.forfeitReason&&String(d.forfeitReason).trim()))return false;
   return !d.busy&&!M.busy;
 }
 function renderPaymentModal(){
@@ -1406,13 +1434,27 @@ function renderPaymentModal(){
   const kinds=paymentKindsAvailable();
   const methods=(policy.methods_enabled&&policy.methods_enabled.length?policy.methods_enabled:PM_ALL_METHODS);
   let b='';
-  // 1. Kind
-  b+='<div class="m-sec"><div class="m-lbl">What is this payment for?</div>'
-    +'<select class="m-select" data-mfield="pm_kind" style="min-width:280px">'
-    +kinds.map(k=>'<option value="'+k.kind+'"'+(d.kind===k.kind?' selected':'')+'>'+escapeHtml(k.label)+'</option>').join('')
-    +'</select>'
-    +(d.kind!=='rental'?'<div class="m-hint" style="margin-top:8px">Deposits are held separately and do not reduce the rental balance.</div>':'')
-    +'</div>';
+  // 1. Kind — a locked deposit action shows a read-only label; otherwise a picker.
+  if(d.lockKind){
+    b+='<div class="m-sec"><div class="m-lbl">Action</div>'
+      +'<div style="font-size:14px;font-weight:600;color:var(--ink)">'+escapeHtml((PM_KIND_LABEL[d.kind]||d.kind))+'</div>'
+      +'<div class="m-hint" style="margin-top:6px">Deposits are held separately and do not reduce the rental balance.</div></div>';
+  } else {
+    b+='<div class="m-sec"><div class="m-lbl">What is this payment for?</div>'
+      +'<select class="m-select" data-mfield="pm_kind" style="min-width:280px">'
+      +kinds.map(k=>'<option value="'+k.kind+'"'+(d.kind===k.kind?' selected':'')+'>'+escapeHtml(k.label)+'</option>').join('')
+      +'</select>'
+      +(d.kind!=='rental'?'<div class="m-hint" style="margin-top:8px">Deposits are held separately and do not reduce the rental balance.</div>':'')
+      +'</div>';
+  }
+  // 1b. Forfeit reason (required) — only for a deposit forfeit.
+  if(d.kind==='deposit_forfeit'){
+    const tax=forfeitTaxonomy();
+    b+='<div class="m-sec"><div class="m-lbl">Forfeit reason <span style="color:var(--danger)">*</span></div>'
+      +'<select class="m-select" data-mfield="pm_forfeit_reason" style="min-width:280px">'
+      +tax.map(t=>'<option value="'+escapeAttr(t)+'"'+(d.forfeitReason===t?' selected':'')+'>'+escapeHtml(PM_FORFEIT_LABEL[t]||String(t).replace(/_/g,' '))+'</option>').join('')
+      +'</select></div>';
+  }
   // 2. Amount
   b+='<div class="m-sec"><div class="m-lbl">Amount</div>'
     +'<div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px;color:var(--neutral)">₹</span>'
@@ -1437,10 +1479,12 @@ function renderPaymentModal(){
   // 6. Live preview panel
   b+='<div class="m-sec"><div class="m-lbl">Preview</div><div id="pmPreview">'+paymentPreviewInner()+'</div></div>';
   // footer
+  const cta=PM_KIND_CTA[d.kind]||'Record payment';
   const foot='<button class="m-ghost" data-m="close">Cancel</button>'
-    +'<button class="m-btn" id="pmSubmit" data-m="submit-payment"'+(paymentValid()?'':' disabled')+'>'+(M.busy?'Recording…':'Record payment')+'</button>';
+    +'<button class="m-btn" id="pmSubmit" data-m="submit-payment"'+(paymentValid()?'':' disabled')+'>'+(M.busy?'Working…':escapeHtml(cta))+'</button>';
   const sub=escapeHtml(o.customer_name||'')+' · Balance '+formatINR(o.balance_paise!=null?o.balance_paise:0);
-  mrender(mHead('RECORD PAYMENT — #'+escapeHtml(o.order_number),sub)+'<div class="m-bd">'+b+'</div><div class="m-ft">'+foot+'</div>');
+  const title=(PM_KIND_TITLE[d.kind]||'RECORD PAYMENT')+' — #'+escapeHtml(o.order_number);
+  mrender(mHead(title,sub)+'<div class="m-bd">'+b+'</div><div class="m-ft">'+foot+'</div>');
 }
 function paymentPreviewInner(){
   const d=M.data;const p=d.preview;const amt=pmAmountPaise();
@@ -1482,16 +1526,20 @@ async function submitPayment(){
   const d=M.data;const amt=pmAmountPaise();
   if(amt<=0){toast('Enter an amount','err');return;}
   if(pmRefRequired(d.options&&d.options.policy,d.method)&&!(d.reference&&d.reference.trim())){toast('A reference is required for this method','err');return;}
+  if(d.kind==='deposit_forfeit'&&!(d.forfeitReason&&String(d.forfeitReason).trim())){toast('Select a forfeit reason','err');return;}
   const body={amount_paise:amt,method:d.method,payment_kind:d.kind};
   if(d.reference&&d.reference.trim())body.reference=d.reference.trim();
-  if(d.notes&&d.notes.trim())body.notes=d.notes.trim();
+  // Forfeit reason rides in the notes ("Forfeit reason: {tag}. {operator notes}").
+  let notes=(d.notes||'').trim();
+  if(d.kind==='deposit_forfeit')notes='Forfeit reason: '+d.forfeitReason+(notes?'. '+notes:'');
+  if(notes)body.notes=notes;
   M.busy=true;renderPaymentModal();
   try{
     const r=await api.post('/api/order-payments/'+S.id,body,{key:d.idemKey});
     const rec=r&&r.invoice_reconcile;
     mclose();
     if(rec&&rec.action==='marked_paid')toast('Payment recorded — invoice '+(rec.invoice_number||'')+' marked paid','ok');
-    else toast(d.kind==='rental'?'Payment recorded':'Deposit recorded','ok');
+    else toast(PM_KIND_DONE[d.kind]||'Recorded','ok');
     await load();
   }catch(err){M.busy=false;showModalError(err,renderPaymentModal);}
 }
@@ -1552,6 +1600,31 @@ async function doDeletePayment(paymentId){
   }catch(err){
     const reason=err.body&&(err.body.reason||err.body.error);
     toast('Cannot undo: '+(reason||err.message),'err');
+  }
+}
+
+// ==================================================================== DEPOSIT LIFECYCLE (Slice 7 S2)
+function heldDepositPaise(){const di=S.depositInfo;return di&&di.net_held_paise!=null?Number(di.net_held_paise):0;}
+function pendingAutoRelease(){return (S.payments||[]).find(p=>p.payment_kind==='deposit_refund'&&p.status==='pending');}
+// Release / Forfeit reuse the Session 1 payment modal with the kind locked +
+// amount pre-filled (Item 12 blocked-action: guarded on a held deposit existing).
+function openDepositAction(kind){
+  const held=heldDepositPaise();
+  if(held<=0){
+    S.blocker={title:kind==='deposit_refund'?'Cannot release deposit':'Cannot forfeit deposit',
+      reasons:[{message:kind==='deposit_refund'?'No deposit to release — nothing is currently held on this order.':'No deposit to forfeit — nothing is currently held on this order.',severity:'attention'}],total:1};
+    renderStrip();return;
+  }
+  openPaymentModal(kind,{amountPaise:held,method:'bank_transfer',lockKind:true});
+}
+async function doCompleteDepositRelease(paymentId){
+  if(!paymentId)return;
+  try{
+    const r=await api.post('/api/order-payments/'+S.id+'/'+paymentId+'/complete',{});
+    const ds=r&&r.deposit_status&&r.deposit_status.new;
+    toast('Deposit release settled'+(ds?' — '+String(ds).replace(/_/g,' '):''),'ok');await load();
+  }catch(err){
+    toast('Could not settle: '+((err.body&&(err.body.error))||err.message),'err');
   }
 }
 

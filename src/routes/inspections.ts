@@ -33,6 +33,7 @@ import { audit, type AuditEventType } from '../lib/audit.js';
 import { emitNotification } from '../lib/notify.js';
 import { commitReturnToPhysicalState, releaseInspectionHolds } from '../lib/return_commit.js';
 import { commitOrderToClosedState } from '../lib/order_close.js';
+import { triggerDepositAutoRelease, autoReleaseEnabled, type AutoReleaseResult } from '../lib/deposit_lifecycle.js';
 
 type SessionVar = { sessionId: string; user: SessionUser; workspace: SessionWorkspace } | null;
 type Env = { Variables: { session: SessionVar } };
@@ -161,11 +162,11 @@ inspections.post('/:inspectionId/complete', requirePermission('inspections.perfo
   if (!parsed.success) return c.json(err('invalid_body', 'Invalid complete payload', parsed.error.issues), 400);
   const result = parsed.data.result;
 
-  // Workspace repair-downtime default + policy.
+  // Workspace repair-downtime default (auto-release policy is read inside
+  // deposit_lifecycle via autoReleaseEnabled).
   const wsRows = await query<{ settings: any }>(sql`SELECT settings FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1`);
   const rawRepair = Number(wsRows[0]?.settings?.downtime?.default_repair_days);
   const repairDays = Number.isFinite(rawRepair) && rawRepair > 0 ? rawRepair : 7;
-  const policy = wsRows[0]?.settings?.dispatch_return_policy ?? {};
   const orderNumberRow = await query<{ order_number: number }>(sql`SELECT order_number FROM orders WHERE id = ${insp.order_id}::uuid LIMIT 1`);
   const orderNumber = Number(orderNumberRow[0]?.order_number ?? 0);
 
@@ -202,25 +203,41 @@ inspections.post('/:inspectionId/complete', requirePermission('inspections.perfo
     WHERE id = ${insp.id}::uuid AND workspace_id = ${workspaceId}::uuid
   `;
 
-  // Deposit: honor the shipped "no auto-release" principle. Only auto-record a
-  // refund when the workspace opts in; otherwise emit a "ready to release" signal.
+  // Deposit (Slice 7 S2): when the workspace opts in — deposit_policy.
+  // auto_release_on_inspection_pass, with a legacy dispatch_return_policy fallback
+  // during the deprecation window — the deposit release is INITIATED here as a
+  // pending deposit_refund (Accounts settles + marks it complete). Otherwise we
+  // keep the "ready to release" signal and the operator triggers release manually.
+  // Fail-soft: an auto-release error never blocks inspection completion.
   let depositAction: string | null = null;
+  let autoRelease: AutoReleaseResult | null = null;
   if (depositReadyToRelease) {
-    depositAction = policy.auto_release_deposit_on_inspection_pass === true ? 'auto_release_requested' : 'ready_to_release_signal';
-    // Auto-refund is intentionally NOT performed here (financial action stays
-    // operator-triggered per Sub-turn 6d). The flag + notification make it visible.
-    emitNotification({
-      workspaceId, actorUserId: session.user.id, eventType: 'order.status.changed',
-      targetType: 'order', targetId: insp.order_id, linkUrl: `/order-360.html?id=${insp.order_id}`,
-      metadata: { order_number: orderNumber, new_status: 'inspection_passed', old_status: 'awaiting_inspection', customer_name: '' },
-    });
+    if (autoReleaseEnabled(wsRows[0]?.settings ?? {})) {
+      try {
+        autoRelease = await triggerDepositAutoRelease({
+          workspaceId, orderId: insp.order_id, inspectionEventId: insp.id,
+          actorUserId: session.user.id, ipAddress, userAgent,
+        });
+        depositAction = autoRelease.triggered ? 'auto_release_initiated' : (autoRelease.skipped_reason ?? 'auto_release_skipped');
+      } catch (e) {
+        console.error('[inspections] deposit auto-release failed', e);
+        depositAction = 'auto_release_error';
+      }
+    } else {
+      depositAction = 'ready_to_release_signal';
+      emitNotification({
+        workspaceId, actorUserId: session.user.id, eventType: 'order.status.changed',
+        targetType: 'order', targetId: insp.order_id, linkUrl: `/order-360.html?id=${insp.order_id}`,
+        metadata: { order_number: orderNumber, new_status: 'inspection_passed', old_status: 'awaiting_inspection', customer_name: '' },
+      });
+    }
   }
 
   await recordInspectionEvent({
     workspaceId, orderId: insp.order_id, actorUserId: session.user.id,
     timelineType: result === 'pass' ? 'order.inspection.passed' : result === 'fail_minor' ? 'order.inspection.fail_minor' : 'order.inspection.fail_major',
     auditType: 'inspections.completed',
-    payload: { inspection_id: insp.id, inspection_number: insp.inspection_number, order_item_id: insp.order_item_id, result, dispositions, deposit_action: depositAction, triggers_damage: triggersDamage, needs_owner_review: result === 'fail_minor' },
+    payload: { inspection_id: insp.id, inspection_number: insp.inspection_number, order_item_id: insp.order_item_id, result, dispositions, deposit_action: depositAction, auto_release_payment_id: autoRelease?.payment_id ?? null, auto_release_amount_paise: autoRelease?.amount_paise ?? null, triggers_damage: triggersDamage, needs_owner_review: result === 'fail_minor' },
     ip: ipAddress, ua: userAgent,
   });
 
