@@ -3,6 +3,7 @@ import { logger } from 'hono/logger';
 import { auth } from './routes/auth.js';
 import { inventory } from './routes/inventory.js';
 import { people } from './routes/people.js';
+import { kyc } from './routes/kyc.js';
 import { orders } from './routes/orders.js';
 import { payments } from './routes/payments.js';
 import { invoices } from './routes/invoices.js';
@@ -69,6 +70,7 @@ app.get('/api/health', async (c) => {
 app.route('/api/auth', auth);
 app.route('/api/inventory', inventory);
 app.route('/api/people', people);
+app.route('/api/kyc', kyc);
 app.route('/api/orders', orders);
 app.route('/api/order-payments', payments);
 app.route('/api/order-invoices', invoices);
