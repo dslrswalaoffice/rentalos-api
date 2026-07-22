@@ -291,11 +291,31 @@ orderDispatches.post('/:orderId/dispatches', requirePermission('dispatch.execute
   const parsed = dispatchCreateSchema.safeParse(body);
   if (!parsed.success) return c.json(err('invalid_body', 'Invalid dispatch payload', parsed.error.issues), 400);
 
-  const order = await query<{ id: string; order_number: number }>(sql`
-    SELECT id, order_number FROM orders
-    WHERE id = ${orderId}::uuid AND workspace_id = ${workspaceId}::uuid LIMIT 1
+  const order = await query<{ id: string; order_number: number; customer_person_id: string | null; kyc_status: string | null; gate_on_dispatch: boolean | null }>(sql`
+    SELECT o.id, o.order_number, o.customer_person_id, p.kyc_status,
+           (w.settings->'kyc_policy'->>'gate_on_dispatch')::boolean AS gate_on_dispatch
+    FROM orders o
+    JOIN workspaces w ON w.id = o.workspace_id
+    LEFT JOIN people p ON p.id = o.customer_person_id
+    WHERE o.id = ${orderId}::uuid AND o.workspace_id = ${workspaceId}::uuid LIMIT 1
   `);
   if (!order.length) return c.json(err('order_not_found', 'Order not found in this workspace'), 404);
+
+  // Slice 8: KYC dispatch gate (server-enforced hard block, Item 12 shape).
+  // Config default true; a customer whose KYC is not 'verified' can't be
+  // dispatched until an operator verifies them (or the workspace disables the
+  // gate). The frontend pre-checks the same signal; this is the backstop.
+  const gateOn = order[0]!.gate_on_dispatch !== false; // default true when unset
+  if (gateOn && order[0]!.kyc_status !== 'verified') {
+    return c.json({
+      error: 'kyc_not_verified',
+      reasons: [{
+        message: `KYC not verified for this customer (status: ${order[0]!.kyc_status ?? 'not_started'}). Complete KYC before dispatch.`,
+        severity: 'error',
+        fix_link_target: order[0]!.customer_person_id ? `/person-360.html?id=${order[0]!.customer_person_id}#kyc` : null,
+      }],
+    }, 409);
+  }
 
   // Mint DS-YYYY-{order_number}-{seq}. seq = existing dispatches for the order + 1;
   // the partial-unique index (workspace_id, dispatch_number) is the collision backstop.

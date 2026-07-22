@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>KYC Review · RentalOS</title>
+  <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f46e5'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <!--
+    Slice 8 · KYC Review Queue. Shoaib's review desk — batch-verify pending KYC
+    documents. Wired to GET /api/kyc/queue + verify/reject endpoints (PR-A).
+    NOTE: the design substrate (kyc_review_queue_dc.html) was not provided; this
+    is built from the written layout spec + the People-module palette and will be
+    re-skinned when the substrate lands.
+  -->
+  <style>
+    :root{
+      --ink:#202058; --head:#26235a; --muted:#8a8780; --muted2:#9ca3af; --muted3:#6b7280;
+      --indigo:#4f46e5; --indigo-hover:#3f37c9; --indigo-soft:rgba(79,70,229,.1);
+      --green:#059669; --blue:#2563eb; --amber:#d97706; --red:#dc2626; --grey:#6b7280;
+      --page:#f4f2ee; --card:#ffffff; --rail:#faf9f7; --line:#ece9e3; --field:#faf9f7;
+      --disp:system-ui,sans-serif; --body:system-ui,sans-serif; --mono:ui-monospace,'JetBrains Mono',monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--page);font-family:var(--body);color:var(--head);-webkit-font-smoothing:antialiased}
+    a{color:var(--indigo);text-decoration:none} a:hover{color:var(--indigo-hover)}
+    .shell{width:100%;max-width:1440px;margin:0 auto;display:flex;background:var(--card);min-height:100vh;position:relative}
+    main{flex:1;min-width:0;display:flex;flex-direction:column}
+    .subnav{height:34px;flex:none;border-bottom:1px solid #f0ede8;display:flex;align-items:center;padding:0 24px;font:600 10px var(--mono);letter-spacing:.08em;color:var(--muted2);text-transform:uppercase}
+    .content{flex:1;padding:24px 32px 48px}
+    .strip{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px}
+    h1{font:700 22px var(--disp);margin:0;color:var(--ink)}
+    .subline{margin:5px 0 0;font-size:13px;color:var(--muted)}
+    .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    .chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;color:var(--muted3);font:500 12px var(--body);cursor:pointer;background:transparent;border:none}
+    .chip .n{font:600 11px var(--mono)}
+    .chip.active{background:var(--indigo-soft);color:var(--indigo);font-weight:600}
+    .filters{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+    .filters select,.filters input{height:34px;border:1px solid var(--line);border-radius:8px;background:var(--field);padding:0 10px;font-size:13px;color:var(--head)}
+    .filters input{min-width:240px}
+    table{width:100%;border-collapse:collapse}
+    thead th{text-align:left;font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);padding:8px 10px;border-bottom:1px solid var(--line)}
+    tbody td{padding:11px 10px;border-bottom:1px solid #f4f1ec;font-size:13px;vertical-align:middle}
+    tbody tr:hover{background:#faf9f7}
+    .avatar-sm{width:28px;height:28px;border-radius:50%;background:#eef0f4;color:var(--ink);font:600 10px var(--disp);display:flex;align-items:center;justify-content:center;flex:none}
+    .who{display:flex;align-items:center;gap:9px}
+    .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:6px;font:600 10px var(--mono);letter-spacing:.03em}
+    .pill .dot{width:6px;height:6px;border-radius:50%}
+    .badge{display:inline-flex;padding:2px 8px;border-radius:6px;background:#eef0f4;color:var(--head);font:600 11px var(--mono)}
+    .act{display:inline-flex;gap:6px}
+    .btn{padding:5px 11px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent}
+    .btn-v{background:var(--green);color:#fff;border:none} .btn-r{background:#fff;color:var(--red);border:1px solid var(--red)}
+    .btn-view{background:#fff;color:var(--indigo);border:1px solid var(--line)}
+    .empty{padding:40px;text-align:center;color:var(--muted);font-size:14px}
+    .rejbox{margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+    .rejbox select,.rejbox textarea{width:100%;padding:7px;border:1px solid var(--line);border-radius:7px;font-size:12px;margin-bottom:7px}
+    .files{display:flex;gap:6px;flex-wrap:wrap}
+    .files a{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--line);border-radius:7px;font-size:11px;color:#374151}
+    .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:9px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50}
+    .toast.show{opacity:1}
+    .toast.err{background:var(--red)}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- Rail + top-bar injected by /_lib/shell.js -->
+    <main>
+      <div class="subnav">People &nbsp;&rsaquo;&nbsp; KYC Review</div>
+      <div class="content">
+        <div class="strip">
+          <div>
+            <h1>KYC Review Queue</h1>
+            <p class="subline" id="subline">Loading…</p>
+          </div>
+        </div>
+
+        <div class="chips" id="chips"></div>
+
+        <div class="filters">
+          <select id="f-type">
+            <option value="">All document types</option>
+            <option value="aadhaar">Aadhaar</option>
+            <option value="pan">PAN</option>
+            <option value="driving_license">Driving License</option>
+            <option value="passport">Passport</option>
+            <option value="gst_certificate">GST Certificate</option>
+            <option value="other">Other</option>
+          </select>
+          <input id="f-q" type="search" placeholder="Search person by name / phone…" autocomplete="off">
+        </div>
+
+        <table>
+          <thead><tr>
+            <th>Person</th><th>Type</th><th>Category</th><th>Submitted</th><th>Files</th><th>Status</th><th style="text-align:right">Actions</th>
+          </tr></thead>
+          <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import { api, ensureAuth } from '/_lib/api.js';
+    import { renderShell } from '/_lib/shell.js?v=6';
+    renderShell('people', { breadcrumb: 'People &rsaquo; KYC Review' });
+
+    const DOC_LABEL={aadhaar:'Aadhaar',pan:'PAN',driving_license:'Driving License',passport:'Passport',gst_certificate:'GST Certificate',other:'Other'};
+    const STATUS_TONE={pending:['#b45309','rgba(217,119,6,.12)'],verified:['#059669','rgba(5,150,105,.1)'],rejected:['#dc2626','rgba(220,38,38,.1)']};
+    const REJECT_REASONS=[['unclear_image','Unclear image'],['document_expired','Document expired'],['name_mismatch','Name mismatch'],['suspected_fraud','Suspected fraud'],['wrong_document_type','Wrong document type'],['other','Other']];
+    const esc=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    const initials=(n)=>{const p=String(n||'').trim().split(/\s+/).filter(Boolean);return ((p[0]?.[0]||'?')+(p[1]?.[0]||'')).toUpperCase();};
+    const fmtRel=(iso)=>{if(!iso)return '';const d=new Date(iso);const days=Math.floor((Date.now()-d.getTime())/86400000);return days<=0?'today':days===1?'1d ago':days+'d ago';};
+    function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(err?' err':'');setTimeout(()=>t.className='toast',2600);}
+    function pill(status){const t=STATUS_TONE[status]||STATUS_TONE.pending;return `<span class="pill" style="color:${t[0]};background:${t[1]}"><span class="dot" style="background:${t[0]}"></span>${esc(String(status).toUpperCase())}</span>`;}
+
+    const state={ status:'pending', type:'', q:'', rows:[] };
+
+    function renderChips(total){
+      const chips=[['pending','Pending'],['rejected','Rejected (recent)']];
+      document.getElementById('chips').innerHTML=chips.map(([k,l])=>
+        `<button class="chip ${state.status===k?'active':''}" data-status="${k}">${l}${state.status===k?` <span class="n">(${total})</span>`:''}</button>`).join('');
+    }
+
+    async function load(){
+      const params=new URLSearchParams();
+      params.set('status',state.status);
+      if(state.type)params.set('document_type',state.type);
+      if(state.q)params.set('q',state.q);
+      let data;
+      try{ data=await api.get('/api/kyc/queue?'+params.toString()); }
+      catch(err){
+        document.getElementById('rows').innerHTML=`<tr><td colspan="7" class="empty">${err.status===403?'You do not have permission to review KYC.':'Could not load the queue.'}</td></tr>`;
+        document.getElementById('subline').textContent='';
+        return;
+      }
+      state.rows=data.documents||[];
+      document.getElementById('subline').textContent=`${data.total} ${state.status} document${data.total===1?'':'s'}`;
+      renderChips(data.total);
+      renderRows();
+    }
+
+    function renderRows(){
+      const rows=state.rows;
+      if(!rows.length){ document.getElementById('rows').innerHTML=`<tr><td colspan="7" class="empty">Nothing ${esc(state.status)} — the queue is clear. ✅</td></tr>`; return; }
+      document.getElementById('rows').innerHTML=rows.map(d=>{
+        const p=d.person||{};
+        const filesHtml=(d.files||[]).map((f,idx)=>`<a href="/api/kyc/documents/${esc(d.id)}/files/${idx}" target="_blank" rel="noopener">${String(f.mime_type||'').startsWith('image/')?'🖼':'📄'} ${esc(f.filename||('File '+(idx+1)))}</a>`).join('');
+        const actions = state.status==='pending'
+          ? `<button class="btn btn-v" data-act="verify" data-doc="${esc(d.id)}">Verify</button>`
+            + `<button class="btn btn-r" data-act="reject-open" data-doc="${esc(d.id)}">Reject</button>`
+            + `<a class="btn btn-view" href="/person-360.html?id=${esc(p.id)}#kyc">View →</a>`
+          : `<a class="btn btn-view" href="/person-360.html?id=${esc(p.id)}#kyc">View →</a>`;
+        return `<tr data-row="${esc(d.id)}">
+          <td><div class="who"><span class="avatar-sm">${esc(initials(p.display_name))}</span><a href="/person-360.html?id=${esc(p.id)}#kyc">${esc(p.display_name||'—')}</a></div></td>
+          <td><span class="badge">${esc(DOC_LABEL[d.document_type]||d.document_type)}</span></td>
+          <td style="text-transform:capitalize;color:var(--muted3)">${esc(p.category||'')}</td>
+          <td class="mono" style="color:var(--muted3)">${esc(fmtRel(d.submitted_at))}</td>
+          <td><div class="files">${filesHtml||'<span style="color:var(--muted2)">—</span>'}</div></td>
+          <td>${pill(d.status)}</td>
+          <td style="text-align:right"><div class="act" style="justify-content:flex-end">${actions}</div>
+            <div class="rejbox" id="rej-${esc(d.id)}" style="display:none;text-align:left">
+              <select class="rej-reason">${REJECT_REASONS.map(r=>`<option value="${r[0]}">${esc(r[1])}</option>`).join('')}</select>
+              <textarea class="rej-notes" placeholder="Notes (optional)"></textarea>
+              <button class="btn btn-r" data-act="reject-confirm" data-doc="${esc(d.id)}">Confirm rejection</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    document.addEventListener('click', async (e)=>{
+      const chip=e.target.closest('[data-status]');
+      if(chip){ state.status=chip.getAttribute('data-status'); load(); return; }
+      const btn=e.target.closest('[data-act]'); if(!btn) return;
+      const act=btn.getAttribute('data-act'); const docId=btn.getAttribute('data-doc');
+      if(act==='verify'){
+        try{ await api.post('/api/kyc/documents/'+docId+'/verify',{}); toast('Verified'); load(); }
+        catch(err){ toast('Verify failed: '+((err.body&&err.body.error)||err.message),true); }
+      } else if(act==='reject-open'){
+        const box=document.getElementById('rej-'+docId); if(box) box.style.display=box.style.display==='none'?'block':'none';
+      } else if(act==='reject-confirm'){
+        const box=document.getElementById('rej-'+docId);
+        const reason=box.querySelector('.rej-reason').value; const notes=box.querySelector('.rej-notes').value.trim();
+        try{ await api.post('/api/kyc/documents/'+docId+'/reject',{reason,notes:notes||undefined}); toast('Rejected'); load(); }
+        catch(err){ toast('Reject failed: '+((err.body&&err.body.error)||err.message),true); }
+      }
+    });
+
+    let qTimer;
+    document.getElementById('f-type').addEventListener('change',(e)=>{ state.type=e.target.value; load(); });
+    document.getElementById('f-q').addEventListener('input',(e)=>{ clearTimeout(qTimer); state.q=e.target.value.trim(); qTimer=setTimeout(load,300); });
+
+    (async ()=>{ try{ await ensureAuth(); }catch{ return; } load(); })();
+  </script>
+</body>
+</html>
