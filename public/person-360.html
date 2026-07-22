@@ -88,6 +88,11 @@
     /* card */
     .card{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden}
     .card.stub{background:#faf9fd;border-style:dashed;border-color:#dcd8ea}
+    .nptog{width:40px;height:22px;border-radius:999px;background:#d1d5db;position:relative;cursor:pointer;transition:background .15s;flex:none}
+    .nptog.on{background:#4f46e5}
+    .nptog::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+    .nptog.on::after{left:21px}
+    .delivpill{display:inline-flex;padding:1px 6px;border-radius:5px;font:600 9.5px var(--mono);letter-spacing:.03em;text-transform:uppercase;margin-left:4px}
     .chead{display:flex;align-items:center;gap:12px;padding:16px 22px;cursor:pointer;user-select:none}
     .cdot{width:9px;height:9px;border-radius:50%;flex:none}
     .ctitle{font:600 15px var(--disp);color:var(--head)}
@@ -287,6 +292,17 @@
                   <span class="caret">▾</span>
                 </div>
                 <div class="cbody" id="comm-body"></div>
+              </div>
+
+              <!-- h) NOTIFICATION PREFERENCES (Slice 10 — opt-in per channel + language) -->
+              <div class="card" data-card>
+                <div class="chead" data-toggle>
+                  <span class="cdot" style="background:#4f46e5"></span>
+                  <span class="ctitle">Notification Preferences</span>
+                  <span class="cmeta" id="np-meta"></span>
+                  <span class="caret">▾</span>
+                </div>
+                <div class="cbody" id="np-body"></div>
               </div>
 
               <div class="card stub collapsed" data-card>
@@ -611,21 +627,71 @@
 
     const CH_LABEL = { call:'Call', whatsapp:'WhatsApp', email:'Email', other:'Other' };
     function chLabel(ch){ return CH_LABEL[String(ch||'').toLowerCase()] || 'Other'; }
-    function renderComms(comms){
-      document.getElementById('comm-count').textContent = String(comms.length);
-      document.getElementById('comm-last').textContent = comms.length ? `Last · ${chLabel(comms[0].channel)} ${relTime(comms[0].occurred_at)}` : 'No communications';
+    // Slice 10 Q7 — cross-reference the MANUAL log (person_communications) with the
+    // AUTOMATED deliveries (notification_deliveries), merged + time-sorted. Manual
+    // rows read "manual log"; automated rows read "sent to customer" + a status pill.
+    const DELIV_TONE={sent:['#059669','#ecfdf5'],delivered:['#059669','#ecfdf5'],read:['#059669','#ecfdf5'],pending:['#b45309','rgba(217,119,6,.12)'],queued:['#b45309','rgba(217,119,6,.12)'],failed:['#dc2626','#fef2f2'],skipped:['#6b7280','#f3f4f6']};
+    function renderComms(comms, deliveries){
+      const items=[];
+      for(const c of (comms||[])) items.push({ ts:c.occurred_at, kind:'manual', channel:c.channel, dir:c.direction, text:c.notes });
+      for(const d of (deliveries||[])) items.push({ ts:d.created_at, kind:'delivery', channel:d.channel, status:d.status, event:d.event_type, text:d.message });
+      items.sort((a,b)=> new Date(b.ts||0) - new Date(a.ts||0));
+      document.getElementById('comm-count').textContent = String(items.length);
+      document.getElementById('comm-last').textContent = items.length ? `Last · ${relTime(items[0].ts)}` : 'No communications';
       const body = document.getElementById('comm-body');
-      if(!comms.length){ body.innerHTML = `<div class="stubnote">No communications logged.</div>`; return; }
-      body.innerHTML = comms.slice(0,5).map(c=>{
-        const inb = c.direction==='in';
+      if(!items.length){ body.innerHTML = `<div class="stubnote">No communications logged.</div>`; return; }
+      body.innerHTML = items.slice(0,8).map(it=>{
+        if(it.kind==='manual'){
+          const inb = it.dir==='in';
+          return `<div class="prow">
+            <span class="pdir ${inb?'in':'out'}">${inb?'↓':'↑'}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font:600 12.5px var(--body);color:var(--head)">${escapeHtml(chLabel(it.channel))} <span style="font-weight:400;color:var(--muted2)">· manual log · ${inb?'received':'sent'} · ${escapeHtml(relTime(it.ts))}</span></div>
+              ${it.text?`<div style="font:400 12px var(--body);color:var(--sub);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(it.text)}</div>`:''}
+            </div>
+          </div>`;
+        }
+        const tone = DELIV_TONE[it.status]||DELIV_TONE.skipped;
         return `<div class="prow">
-          <span class="pdir ${inb?'in':'out'}">${inb?'↓':'↑'}</span>
+          <span class="pdir out">→</span>
           <div style="flex:1;min-width:0">
-            <div style="font:600 12.5px var(--body);color:var(--head)">${escapeHtml(chLabel(c.channel))} <span style="font-weight:400;color:var(--muted2)">· ${inb?'received':'sent'} · ${escapeHtml(relTime(c.occurred_at))}</span></div>
-            ${c.notes?`<div style="font:400 12px var(--body);color:var(--sub);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.notes)}</div>`:''}
+            <div style="font:600 12.5px var(--body);color:var(--head)">${escapeHtml(chLabel(it.channel))} <span style="font-weight:400;color:var(--muted2)">· sent to customer${it.event?' · '+escapeHtml(String(it.event).replace(/_/g,' ')):''} · ${escapeHtml(relTime(it.ts))}</span><span class="delivpill" style="color:${tone[0]};background:${tone[1]}">${escapeHtml(it.status||'')}</span></div>
+            ${it.text?`<div style="font:400 12px var(--body);color:var(--sub);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(it.text)}</div>`:''}
           </div>
         </div>`;
       }).join('');
+    }
+
+    // Slice 10 — customer notification preferences (opt-in per channel + language).
+    function renderNotifPrefs(p){
+      const prefs = (p.notification_preferences && typeof p.notification_preferences==='object') ? p.notification_preferences : {};
+      const lang = p.preferred_language || 'en';
+      document.getElementById('np-meta').textContent = (prefs.marketing===false) ? 'Marketing: unsubscribed' : '';
+      const row=(key,label,on)=>`<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line)">
+          <div style="flex:1"><div style="font:600 13px var(--body);color:var(--head)">${escapeHtml(label)}</div></div>
+          <div class="nptog${on?' on':''}" data-np-tog="${key}" role="switch" aria-checked="${on}"></div></div>`;
+      const langs=[['en','English'],['hi','हिन्दी'],['gu','ગુજરાતી']];
+      document.getElementById('np-body').innerHTML =
+          row('whatsapp','WhatsApp', prefs.whatsapp!==false)
+        + row('email','Email', prefs.email!==false)
+        + row('sms','SMS', prefs.sms===true)
+        + `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line)">
+             <div style="flex:1"><div style="font:600 13px var(--body);color:var(--head)">Preferred language</div></div>
+             <select id="np-lang" style="border:1px solid #d1d5db;border-radius:8px;padding:7px 10px;font-size:13px;color:var(--head);background:#fff">${langs.map(([v,l])=>`<option value="${v}"${lang===v?' selected':''}>${escapeHtml(l)}</option>`).join('')}</select></div>`
+        + `<div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;padding-top:12px">
+             <span id="np-hint" style="font:400 12px var(--body);color:var(--muted2)"></span>
+             <button id="np-save" style="padding:8px 16px;border:none;border-radius:8px;background:#4f46e5;color:#fff;font:600 13px var(--body);cursor:pointer">Save</button></div>`;
+      document.getElementById('np-body').querySelectorAll('[data-np-tog]').forEach(t=>t.addEventListener('click',()=>{const on=t.classList.toggle('on');t.setAttribute('aria-checked',String(on));}));
+      document.getElementById('np-save').addEventListener('click',()=>saveNotifPrefs(p.id));
+    }
+    async function saveNotifPrefs(id){
+      const btn=document.getElementById('np-save'); const hint=document.getElementById('np-hint');
+      btn.disabled=true; hint.textContent='Saving…';
+      const body={ language:(document.getElementById('np-lang')||{}).value||'en' };
+      document.getElementById('np-body').querySelectorAll('[data-np-tog]').forEach(t=>{ body[t.getAttribute('data-np-tog')]=t.classList.contains('on'); });
+      try{ await api.put('/api/people/'+encodeURIComponent(id)+'/notification-preferences', body); hint.textContent='Saved ✓'; setTimeout(()=>hint.textContent='',2200); }
+      catch(err){ hint.textContent = err.status===403 ? 'No permission to edit' : ('Failed: '+((err.body&&err.body.error)||err.message)); }
+      btn.disabled=false;
     }
 
     function renderMeta(p, tags){
@@ -707,6 +773,7 @@
       const orders = data.orders || [];
       const payments = data.payments || [];
       const communications = data.communications || [];
+      const deliveries = data.deliveries || [];
       const tags = data.tags || [];
 
       renderHeader(p);
@@ -715,7 +782,8 @@
       renderRelationship(p, orders);
       renderRental(orders);
       renderPayment(payments);
-      renderComms(communications);
+      renderComms(communications, deliveries);
+      renderNotifPrefs(p);
       renderMeta(p, tags);
       renderRelated(orders);
       wireToggles();

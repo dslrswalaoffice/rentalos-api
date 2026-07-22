@@ -692,23 +692,36 @@ function cardDocuments(){
   };
 }
 
-const COMM_STATUS={sent:['✓ Sent','var(--neutral)'],delivered:['✓✓ Delivered','var(--neutral)'],read:['✓✓ Read','var(--success)'],pending:['◷ Queued','var(--progress)'],skipped:['— Skipped','var(--neutral)'],failed:['⚠ Failed','var(--danger)']};
+const COMM_STATUS={sent:['✓ Sent','var(--neutral)'],delivered:['✓✓ Delivered','var(--neutral)'],read:['✓✓ Read','var(--success)'],pending:['◷ Queued','var(--progress)'],queued:['◷ Queued','var(--progress)'],skipped:['— Skipped','var(--neutral)'],failed:['⚠ Failed','var(--danger)']};
 function cardComms(){
-  const rows=S.comms||[];
+  // Slice 10 Q7 — merge the AUTOMATED deliveries (S.comms) with the customer's
+  // MANUAL communication log (S.personComms), time-sorted. Automated rows carry a
+  // status pill; manual rows are tagged "Manual log" and never a delivery status.
+  const items=[];
+  for(const r of (S.comms||[])) items.push({ ts:r.created_at, kind:'delivery', channel:r.channel, status:r.status, msg:(r.payload_snapshot&&r.payload_snapshot.message)||'', ev:(r.payload_snapshot&&r.payload_snapshot.event_type)||'', err:r.error_message });
+  for(const c of (S.personComms||[])) items.push({ ts:c.occurred_at, kind:'manual', channel:c.channel, dir:c.direction, msg:c.notes||'', by:c.logged_by_name });
+  items.sort((a,b)=> new Date(b.ts||0) - new Date(a.ts||0));
   return function(){
     let html='<div style="display:flex;margin-bottom:14px"><button class="btn btn-tiny btn-primary" style="margin-left:auto" data-act="send-update-inline">'+I('chat',15)+'Send update</button></div>';
-    if(!rows.length)return html+'<div class="empty"><div class="empty-ic">'+I('chat',26)+'</div>No messages sent yet.<br><span style="font-size:12px">Extension, cancellation and manual updates appear here.</span></div>';
-    for(const r of rows){
-      const st=COMM_STATUS[r.status]||[String(r.status),'var(--neutral)'];
-      const msg=(r.payload_snapshot&&r.payload_snapshot.message)||'';
-      const ev=(r.payload_snapshot&&r.payload_snapshot.event_type)||'';
-      html+='<div style="display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--border)">'
-        +'<span style="width:30px;height:30px;border-radius:8px;background:var(--surface-1);border:1px solid var(--border);color:var(--neutral);display:flex;align-items:center;justify-content:center;flex:none">'+I(r.channel==='email'?'doc':'wa',15)+'</span>'
-        +'<div style="flex:1;min-width:0"><div style="font-size:12.5px;color:var(--head);line-height:1.5">'+escapeHtml(msg)+'</div>'
-        +'<div class="mono" style="font-size:10.5px;color:var(--neutral);margin-top:5px">'+escapeHtml(String(r.channel).toUpperCase())+' · '+escapeHtml(String(ev).replace(/_/g,' '))+' · '+fmtDateTime(r.created_at)
-        +(r.error_message?' · '+escapeHtml(r.error_message):'')+'</div></div>'
-        +'<span style="font-family:var(--mono);font-size:10.5px;font-weight:600;color:'+st[1]+';flex:none;white-space:nowrap">'+st[0]+'</span>'
-        +'</div>';
+    if(!items.length)return html+'<div class="empty"><div class="empty-ic">'+I('chat',26)+'</div>No messages sent yet.<br><span style="font-size:12px">Extension, cancellation and manual updates appear here.</span></div>';
+    for(const it of items){
+      if(it.kind==='manual'){
+        html+='<div style="display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--border)">'
+          +'<span style="width:30px;height:30px;border-radius:8px;background:var(--surface-1);border:1px solid var(--border);color:var(--neutral);display:flex;align-items:center;justify-content:center;flex:none">'+I(it.channel==='email'?'doc':it.channel==='call'?'chat':'wa',15)+'</span>'
+          +'<div style="flex:1;min-width:0"><div style="font-size:12.5px;color:var(--head);line-height:1.5">'+escapeHtml(it.msg)+'</div>'
+          +'<div class="mono" style="font-size:10.5px;color:var(--neutral);margin-top:5px">'+escapeHtml(String(it.channel).toUpperCase())+' · '+escapeHtml(it.dir==='in'?'received':'sent')+(it.by?' · '+escapeHtml(it.by):'')+' · '+fmtDateTime(it.ts)+'</div></div>'
+          +'<span style="font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--neutral);flex:none;white-space:nowrap">Manual log</span>'
+          +'</div>';
+      }else{
+        const st=COMM_STATUS[it.status]||[String(it.status),'var(--neutral)'];
+        html+='<div style="display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--border)">'
+          +'<span style="width:30px;height:30px;border-radius:8px;background:var(--surface-1);border:1px solid var(--border);color:var(--neutral);display:flex;align-items:center;justify-content:center;flex:none">'+I(it.channel==='email'?'doc':'wa',15)+'</span>'
+          +'<div style="flex:1;min-width:0"><div style="font-size:12.5px;color:var(--head);line-height:1.5">'+escapeHtml(it.msg)+'</div>'
+          +'<div class="mono" style="font-size:10.5px;color:var(--neutral);margin-top:5px">'+escapeHtml(String(it.channel).toUpperCase())+' · '+escapeHtml(String(it.ev).replace(/_/g,' '))+' · '+fmtDateTime(it.ts)
+          +(it.err?' · '+escapeHtml(it.err):'')+'</div></div>'
+          +'<span style="font-family:var(--mono);font-size:10.5px;font-weight:600;color:'+st[1]+';flex:none;white-space:nowrap">'+st[0]+'</span>'
+          +'</div>';
+      }
     }
     return html;
   };
@@ -1051,7 +1064,7 @@ async function load(){
   const _crumb=document.querySelector('.topbar .tb-crumb');
   if(_crumb)_crumb.innerHTML='<a href="/orders.html" style="color:inherit;text-decoration:none">Orders</a> &rsaquo; #'+escapeHtml(data.order.order_number);
   // Communications (customer-facing deliveries) — best-effort, non-blocking.
-  api.get('/api/orders/'+S.id+'/communications').then(r=>{S.comms=r.communications||[];render();}).catch(()=>{});
+  api.get('/api/orders/'+S.id+'/communications').then(r=>{S.comms=r.communications||[];S.personComms=r.person_communications||[];render();}).catch(()=>{});
   // Slice 7 — payment ledger (rows + deposit summary) for the Payments card.
   api.get('/api/order-payments/'+S.id).then(r=>{S.payments=r.payments||[];S.depositInfo=r.deposit||null;render();}).catch(()=>{});
   render();
