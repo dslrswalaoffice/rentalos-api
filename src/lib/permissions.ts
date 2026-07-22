@@ -56,6 +56,7 @@ export const PERMISSIONS = {
   'people.view':            'View customers',
   'people.manage':          'Create and edit customers',
   'people.view_sensitive':  'View KYC documents (Aadhaar, PAN)',
+  'people.review_kyc':      'Review and verify KYC documents',
   // Insight
   'reports.view':           'View performance reports',
   'reports.export':         'Generate exports',
@@ -75,7 +76,7 @@ export const PERMISSION_GROUPS: { label: string; keys: PermissionKey[] }[] = [
   { label: 'Operations', keys: ['dispatch.execute','returns.execute','damage.record','substitutions.manage','substitutions.financial','damage.resolve_financial','damage.approve','inspections.perform'] },
   { label: 'Money',     keys: ['payments.record','payments.refund','deposits.retain','deposits.transfer_custody','invoices.manage'] },
   { label: 'Inventory', keys: ['inventory.view','inventory.manage','inventory.pricing','inventory.costs'] },
-  { label: 'People',    keys: ['people.view','people.manage','people.view_sensitive'] },
+  { label: 'People',    keys: ['people.view','people.manage','people.view_sensitive','people.review_kyc'] },
   { label: 'Insight',   keys: ['reports.view','reports.export','audit.view'] },
   { label: 'Workspace', keys: ['settings.manage','team.manage'] },
 ];
@@ -96,7 +97,7 @@ export const PRESETS: { owner: '*'; manager: PermissionKey[]; staff: PermissionK
     'inspections.perform',
     'payments.record', 'payments.refund', 'deposits.retain', 'deposits.transfer_custody', 'invoices.manage',
     'inventory.view', 'inventory.manage', 'inventory.pricing',
-    'people.view', 'people.manage', 'people.view_sensitive',
+    'people.view', 'people.manage', 'people.view_sensitive', 'people.review_kyc',
     'reports.view', 'reports.export',
     // NOT: inventory.costs, audit.view, settings.manage, team.manage
   ],
