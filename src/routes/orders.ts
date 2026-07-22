@@ -2163,7 +2163,22 @@ orders.get('/:id/communications', async (c) => {
     ORDER BY created_at DESC
     LIMIT 100
   `);
-  return c.json({ communications: rows });
+
+  // Slice 10 Q7 — cross-reference the customer's MANUAL communication log
+  // (person_communications) alongside the automated deliveries above. Additive:
+  // `communications` keeps its exact shape; the manual log rides in a new field.
+  const manual = await query(sql`
+    SELECT com.id, com.channel, com.direction, com.notes, com.occurred_at,
+           u.display_name AS logged_by_name
+    FROM person_communications com
+    JOIN orders o ON o.customer_person_id = com.person_id
+    LEFT JOIN users u ON u.id = com.logged_by_user_id
+    WHERE o.id = ${id}::uuid
+      AND com.workspace_id = ${session.workspace.id}::uuid
+    ORDER BY com.occurred_at DESC
+    LIMIT 100
+  `);
+  return c.json({ communications: rows, person_communications: manual });
 });
 
 // ============================================================================

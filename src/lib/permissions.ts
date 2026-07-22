@@ -61,6 +61,9 @@ export const PERMISSIONS = {
   'reports.view':           'View performance reports',
   'reports.export':         'Generate exports',
   'audit.view':             'View activity logs',
+  // Notifications (Slice 10)
+  'notifications.review':   'Review and approve pending notifications',
+  'settings.edit_notifications':'Configure notification policy',
   // Workspace
   'settings.manage':        'Manage workspace settings',
   'team.manage':            'Invite and manage team members',
@@ -78,6 +81,7 @@ export const PERMISSION_GROUPS: { label: string; keys: PermissionKey[] }[] = [
   { label: 'Inventory', keys: ['inventory.view','inventory.manage','inventory.pricing','inventory.costs'] },
   { label: 'People',    keys: ['people.view','people.manage','people.view_sensitive','people.review_kyc'] },
   { label: 'Insight',   keys: ['reports.view','reports.export','audit.view'] },
+  { label: 'Notifications', keys: ['notifications.review','settings.edit_notifications'] },
   { label: 'Workspace', keys: ['settings.manage','team.manage'] },
 ];
 
@@ -99,6 +103,9 @@ export const PRESETS: { owner: '*'; manager: PermissionKey[]; staff: PermissionK
     'inventory.view', 'inventory.manage', 'inventory.pricing',
     'people.view', 'people.manage', 'people.view_sensitive', 'people.review_kyc',
     'reports.view', 'reports.export',
+    // Slice 10: manager reviews the notification queue + edits notification policy
+    // (a narrower grant than settings.manage, which stays owner-only).
+    'notifications.review', 'settings.edit_notifications',
     // NOT: inventory.costs, audit.view, settings.manage, team.manage
   ],
   staff: [

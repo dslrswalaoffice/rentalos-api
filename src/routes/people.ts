@@ -77,6 +77,9 @@ type PersonRow = {
   billing_address?: string | null;
   shipping_address?: string | null;
   default_gst_state?: string | null;
+  // Slice 10 — customer notification preferences.
+  notification_preferences?: Record<string, unknown> | null;
+  preferred_language?: string | null;
 };
 
 // Reads a workspace feature flag (missing key → false).
@@ -186,6 +189,7 @@ people.get('/:id', async (c) => {
       p.company_name, p.gstin, p.notes,
       p.tier, p.trust_score, p.trust_score_updated_at,
       p.billing_address, p.shipping_address, p.default_gst_state,
+      p.notification_preferences, p.preferred_language,
       p.created_at, p.updated_at,
       COALESCE(
         (SELECT json_agg(pr.role ORDER BY pr.role)
@@ -249,10 +253,32 @@ people.get('/:id', async (c) => {
     LIMIT 20
   `);
 
+  // Slice 10 Q7 — cross-reference the AUTOMATED notification deliveries for this
+  // customer alongside the MANUAL person_communications log above (two separate
+  // logs, joined for display; no table change). Additive: `communications` keeps
+  // its exact shape so the pre-Slice-10 UI is unaffected.
+  const deliveries = await query<{
+    id: string; channel: string; status: string; target_address: string | null;
+    event_type: string | null; message: string | null; order_id: string | null;
+    error_message: string | null; delivered_at: string | null; created_at: string;
+  }>(sql`
+    SELECT d.id, d.channel, d.status, d.target_address,
+           d.payload_snapshot->>'event_type' AS event_type,
+           d.payload_snapshot->>'message'    AS message,
+           d.payload_snapshot->>'order_id'   AS order_id,
+           d.error_message, d.delivered_at, d.created_at
+    FROM notification_deliveries d
+    WHERE d.workspace_id = ${session.workspace.id}::uuid
+      AND d.notification_id IS NULL
+      AND d.target_person_id = ${id}::uuid
+    ORDER BY d.created_at DESC
+    LIMIT 50
+  `);
+
   const custom_fields = await loadCustomFieldValues(session.workspace.id, 'person', id);
   const tags = await loadTagsForEntity(session.workspace.id, 'person', id);
 
-  return c.json({ person, orders, payments, communications, custom_fields, tags });
+  return c.json({ person, orders, payments, communications, deliveries, custom_fields, tags });
 });
 
 // ============================================================================
@@ -806,4 +832,88 @@ people.delete('/:id/communications/:commId', requirePermission('people.manage'),
   });
 
   return c.json({ ok: true });
+});
+
+// ============================================================================
+// GET /api/people/:id/notification-preferences — customer opt-in + language.
+// ============================================================================
+// Read: any member who can view people (people.view). The picker on person-360
+// is gated the same way its parent page is.
+people.get('/:id/notification-preferences', requirePermission('people.view'), async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const rows = await query<{ prefs: Record<string, unknown> | null; lang: string | null }>(sql`
+    SELECT notification_preferences AS prefs, preferred_language AS lang
+    FROM people WHERE id = ${id} AND workspace_id = ${session.workspace.id} AND deleted_at IS NULL
+    LIMIT 1
+  `);
+  if (rows.length === 0) return c.json({ error: 'not_found' }, 404);
+  const p = (rows[0]!.prefs && typeof rows[0]!.prefs === 'object' ? rows[0]!.prefs : {}) as Record<string, unknown>;
+  return c.json({
+    preferences: {
+      whatsapp: p.whatsapp !== false,
+      email: p.email !== false,
+      sms: p.sms === true,
+      marketing: p.marketing !== false,
+    },
+    language: rows[0]!.lang ?? 'en',
+  });
+});
+
+// ============================================================================
+// PUT /api/people/:id/notification-preferences — set opt-in per channel + language.
+// ============================================================================
+export const notifPrefsSchema = z.object({
+  whatsapp: z.boolean().optional(),
+  email: z.boolean().optional(),
+  sms: z.boolean().optional(),
+  marketing: z.boolean().optional(),
+  language: z.enum(['en', 'hi', 'gu']).optional(),
+});
+
+people.put('/:id/notification-preferences', requirePermission('people.manage'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => null);
+  const parsed = notifPrefsSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const p = parsed.data;
+
+  // Merge only the provided channel flags onto the existing prefs (COALESCE-style);
+  // language is a separate column. Omitted keys preserve their current value.
+  const patch: Record<string, boolean> = {};
+  if (p.whatsapp !== undefined) patch.whatsapp = p.whatsapp;
+  if (p.email !== undefined) patch.email = p.email;
+  if (p.sms !== undefined) patch.sms = p.sms;
+  if (p.marketing !== undefined) patch.marketing = p.marketing;
+
+  const rows = await query<{ prefs: Record<string, unknown>; lang: string }>(sql`
+    UPDATE people
+    SET notification_preferences = COALESCE(notification_preferences, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb,
+        preferred_language = COALESCE(${p.language ?? null}::text, preferred_language),
+        updated_at = now()
+    WHERE id = ${id} AND workspace_id = ${session.workspace.id} AND deleted_at IS NULL
+    RETURNING notification_preferences AS prefs, preferred_language AS lang
+  `);
+  if (rows.length === 0) return c.json({ error: 'not_found' }, 404);
+
+  await audit({
+    workspaceId: session.workspace.id, actorUserId: session.user.id,
+    eventType: 'people.notification_preferences.updated',
+    targetType: 'person', targetId: id,
+    payload: { changed: Object.keys(patch), language: p.language ?? null },
+    ipAddress, userAgent,
+  });
+
+  const prefs = rows[0]!.prefs ?? {};
+  return c.json({
+    preferences: {
+      whatsapp: prefs.whatsapp !== false,
+      email: prefs.email !== false,
+      sms: prefs.sms === true,
+      marketing: prefs.marketing !== false,
+    },
+    language: rows[0]!.lang ?? 'en',
+  });
 });
