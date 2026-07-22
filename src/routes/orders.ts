@@ -6,7 +6,7 @@ import { audit } from '../lib/audit.js';
 import { emitNotification } from '../lib/notify.js';
 import { recomputeOrderTotals } from '../lib/pricing.js';
 import { checkAvailability, getDefaultLocationId } from '../lib/availability.js';
-import { applyDepositStatus } from './payments.js';
+import { applyDepositStatus } from '../lib/payment_commit.js';
 import { loadCustomFieldValues, upsertCustomFieldValues } from '../lib/custom_fields.js';
 import {
   loadTagsForEntity,

@@ -256,7 +256,7 @@ a:hover{color:var(--info-hover)}
 <div id="modalRoot"></div>
 
 <script type="module">
-import { api, ensureAuth, formatINR } from '/_lib/api.js';
+import { api, ensureAuth, formatINR, rupeesToPaise, paiseToRupees, newIdempotencyKey } from '/_lib/api.js';
 import { renderShell } from '/_lib/shell.js?v=6';
 
 // Canonical rail + top-bar. Breadcrumb starts as a linked "Orders" (back path)
@@ -334,6 +334,7 @@ const DMG_DEPOSIT=['hold','adjust','forfeit_partial','forfeit_full','no_change']
 // ------------------------------------------------------------------ state
 const S={id:null,order:null,items:[],events:[],assets:[],tags:[],cf:[],coupon:null,agg:null,aggCtx:null,
   settings:{},extensions:[],cancellation:null,approvals:[],customer:null,comms:[],standby:null,quotes:[],activeQuoteTab:null,substitutions:[],damage:[],
+  payments:[],depositInfo:null,
   open:{customer:true,rental:true,equipment:true,pricing:true,payments:true,deposits:true,events:true,changes:true,quotes:true,documents:false,communications:false,notes:true},
   overflow:false,blocker:null,filters:new Set(['All'])};
 // module-scoped modal state (no localStorage — per RentalOS phase rules)
@@ -565,28 +566,48 @@ function cardPricing(){
   };
 }
 
+const PM_METHOD_LABEL={upi:'UPI',bank_transfer:'Bank transfer',cash:'Cash',card:'Card',cheque:'Cheque',wallet:'Wallet',other:'Other'};
+const PM_KIND_LABEL={rental:'Rental payment',deposit:'Security deposit',deposit_refund:'Deposit refund',deposit_forfeit:'Damage settlement'};
 function cardPayments(){
   const o=S.order;const total=Number(o.total_paise||0);const paid=Number(o.paid_paise||0);const bal=Number(o.balance_paise!=null?o.balance_paise:total-paid);
+  const rows=(S.payments||[]);
   return function(){
     const pct=total>0?Math.min(100,Math.round(paid/total*100)):0;
     let html='<div style="display:flex;justify-content:space-between" class="mono"><span style="font-size:11.5px;color:var(--neutral)">'+formatINR(paid)+' received</span><span style="font-size:11.5px;color:var(--neutral)">of '+formatINR(total)+'</span></div>'
       +'<div class="progressbar"><span style="width:'+pct+'%"></span></div>';
-    if(paid>0){
+    // Balance banner (paid or outstanding).
+    if(bal>0){
+      html+='<div class="paidrow" style="background:var(--attention-bg);border:1px solid var(--attention-border)">'
+        +'<span style="width:32px;height:32px;border-radius:8px;background:#fff;color:var(--attention);display:flex;align-items:center;justify-content:center;flex:none">'+I('warn',16)+'</span>'
+        +'<div style="flex:1"><div style="font-weight:600;font-size:13px;color:var(--attention)">Balance outstanding</div></div>'
+        +'<span class="money" style="font-size:14px;font-weight:600;color:var(--attention)">'+formatINR(bal)+'</span></div>';
+    } else if(total>0){
       html+='<div class="paidrow" style="background:var(--success-bg);border:1px solid var(--success-border)">'
         +'<span style="width:32px;height:32px;border-radius:8px;background:#fff;color:var(--success);display:flex;align-items:center;justify-content:center;flex:none">'+I('check',16)+'</span>'
-        +'<div style="flex:1"><div style="font-weight:600;font-size:13px;color:var(--ink)">Payment received</div></div>'
+        +'<div style="flex:1"><div style="font-weight:600;font-size:13px;color:var(--ink)">Fully paid</div></div>'
         +'<span class="money" style="font-size:14px;font-weight:600;color:var(--success)">'+formatINR(paid)+'</span></div>';
     }
-    if(bal>0){
-      html+='<div class="paidrow" style="background:var(--attention-bg);border:1px solid var(--attention-border);flex-direction:column;align-items:stretch">'
-        +'<div style="display:flex;align-items:center;gap:12px"><span style="width:32px;height:32px;border-radius:8px;background:#fff;color:var(--attention);display:flex;align-items:center;justify-content:center;flex:none">'+I('warn',16)+'</span>'
-        +'<div style="flex:1"><div style="font-weight:600;font-size:13px;color:var(--attention)">Balance outstanding</div></div>'
-        +'<span class="money" style="font-size:14px;font-weight:600;color:var(--attention)">'+formatINR(bal)+'</span></div>'
-        +'<div style="display:flex;gap:9px;margin-top:13px"><button class="btn btn-tiny btn-primary" data-act="record-payment">Record payment</button></div>'
-        +'</div>';
-    } else if(total>0){
-      html+='<div class="empty" style="padding:14px">Fully paid.</div>';
+    // Ledger rows.
+    const ledger=rows.filter(r=>r.payment_kind==='rental');
+    if(ledger.length){
+      html+='<div style="margin-top:14px;display:flex;flex-direction:column;gap:1px">';
+      for(const r of ledger){
+        const out=r.direction==='out';
+        const refundable=!out&&r.payment_kind==='rental'&&r.status==='completed'&&!r.is_refund_of_payment_id;
+        html+='<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--border)">'
+          +'<span style="width:30px;height:30px;border-radius:8px;background:var(--surface-1);border:1px solid var(--border);color:'+(out?'var(--attention)':'var(--neutral)')+';display:flex;align-items:center;justify-content:center;flex:none;font-size:12px;font-weight:700">'+(out?'↩':'₹')+'</span>'
+          +'<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600;color:var(--ink)">'+(out?'Refund':escapeHtml(PM_KIND_LABEL[r.payment_kind]||r.payment_kind))+' · '+escapeHtml(PM_METHOD_LABEL[r.method]||r.method)+'</div>'
+          +'<div class="mono" style="font-size:10.5px;color:var(--neutral);margin-top:3px">'+fmtDateTime(r.occurred_at)+(r.received_by_name?' · '+escapeHtml(r.received_by_name):'')+(r.reference?' · ref '+escapeHtml(r.reference):'')+'</div></div>'
+          +'<span class="money" style="font-size:13px;font-weight:600;color:'+(out?'var(--attention)':'var(--head)')+'">'+(out?'− ':'')+formatINR(r.amount_paise)+'</span>'
+          +'<div style="display:flex;gap:6px;flex:none;margin-left:6px">'
+          +(refundable?'<button class="btn btn-tiny btn-secondary" data-act="refund-payment" data-payment="'+escapeAttr(r.id)+'">Refund</button>':'')
+          +(r.is_deletable?'<button class="btn btn-tiny btn-ghost" data-act="delete-payment" data-payment="'+escapeAttr(r.id)+'" title="Undo (correction window)">Undo</button>':'')
+          +'</div></div>';
+      }
+      html+='</div>';
     }
+    // Record button (always available — record a payment or a deposit).
+    html+='<div style="display:flex;gap:9px;margin-top:14px"><button class="btn btn-tiny btn-primary" data-act="record-payment">Record payment</button></div>';
     return html;
   };
 }
@@ -950,7 +971,11 @@ async function handleAct(kind,el){
     case 'sub-approve': doSubstitutionAction('approve',el&&el.getAttribute('data-sub'));break;
     case 'sub-reject': doSubstitutionAction('reject',el&&el.getAttribute('data-sub'));break;
     case 'dmg-open': openDamageModal(null,el&&el.getAttribute('data-dmg'));break;
-    case 'add-line': case 'view-asset': case 'record-payment': case 'record-deposit': case 'release-deposit': case 'forfeit-deposit': case 'dispatch-item':
+    case 'record-payment': openPaymentModal('rental');break;
+    case 'record-deposit': openPaymentModal('deposit');break;
+    case 'refund-payment': openRefundModal(el&&el.getAttribute('data-payment'));break;
+    case 'delete-payment': doDeletePayment(el&&el.getAttribute('data-payment'));break;
+    case 'add-line': case 'view-asset': case 'release-deposit': case 'forfeit-deposit': case 'dispatch-item':
       notInThisView(SOON_LABELS[kind]);break;
     case 'save-note':{
       const box=document.querySelector('[data-note-input]');const val=box?box.value.trim():'';
@@ -1013,6 +1038,8 @@ async function load(){
   if(_crumb)_crumb.innerHTML='<a href="/orders.html" style="color:inherit;text-decoration:none">Orders</a> &rsaquo; #'+escapeHtml(data.order.order_number);
   // Communications (customer-facing deliveries) — best-effort, non-blocking.
   api.get('/api/orders/'+S.id+'/communications').then(r=>{S.comms=r.communications||[];render();}).catch(()=>{});
+  // Slice 7 — payment ledger (rows + deposit summary) for the Payments card.
+  api.get('/api/order-payments/'+S.id).then(r=>{S.payments=r.payments||[];S.depositInfo=r.deposit||null;render();}).catch(()=>{});
   render();
 }
 
@@ -1257,6 +1284,9 @@ document.addEventListener('change',(e)=>{
   const key=f.getAttribute('data-mfield');
   if(key==='newEnd'){M.data.newEnd=e.target.value;recomputeExtension();}
   else if(key==='reasonTag'){M.data.reasonTag=e.target.value;if(M.kind==='extension')recomputeExtension();else{computeCancellation();renderCancellationModal();}}
+  else if(key==='pm_kind'){M.data.kind=e.target.value;M.data.preview=null;renderPaymentModal();schedulePaymentPreview();}
+  else if(key==='pm_method'){M.data.method=e.target.value;renderPaymentModal();schedulePaymentPreview();}
+  else if(key==='rf_method'){M.data.method=e.target.value;renderRefundModal();}
 });
 document.addEventListener('input',(e)=>{
   const f=e.target.closest&&e.target.closest('[data-mfield]');if(!f||!M.data)return;
@@ -1265,6 +1295,14 @@ document.addEventListener('input',(e)=>{
   else if(key==='message')M.data.message=e.target.value;
   else if(key==='altphone')M.data.altPhone=e.target.value;
   else if(key==='decideNotes'&&M.decide)M.decide.notes=e.target.value;
+  // payment modal
+  else if(key==='pm_amount'){M.data.amountRupees=e.target.value;updatePaymentFoot();schedulePaymentPreview();}
+  else if(key==='pm_ref'){M.data.reference=e.target.value;updatePaymentFoot();}
+  else if(key==='pm_notes'){M.data.notes=e.target.value;}
+  // refund modal
+  else if(key==='rf_amount'){M.data.amountRupees=e.target.value;updateRefundFoot();}
+  else if(key==='rf_ref'){M.data.reference=e.target.value;}
+  else if(key==='rf_notes'){M.data.notes=e.target.value;}
 });
 async function handleModal(kind){
   const d=M.data;
@@ -1277,10 +1315,12 @@ async function handleModal(kind){
   if(kind==='submit-ext')return submitExtension();
   if(kind==='submit-cancel')return submitCancellation();
   if(kind==='submit-send')return submitSend();
+  if(kind==='submit-payment')return submitPayment();
+  if(kind==='submit-refund')return submitRefund();
   if(kind==='decide-approve')return submitDecide('approved');
   if(kind==='decide-reject')return submitDecide('rejected');
 }
-function rerenderModal(){if(M.kind==='extension')renderExtensionModal();else if(M.kind==='cancellation')renderCancellationModal();else if(M.kind==='send')renderSendModal();}
+function rerenderModal(){if(M.kind==='extension')renderExtensionModal();else if(M.kind==='cancellation')renderCancellationModal();else if(M.kind==='send')renderSendModal();else if(M.kind==='payment')renderPaymentModal();else if(M.kind==='refund')renderRefundModal();}
 function chans(d){const c=[];if(d.wa)c.push('whatsapp');if(d.email)c.push('email');return c;}
 async function submitExtension(){
   const d=M.data;const iso=localInputToIso(d.newEnd);if(!iso){toast('Pick a valid date','err');return;}
@@ -1320,6 +1360,201 @@ function showModalError(err,rerender){
   else toast('Failed: '+(err.body&&err.body.error||err.message),'err');
   if(rerender)rerender();
 }
+// ==================================================================== PAYMENT MODAL (Slice 7)
+const PM_ALL_METHODS=['upi','bank_transfer','cash','card','cheque','wallet','other'];
+const PM_REF_LABEL={upi:'UPI reference / transaction ID',bank_transfer:'Bank transaction ID',cheque:'Cheque number',card:'Card reference',wallet:'Wallet reference',other:'Reference'};
+function pmRefRequired(policy,method){
+  if(!policy)return false;
+  if(method==='upi')return !!policy.require_reference_for_upi;
+  if(method==='bank_transfer')return !!policy.require_reference_for_bank_transfer;
+  if(method==='cheque')return !!policy.require_cheque_number;
+  return false;
+}
+function pmAmountPaise(){const n=Number(M.data&&M.data.amountRupees);return isFinite(n)&&n>0?rupeesToPaise(n):0;}
+
+async function openPaymentModal(presetKind){
+  M.kind='payment';
+  M.data={kind:presetKind||'rental',amountRupees:'',method:'upi',reference:'',notes:'',
+    options:null,preview:null,previewToken:0,previewTimer:null,idemKey:newIdempotencyKey(),loading:true};
+  renderPaymentModal();
+  try{
+    const opts=await api.get('/api/order-payments/'+S.id+'/payment-options');
+    M.data.options=opts;M.data.loading=false;
+    // default method to first enabled; prefill rental amount with outstanding balance.
+    const methods=(opts.policy&&opts.policy.methods_enabled)||PM_ALL_METHODS;
+    if(methods.indexOf(M.data.method)<0)M.data.method=methods[0]||'upi';
+    if(M.data.kind==='rental'&&Number(opts.suggested_amount_paise)>0)M.data.amountRupees=String(paiseToRupees(opts.suggested_amount_paise));
+    renderPaymentModal();schedulePaymentPreview();
+  }catch(err){M.data.loading=false;showModalError(err,renderPaymentModal);}
+}
+function paymentKindsAvailable(){
+  const opts=M.data.options;
+  if(!opts||!Array.isArray(opts.kinds))return [{kind:'rental',label:'Rental payment'}];
+  return opts.kinds.filter(k=>k.allowed).map(k=>({kind:k.kind,label:k.label}));
+}
+function paymentValid(){
+  const d=M.data;const amt=pmAmountPaise();
+  if(amt<=0)return false;
+  const policy=d.options&&d.options.policy;
+  if(pmRefRequired(policy,d.method)&&!(d.reference&&d.reference.trim()))return false;
+  return !d.busy&&!M.busy;
+}
+function renderPaymentModal(){
+  if(M.kind!=='payment')return;const o=S.order;const d=M.data;
+  if(d.loading){mrender(mHead('RECORD PAYMENT — #'+escapeHtml(o.order_number),escapeHtml(o.customer_name||''))+'<div class="m-bd"><div class="empty" style="padding:30px">Loading payment options…</div></div>');return;}
+  const opts=d.options||{};const policy=opts.policy||{};
+  const kinds=paymentKindsAvailable();
+  const methods=(policy.methods_enabled&&policy.methods_enabled.length?policy.methods_enabled:PM_ALL_METHODS);
+  let b='';
+  // 1. Kind
+  b+='<div class="m-sec"><div class="m-lbl">What is this payment for?</div>'
+    +'<select class="m-select" data-mfield="pm_kind" style="min-width:280px">'
+    +kinds.map(k=>'<option value="'+k.kind+'"'+(d.kind===k.kind?' selected':'')+'>'+escapeHtml(k.label)+'</option>').join('')
+    +'</select>'
+    +(d.kind!=='rental'?'<div class="m-hint" style="margin-top:8px">Deposits are held separately and do not reduce the rental balance.</div>':'')
+    +'</div>';
+  // 2. Amount
+  b+='<div class="m-sec"><div class="m-lbl">Amount</div>'
+    +'<div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px;color:var(--neutral)">₹</span>'
+    +'<input class="m-input" data-mfield="pm_amount" inputmode="decimal" placeholder="0" value="'+escapeAttr(d.amountRupees)+'" style="width:200px;font-size:16px">'
+    +'</div></div>';
+  // 3. Method
+  b+='<div class="m-sec"><div class="m-lbl">Method</div>'
+    +'<select class="m-select" data-mfield="pm_method" style="min-width:220px">'
+    +methods.map(m=>'<option value="'+m+'"'+(d.method===m?' selected':'')+'>'+escapeHtml(PM_METHOD_LABEL[m]||m)+'</option>').join('')
+    +'</select></div>';
+  // 4. Progressive method-specific reference field (hidden for cash)
+  if(d.method!=='cash'){
+    const req=pmRefRequired(policy,d.method);
+    b+='<div class="m-sec"><div class="m-lbl">'+escapeHtml(PM_REF_LABEL[d.method]||'Reference')+(req?' <span style="color:var(--danger)">*</span>':' <span style="color:var(--neutral);font-weight:400">(optional)</span>')+'</div>'
+      +'<input class="m-input" data-mfield="pm_ref" placeholder="'+escapeAttr(PM_REF_LABEL[d.method]||'Reference')+'" value="'+escapeAttr(d.reference||'')+'" style="width:280px">'
+      +'<div class="m-hint" id="pmRefHint" style="color:var(--danger);'+(req&&!(d.reference&&d.reference.trim())?'':'display:none')+'">This method requires a reference number.</div>'
+      +'</div>';
+  }
+  // 5. Notes
+  b+='<div class="m-sec"><div class="m-lbl">Notes <span style="color:var(--neutral);font-weight:400">(optional)</span></div>'
+    +'<textarea class="m-ta" data-mfield="pm_notes" placeholder="Internal note…">'+escapeHtml(d.notes||'')+'</textarea></div>';
+  // 6. Live preview panel
+  b+='<div class="m-sec"><div class="m-lbl">Preview</div><div id="pmPreview">'+paymentPreviewInner()+'</div></div>';
+  // footer
+  const foot='<button class="m-ghost" data-m="close">Cancel</button>'
+    +'<button class="m-btn" id="pmSubmit" data-m="submit-payment"'+(paymentValid()?'':' disabled')+'>'+(M.busy?'Recording…':'Record payment')+'</button>';
+  const sub=escapeHtml(o.customer_name||'')+' · Balance '+formatINR(o.balance_paise!=null?o.balance_paise:0);
+  mrender(mHead('RECORD PAYMENT — #'+escapeHtml(o.order_number),sub)+'<div class="m-bd">'+b+'</div><div class="m-ft">'+foot+'</div>');
+}
+function paymentPreviewInner(){
+  const d=M.data;const p=d.preview;const amt=pmAmountPaise();
+  if(amt<=0)return '<div class="m-fin"><div class="m-frow"><span class="l">Enter an amount to preview</span><span class="v"></span></div></div>';
+  if(!p)return '<div class="m-fin"><div class="m-frow"><span class="l">Calculating…</span><span class="v"></span></div></div>';
+  let h='<div class="m-fin">';
+  if(p.affects_rental_balance){
+    h+='<div class="m-frow"><span class="l">Current balance</span><span class="v">'+formatINR(p.current.balance_paise)+'</span></div>'
+      +'<div class="m-frow"><span class="l">After this payment</span><span class="v" style="color:'+(p.projected.balance_paise<=0?'var(--success)':'var(--head)')+'">'+formatINR(p.projected.balance_paise)+'</span></div>';
+    if(p.projected.fully_paid)h+='<div class="m-frow"><span class="l" style="color:var(--success);font-weight:600">✓ This settles the order in full</span><span class="v"></span></div>';
+    if(p.would_mark_invoice_paid)h+='<div class="m-frow"><span class="l" style="color:var(--success)">Invoice '+escapeHtml((p.latest_invoice&&p.latest_invoice.invoice_number)||'')+' will be marked paid</span><span class="v"></span></div>';
+  } else {
+    h+='<div class="m-frow"><span class="l">Held separately — does not change the rental balance</span><span class="v"></span></div>';
+  }
+  if(p.reference_missing)h+='<div class="m-frow"><span class="l" style="color:var(--danger)">Reference required for this method</span><span class="v"></span></div>';
+  h+='</div>';
+  return h;
+}
+function updatePaymentFoot(){
+  const btn=document.getElementById('pmSubmit');if(btn)btn.disabled=!paymentValid();
+  const hint=document.getElementById('pmRefHint');
+  if(hint){const req=pmRefRequired(M.data.options&&M.data.options.policy,M.data.method);hint.style.display=(req&&!(M.data.reference&&M.data.reference.trim()))?'':'none';}
+}
+function schedulePaymentPreview(){
+  const d=M.data;if(!d)return;
+  if(d.previewTimer)clearTimeout(d.previewTimer);
+  const amt=pmAmountPaise();
+  if(amt<=0){d.preview=null;const box=document.getElementById('pmPreview');if(box)box.innerHTML=paymentPreviewInner();return;}
+  d.previewTimer=setTimeout(async()=>{
+    const token=++d.previewToken;
+    try{
+      const r=await api.post('/api/order-payments/'+S.id+'/preview',{amount_paise:amt,method:d.method,payment_kind:d.kind,reference:(d.reference||'').trim()||undefined});
+      if(token!==d.previewToken||M.kind!=='payment')return;
+      d.preview=r;const box=document.getElementById('pmPreview');if(box)box.innerHTML=paymentPreviewInner();
+    }catch(_){/* preview is advisory */}
+  },350);
+}
+async function submitPayment(){
+  const d=M.data;const amt=pmAmountPaise();
+  if(amt<=0){toast('Enter an amount','err');return;}
+  if(pmRefRequired(d.options&&d.options.policy,d.method)&&!(d.reference&&d.reference.trim())){toast('A reference is required for this method','err');return;}
+  const body={amount_paise:amt,method:d.method,payment_kind:d.kind};
+  if(d.reference&&d.reference.trim())body.reference=d.reference.trim();
+  if(d.notes&&d.notes.trim())body.notes=d.notes.trim();
+  M.busy=true;renderPaymentModal();
+  try{
+    const r=await api.post('/api/order-payments/'+S.id,body,{key:d.idemKey});
+    const rec=r&&r.invoice_reconcile;
+    mclose();
+    if(rec&&rec.action==='marked_paid')toast('Payment recorded — invoice '+(rec.invoice_number||'')+' marked paid','ok');
+    else toast(d.kind==='rental'?'Payment recorded':'Deposit recorded','ok');
+    await load();
+  }catch(err){M.busy=false;showModalError(err,renderPaymentModal);}
+}
+
+// ==================================================================== REFUND MODAL (Slice 7)
+function openRefundModal(paymentId){
+  const p=(S.payments||[]).find(x=>x.id===paymentId);
+  if(!p){toast('Payment not found','err');return;}
+  M.kind='refund';
+  M.data={paymentId,orig:p,amountRupees:String(paiseToRupees(p.amount_paise)),method:p.method,reference:'',notes:'',idemKey:newIdempotencyKey()};
+  renderRefundModal();
+}
+function refundAmountPaise(){const n=Number(M.data&&M.data.amountRupees);return isFinite(n)&&n>0?rupeesToPaise(n):0;}
+function refundValid(){const amt=refundAmountPaise();return amt>0&&amt<=Number(M.data.orig.amount_paise)&&!M.busy;}
+function renderRefundModal(){
+  if(M.kind!=='refund')return;const o=S.order;const d=M.data;const p=d.orig;
+  let b='';
+  b+='<div class="m-sec"><div class="m-lbl">Original payment</div><div class="m-fin">'
+    +'<div class="m-frow"><span class="l">'+escapeHtml(PM_METHOD_LABEL[p.method]||p.method)+' · '+fmtDateTime(p.occurred_at)+'</span><span class="v">'+formatINR(p.amount_paise)+'</span></div>'
+    +'</div><div class="m-hint">Refunds cannot exceed the net received on this order.</div></div>';
+  b+='<div class="m-sec"><div class="m-lbl">Refund amount</div>'
+    +'<div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px;color:var(--neutral)">₹</span>'
+    +'<input class="m-input" data-mfield="rf_amount" inputmode="decimal" value="'+escapeAttr(d.amountRupees)+'" style="width:200px;font-size:16px"></div></div>';
+  b+='<div class="m-sec"><div class="m-lbl">Refund method</div>'
+    +'<select class="m-select" data-mfield="rf_method" style="min-width:220px">'
+    +PM_ALL_METHODS.map(m=>'<option value="'+m+'"'+(d.method===m?' selected':'')+'>'+escapeHtml(PM_METHOD_LABEL[m]||m)+'</option>').join('')
+    +'</select></div>';
+  b+='<div class="m-sec"><div class="m-lbl">Reference <span style="color:var(--neutral);font-weight:400">(optional)</span></div>'
+    +'<input class="m-input" data-mfield="rf_ref" placeholder="Refund reference" value="'+escapeAttr(d.reference||'')+'" style="width:280px"></div>';
+  b+='<div class="m-sec"><div class="m-lbl">Notes <span style="color:var(--neutral);font-weight:400">(optional)</span></div>'
+    +'<textarea class="m-ta" data-mfield="rf_notes" placeholder="Reason for refund…">'+escapeHtml(d.notes||'')+'</textarea></div>';
+  const foot='<button class="m-ghost" data-m="close">Cancel</button>'
+    +'<button class="m-btn danger" id="rfSubmit" data-m="submit-refund"'+(refundValid()?'':' disabled')+'>'+(M.busy?'Refunding…':'Record refund')+'</button>';
+  mrender(mHead('REFUND PAYMENT — #'+escapeHtml(o.order_number),escapeHtml(o.customer_name||''))+'<div class="m-bd">'+b+'</div><div class="m-ft">'+foot+'</div>');
+}
+function updateRefundFoot(){const btn=document.getElementById('rfSubmit');if(btn)btn.disabled=!refundValid();}
+async function submitRefund(){
+  const d=M.data;const amt=refundAmountPaise();
+  if(amt<=0){toast('Enter a refund amount','err');return;}
+  const body={amount_paise:amt,method:d.method};
+  if(d.reference&&d.reference.trim())body.reference=d.reference.trim();
+  if(d.notes&&d.notes.trim())body.notes=d.notes.trim();
+  M.busy=true;renderRefundModal();
+  try{
+    const r=await api.post('/api/order-payments/'+S.id+'/'+d.paymentId+'/refund',body,{key:d.idemKey});
+    const rec=r&&r.invoice_reconcile;
+    mclose();
+    if(rec&&rec.action==='reopened')toast('Refund recorded — invoice reopened','ok');
+    else toast('Refund recorded','ok');
+    await load();
+  }catch(err){M.busy=false;showModalError(err,renderRefundModal);}
+}
+async function doDeletePayment(paymentId){
+  if(!paymentId)return;
+  try{
+    await api.del('/api/order-payments/'+S.id+'/'+paymentId);
+    toast('Payment removed','ok');await load();
+  }catch(err){
+    const reason=err.body&&(err.body.reason||err.body.error);
+    toast('Cannot undo: '+(reason||err.message),'err');
+  }
+}
+
 // close modal on mask click
 document.addEventListener('click',(e)=>{if(e.target&&e.target.hasAttribute&&e.target.hasAttribute('data-mask'))mclose();});
 

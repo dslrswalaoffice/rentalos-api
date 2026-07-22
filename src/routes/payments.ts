@@ -12,6 +12,14 @@ import {
 } from '../middleware/session.js';
 import { requirePermission, can } from '../lib/permissions.js';
 import { recomputeOrderTotals } from '../lib/pricing.js';
+import { idempotencyMiddleware } from '../lib/idempotency.js';
+import {
+  loadOrderLite,
+  netReceivedPaise,
+  recomputeOrderPayments,
+  applyDepositStatus,
+  commitPaymentAndReconcile,
+} from '../lib/payment_commit.js';
 
 // ============================================================================
 // src/routes/payments.ts  (Sub-turn 2.2a)
@@ -48,24 +56,19 @@ type Env = {
 };
 
 export const payments = new Hono<Env>();
-payments.use('*', sessionMiddleware, requireAuth);
+// Slice 7: enforced-when-present idempotency (the new payment modal always sends
+// an Idempotency-Key so a double-submit can't double-charge the customer).
+payments.use('*', sessionMiddleware, requireAuth, idempotencyMiddleware);
 
 const METHODS = ['upi', 'bank_transfer', 'cash', 'card', 'cheque', 'wallet', 'other'] as const;
 
 // ----------------------------------------------------------------------------
 // Types
 // ----------------------------------------------------------------------------
-type OrderLite = {
-  id: string;
-  order_number: number;
-  status: string;
-  total_paise: number;
-  paid_paise: number;
-  balance_paise: number;
-  deposit_required_paise: number;
-  deposit_status: string;
-  deleted_at: string | null;
-};
+// OrderLite + the money primitives (loadOrderLite, netReceivedPaise,
+// recomputeOrderPayments, applyDepositStatus) now live in ../lib/payment_commit.js
+// (Slice 7) so the shared commit-and-reconcile helper can reuse them without a
+// route->lib->route import cycle. Imported at the top of this file.
 
 type PaymentRow = {
   id: string;
@@ -100,22 +103,6 @@ function clientCtx(c: Context) {
   return { ipAddress, userAgent };
 }
 
-async function loadOrderLite(orderId: string, workspaceId: string): Promise<OrderLite | null> {
-  const rows = await query<OrderLite>(sql`
-    SELECT id, order_number, status::text AS status,
-           total_paise, paid_paise, balance_paise,
-           deposit_required_paise, deposit_status, deleted_at
-    FROM orders
-    WHERE id = ${orderId}::uuid
-      AND workspace_id = ${workspaceId}::uuid
-    LIMIT 1
-  `);
-  const o = rows[0];
-  if (!o || o.deleted_at) return null;
-  return o;
-}
-
-// Net received = SUM(in) - SUM(out) over completed payments on this order.
 // Customer display name for a notification body (empty string if unavailable).
 async function customerNameFor(orderId: string, workspaceId: string): Promise<string> {
   const r = await query<{ name: string }>(sql`
@@ -129,151 +116,6 @@ async function customerNameFor(orderId: string, workspaceId: string): Promise<st
 
 function rupees(paise: number): string {
   return (Number(paise) / 100).toLocaleString('en-IN');
-}
-
-// RENTAL payments only — deposits (deposit / deposit_refund / deposit_forfeit)
-// are refundable holdings, not sales, so they never touch the order's
-// paid_paise / balance_paise. Existing rows all backfill to 'rental', so this
-// leaves pre-6d behaviour unchanged.
-async function netReceivedPaise(orderId: string, workspaceId: string): Promise<number> {
-  const rows = await query<{ net: number }>(sql`
-    SELECT COALESCE(SUM(
-      CASE WHEN direction = 'in' THEN amount_paise ELSE -amount_paise END
-    ), 0)::bigint AS net
-    FROM payments
-    WHERE order_id = ${orderId}::uuid
-      AND workspace_id = ${workspaceId}::uuid
-      AND status = 'completed'
-      AND payment_kind = 'rental'
-  `);
-  return Number(rows[0]?.net ?? 0);
-}
-
-// ----------------------------------------------------------------------------
-// Deposit lifecycle (Sub-turn 6d)
-// ----------------------------------------------------------------------------
-// deposit_status is denormalised on orders and recomputed from the deposit-kind
-// payments after every deposit write/delete. There is no soft-delete on
-// payments (hard DELETE within the correction window), so we sum live rows only.
-const DEPOSIT_KINDS = ['deposit', 'deposit_refund', 'deposit_forfeit'] as const;
-
-export async function computeDepositStatus(
-  orderId: string,
-  workspaceId: string,
-  requiredPaise: number,
-): Promise<string> {
-  if (Number(requiredPaise) === 0) return 'none';
-
-  const rows = await query<{ payment_kind: string; amount_paise: number }>(sql`
-    SELECT payment_kind, amount_paise
-    FROM payments
-    WHERE order_id = ${orderId}::uuid
-      AND workspace_id = ${workspaceId}::uuid
-      AND status = 'completed'
-      AND payment_kind = ANY(string_to_array(${DEPOSIT_KINDS.join(',')}::text, ','))
-  `);
-
-  const sumOf = (kind: string) =>
-    rows.filter((r) => r.payment_kind === kind).reduce((s, r) => s + Number(r.amount_paise), 0);
-  const held = sumOf('deposit');
-  const refunded = sumOf('deposit_refund');
-  const forfeited = sumOf('deposit_forfeit');
-  const netHeld = held - refunded - forfeited;
-
-  if (held === 0) return 'pending';
-  if (netHeld > 0) return 'held';
-  // netHeld === 0 (or defensively negative) → fully resolved one way or another.
-  if (forfeited > 0 && refunded > 0) return 'partial_forfeited';
-  if (forfeited >= held) return 'fully_forfeited';
-  if (refunded > 0) return 'released';
-  return 'held';
-}
-
-// Recompute + persist deposit_status; audit on change. Returns { old, new }.
-// Exported so the deposit-amount PATCH in orders.ts can reuse it.
-export async function applyDepositStatus(args: {
-  workspaceId: string;
-  orderId: string;
-  actorUserId: string;
-  ipAddress: string | null;
-  userAgent: string | null;
-}): Promise<{ old: string; new: string } | null> {
-  const order = await loadOrderLite(args.orderId, args.workspaceId);
-  if (!order) return null;
-  const oldStatus = order.deposit_status;
-  const newStatus = await computeDepositStatus(
-    args.orderId,
-    args.workspaceId,
-    Number(order.deposit_required_paise),
-  );
-  if (newStatus === oldStatus) return { old: oldStatus, new: newStatus };
-
-  await sql`
-    UPDATE orders SET deposit_status = ${newStatus}::text, updated_at = now()
-    WHERE id = ${args.orderId}::uuid AND workspace_id = ${args.workspaceId}::uuid
-  `;
-  await audit({
-    workspaceId: args.workspaceId,
-    actorUserId: args.actorUserId,
-    eventType: 'orders.deposit_status.changed',
-    targetType: 'order',
-    targetId: args.orderId,
-    payload: { old: oldStatus, new: newStatus },
-    ipAddress: args.ipAddress,
-    userAgent: args.userAgent,
-  });
-  return { old: oldStatus, new: newStatus };
-}
-
-// Refresh paid_paise / balance_paise on the order from SUM(payments).
-// Writes an order_events row (only) on change — never audit_events, matching
-// the pricing auto-recompute convention.
-async function recomputeOrderPayments(
-  orderId: string,
-  workspaceId: string,
-  actorUserId: string,
-): Promise<{ paid_paise: number; balance_paise: number; changed: boolean }> {
-  const order = await loadOrderLite(orderId, workspaceId);
-  if (!order) throw new Error('not_found');
-
-  const net = await netReceivedPaise(orderId, workspaceId);
-  const paidPaise = net;
-  const balancePaise = Number(order.total_paise) - paidPaise;
-
-  const oldPaid = Number(order.paid_paise);
-  const oldBalance = Number(order.balance_paise);
-  const changed = oldPaid !== paidPaise || oldBalance !== balancePaise;
-
-  if (changed) {
-    await sql`
-      UPDATE orders SET
-        paid_paise    = ${paidPaise}::bigint,
-        balance_paise = ${balancePaise}::bigint,
-        updated_at    = now()
-      WHERE id = ${orderId}::uuid
-        AND workspace_id = ${workspaceId}::uuid
-    `;
-
-    const payload: Record<string, unknown> = {
-      old: { paid_paise: oldPaid, balance_paise: oldBalance },
-      new: { paid_paise: paidPaise, balance_paise: balancePaise },
-    };
-    await sql`
-      INSERT INTO order_events
-        (workspace_id, order_id, event_type, from_status, to_status, payload, actor_user_id)
-      VALUES (
-        ${workspaceId}::uuid,
-        ${orderId}::uuid,
-        'order.payments.recomputed',
-        ${order.status}::order_status,
-        ${order.status}::order_status,
-        ${JSON.stringify(payload)}::jsonb,
-        ${actorUserId}::uuid
-      )
-    `;
-  }
-
-  return { paid_paise: paidPaise, balance_paise: balancePaise, changed };
 }
 
 // Refund linkage rides in the notes field as a `refund_of:<uuid>\n` prefix.
@@ -388,6 +230,180 @@ payments.get('/:orderId', async (c) => {
     },
     payments: paymentsOut,
     deposit,
+  });
+});
+
+// ============================================================================
+// Payment policy (Slice 7) — settings.payment_policy, seeded by migration 061.
+// Drives the modal's enabled methods + method-specific reference requirements.
+// ============================================================================
+type PaymentPolicy = {
+  correction_window_minutes: number;
+  methods_enabled: string[];
+  require_reference_for_upi: boolean;
+  require_reference_for_bank_transfer: boolean;
+  require_cheque_number: boolean;
+  require_custody_holder_for_cash: boolean;
+};
+
+const PAYMENT_POLICY_DEFAULTS: PaymentPolicy = {
+  correction_window_minutes: 5,
+  methods_enabled: [...METHODS],
+  require_reference_for_upi: true,
+  require_reference_for_bank_transfer: true,
+  require_cheque_number: true,
+  require_custody_holder_for_cash: false,
+};
+
+async function loadPaymentPolicy(workspaceId: string): Promise<PaymentPolicy> {
+  const rows = await query<{ policy: Partial<PaymentPolicy> | null }>(sql`
+    SELECT settings->'payment_policy' AS policy FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
+  `);
+  const p = rows[0]?.policy ?? {};
+  return {
+    ...PAYMENT_POLICY_DEFAULTS,
+    ...p,
+    methods_enabled: Array.isArray(p.methods_enabled) && p.methods_enabled.length
+      ? p.methods_enabled.filter((m): m is string => (METHODS as readonly string[]).includes(m))
+      : PAYMENT_POLICY_DEFAULTS.methods_enabled,
+  };
+}
+
+// Is a reference/number required for this method under the workspace policy?
+function referenceRequired(policy: PaymentPolicy, method: string): boolean {
+  if (method === 'upi') return policy.require_reference_for_upi;
+  if (method === 'bank_transfer') return policy.require_reference_for_bank_transfer;
+  if (method === 'cheque') return policy.require_cheque_number;
+  return false;
+}
+
+// Latest non-cancelled invoice status for the order (null if none). Used by the
+// preview to tell the operator whether recording will auto-mark an invoice paid.
+async function latestInvoiceStatus(orderId: string, workspaceId: string): Promise<{ id: string; status: string; invoice_number: string } | null> {
+  const rows = await query<{ id: string; status: string; invoice_number: string }>(sql`
+    SELECT id, status::text AS status, invoice_number FROM invoices
+    WHERE order_id = ${orderId}::uuid AND workspace_id = ${workspaceId}::uuid
+      AND status <> 'cancelled'::invoice_status
+    ORDER BY sequence DESC, revision DESC LIMIT 1
+  `);
+  return rows[0] ?? null;
+}
+
+async function autoMarkPaidEnabled(workspaceId: string): Promise<boolean> {
+  const rows = await query<{ v: boolean | null }>(sql`
+    SELECT (settings->'invoice_policy'->>'auto_mark_paid_on_zero_balance')::boolean AS v
+    FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1
+  `);
+  return rows[0]?.v ?? true;
+}
+
+// ============================================================================
+// GET /:orderId/payment-options — modal config: enabled methods, kinds the
+// caller may record, reference rules, and the current money summary. Read-only.
+// ============================================================================
+payments.get('/:orderId/payment-options', async (c) => {
+  const session = c.get('session')!;
+  const orderId = c.req.param('orderId');
+
+  const order = await loadOrderLite(orderId, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+
+  const policy = await loadPaymentPolicy(session.workspace.id);
+
+  // Which kinds this member may record. rental + deposit need payments.record;
+  // deposit_refund / deposit_forfeit RELEASE held money → deposits.retain.
+  const heldRows = await query<{ sum: number }>(sql`
+    SELECT COALESCE(SUM(amount_paise), 0)::bigint AS sum FROM payments
+    WHERE order_id = ${orderId}::uuid AND workspace_id = ${session.workspace.id}::uuid
+      AND status = 'completed' AND payment_kind = 'deposit'
+  `);
+  const hasDeposit = Number(heldRows[0]?.sum ?? 0) > 0;
+  const canRecord = can(session, 'payments.record');
+  const canRetain = can(session, 'deposits.retain');
+
+  const kinds = [
+    { kind: 'rental', label: 'Rental payment', allowed: canRecord, needs_deposit: false },
+    { kind: 'deposit', label: 'Security deposit', allowed: canRecord, needs_deposit: false },
+    { kind: 'deposit_refund', label: 'Deposit refund', allowed: canRetain && hasDeposit, needs_deposit: true },
+    { kind: 'deposit_forfeit', label: 'Damage settlement (retain deposit)', allowed: canRetain && hasDeposit, needs_deposit: true },
+  ];
+
+  return c.json({
+    order: {
+      id: order.id, order_number: order.order_number,
+      total_paise: Number(order.total_paise),
+      paid_paise: Number(order.paid_paise),
+      balance_paise: Number(order.balance_paise),
+      deposit_required_paise: Number(order.deposit_required_paise),
+      deposit_status: order.deposit_status,
+      has_deposit: hasDeposit,
+    },
+    policy: {
+      methods_enabled: policy.methods_enabled,
+      correction_window_minutes: policy.correction_window_minutes,
+      require_reference_for_upi: policy.require_reference_for_upi,
+      require_reference_for_bank_transfer: policy.require_reference_for_bank_transfer,
+      require_cheque_number: policy.require_cheque_number,
+      require_custody_holder_for_cash: policy.require_custody_holder_for_cash,
+    },
+    kinds,
+    // Suggested prefill = outstanding rental balance (never negative).
+    suggested_amount_paise: Math.max(0, Number(order.balance_paise)),
+    auto_mark_paid_on_zero_balance: await autoMarkPaidEnabled(session.workspace.id),
+  });
+});
+
+// ============================================================================
+// POST /:orderId/preview — non-mutating projection of a prospective payment:
+// what the balance becomes + whether it would auto-mark the invoice paid + any
+// reference requirement. Powers the modal's live preview panel (Q2). No writes.
+// ============================================================================
+export const paymentPreviewSchema = z.object({
+  amount_paise: z.number().int().positive(),
+  method:       z.enum(METHODS),
+  payment_kind: z.enum(['rental', 'deposit', 'deposit_refund', 'deposit_forfeit']).default('rental'),
+  reference:    z.string().max(200).optional(),
+});
+
+payments.post('/:orderId/preview', async (c) => {
+  const session = c.get('session')!;
+  const orderId = c.req.param('orderId');
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = paymentPreviewSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const input = parsed.data;
+
+  const order = await loadOrderLite(orderId, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+
+  const policy = await loadPaymentPolicy(session.workspace.id);
+  const kind = input.payment_kind;
+  const isRentalMoney = kind === 'rental'; // only rental kind moves paid/balance
+
+  const currentBalance = Number(order.balance_paise);
+  const currentPaid = Number(order.paid_paise);
+  // deposit_refund returns money (out); everything else here is inbound (in).
+  const signed = kind === 'deposit_refund' ? -input.amount_paise : input.amount_paise;
+  const projectedPaid = isRentalMoney ? currentPaid + signed : currentPaid;
+  const projectedBalance = isRentalMoney ? currentBalance - signed : currentBalance;
+
+  const inv = await latestInvoiceStatus(orderId, session.workspace.id);
+  const autoMark = await autoMarkPaidEnabled(session.workspace.id);
+  const wouldMarkInvoicePaid =
+    Boolean(autoMark && isRentalMoney && projectedBalance <= 0 && inv?.status === 'sent');
+
+  const refNeeded = referenceRequired(policy, input.method);
+  const refMissing = refNeeded && !(input.reference && input.reference.trim().length);
+
+  return c.json({
+    current:   { paid_paise: currentPaid, balance_paise: currentBalance },
+    projected: { paid_paise: projectedPaid, balance_paise: projectedBalance, fully_paid: projectedBalance <= 0 },
+    affects_rental_balance: isRentalMoney,
+    reference_required: refNeeded,
+    reference_missing: refMissing,
+    would_mark_invoice_paid: wouldMarkInvoicePaid,
+    latest_invoice: inv ? { id: inv.id, invoice_number: inv.invoice_number, status: inv.status } : null,
   });
 });
 
@@ -512,21 +528,11 @@ payments.post('/:orderId', requirePermission('payments.record'), async (c) => {
   `);
   const payment = inserted[0]!;
 
-  // Deposits never touch rental paid/balance; still call recompute so a rental
-  // payment updates the order (recompute is a no-op for deposit-only writes).
-  const rc = await recomputeOrderPayments(orderId, session.workspace.id, session.user.id);
-
-  // Deposit lifecycle: refresh deposit_status (audits its own change event).
-  if (isDeposit) {
-    await applyDepositStatus({
-      workspaceId: session.workspace.id, orderId,
-      actorUserId: session.user.id, ipAddress, userAgent,
-    });
-  }
-
   // Sub-turn 13: a RETAINED (forfeited) deposit becomes an order line so the
   // invoice EXPLAINS why the amount was withheld — not a mystery subtraction.
-  // It's a custom line; recompute picks up the total + tax. Fail-open.
+  // It's a custom line; recompute picks up the total + tax. Done BEFORE the
+  // money commit so the balance + invoice reconcile see the final total.
+  // Fail-open.
   if (kind === 'deposit_forfeit') {
     const reason = (input.notes ?? '').trim();
     await sql`
@@ -540,6 +546,17 @@ payments.post('/:orderId', requirePermission('payments.record'), async (c) => {
     `;
     await recomputeOrderTotals(orderId, session.workspace.id, session.user.id).catch(() => {});
   }
+
+  // Slice 7: the shared Money-Engine commit — recompute paid/balance from
+  // SUM(payments), refresh deposit_status (deposit kinds), and auto-reconcile
+  // the latest invoice against the new balance (payment -> zero balance ->
+  // invoice 'paid', policy-gated). Deposits never touch rental paid/balance, so
+  // recompute is a no-op there; reconcile still runs but the unchanged balance
+  // yields no transition. Reconcile is fail-open inside the helper.
+  const commit = await commitPaymentAndReconcile({
+    workspaceId: session.workspace.id, orderId,
+    actorUserId: session.user.id, isDeposit, ipAddress, userAgent,
+  });
 
   await audit({
     workspaceId: session.workspace.id,
@@ -580,9 +597,10 @@ payments.post('/:orderId', requirePermission('payments.record'), async (c) => {
       id: order.id,
       order_number: order.order_number,
       total_paise: Number(order.total_paise),
-      paid_paise: rc.paid_paise,
-      balance_paise: rc.balance_paise,
+      paid_paise: commit.order.paid_paise,
+      balance_paise: commit.order.balance_paise,
     },
+    invoice_reconcile: commit.invoice_reconcile,
   }, 201);
 });
 
@@ -671,7 +689,7 @@ payments.delete('/:orderId/:paymentId', requirePermission('payments.record'), as
 // ============================================================================
 // POST /:orderId/:paymentId/refund — refund a payment (direction 'out')
 // ============================================================================
-const refundSchema = z.object({
+export const refundSchema = z.object({
   amount_paise: z.number().int().positive(),
   method:       z.enum(METHODS),
   reference:    z.string().max(200).optional(),
@@ -743,7 +761,13 @@ payments.post('/:orderId/:paymentId/refund', requirePermission('payments.refund'
   `);
   const refund = inserted[0]!;
 
-  const rc = await recomputeOrderPayments(orderId, session.workspace.id, session.user.id);
+  // Slice 7: shared money commit — recompute paid/balance and reconcile the
+  // latest invoice. A refund that reopens a positive balance reverts a
+  // previously auto-marked invoice 'paid' -> 'sent' (fail-open inside).
+  const commit = await commitPaymentAndReconcile({
+    workspaceId: session.workspace.id, orderId,
+    actorUserId: session.user.id, isDeposit: false, ipAddress, userAgent,
+  });
 
   await audit({
     workspaceId: session.workspace.id,
@@ -776,8 +800,9 @@ payments.post('/:orderId/:paymentId/refund', requirePermission('payments.refund'
       id: order.id,
       order_number: order.order_number,
       total_paise: Number(order.total_paise),
-      paid_paise: rc.paid_paise,
-      balance_paise: rc.balance_paise,
+      paid_paise: commit.order.paid_paise,
+      balance_paise: commit.order.balance_paise,
     },
+    invoice_reconcile: commit.invoice_reconcile,
   }, 201);
 });
