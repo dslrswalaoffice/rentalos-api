@@ -40,6 +40,7 @@ import { applyExtensionEffects, applyCancellationEffects } from '../lib/order_ac
 import { emitCustomerNotification } from '../lib/notify.js';
 import { commitDispatchToPhysicalState } from '../lib/dispatch_commit.js';
 import { commitReturnToPhysicalState, type Disposition } from '../lib/return_commit.js';
+import { commitOrderToClosedState } from '../lib/order_close.js';
 
 // ============================================================================
 // src/routes/orders.ts
@@ -2429,7 +2430,18 @@ orders.post('/:id/transitions', async (c) => {
     },
   }).catch(() => {});
 
-  return c.json({ order: updated[0], canonical });
+  // Slice 6: when the operator closes the order, run the SHARED close workflow
+  // (order_close.ts) for the invoice automation. The status is already 'closed'
+  // above, so the helper skips the re-transition/re-emit and runs only the
+  // policy-gated invoice generate/pdf/issue/send. Fail-open.
+  let invoiceClose: unknown = null;
+  if (to === 'closed') {
+    try {
+      invoiceClose = await commitOrderToClosedState({ workspaceId: session.workspace.id, orderId: id, actorUserId: session.user.id, source: 'operator_close', ipAddress, userAgent });
+    } catch (e) { console.error('[orders] operator-close invoice automation failed', e); }
+  }
+
+  return c.json({ order: updated[0], canonical, invoice_close: invoiceClose });
 });
 
 // ============================================================================

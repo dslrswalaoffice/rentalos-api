@@ -13,6 +13,8 @@ import {
   type SessionWorkspace,
 } from '../middleware/session.js';
 import { requirePermission } from '../lib/permissions.js';
+import { generateAndStoreInvoicePdf } from '../lib/invoice_pdf.js';
+import { deliverInvoice, type DeliveryChannel } from '../lib/invoice_deliver.js';
 
 // ============================================================================
 // src/routes/invoices.ts  (Sub-turn 2.4a-endpoints)
@@ -670,4 +672,110 @@ invoices.post('/:orderId/:invoiceId/transitions', requirePermission('invoices.ma
   }).catch(() => {});
 
   return c.json({ invoice: updated[0], canonical });
+});
+
+// ===========================================================================
+// Slice 6 — invoice PDF + issue + delivery. Nested under the existing
+// /:orderId/:invoiceId shape (the frontend has both ids) so no new mount is
+// needed. Distinct suffixes never collide with .../transitions.
+// ===========================================================================
+
+// Load an invoice by (orderId, invoiceId, workspace). Returns null if absent.
+async function loadInvoiceById(workspaceId: string, orderId: string, invoiceId: string) {
+  const rows = await query<{ id: string; status: string; invoice_number: string; pdf_url: string | null; order_number: number; customer_id: string | null }>(sql`
+    SELECT i.id, i.status::text AS status, i.invoice_number, i.pdf_url, o.order_number, i.customer_id
+    FROM invoices i JOIN orders o ON o.id = i.order_id AND o.workspace_id = i.workspace_id
+    WHERE i.id = ${invoiceId}::uuid AND i.order_id = ${orderId}::uuid AND i.workspace_id = ${workspaceId}::uuid LIMIT 1
+  `);
+  return rows[0] ?? null;
+}
+
+// POST /:orderId/:invoiceId/pdf/generate — render + store the PDF (idempotent unless force).
+invoices.post('/:orderId/:invoiceId/pdf/generate', requirePermission('invoices.manage'), async (c) => {
+  const session = c.get('session')!;
+  const workspaceId = session.workspace.id;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const orderId = c.req.param('orderId'); const invoiceId = c.req.param('invoiceId');
+  const inv = await loadInvoiceById(workspaceId, orderId, invoiceId);
+  if (!inv) return c.json({ error: { code: 'invoice_not_found', message: 'Invoice not found', reasons: [] } }, 404);
+  const force = c.req.query('force') === 'true';
+  const r = await generateAndStoreInvoicePdf(workspaceId, invoiceId, { force });
+  if ('error' in r) return c.json({ error: { code: r.error, message: 'Could not generate the PDF', reasons: [] } }, 500);
+  if (r.regenerated) {
+    await audit({ workspaceId, actorUserId: session.user.id, eventType: 'orders.invoice.generated', targetType: 'invoice', targetId: invoiceId, payload: { order_id: orderId, invoice_id: invoiceId, pdf: true }, ipAddress, userAgent });
+  }
+  return c.json({ pdf_url: r.pdf_url, regenerated: r.regenerated }, 200);
+});
+
+// GET /:orderId/:invoiceId/pdf — redirect to the stored PDF, or 404 with reasons.
+invoices.get('/:orderId/:invoiceId/pdf', requirePermission('invoices.manage'), async (c) => {
+  const session = c.get('session')!;
+  const inv = await loadInvoiceById(session.workspace.id, c.req.param('orderId'), c.req.param('invoiceId'));
+  if (!inv) return c.json({ error: { code: 'invoice_not_found', message: 'Invoice not found', reasons: [] } }, 404);
+  if (!inv.pdf_url) return c.json({ error: { code: 'pdf_not_generated', message: 'No PDF has been generated yet', reasons: [{ code: 'pdf_not_generated', message: 'Click Generate PDF first.' }] } }, 404);
+  return c.redirect(inv.pdf_url, 302);
+});
+
+// POST /:orderId/:invoiceId/issue — draft -> sent (ensures a PDF), optional auto-send.
+invoices.post('/:orderId/:invoiceId/issue', requirePermission('invoices.manage'), async (c) => {
+  const session = c.get('session')!;
+  const workspaceId = session.workspace.id;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const orderId = c.req.param('orderId'); const invoiceId = c.req.param('invoiceId');
+  const inv = await loadInvoiceById(workspaceId, orderId, invoiceId);
+  if (!inv) return c.json({ error: { code: 'invoice_not_found', message: 'Invoice not found', reasons: [] } }, 404);
+  if (inv.status !== 'draft') return c.json({ error: { code: 'not_draft', message: `Invoice is ${inv.status}, only a draft can be issued`, reasons: [] } }, 409);
+
+  // Ensure a PDF exists first.
+  const pdf = await generateAndStoreInvoicePdf(workspaceId, invoiceId);
+  if ('error' in pdf) return c.json({ error: { code: 'pdf_failed', message: 'Could not generate the PDF before issuing', reasons: [] } }, 500);
+
+  await sql`UPDATE invoices SET status = 'sent'::invoice_status, sent_at = now(), due_at = COALESCE(due_at, now()) WHERE id = ${invoiceId}::uuid AND workspace_id = ${workspaceId}::uuid AND status = 'draft'::invoice_status`;
+  await sql`INSERT INTO order_events (workspace_id, order_id, event_type, payload, actor_user_id) VALUES (${workspaceId}::uuid, ${orderId}::uuid, 'order.invoice.issued'::text, ${JSON.stringify({ invoice_id: invoiceId, invoice_number: inv.invoice_number })}::jsonb, ${session.user.id}::uuid)`;
+  await audit({ workspaceId, actorUserId: session.user.id, eventType: 'orders.invoice.status.changed', targetType: 'invoice', targetId: invoiceId, payload: { order_id: orderId, from: 'draft', to: 'sent', issued: true }, ipAddress, userAgent });
+
+  // Auto-send on issue (policy-gated).
+  const pol = await query<{ auto: boolean | null; channels: string[] | null }>(sql`SELECT (settings#>>'{invoice_policy,auto_send_on_issue}')::boolean AS auto, ARRAY(SELECT jsonb_array_elements_text(COALESCE(settings#>'{invoice_policy,send_channels_default}','["whatsapp","email"]'::jsonb))) AS channels FROM workspaces WHERE id = ${workspaceId}::uuid LIMIT 1`);
+  let delivery = null;
+  if (pol[0]?.auto !== false) {
+    const channels = (pol[0]?.channels ?? ['whatsapp', 'email']).filter((ch): ch is DeliveryChannel => ch === 'whatsapp' || ch === 'email');
+    const d = await deliverInvoice(workspaceId, invoiceId, { channels, actorUserId: session.user.id });
+    delivery = { any_sent: d.any_sent, channels: d.channels };
+  }
+  return c.json({ status: 'sent', invoice_id: invoiceId, pdf_url: pdf.pdf_url, delivery }, 200);
+});
+
+// POST /:orderId/:invoiceId/send — manual delivery (idempotency-key aware).
+invoices.post('/:orderId/:invoiceId/send', requirePermission('invoices.manage'), async (c) => {
+  const session = c.get('session')!;
+  const workspaceId = session.workspace.id;
+  const orderId = c.req.param('orderId'); const invoiceId = c.req.param('invoiceId');
+  const inv = await loadInvoiceById(workspaceId, orderId, invoiceId);
+  if (!inv) return c.json({ error: { code: 'invoice_not_found', message: 'Invoice not found', reasons: [] } }, 404);
+  if (!inv.pdf_url) return c.json({ error: { code: 'pdf_not_generated', message: 'Generate the PDF before sending', reasons: [{ code: 'pdf_not_generated', message: 'Generate PDF first.' }] } }, 409);
+  let body: unknown = {};
+  try { body = await c.req.json(); } catch { body = {}; }
+  const parsed = sendSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: { code: 'invalid_body', message: 'Invalid send payload', reasons: parsed.error.issues } }, 400);
+  const channels = (parsed.data.channels && parsed.data.channels.length ? parsed.data.channels : ['whatsapp', 'email']).filter((ch): ch is DeliveryChannel => ch === 'whatsapp' || ch === 'email');
+  const d = await deliverInvoice(workspaceId, invoiceId, { channels, recipientOverride: parsed.data.recipient_override ?? null, actorUserId: session.user.id });
+  return c.json({ invoice_id: invoiceId, any_sent: d.any_sent, channels: d.channels }, 200);
+});
+
+// GET /:orderId/:invoiceId/deliveries — delivery history.
+invoices.get('/:orderId/:invoiceId/deliveries', requirePermission('invoices.manage'), async (c) => {
+  const session = c.get('session')!;
+  const inv = await loadInvoiceById(session.workspace.id, c.req.param('orderId'), c.req.param('invoiceId'));
+  if (!inv) return c.json({ error: { code: 'invoice_not_found', message: 'Invoice not found', reasons: [] } }, 404);
+  const rows = await query<Record<string, unknown>>(sql`
+    SELECT id, channel, recipient, status, provider_ref, failure_reason, sent_at, delivered_at, created_at
+    FROM invoice_deliveries WHERE invoice_id = ${inv.id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+    ORDER BY created_at DESC
+  `);
+  return c.json({ deliveries: rows }, 200);
+});
+
+export const sendSchema = z.object({
+  channels: z.array(z.enum(['whatsapp', 'email'])).optional(),
+  recipient_override: z.string().max(200).nullish(),
 });
