@@ -169,7 +169,7 @@
     function escapeAttr(s){ return escapeHtml(s).replace(/`/g,'&#96;'); }
     function initials(name){ const p=String(name||'').trim().split(/\s+/).filter(Boolean); if(!p.length) return '··'; return (p[0][0]+(p[1]?p[1][0]:'')).toUpperCase(); }
 
-    const state = { all: [], byRole: {}, role: null, search: '' };
+    const state = { all: [], byRole: {}, role: null, search: '', kyc: null };
 
     const ROLE_CHIPS = [
       { key: null, label: 'All' },
@@ -186,6 +186,13 @@
       if (t === 'normal')  return '<span class="segpill seg-normal"><span class="dot"></span>NORMAL</span>';
       return '<span class="dash">—</span>';
     }
+    // Slice 8 — real KYC status pill (was a stub "—").
+    function kycPill(status){
+      if (!status || status === 'not_started') return '<span class="dash">—</span>';
+      const tone = ({ pending:['#d97706','rgba(217,119,6,.12)'], verified:['#059669','rgba(5,150,105,.1)'],
+        rejected:['#dc2626','rgba(220,38,38,.1)'], expired:['#d97706','rgba(217,119,6,.12)'] })[status] || ['#6b7280','rgba(107,114,128,.12)'];
+      return `<span class="segpill" style="color:${tone[0]};background:${tone[1]}"><span class="dot" style="background:${tone[0]}"></span>${escapeHtml(status.toUpperCase())}</span>`;
+    }
 
     function renderChips(){
       const total = state.all.length;
@@ -194,7 +201,11 @@
         const active = state.role === c.key;
         return `<button class="chip ${active ? 'active' : ''}" data-role="${c.key === null ? '' : escapeAttr(c.key)}">${escapeHtml(c.label)} <span class="n">(${n})</span></button>`;
       }).join('');
-      document.getElementById('chips').innerHTML = html;
+      // Slice 8 — a "Pending KYC" chip (separate from the role filter).
+      const kycActive = state.kyc === 'pending';
+      document.getElementById('chips').innerHTML = html
+        + `<span style="width:1px;height:18px;background:var(--line);margin:0 4px;align-self:center"></span>`
+        + `<button class="chip ${kycActive ? 'active' : ''}" data-kyc="pending">Pending KYC</button>`;
     }
 
     function rowHtml(p){
@@ -211,7 +222,7 @@
         <div class="cell hide-sm"><span class="stubcell">—</span></div>
         <div class="cell hide-sm"><span class="stubcell">—</span></div>
         <div class="cell hide-sm"><span class="stubcell">—</span></div>
-        <div class="cell hide-sm"><span class="stubcell">—</span></div>
+        <div class="cell hide-sm">${kycPill(p.kyc_status)}</div>
         <div class="cell"><span class="openlink">Open →</span></div>
       </div>`;
     }
@@ -247,6 +258,7 @@
       const qs = new URLSearchParams();
       if (state.role) qs.set('role', state.role);
       if (state.search) qs.set('search', state.search);
+      if (state.kyc) qs.set('kyc_status', state.kyc);
       const q = qs.toString();
       let data;
       try { data = await api.get('/api/people' + (q ? '?' + q : '')); }
@@ -270,6 +282,8 @@
 
     let allCount = null;
     document.getElementById('chips').addEventListener('click', (e) => {
+      const kb = e.target.closest('[data-kyc]');
+      if (kb) { state.kyc = state.kyc === 'pending' ? null : 'pending'; load(); return; }
       const b = e.target.closest('[data-role]'); if (!b) return;
       const v = b.getAttribute('data-role');
       state.role = v === '' ? null : v;

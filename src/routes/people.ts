@@ -66,6 +66,7 @@ type PersonRow = {
   company_name: string | null;
   gstin: string | null;
   notes: string | null;
+  kyc_status?: string | null;
   created_at: string;
   updated_at: string;
   roles: Role[];
@@ -96,6 +97,8 @@ people.get('/', async (c) => {
   const role = c.req.query('role')?.trim() || null;
   const includeArchived = c.req.query('include_archived') === 'true';
   const searchPattern = search ? `%${search}%` : null;
+  // Slice 8 — optional KYC status filter (powers the People list "Pending KYC" chip).
+  const kycStatus = c.req.query('kyc_status')?.trim() || null;
 
   // Tag filter (Sub-turn 8a) — AND semantics, resolved to matching person ids.
   const tagIds = parseTagIdsParam(c.req.queries('tag_ids'));
@@ -118,7 +121,7 @@ people.get('/', async (c) => {
         p.id, p.display_name, p.phone, p.phone_verified_at, p.email,
         p.id_proof_type, p.id_proof_number,
         p.address_line, p.city, p.state, p.postal_code, p.country_code,
-        p.company_name, p.gstin, p.notes, p.tier,
+        p.company_name, p.gstin, p.notes, p.tier, p.kyc_status,
         p.created_at, p.updated_at,
         COALESCE(
           (SELECT json_agg(pr.role ORDER BY pr.role)
@@ -129,6 +132,7 @@ people.get('/', async (c) => {
       FROM people p
       WHERE p.workspace_id = ${session.workspace.id}
         AND (${includeArchived}::boolean OR p.deleted_at IS NULL)
+        AND (${kycStatus}::text IS NULL OR p.kyc_status = ${kycStatus}::text)
         AND (${searchPattern}::text IS NULL
              OR p.display_name ILIKE ${searchPattern}::text
              OR p.phone        ILIKE ${searchPattern}::text

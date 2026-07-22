@@ -425,28 +425,118 @@
       document.getElementById('identity-body').innerHTML = html;
     }
 
-    function renderKyc(p){
-      // Verified badge: driven by a real, present ID proof (never fabricated).
-      const hasProof = !!(p.id_proof_type || p.id_proof_number);
-      document.getElementById('kyc-badge').innerHTML = hasProof
-        ? '<span class="segpill seg-vip"><span class="dot"></span>ID ON FILE</span>'
-        : '<span class="segpill seg-normal"><span class="dot"></span>NO ID</span>';
-      document.getElementById('kyc-trust').textContent = p.trust_score==null ? 'Trust not scored' : `Trust ${p.trust_score}/100`;
+    // ---- KYC (Slice 8) ----
+    const KYC_DOC_LABEL={aadhaar:'Aadhaar',pan:'PAN',driving_license:'Driving License',passport:'Passport',gst_certificate:'GST Certificate',other:'Other'};
+    const KYC_STATUS_TONE={not_started:['#6b7280','rgba(107,114,128,.12)'],pending:['#b45309','rgba(217,119,6,.12)'],verified:['#059669','rgba(5,150,105,.1)'],rejected:['#dc2626','rgba(220,38,38,.1)'],expired:['#b45309','rgba(217,119,6,.12)']};
+    const KYC_REJECT_REASONS=[['unclear_image','Unclear image'],['document_expired','Document expired'],['name_mismatch','Name mismatch'],['suspected_fraud','Suspected fraud'],['wrong_document_type','Wrong document type'],['other','Other']];
+    const KYC_ALL_TYPES=['aadhaar','pan','driving_license','passport','gst_certificate','other'];
+    let KYC=null;
+    function kycStatusPill(status){
+      const t=KYC_STATUS_TONE[status]||KYC_STATUS_TONE.not_started;
+      return `<span class="segpill" style="color:${t[0]};background:${t[1]}"><span class="dot" style="background:${t[0]}"></span>${escapeHtml(String(status).replace(/_/g,' ').toUpperCase())}</span>`;
+    }
+    function personId(){ return new URLSearchParams(location.search).get('id'); }
 
-      let html = '';
-      const updated = fmtDate(p.trust_score_updated_at);
-      const proofType = p.id_proof_type ? String(p.id_proof_type).replace(/_/g,' ') : null;
-      html += `<div class="fgrid" style="margin-bottom:16px">`;
-      html += fieldCell('ID Proof Type', proofType ? `<span style="text-transform:uppercase">${escapeHtml(proofType)}</span>` : dash);
-      html += fieldCell('ID Proof Number', p.id_proof_number ? `<span class="fval mono">${maskProof(p.id_proof_number)}</span>` : dash);
-      html += fieldCell('Phone Verified', p.phone_verified_at ? escapeHtml(fmtDate(p.phone_verified_at)) : dash);
-      html += fieldCell('Trust Score', p.trust_score==null ? dash : `<span style="color:var(--green)">${escapeHtml(String(p.trust_score))}</span>/100${updated?` <span class="stubnote" style="font-weight:400">· ${escapeHtml(updated)}</span>`:''}`);
+    function renderKyc(p){
+      document.getElementById('kyc-trust').textContent = p.trust_score==null ? 'Trust not scored' : `Trust ${p.trust_score}/100`;
+      document.getElementById('kyc-badge').innerHTML = '';
+      document.getElementById('kyc-body').innerHTML = '<div class="stubbox">Loading KYC…</div>';
+      loadKycCard();
+    }
+    async function loadKycCard(){
+      let k;
+      try { k = await api.get('/api/kyc/people/' + encodeURIComponent(personId()) + '/documents'); }
+      catch(e){ document.getElementById('kyc-body').innerHTML = '<div class="stubbox">Could not load KYC documents.</div>'; return; }
+      KYC = k;
+      document.getElementById('kyc-badge').innerHTML = kycStatusPill(k.person.kyc_status || 'not_started');
+      renderKycBody();
+    }
+    function renderKycBody(){
+      const k=KYC; if(!k) return;
+      const catLabel = k.category==='b2b' ? 'Business (B2B)' : 'Individual';
+      let html = `<div class="fgrid" style="margin-bottom:14px">`;
+      html += fieldCell('Category', escapeHtml(catLabel));
+      html += fieldCell('Required', (k.required_documents||[]).map(t=>KYC_DOC_LABEL[t]||t).join(', ') || '—');
+      html += fieldCell('Completeness', `${k.completeness_pct}%`);
       html += `</div>`;
-      // The 4-way trust breakdown (payment reliability / return timeliness / damage rate /
-      // communication) is NOT returned by the read-only endpoint → stubbed, never faked.
-      html += `<div class="stubbox">The weighted trust breakdown &amp; document viewer arrive in a future slice.</div>`;
+      if((k.documents||[]).length){
+        html += `<div class="flabel" style="margin-bottom:8px">Documents</div>`;
+        for(const d of k.documents){
+          html += `<div style="border:1px solid #e6e8ec;border-radius:10px;padding:11px 13px;margin-bottom:9px">`;
+          html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">`;
+          html += `<span style="font-weight:600;font-size:13px">${escapeHtml(KYC_DOC_LABEL[d.document_type]||d.document_type)}</span>`;
+          if(d.document_number) html += `<span class="mono" style="font-size:11px;color:#6b7280">${maskProof(d.document_number)}</span>`;
+          html += kycStatusPill(d.status);
+          html += `<span style="flex:1"></span><span class="mono" style="font-size:10.5px;color:#9aa">${escapeHtml(fmtDate(d.submitted_at)||'')}</span></div>`;
+          if((d.files||[]).length && k.can_view_files){
+            html += `<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">`;
+            d.files.forEach((f,idx)=>{
+              const isImg=String(f.mime_type||'').startsWith('image/');
+              html += `<a href="/api/kyc/documents/${escapeHtml(d.id)}/files/${idx}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #e6e8ec;border-radius:8px;font-size:11.5px;color:#374151;text-decoration:none">${isImg?'🖼':'📄'} ${escapeHtml(f.filename||('File '+(idx+1)))}</a>`;
+            });
+            html += `</div>`;
+          } else if((d.file_count||0)>0){
+            html += `<div style="font-size:11px;color:#9aa;margin-top:7px">${d.file_count} file(s) — permission required to view</div>`;
+          }
+          if(d.status==='rejected' && d.rejection_reason){
+            html += `<div style="font-size:11.5px;color:#dc2626;margin-top:7px">Rejected: ${escapeHtml(String(d.rejection_reason).replace(/_/g,' '))}${d.rejection_notes?' — '+escapeHtml(d.rejection_notes):''}</div>`;
+          }
+          if(k.can_review && d.status==='pending'){
+            html += `<div style="display:flex;gap:8px;margin-top:10px">`
+              + `<button data-kyc-act="verify" data-doc="${escapeHtml(d.id)}" style="padding:5px 12px;border:none;border-radius:7px;background:#059669;color:#fff;font-size:12px;font-weight:600;cursor:pointer">Verify</button>`
+              + `<button data-kyc-act="reject-open" data-doc="${escapeHtml(d.id)}" style="padding:5px 12px;border:1px solid #dc2626;border-radius:7px;background:#fff;color:#dc2626;font-size:12px;font-weight:600;cursor:pointer">Reject</button></div>`
+              + `<div id="kyc-reject-${escapeHtml(d.id)}" style="display:none;margin-top:10px">`
+              + `<select class="kyc-reject-reason" style="width:100%;padding:7px;border:1px solid #e6e8ec;border-radius:7px;font-size:12px;margin-bottom:7px">${KYC_REJECT_REASONS.map(r=>`<option value="${r[0]}">${escapeHtml(r[1])}</option>`).join('')}</select>`
+              + `<textarea class="kyc-reject-notes" placeholder="Notes (optional)" style="width:100%;padding:7px;border:1px solid #e6e8ec;border-radius:7px;font-size:12px;min-height:52px;margin-bottom:7px"></textarea>`
+              + `<button data-kyc-act="reject-confirm" data-doc="${escapeHtml(d.id)}" style="padding:5px 12px;border:none;border-radius:7px;background:#dc2626;color:#fff;font-size:12px;font-weight:600;cursor:pointer">Confirm rejection</button></div>`;
+          }
+          html += `</div>`;
+        }
+      } else {
+        html += `<div class="stubbox" style="margin-bottom:12px">No KYC documents submitted yet.</div>`;
+      }
+      html += `<div class="hr"></div><div class="flabel" style="margin:10px 0 8px">Add a document</div>`
+        + `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">`
+        + `<select id="kyc-upload-type" style="padding:7px;border:1px solid #e6e8ec;border-radius:7px;font-size:12px">${KYC_ALL_TYPES.map(t=>`<option value="${t}">${KYC_DOC_LABEL[t]}</option>`).join('')}</select>`
+        + `<input id="kyc-upload-files" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple style="font-size:12px">`
+        + `<button data-kyc-act="upload" style="padding:6px 14px;border:none;border-radius:7px;background:#1a1f36;color:#fff;font-size:12px;font-weight:600;cursor:pointer">Upload</button></div>`
+        + `<div id="kyc-upload-msg" style="font-size:11.5px;margin-top:7px;color:#9aa"></div>`
+        + `<div class="hr"></div><div class="stubbox">The weighted trust breakdown arrives in a future slice.</div>`;
       document.getElementById('kyc-body').innerHTML = html;
     }
+    // Delegated KYC actions (verify / reject / upload).
+    document.addEventListener('click', async (e)=>{
+      const btn = e.target.closest && e.target.closest('[data-kyc-act]'); if(!btn) return;
+      const act = btn.getAttribute('data-kyc-act'); const docId = btn.getAttribute('data-doc');
+      if(act==='verify'){
+        try { await api.post('/api/kyc/documents/'+docId+'/verify', {}); await loadKycCard(); }
+        catch(err){ alert('Verify failed: '+((err.body&&err.body.error)||err.message)); }
+      } else if(act==='reject-open'){
+        const box=document.getElementById('kyc-reject-'+docId); if(box) box.style.display = box.style.display==='none' ? 'block':'none';
+      } else if(act==='reject-confirm'){
+        const box=document.getElementById('kyc-reject-'+docId);
+        const reason=box.querySelector('.kyc-reject-reason').value; const notes=box.querySelector('.kyc-reject-notes').value.trim();
+        try { await api.post('/api/kyc/documents/'+docId+'/reject', {reason, notes: notes||undefined}); await loadKycCard(); }
+        catch(err){ alert('Reject failed: '+((err.body&&err.body.error)||err.message)); }
+      } else if(act==='upload'){
+        const type=document.getElementById('kyc-upload-type').value;
+        const files=document.getElementById('kyc-upload-files').files;
+        const msg=document.getElementById('kyc-upload-msg');
+        if(!files || !files.length){ msg.textContent='Choose at least one file.'; msg.style.color='#dc2626'; return; }
+        msg.textContent='Uploading…'; msg.style.color='#9aa';
+        const fd=new FormData(); fd.append('document_type', type); for(const f of files) fd.append('files', f);
+        try {
+          const res=await fetch('/api/kyc/people/'+encodeURIComponent(personId())+'/documents', {
+            method:'POST', credentials:'same-origin',
+            headers:{ 'Idempotency-Key': (window.crypto&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random()) },
+            body: fd,
+          });
+          if(!res.ok){ const b=await res.json().catch(()=>({})); throw new Error(b.error||('http_'+res.status)); }
+          msg.textContent='Uploaded.'; msg.style.color='#059669';
+          await loadKycCard();
+        } catch(err){ msg.textContent='Upload failed: '+err.message; msg.style.color='#dc2626'; }
+      }
+    });
 
     function renderRelationship(p, orders){
       document.getElementById('rel-since').textContent = p.created_at ? `Since ${fmtDate(p.created_at)}` : '';
