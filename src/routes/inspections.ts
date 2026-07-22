@@ -32,6 +32,7 @@ import { idempotencyMiddleware } from '../lib/idempotency.js';
 import { audit, type AuditEventType } from '../lib/audit.js';
 import { emitNotification } from '../lib/notify.js';
 import { commitReturnToPhysicalState, releaseInspectionHolds } from '../lib/return_commit.js';
+import { commitOrderToClosedState } from '../lib/order_close.js';
 
 type SessionVar = { sessionId: string; user: SessionUser; workspace: SessionWorkspace } | null;
 type Env = { Variables: { session: SessionVar } };
@@ -223,9 +224,35 @@ inspections.post('/:inspectionId/complete', requirePermission('inspections.perfo
     ip: ipAddress, ua: userAgent,
   });
 
+  // Slice 6: auto-close the order when THIS was the last open inspection AND every
+  // rental line is terminal AND the policy opts in — then the shared close helper
+  // (order_close.ts) runs the invoice automation. Fail-open: a close error never
+  // fails the inspection. fail_minor keeps a unit awaiting owner review, so it does
+  // NOT trigger auto-close (its item is 'returned' but the inspection stays open in
+  // spirit — we still gate on no remaining scheduled/in_progress rows).
+  let autoClose: unknown = null;
+  const openInsp = await query<{ n: number }>(sql`
+    SELECT COUNT(*)::int AS n FROM inspection_events
+    WHERE order_id = ${insp.order_id}::uuid AND workspace_id = ${workspaceId}::uuid
+      AND status IN ('scheduled','in_progress')
+  `);
+  const openItems = await query<{ n: number }>(sql`
+    SELECT COUNT(*)::int AS n FROM order_items
+    WHERE order_id = ${insp.order_id}::uuid AND workspace_id = ${workspaceId}::uuid
+      AND item_type = 'rental'
+      AND status NOT IN ('returned','returned_with_damage','not_returned_chargeable','not_returned_non_chargeable','missing','substituted_out')
+  `);
+  const autoCloseEnabled = (wsRows[0]?.settings?.invoice_policy?.auto_close_on_final_inspection_pass) !== false;
+  if (autoCloseEnabled && result !== 'fail_minor' && (openInsp[0]?.n ?? 1) === 0 && (openItems[0]?.n ?? 1) === 0) {
+    try {
+      autoClose = await commitOrderToClosedState({ workspaceId, orderId: insp.order_id, actorUserId: session.user.id, source: 'inspection_complete', ipAddress, userAgent });
+    } catch (e) { console.error('[inspections] auto-close failed', e); }
+  }
+
   return c.json({
     status: result, inspection_id: insp.id, result,
     dispositions, deposit_ready_to_release: depositReadyToRelease, deposit_action: depositAction,
     triggers_damage: triggersDamage, needs_owner_review: result === 'fail_minor',
+    auto_close: autoClose,
   }, 200);
 });
