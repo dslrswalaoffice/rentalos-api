@@ -716,8 +716,8 @@ orders.get('/:id', async (c) => {
         AND ar.status = 'pending'
       ORDER BY ar.requested_at DESC
     `),
-    query<{ tier: string | null; trust_score: number | null; prior_completed: number; outstanding_paise: number }>(sql`
-      SELECT p.tier, p.trust_score,
+    query<{ tier: string | null; trust_score: number | null; kyc_status: string | null; prior_completed: number; outstanding_paise: number }>(sql`
+      SELECT p.tier, p.trust_score, p.kyc_status,
         (SELECT COUNT(*)::int FROM orders o2
            WHERE o2.workspace_id = p.workspace_id AND o2.customer_person_id = p.id
              AND o2.id != ${id}::uuid AND o2.status::text IN ('confirmed','dispatched','active','returned','closed')
@@ -744,7 +744,7 @@ orders.get('/:id', async (c) => {
     name: order.customer_name ?? null,
     phone: order.customer_phone ?? null,
     email: order.customer_email ?? null,
-    kyc_status: null as string | null,
+    kyc_status: ce?.kyc_status ?? null,
     trust_score: ce?.trust_score ?? null,
     tier: ce?.tier ?? null,
     segment,
