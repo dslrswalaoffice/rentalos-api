@@ -29,6 +29,7 @@ import { quoteVersions } from './quote_versions.js';
 import { orderSubstitutions } from './substitutions.js';
 import { orderDamage } from './damage.js';
 import { orderDispatches } from './dispatches.js';
+import { orderReturns } from './returns.js';
 import {
   createApprovalRequest,
   evaluateExtensionApproval,
@@ -38,6 +39,7 @@ import {
 import { applyExtensionEffects, applyCancellationEffects } from '../lib/order_actions.js';
 import { emitCustomerNotification } from '../lib/notify.js';
 import { commitDispatchToPhysicalState } from '../lib/dispatch_commit.js';
+import { commitReturnToPhysicalState, type Disposition } from '../lib/return_commit.js';
 
 // ============================================================================
 // src/routes/orders.ts
@@ -337,81 +339,6 @@ async function loadOrderAssets(orderId: string, workspaceId: string) {
       AND oa.workspace_id = ${workspaceId}::uuid
     ORDER BY a.asset_code ASC
   `);
-}
-
-type Disposition = { asset_id: string; asset_code: string; outcome: string; downtime_id: string | null };
-
-/** Apply a return outcome to the physical units pinned to a line. OK →
- *  available; damaged → available + an auto-created asset-level repair downtime
- *  (capacity-1 for its window, so it doesn't rejoin availability until fixed);
- *  missing → retired (soft-deleted out of capacity). not_returned_* leaves the
- *  unit 'out' (still with the customer). Returns a summary for the batch audit. */
-async function applyReturnDisposition(args: {
-  workspaceId: string; orderId: string; orderNumber: number; itemId: string;
-  outcome: string; actorUserId: string; repairDays: number;
-}): Promise<Disposition[]> {
-  const rows = await query<{ asset_id: string; asset_code: string }>(sql`
-    SELECT oa.asset_id, a.asset_code
-    FROM order_assets oa JOIN assets a ON a.id = oa.asset_id
-    WHERE oa.order_id = ${args.orderId}::uuid
-      AND oa.order_item_id = ${args.itemId}::uuid
-      AND oa.workspace_id = ${args.workspaceId}::uuid
-      AND oa.status = 'dispatched'::order_asset_status
-  `);
-
-  const out: Disposition[] = [];
-  for (const r of rows) {
-    let oaStatus: string;
-    let downtimeId: string | null = null;
-
-    if (args.outcome === 'returned') {
-      oaStatus = 'returned';
-      await sql`
-        UPDATE assets SET status = 'available'::asset_status, updated_at = now()
-        WHERE id = ${r.asset_id}::uuid AND workspace_id = ${args.workspaceId}::uuid
-      `;
-    } else if (args.outcome === 'returned_with_damage') {
-      oaStatus = 'damaged';
-      await sql`
-        UPDATE assets SET status = 'available'::asset_status, updated_at = now()
-        WHERE id = ${r.asset_id}::uuid AND workspace_id = ${args.workspaceId}::uuid
-      `;
-      const dt = await query<{ id: string }>(sql`
-        INSERT INTO product_downtimes
-          (workspace_id, asset_id, kind, status, start_at, end_at, reason, order_id, created_by_user_id)
-        VALUES (
-          ${args.workspaceId}::uuid, ${r.asset_id}::uuid,
-          'repair'::downtime_reason, 'scheduled'::downtime_status,
-          now(), now() + make_interval(days => ${args.repairDays}::int),
-          ${`Damage on return (order #${args.orderNumber})`}::text,
-          ${args.orderId}::uuid, ${args.actorUserId}::uuid
-        )
-        RETURNING id
-      `);
-      downtimeId = dt[0]?.id ?? null;
-    } else if (args.outcome === 'missing') {
-      oaStatus = 'lost';
-      // Retired = status 'retired' AND soft-deleted (CLAUDE.md), out of capacity.
-      await sql`
-        UPDATE assets SET status = 'retired'::asset_status, deleted_at = now(), updated_at = now()
-        WHERE id = ${r.asset_id}::uuid AND workspace_id = ${args.workspaceId}::uuid
-      `;
-    } else {
-      // not_returned_chargeable / not_returned_non_chargeable: the unit is still
-      // physically with the customer. Leave it 'out' and its order_assets row
-      // 'dispatched' — the line keeps reserving (RESERVING_ITEM_STATUSES).
-      continue;
-    }
-
-    await sql`
-      UPDATE order_assets
-        SET status = ${oaStatus}::order_asset_status, returned_at = now(), updated_at = now()
-      WHERE order_id = ${args.orderId}::uuid AND asset_id = ${r.asset_id}::uuid
-        AND workspace_id = ${args.workspaceId}::uuid
-    `;
-    out.push({ asset_id: r.asset_id, asset_code: r.asset_code, outcome: oaStatus, downtime_id: downtimeId });
-  }
-  return out;
 }
 
 async function loadEvents(orderId: string) {
@@ -2983,7 +2910,7 @@ orders.post('/:id/return', requirePermission('returns.execute'), async (c) => {
   const repairDays = Number.isFinite(rawRepairDays) && rawRepairDays > 0 ? rawRepairDays : 7;
   const dispositions: Disposition[] = [];
   for (const r of reqItems) {
-    const d = await applyReturnDisposition({
+    const d = await commitReturnToPhysicalState({
       workspaceId: session.workspace.id,
       orderId: id,
       orderNumber: Number(order.order_number),
@@ -3152,3 +3079,4 @@ orders.route('/', quoteVersions);
 orders.route('/', orderSubstitutions);
 orders.route('/', orderDamage);
 orders.route('/', orderDispatches);
+orders.route('/', orderReturns);
