@@ -114,6 +114,8 @@ export type AuditEventType =
   | 'orders.invoice.generated'
   | 'orders.invoice.status.changed'
   | 'orders.invoice.status.forced'
+  | 'orders.invoice.auto_marked_paid'
+  | 'orders.invoice.auto_reopened'
   | 'dispatches.items_recorded'
   | 'dispatches.serial_verified'
   | 'dispatches.condition_recorded'
