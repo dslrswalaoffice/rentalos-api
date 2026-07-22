@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Manrope',sans-serif;background:#efece6}
+  a{color:#4f46e5;text-decoration:none}
+  a:hover{color:#4338ca}
+  ::placeholder{color:#9ca3af}
+</style>
+</helmet>
+<div style="position:relative;width:1440px;min-height:1120px;background:#efece6;overflow:hidden;font-family:'Manrope',sans-serif">
+
+  <!-- ===== BACKDROP: Order 360 (blurred + dimmed) ===== -->
+  <div style="position:absolute;inset:0;filter:blur(3px);opacity:.6;pointer-events:none;user-select:none">
+    <div style="height:52px;background:#fff;border-bottom:1px solid #e6e3dc;display:flex;align-items:center;gap:28px;padding:0 32px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#202058">RentalOS</div>
+      <div style="display:flex;gap:22px;font-size:13px;color:#6b7280;font-weight:500">
+        <span>Dashboard</span><span style="color:#202058;font-weight:600">Orders</span><span>Inventory</span><span>Customers</span><span>Reports</span>
+      </div>
+      <div style="margin-left:auto;width:30px;height:30px;border-radius:50%;background:#d9d5cd"></div>
+    </div>
+    <div style="height:64px;background:#fff;border-bottom:1px solid #e6e3dc;display:flex;align-items:center;gap:16px;padding:0 32px">
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:600;font-size:15px;color:#26235a">BK2214</div>
+      <div style="color:#c9c5bd">&middot;</div>
+      <div style="font-size:14px;color:#26235a;font-weight:600">Rahul Malhotra</div>
+      <div style="color:#c9c5bd">&middot;</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:#ecfdf5;color:#059669;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em">&#9679; ON RENT</div>
+      <div style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:16px;color:#202058">&#8377;28,000</div>
+    </div>
+    <div style="display:flex;gap:24px;padding:28px 32px">
+      <div style="flex:2;display:flex;flex-direction:column;gap:16px">
+        <div style="height:140px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:220px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:180px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px">
+        <div style="height:120px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:260px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;inset:0;background:rgba(38,35,90,.30);pointer-events:none"></div>
+
+  <!-- ===== MODAL (640px) ===== -->
+  <div style="position:absolute;top:48px;left:50%;transform:translateX(-50%);width:640px;max-height:1024px;background:#fff;border-radius:14px;box-shadow:0 24px 64px -12px rgba(24,22,60,.45),0 8px 24px -8px rgba(24,22,60,.30);display:flex;flex-direction:column;overflow:hidden">
+
+    <!-- HEADER (sticky) -->
+    <div style="flex:none;padding:24px 26px 18px;border-bottom:1px solid #eeece6">
+      <div style="display:flex;align-items:flex-start;gap:16px">
+        <div style="flex:1">
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;margin-bottom:11px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#4f46e5"></span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.13em;color:#4f46e5">NEW DEPOSIT</span>
+          </div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;letter-spacing:-.01em;color:#202058">Create a deposit hold for order <span style="font-family:'JetBrains Mono',monospace">#BK2214</span></div>
+          <div style="margin-top:5px;font-size:13px;color:#6b7280">
+            Rahul Malhotra
+            <span style="display:inline-flex;align-items:center;padding:1px 7px;margin-left:2px;border-radius:5px;background:#fffbeb;border:1px solid #fcd9a4;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#d97706;vertical-align:middle">&#9733; VIP</span>
+            <span style="color:#c9c5bd">&middot;</span>
+            Nanlite FS 300 rental
+          </div>
+        </div>
+        <button style="width:32px;height:32px;flex:none;border:1px solid #e7e4de;background:#fff;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280;transition:all .15s" style-hover="background:#f3f1ec;color:#202058">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- BODY (scrollable) -->
+    <div style="flex:1;overflow-y:auto;padding:22px 26px 10px;display:flex;flex-direction:column;gap:26px">
+
+      <!-- ===== SECTION 1: DEPOSIT BASICS ===== -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">DEPOSIT BASICS</div>
+
+        <!-- hold type -->
+        <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:9px">Hold type <span style="color:#dc2626">*</span> <span style="font-size:12px;color:#9ca3af;font-weight:400">why this deposit exists</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px">
+          <sc-for list="{{ holdTypes }}" as="h" hint-placeholder-count="4">
+            <div onClick="{{ h.pick }}" style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;border:1.5px solid {{ h.border }};background:{{ h.bg }};cursor:pointer;transition:all .15s" style-hover="border-color:#a5b4fc">
+              <span style="width:17px;height:17px;flex:none;border-radius:50%;border:2px solid {{ h.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ h.dot }}"></span></span>
+              <span style="font-size:13px;font-weight:{{ h.weight }};color:{{ h.color }}">{{ h.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- amount -->
+        <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:9px">Amount <span style="color:#dc2626">*</span></div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <sc-if value="{{ overriding }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1.5px solid #4f46e5;border-radius:10px;background:#fff;box-shadow:0 0 0 3px rgba(79,70,229,.09)">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:17px;color:#6b7280">&#8377;</span>
+              <input value="{{ amountRaw }}" onInput="{{ onAmount }}" style="width:120px;border:none;outline:none;font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:600;color:#202058;background:transparent">
+            </div>
+          </sc-if>
+          <sc-if value="{{ notOverriding }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid #d9d6cf;border-radius:10px;background:#faf9f7">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:17px;color:#9ca3af">&#8377;</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:600;color:#202058">{{ amountFmt }}</span>
+            </div>
+          </sc-if>
+          <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:8px;background:#eef2ff;color:#4f46e5;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/></svg>
+            Auto-calculated
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:12.5px;color:#6b7280;line-height:1.5">
+          Basis: <span style="color:#26235a;font-weight:600">50% of Nanlite FS 300 asset value</span> (per workspace policy) &middot;
+          <sc-if value="{{ notOverriding }}" hint-placeholder-val="{{ true }}"><a href="#" onClick="{{ toggleOverride }}">Override amount</a></sc-if>
+          <sc-if value="{{ overriding }}" hint-placeholder-val="{{ false }}"><a href="#" onClick="{{ toggleOverride }}">Reset to auto-calculated</a></sc-if>
+        </div>
+
+        <!-- purpose / notes -->
+        <div style="font-size:13px;color:#26235a;font-weight:600;margin:20px 0 9px">Purpose / notes <span style="font-size:12px;color:#9ca3af;font-weight:400">optional</span></div>
+        <textarea style="width:100%;min-height:56px;resize:vertical;padding:11px 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:'Manrope',sans-serif;font-size:13px;line-height:1.5;color:#26235a;outline:none" style-focus="border-color:#4f46e5">Standard rental deposit &mdash; 50% asset value per policy.</textarea>
+      </div>
+
+      <!-- ===== SECTION 2: PAYMENT METHOD ===== -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">PAYMENT METHOD</div>
+        <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:11px">How is the customer paying? <span style="color:#dc2626">*</span></div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ methods }}" as="m" hint-placeholder-count="4">
+            <div onClick="{{ m.pick }}" style="display:flex;align-items:center;gap:12px;padding:13px 15px;border-radius:11px;border:1.5px solid {{ m.border }};background:{{ m.bg }};cursor:pointer;transition:all .15s" style-hover="border-color:#a5b4fc">
+              <span style="width:18px;height:18px;flex:none;border-radius:50%;border:2px solid {{ m.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ m.dot }}"></span></span>
+              <span style="width:130px;flex:none;font-size:13.5px;font-weight:{{ m.weight }};color:{{ m.color }}">{{ m.label }}</span>
+              <span style="font-size:12.5px;color:#9ca3af">{{ m.hint }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- ===== SECTION 3: PAYMENT METHOD DETAILS (dynamic) ===== -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">
+          <span dangerouslySetInnerHTML="{{ detailLabel }}"></span>
+        </div>
+
+        <!-- ===== CASH ===== -->
+        <sc-if value="{{ isCash }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Cash received by <span style="color:#dc2626">*</span></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff;cursor:pointer" style-hover="border-color:#202058">
+                <span style="font-size:13px;color:#202058">Ruhan <span style="color:#9ca3af;font-size:12px">&middot; currently at counter</span></span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Custody assignment <span style="color:#dc2626">*</span> <span style="font-size:12px;color:#9ca3af;font-weight:400">where will it be stored?</span></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff;cursor:pointer" style-hover="border-color:#202058">
+                <span style="font-size:13px;color:#202058">Warehouse cashbox</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Verified by <span style="font-size:12px;color:#9ca3af;font-weight:400">co-signer for accountability</span></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff;cursor:pointer" style-hover="border-color:#202058">
+                <span style="font-size:13px;color:#202058">Shoaib</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+              <div style="margin-top:7px;font-size:12px;color:#9ca3af">Optional, but recommended for amounts &gt; &#8377;15,000.</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ===== CHEQUE (primary) ===== -->
+        <sc-if value="{{ isCheque }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;gap:14px">
+              <div style="flex:1">
+                <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Cheque number <span style="color:#dc2626">*</span></div>
+                <div style="display:flex;align-items:center;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:500;color:#202058">123456</span>
+                </div>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Cheque date <span style="color:#dc2626">*</span></div>
+                <div style="display:flex;align-items:center;gap:9px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058">Jul 15, 2026</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label onClick="{{ togglePostdated }}" style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:#26235a;user-select:none">
+                <span style="width:18px;height:18px;border-radius:5px;border:1.5px solid {{ pdBorder }};background:{{ pdBg }};display:flex;align-items:center;justify-content:center;transition:all .15s"><span dangerouslySetInnerHTML="{{ pdCheck }}"></span></span>
+                Post-dated cheque
+              </label>
+              <sc-if value="{{ postdated }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:10px;display:flex;gap:10px;padding:11px 13px;border-radius:9px;background:#fffbeb;border:1px solid #fcd9a4">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <div style="font-size:12.5px;color:#92400e;line-height:1.5">Post-dated instrument &mdash; the deposit hold stays <strong>pending</strong> until the cheque clears on the future date. Flag for follow-up.</div>
+                </div>
+              </sc-if>
+            </div>
+            <div style="display:flex;gap:14px">
+              <div style="flex:1">
+                <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Bank name <span style="color:#dc2626">*</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff;cursor:pointer" style-hover="border-color:#202058">
+                  <span style="font-size:13px;color:#202058">HDFC Bank</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Branch <span style="font-size:12px;color:#9ca3af;font-weight:400">optional</span></div>
+                <input placeholder="e.g. Alkapuri" style="width:100%;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:'Manrope',sans-serif;font-size:13px;color:#202058;outline:none" style-focus="border-color:#4f46e5">
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Physical storage location <span style="color:#dc2626">*</span></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff;cursor:pointer" style-hover="border-color:#202058">
+                <span style="font-size:13px;color:#202058">Office safe</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Photograph cheque</div>
+              <div style="display:flex;align-items:center;gap:12px;padding:16px;border:1.5px dashed #d7d3ca;border-radius:10px;background:#faf9f7">
+                <span style="width:36px;height:36px;flex:none;border-radius:9px;background:#f0ede7;display:flex;align-items:center;justify-content:center;color:#a8a496"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+                <div style="flex:1">
+                  <div style="font-size:13px;color:#6b7280;font-weight:600">Upload cheque photo</div>
+                  <div style="font-size:12px;color:#9ca3af;margin-top:2px">Attach an image for the audit trail.</div>
+                </div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;color:#9ca3af;background:#f0ede7;border:1px solid #e2ded6;padding:4px 9px;border-radius:6px">COMING SOON</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ===== UPI ===== -->
+        <sc-if value="{{ isUpi }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">UPI reference / transaction ID <span style="color:#dc2626">*</span></div>
+              <div style="display:flex;align-items:center;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058">abc123@paytm</span>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Amount received in bank account <span style="color:#dc2626">*</span></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff;cursor:pointer" style-hover="border-color:#202058">
+                <span style="font-size:13px;color:#202058">HDFC <span style="font-family:'JetBrains Mono',monospace">****4521</span> <span style="color:#9ca3af;font-size:12px">&middot; DSLRSWALA main</span></span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Received on <span style="color:#dc2626">*</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058">Jul 15, 2026 &middot; 10:30 AM</span>
+                <span style="margin-left:6px;display:inline-flex;align-items:center;padding:3px 9px;border-radius:7px;background:#eef2ff;color:#4f46e5;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600">Now</span>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:9px">Verified against bank statement <span style="color:#dc2626">*</span></div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{ verifyOpts }}" as="v" hint-placeholder-count="2">
+                  <div onClick="{{ v.pick }}" style="display:flex;align-items:flex-start;gap:11px;padding:8px;border-radius:9px;cursor:pointer" style-hover="background:#faf9f6">
+                    <span style="margin-top:1px;width:17px;height:17px;flex:none;border-radius:50%;border:2px solid {{ v.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ v.dot }}"></span></span>
+                    <div style="font-size:13px;color:{{ v.color }};font-weight:{{ v.weight }}">{{ v.label }} <span style="font-size:12px;color:#9ca3af;font-weight:400">{{ v.hint }}</span></div>
+                  </div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ pendingVerify }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:8px;display:flex;gap:10px;padding:11px 13px;border-radius:9px;background:#fffbeb;border:1px solid #fcd9a4">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <div style="font-size:12.5px;color:#92400e;line-height:1.5">Deposit is created in a <strong>pending</strong> state until you confirm the credit against the bank statement.</div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ===== BANK TRANSFER ===== -->
+        <sc-if value="{{ isBank }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Transaction reference <span style="color:#dc2626">*</span> <span style="font-size:12px;color:#9ca3af;font-weight:400">IMPS / NEFT / RTGS</span></div>
+              <div style="display:flex;align-items:center;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058">NEFT-HDFC-0083412</span>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Amount received in bank account <span style="color:#dc2626">*</span></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff;cursor:pointer" style-hover="border-color:#202058">
+                <span style="font-size:13px;color:#202058">HDFC <span style="font-family:'JetBrains Mono',monospace">****4521</span> <span style="color:#9ca3af;font-size:12px">&middot; DSLRSWALA main</span></span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+            </div>
+            <div style="display:flex;gap:14px">
+              <div style="flex:1">
+                <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Received on <span style="color:#dc2626">*</span></div>
+                <div style="display:flex;align-items:center;gap:9px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;background:#fff">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058">Jul 15, 2026</span>
+                </div>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:8px">Sender name <span style="font-size:12px;color:#9ca3af;font-weight:400">as in bank statement</span></div>
+                <input placeholder="Rahul Malhotra" style="width:100%;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:'Manrope',sans-serif;font-size:13px;color:#202058;outline:none" style-focus="border-color:#4f46e5">
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;color:#26235a;font-weight:600;margin-bottom:9px">Verified against bank statement <span style="color:#dc2626">*</span></div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{ verifyOpts }}" as="v" hint-placeholder-count="2">
+                  <div onClick="{{ v.pick }}" style="display:flex;align-items:flex-start;gap:11px;padding:8px;border-radius:9px;cursor:pointer" style-hover="background:#faf9f6">
+                    <span style="margin-top:1px;width:17px;height:17px;flex:none;border-radius:50%;border:2px solid {{ v.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ v.dot }}"></span></span>
+                    <div style="font-size:13px;color:{{ v.color }};font-weight:{{ v.weight }}">{{ v.label }} <span style="font-size:12px;color:#9ca3af;font-weight:400">{{ v.hint }}</span></div>
+                  </div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ pendingVerify }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:8px;display:flex;gap:10px;padding:11px 13px;border-radius:9px;background:#fffbeb;border:1px solid #fcd9a4">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <div style="font-size:12.5px;color:#92400e;line-height:1.5">Deposit is created in a <strong>pending</strong> state until you confirm the credit against the bank statement.</div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- ===== SECTION 4: APPROVAL CHECK ===== -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">APPROVAL CHECK</div>
+        <sc-if value="{{ withinAuthority }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border-radius:12px;background:#ecfdf5;border:1px solid #a7f3d0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><polyline points="20 6 9 17 4 12"/></svg>
+            <div style="font-size:13px;color:#065f46;line-height:1.5"><span style="font-weight:700">Within your authority</span> &mdash; <span style="font-family:'JetBrains Mono',monospace">{{ amountFmt }}</span> is under your <span style="font-family:'JetBrains Mono',monospace">&#8377;50,000</span> limit. No manager sign-off needed.</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ needsApproval }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:13px;border:1px solid #fcd9a4;background:#fffbeb;border-radius:12px;padding:16px">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div style="flex:1">
+              <div style="font-size:13.5px;font-weight:700;color:#92400e">Approval required</div>
+              <div style="margin-top:6px;font-size:13px;color:#92400e;line-height:1.55">This deposit amount (<span style="font-family:'JetBrains Mono',monospace;font-weight:600">{{ amountFmt }}</span>) exceeds your authorization limit (<span style="font-family:'JetBrains Mono',monospace">&#8377;50,000</span>).</div>
+              <div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:13px;color:#6b7280">
+                <span>Will be notified for approval:</span>
+                <span style="display:inline-flex;align-items:center;gap:7px;padding:3px 10px 3px 3px;border-radius:999px;background:#fff;border:1px solid #f0e6d0">
+                  <span style="width:22px;height:22px;border-radius:50%;background:#d9d5cc;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#202058">SH</span>
+                  <span style="font-size:12.5px;font-weight:600;color:#202058">Shoaib &middot; Manager</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- ===== SECTION 5: RECEIPT PREVIEW ===== -->
+      <div style="margin-bottom:6px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">RECEIPT PREVIEW</div>
+        <div style="border:1px solid #e7e2d8;border-radius:12px;background:#faf9f7;overflow:hidden">
+          <div style="padding:20px 22px;border-bottom:1px dashed #d9d2c4">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:#202058;letter-spacing:.02em">DSLRSWALA &mdash; Deposit Receipt</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:#4f46e5">DEP-2026-0029-01</div>
+            </div>
+          </div>
+          <div style="padding:18px 22px;display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex"><span style="width:120px;flex:none;font-size:12.5px;color:#6b7280">Received from</span><span style="font-size:13px;color:#202058;font-weight:600">Rahul Malhotra</span></div>
+            <div style="display:flex"><span style="width:120px;flex:none;font-size:12.5px;color:#6b7280">Order</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058">#BK2214</span></div>
+            <div style="display:flex"><span style="width:120px;flex:none;font-size:12.5px;color:#6b7280">Amount</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#202058">&#8377;{{ amountFmt }}</span></div>
+            <div style="display:flex"><span style="width:120px;flex:none;font-size:12.5px;color:#6b7280">Payment</span><span style="font-size:13px;color:#202058"><span dangerouslySetInnerHTML="{{ receiptPayment }}"></span></span></div>
+            <div style="display:flex"><span style="width:120px;flex:none;font-size:12.5px;color:#6b7280">Received by</span><span style="font-size:13px;color:#202058">Ruhan &middot; <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px">Jul 15, 2026, 10:30 AM</span></span></div>
+            <sc-if value="{{ hasVerifier }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex"><span style="width:120px;flex:none;font-size:12.5px;color:#6b7280">Verified by</span><span style="font-size:13px;color:#202058">Shoaib</span></div>
+            </sc-if>
+          </div>
+          <div style="padding:0 22px 18px">
+            <div style="font-size:12px;color:#6b7280;line-height:1.55;border-top:1px dashed #d9d2c4;padding-top:14px">This deposit is refundable at rental close, subject to condition assessment. &nbsp; Signature: <span style="color:#c9c5bd">___________</span></div>
+          </div>
+        </div>
+
+        <!-- delivery options -->
+        <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
+          <sc-for list="{{ receiptOpts }}" as="r" hint-placeholder-count="3">
+            <label onClick="{{ r.toggle }}" style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:{{ r.color }};user-select:none">
+              <span style="width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid {{ r.border }};background:{{ r.bg }};display:flex;align-items:center;justify-content:center;transition:all .15s"><span dangerouslySetInnerHTML="{{ r.check }}"></span></span>
+              {{ r.label }}
+            </label>
+          </sc-for>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FOOTER (sticky) -->
+    <div style="flex:none;border-top:1px solid #ece6db;padding:15px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fbfaf7">
+      <button style="border:none;background:none;cursor:pointer;font-family:'Manrope',sans-serif;font-size:13px;font-weight:600;color:#6b7280;padding:9px 4px;transition:color .15s" style-hover="color:#202058">Cancel</button>
+      <button style="display:inline-flex;align-items:center;gap:8px;border:none;cursor:pointer;background:#4f46e5;color:#fff;font-family:'Manrope',sans-serif;font-size:14px;font-weight:700;padding:12px 22px;border-radius:10px;box-shadow:0 2px 8px rgba(79,70,229,.3);transition:background .15s" style-hover="background:#4338ca">
+        <sc-if value="{{ needsApproval }}" hint-placeholder-val="{{ false }}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+        </sc-if>
+        {{ ctaLabel }}
+      </button>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1120}}">
+class Component extends DCLogic {
+  state = {
+    hold: 'product_deposit',
+    method: 'cheque',
+    amount: 25000,
+    overriding: false,
+    postdated: false,
+    verify: 'yes',
+    receipt: { print: false, email: true, neither: false },
+  };
+
+  radioDot(active, color) {
+    color = color || '#4f46e5';
+    return { __html: active ? `<span style="display:block;width:8px;height:8px;border-radius:50%;background:${color}"></span>` : '' };
+  }
+  checkMark(on) {
+    return { __html: on ? `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>` : '' };
+  }
+  fmt(n) { return Number(n || 0).toLocaleString('en-IN'); }
+
+  renderVals() {
+    const s = this.state;
+    const limit = 50000;
+    const over = s.amount > limit;
+
+    const holdData = [
+      ['product_deposit', 'Product deposit'],
+      ['damage_topup', 'Damage top-up'],
+      ['late_return_penalty', 'Late return penalty'],
+      ['special_project_bond', 'Special project bond'],
+    ];
+    const holdTypes = holdData.map(([id, label]) => {
+      const on = id === s.hold;
+      return {
+        pick: () => this.setState({ hold: id }),
+        border: on ? '#4f46e5' : '#e2dfd8',
+        bg: on ? '#eef2ff' : '#fff',
+        ring: on ? '#4f46e5' : '#cfcbc2',
+        dot: this.radioDot(on),
+        color: on ? '#202058' : '#6b7280',
+        weight: on ? '600' : '500',
+        label,
+      };
+    });
+
+    const methodData = [
+      ['cash', 'Cash', 'Physical currency'],
+      ['cheque', 'Cheque', 'Physical instrument'],
+      ['upi', 'UPI transfer', 'Digital \u00b7 needs reconciliation'],
+      ['bank', 'Bank transfer', 'NEFT / RTGS \u00b7 needs reconciliation'],
+    ];
+    const methods = methodData.map(([id, label, hint]) => {
+      const on = id === s.method;
+      return {
+        pick: () => this.setState({ method: id }),
+        border: on ? '#4f46e5' : '#e2dfd8',
+        bg: on ? '#f5f5ff' : '#fff',
+        ring: on ? '#4f46e5' : '#cfcbc2',
+        dot: this.radioDot(on),
+        color: on ? '#202058' : '#4b4b63',
+        weight: on ? '700' : '500',
+        label, hint,
+      };
+    });
+
+    const detailNames = {
+      cash: 'CASH DETAILS', cheque: 'CHEQUE DETAILS',
+      upi: 'UPI TRANSFER DETAILS', bank: 'BANK TRANSFER DETAILS',
+    };
+
+    const verifyData = [
+      ['yes', "Yes, I've seen the credit", ''],
+      ['no', 'Not yet \u2014 will verify later', '(creates a pending deposit)'],
+    ];
+    const verifyOpts = verifyData.map(([id, label, hint]) => {
+      const on = id === s.verify;
+      return {
+        pick: () => this.setState({ verify: id }),
+        ring: on ? '#4f46e5' : '#cfcbc2',
+        dot: this.radioDot(on),
+        color: on ? '#202058' : '#6b7280',
+        weight: on ? '600' : '400',
+        label, hint,
+      };
+    });
+    const reconciles = s.method === 'upi' || s.method === 'bank';
+    const pendingVerify = reconciles && s.verify === 'no';
+
+    // receipt payment line
+    const payLines = {
+      cash: 'Cash \u00b7 received at counter',
+      cheque: 'Cheque #123456 (HDFC Bank)',
+      upi: 'UPI \u00b7 abc123@paytm',
+      bank: 'Bank transfer \u00b7 NEFT-HDFC-0083412',
+    };
+    const receiptPayment = { __html: payLines[s.method] };
+    const hasVerifier = s.method === 'cash';
+
+    const rc = s.receipt;
+    const rcDefs = [
+      ['print', 'Printed on thermal printer at counter'],
+      ['email', 'Emailed to customer at rahul@example.com'],
+      ['neither', 'Neither \u2014 customer verbal confirmation'],
+    ];
+    const receiptOpts = rcDefs.map(([key, label]) => {
+      const on = rc[key];
+      return {
+        toggle: () => this.setState(st => ({ receipt: { ...st.receipt, [key]: !st.receipt[key] } })),
+        border: on ? '#4f46e5' : '#c9c5bc',
+        bg: on ? '#4f46e5' : '#fff',
+        check: this.checkMark(on),
+        color: key === 'neither' ? '#6b7280' : '#26235a',
+        label,
+      };
+    });
+
+    return {
+      holdTypes, methods, verifyOpts, receiptOpts,
+      isCash: s.method === 'cash', isCheque: s.method === 'cheque',
+      isUpi: s.method === 'upi', isBank: s.method === 'bank',
+      detailLabel: { __html: detailNames[s.method] },
+      pendingVerify, receiptPayment, hasVerifier,
+      amountFmt: this.fmt(s.amount),
+      amountRaw: String(s.amount),
+      overriding: s.overriding, notOverriding: !s.overriding,
+      toggleOverride: (e) => { if (e && e.preventDefault) e.preventDefault(); this.setState(st => ({ overriding: !st.overriding, amount: st.overriding ? 25000 : st.amount })); },
+      onAmount: (e) => { const v = parseInt(String(e.target.value).replace(/[^0-9]/g, ''), 10); this.setState({ amount: isNaN(v) ? 0 : v }); },
+      postdated: s.postdated,
+      togglePostdated: () => this.setState(st => ({ postdated: !st.postdated })),
+      pdBorder: s.postdated ? '#4f46e5' : '#c9c5bc',
+      pdBg: s.postdated ? '#4f46e5' : '#fff',
+      pdCheck: this.checkMark(s.postdated),
+      withinAuthority: !over, needsApproval: over,
+      ctaLabel: over ? 'Send for Approval' : 'Create Deposit',
+    };
+  }
+}
+</script>
+</body>
+</html>

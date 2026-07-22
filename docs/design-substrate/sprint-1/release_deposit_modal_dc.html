@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Manrope',sans-serif;background:#efece6}
+  a{color:#4f46e5;text-decoration:none}
+  a:hover{color:#4338ca}
+  ::placeholder{color:#9ca3af}
+  input,textarea{font-family:'Manrope',sans-serif}
+</style>
+</helmet>
+<div style="position:relative;width:1440px;min-height:1360px;background:#efece6;overflow:hidden;font-family:'Manrope',sans-serif">
+
+  <!-- ===== BACKDROP: Order 360 (blurred + dimmed) ===== -->
+  <sc-if value="{{ showBackdrop }}" hint-placeholder-val="{{ true }}">
+  <div style="position:absolute;inset:0;filter:blur(3px);opacity:.55;pointer-events:none;user-select:none">
+    <div style="height:52px;background:#fff;border-bottom:1px solid #e6e3dc;display:flex;align-items:center;gap:28px;padding:0 32px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#202058">RentalOS</div>
+      <div style="display:flex;gap:22px;font-size:13px;color:#6b7280;font-weight:500">
+        <span>Dashboard</span><span style="color:#202058;font-weight:600">Orders</span><span>Inventory</span><span>Customers</span><span>Reports</span>
+      </div>
+      <div style="margin-left:auto;width:30px;height:30px;border-radius:50%;background:#d9d5cd"></div>
+    </div>
+    <div style="height:64px;background:#fff;border-bottom:1px solid #e6e3dc;display:flex;align-items:center;gap:16px;padding:0 32px">
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:600;font-size:15px;color:#26235a">BK2214</div>
+      <div style="color:#c9c5bd">&middot;</div>
+      <div style="font-size:14px;color:#26235a;font-weight:600">Rahul Malhotra</div>
+      <div style="color:#c9c5bd">&middot;</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:#f3f1ec;color:#6b7280;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em">&#9679; RETURNED</div>
+      <div style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:16px;color:#202058">&#8377;28,000</div>
+    </div>
+    <div style="display:flex;gap:24px;padding:28px 32px">
+      <div style="flex:2;display:flex;flex-direction:column;gap:16px">
+        <div style="height:140px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:220px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:180px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px">
+        <div style="height:120px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:260px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;inset:0;background:rgba(38,35,90,.30);pointer-events:none"></div>
+  </sc-if>
+
+  <!-- ===== MODAL ===== -->
+  <div style="position:absolute;top:48px;left:50%;transform:translateX(-50%);width:720px;max-height:1280px;background:#fff;border-radius:14px;box-shadow:0 24px 64px -12px rgba(24,22,60,.45),0 8px 24px -8px rgba(24,22,60,.30);display:flex;flex-direction:column;overflow:hidden">
+
+    <!-- HEADER (sticky) -->
+    <div style="flex:none;padding:24px 28px 18px;border-bottom:1px solid #eeece6">
+      <div style="display:flex;align-items:flex-start;gap:16px">
+        <div style="flex:1;min-width:0">
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:#ecfdf5;border:1px solid #a7f3d0;margin-bottom:12px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#059669"></span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.13em;color:#059669">RELEASE DEPOSIT</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+            <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:600;letter-spacing:-.01em;color:#202058">Return deposit to customer</h2>
+          </div>
+          <div style="margin-top:7px;font-size:13px;color:#6b7280;line-height:1.5">
+            Deposit <span style="font-family:'JetBrains Mono',monospace;color:#26235a;font-weight:600">#DEP-2026-0029-01</span>
+            &middot; <span style="font-family:'JetBrains Mono',monospace;color:#059669;font-weight:600">&#8377;22,000</span> available for release<br>
+            Rahul Malhotra &middot; Order <span style="font-family:'JetBrains Mono',monospace;color:#26235a;font-weight:600">#BK2214</span>
+            <span style="display:inline-flex;align-items:center;padding:1px 7px;margin-left:2px;border-radius:5px;background:#f3f1ec;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#6b7280;vertical-align:middle">RETURNED</span>
+          </div>
+        </div>
+        <button style="width:32px;height:32px;flex:none;border:1px solid #e7e4de;background:#fff;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280;transition:all .15s" style-hover="background:#f3f1ec;color:#202058">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- BODY (scrollable) -->
+    <div style="flex:1;overflow-y:auto;padding:22px 28px 10px;display:flex;flex-direction:column;gap:28px">
+
+      <!-- ============ SECTION 1: AMOUNT BREAKDOWN ============ -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">DEPOSIT SUMMARY</div>
+        <div style="border:1px solid #ece9e3;border-radius:12px;overflow:hidden">
+          <div style="padding:16px 20px;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <span style="font-size:13px;color:#4b4b63">Original amount held</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#202058">&#8377;25,000</span>
+            </div>
+            <div style="padding-top:2px">
+              <div style="font-size:11.5px;color:#9ca3af;margin-bottom:8px">Forfeits (from linked incidents)</div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between;padding-left:12px">
+                <span style="font-size:12.5px;color:#6b7280;display:flex;align-items:center;gap:7px">
+                  <span style="width:5px;height:5px;border-radius:50%;background:#d97706;flex:none"></span>
+                  <a href="#" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#d97706;font-weight:600">DI-2026-0029-001</a>
+                  <span>Nanlite damage</span>
+                </span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:#d97706">&minus;&#8377;3,000</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <span style="font-size:13px;color:#4b4b63">Total forfeited</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#d97706">&minus;&#8377;3,000</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 20px;background:#ecfdf5;border-top:1px solid #d1fae5">
+            <span style="font-size:13.5px;font-weight:700;color:#065f46">Available for release</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:#059669;letter-spacing:-.01em">&#8377;22,000</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ SECTION 2: RELEASE TYPE ============ -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">RELEASE TYPE <span style="color:#dc2626">*</span></div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+
+          <!-- Full -->
+          <div onClick="{{ rt.full.pick }}" style="border-radius:12px;border:1.5px solid {{ rt.full.border }};background:{{ rt.full.bg }};cursor:pointer;transition:all .15s;overflow:hidden">
+            <div style="display:flex;gap:13px;padding:14px 15px">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ rt.full.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ rt.full.dot }}"></span></span>
+              <div style="flex:1;min-width:0">
+                <span style="font-size:13.5px;font-weight:600;color:{{ rt.full.titleColor }}">Full release</span>
+                <div style="margin-top:4px;font-size:12.5px;color:#6b7280">Return all <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:#059669">&#8377;22,000</span> to customer</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Partial -->
+          <div style="border-radius:12px;border:1.5px solid {{ rt.partial.border }};background:{{ rt.partial.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ rt.partial.pick }}" style="display:flex;gap:13px;padding:14px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ rt.partial.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ rt.partial.dot }}"></span></span>
+              <div style="flex:1;min-width:0">
+                <span style="font-size:13.5px;font-weight:600;color:{{ rt.partial.titleColor }}">Partial release</span>
+                <div style="margin-top:4px;font-size:12.5px;color:#6b7280">Return some now, continue holding the remainder</div>
+              </div>
+            </div>
+            <sc-if value="{{ rt.partial.on }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:2px 16px 18px 47px;display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;gap:16px">
+                  <div style="flex:1">
+                    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Amount to release</div>
+                    <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;background:#fff">
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#9ca3af">&#8377;</span>
+                      <input value="{{ partialVal }}" onInput="{{ setPartial }}" style="border:none;outline:none;width:100%;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#202058;background:transparent">
+                    </div>
+                  </div>
+                  <div style="flex:1">
+                    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Continue holding</div>
+                    <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid #ece9e3;border-radius:9px;background:#faf9f7">
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#4b4b63">{{ holdFmt }}</span>
+                      <span style="margin-left:auto;font-size:10.5px;color:#9ca3af">auto</span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Reason to continue holding</div>
+                  <textarea placeholder="Why is part of the deposit still held?" style="width:100%;min-height:54px;resize:vertical;padding:10px 13px;border:1px solid #d7d3ca;border-radius:9px;font-size:13px;color:#202058;outline:none" style-focus="border-color:#4f46e5"></textarea>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- Dispute -->
+          <div style="border-radius:12px;border:1.5px solid {{ rt.dispute.border }};background:{{ rt.dispute.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ rt.dispute.pick }}" style="display:flex;gap:13px;padding:14px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ rt.dispute.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ rt.dispute.dot }}"></span></span>
+              <div style="flex:1;min-width:0">
+                <span style="font-size:13.5px;font-weight:600;color:{{ rt.dispute.titleColor }}">Do not release &mdash; dispute open</span>
+                <div style="margin-top:4px;font-size:12.5px;color:#6b7280">Customer contests the forfeit amount, or another dispute is active</div>
+              </div>
+            </div>
+            <sc-if value="{{ rt.dispute.on }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:2px 16px 18px 47px;display:flex;flex-direction:column;gap:14px">
+                <div>
+                  <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Reason for dispute</div>
+                  <textarea placeholder="Describe the dispute&hellip;" style="width:100%;min-height:54px;resize:vertical;padding:10px 13px;border:1px solid #d7d3ca;border-radius:9px;font-size:13px;color:#202058;outline:none" style-focus="border-color:#4f46e5"></textarea>
+                </div>
+                <div style="display:flex;gap:11px;padding:12px 14px;border-radius:10px;background:rgba(220,38,38,.05);border:1px solid #fbcaca">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  <div style="font-size:12.5px;color:#991b1b;line-height:1.5">Deposit stays in <strong>disputed</strong> state &mdash; no funds move. Resolution happens later in a dedicated dispute modal, and Owner approval is required to release once resolved.</div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ============ SECTION 3: REFUND METHOD ============ -->
+      <sc-if value="{{ notDispute }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">REFUND METHOD <span style="color:#dc2626">*</span></div>
+
+        <!-- Original method (read-only) -->
+        <div style="display:flex;align-items:center;gap:11px;padding:11px 14px;border:1px solid #ece9e3;border-radius:10px;background:#faf9f7;margin-bottom:14px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <span style="font-size:12.5px;color:#6b7280">Original payment method</span>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:#202058">Cash</span>
+            <span style="font-size:11.5px;color:#9ca3af">received Jul 15</span>
+          </span>
+        </div>
+
+        <div style="font-size:12.5px;color:#4b4b63;margin-bottom:10px">How are we refunding? <span style="color:#9ca3af">Refund method may differ from the original.</span></div>
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+
+          <!-- Cash -->
+          <div style="border-radius:12px;border:1.5px solid {{ rm.cash.border }};background:{{ rm.cash.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ rm.cash.pick }}" style="display:flex;gap:13px;padding:13px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ rm.cash.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ rm.cash.dot }}"></span></span>
+              <div style="flex:1"><span style="font-size:13.5px;font-weight:600;color:{{ rm.cash.titleColor }}">Cash &mdash; physical handover</span></div>
+            </div>
+            <sc-if value="{{ rm.cash.on }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:2px 16px 18px 47px;display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:#4b4b63">Amount <span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#059669">&#8377;22,000</span></div>
+                <div style="display:flex;gap:16px">
+                  <div style="flex:1">
+                    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Custodian giving cash</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;background:#fff;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058" style-hover="border-color:#202058"><span>Ruhan</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
+                  </div>
+                  <div style="flex:1">
+                    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Location</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;background:#fff;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058" style-hover="border-color:#202058"><span>Warehouse counter</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- UPI -->
+          <div style="border-radius:12px;border:1.5px solid {{ rm.upi.border }};background:{{ rm.upi.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ rm.upi.pick }}" style="display:flex;gap:13px;padding:13px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ rm.upi.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ rm.upi.dot }}"></span></span>
+              <div style="flex:1"><span style="font-size:13.5px;font-weight:600;color:{{ rm.upi.titleColor }}">UPI transfer to customer</span></div>
+            </div>
+            <sc-if value="{{ rm.upi.on }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:2px 16px 18px 47px;display:flex;gap:16px">
+                <div style="flex:1">
+                  <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Customer UPI ID</div>
+                  <input value="rahul@paytm" style="width:100%;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058;outline:none" style-focus="border-color:#4f46e5">
+                </div>
+                <div style="flex:1">
+                  <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">From bank account</div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;background:#fff;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058" style-hover="border-color:#202058"><span>HDFC ****4521</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- Bank -->
+          <div style="border-radius:12px;border:1.5px solid {{ rm.bank.border }};background:{{ rm.bank.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ rm.bank.pick }}" style="display:flex;gap:13px;padding:13px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ rm.bank.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ rm.bank.dot }}"></span></span>
+              <div style="flex:1"><span style="font-size:13.5px;font-weight:600;color:{{ rm.bank.titleColor }}">Bank transfer (NEFT / IMPS)</span></div>
+            </div>
+            <sc-if value="{{ rm.bank.on }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:2px 16px 18px 47px;display:flex;flex-direction:column;gap:13px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px 16px">
+                  <div>
+                    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Account holder</div>
+                    <input value="Rahul Malhotra" style="width:100%;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;font-size:13px;color:#202058;outline:none" style-focus="border-color:#4f46e5">
+                  </div>
+                  <div>
+                    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Account number</div>
+                    <input placeholder="XXXXXXXXXXXX" style="width:100%;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058;outline:none" style-focus="border-color:#4f46e5">
+                  </div>
+                  <div>
+                    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">IFSC</div>
+                    <input placeholder="HDFC0001234" style="width:100%;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058;outline:none" style-focus="border-color:#4f46e5">
+                  </div>
+                  <div>
+                    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Bank</div>
+                    <input placeholder="e.g. HDFC Bank" style="width:100%;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;font-size:13px;color:#202058;outline:none" style-focus="border-color:#4f46e5">
+                  </div>
+                </div>
+                <div style="font-size:12px;color:#6b7280">From: <span style="font-family:'JetBrains Mono',monospace;color:#202058;font-weight:600">HDFC ****4521</span> (DSLRSWALA main)</div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- Cheque return -->
+          <div style="border-radius:12px;border:1.5px solid {{ rm.chequeReturn.border }};background:{{ rm.chequeReturn.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ rm.chequeReturn.pick }}" style="display:flex;gap:13px;padding:13px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ rm.chequeReturn.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ rm.chequeReturn.dot }}"></span></span>
+              <div style="flex:1"><span style="font-size:13.5px;font-weight:600;color:{{ rm.chequeReturn.titleColor }}">Cheque return</span> <span style="font-size:12px;color:#9ca3af">&mdash; hand the original cheque back</span></div>
+            </div>
+            <sc-if value="{{ rm.chequeReturn.on }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:2px 16px 18px 47px;display:flex;flex-direction:column;gap:13px">
+                <div style="font-size:12.5px;color:#4b4b63">Original cheque <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:#202058">#123456</span> was never deposited.</div>
+                <div>
+                  <div style="font-size:11.5px;color:#6b7280;margin-bottom:8px">Physical return</div>
+                  <div style="display:flex;gap:8px">
+                    <sc-for list="{{ chequeModes }}" as="c" hint-placeholder-count="3">
+                      <div onClick="{{ c.pick }}" style="padding:8px 13px;border-radius:8px;border:1px solid {{ c.border }};background:{{ c.bg }};color:{{ c.color }};font-size:12.5px;font-weight:{{ c.weight }};cursor:pointer">{{ c.label }}</div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- New cheque -->
+          <div style="border-radius:12px;border:1.5px solid {{ rm.newCheque.border }};background:{{ rm.newCheque.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ rm.newCheque.pick }}" style="display:flex;gap:13px;padding:13px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ rm.newCheque.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ rm.newCheque.dot }}"></span></span>
+              <div style="flex:1"><span style="font-size:13.5px;font-weight:600;color:{{ rm.newCheque.titleColor }}">New cheque issued</span></div>
+            </div>
+            <sc-if value="{{ rm.newCheque.on }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:2px 16px 18px 47px;display:flex;gap:16px">
+                <div style="flex:1">
+                  <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">New DSLRSWALA cheque number</div>
+                  <input placeholder="Cheque #" style="width:100%;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058;outline:none" style-focus="border-color:#4f46e5">
+                </div>
+                <div style="flex:1">
+                  <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Drawn on</div>
+                  <div style="display:flex;align-items:center;padding:9px 12px;border:1px solid #ece9e3;border-radius:9px;background:#faf9f7;font-family:'JetBrains Mono',monospace;font-size:13px;color:#4b4b63">DSLRSWALA HDFC</div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ============ SECTION 4: CUSTOMER ACKNOWLEDGMENT ============ -->
+      <sc-if value="{{ notDispute }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">CUSTOMER ACKNOWLEDGMENT <span style="color:#dc2626">*</span></div>
+        <div style="font-size:12.5px;color:#4b4b63;margin-bottom:11px">How did the customer confirm receipt?</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+
+          <!-- Signed -->
+          <div style="border-radius:12px;border:1.5px solid {{ ak.signed.border }};background:{{ ak.signed.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ ak.signed.pick }}" style="display:flex;gap:13px;padding:13px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ ak.signed.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ ak.signed.dot }}"></span></span>
+              <div style="flex:1"><span style="font-size:13.5px;font-weight:600;color:{{ ak.signed.titleColor }}">Signed physical refund receipt</span> <span style="font-size:12px;color:#9ca3af">&mdash; recommended for cash</span></div>
+            </div>
+            <sc-if value="{{ ak.signed.on }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:2px 16px 18px 47px;display:flex;gap:12px">
+                <div style="flex:1;height:78px;border:1.5px dashed #cfcbc2;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#9ca3af;background:#fff">
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17.5V21h3.5L18 9.5 14.5 6z"/><path d="M14.5 6 17 3.5 20.5 7 18 9.5"/></svg>
+                  <span style="font-size:11px;font-weight:600">Signature capture &middot; v1 placeholder</span>
+                </div>
+                <div style="flex:1;height:78px;border:1.5px dashed #cfcbc2;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#9ca3af;background:#fff;cursor:pointer" style-hover="border-color:#4f46e5;color:#4f46e5">
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <span style="font-size:11px;font-weight:600">Upload photo of signed receipt</span>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- Verbal -->
+          <div style="border-radius:12px;border:1.5px solid {{ ak.verbal.border }};background:{{ ak.verbal.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ ak.verbal.pick }}" style="display:flex;gap:13px;padding:13px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ ak.verbal.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ ak.verbal.dot }}"></span></span>
+              <div style="flex:1"><span style="font-size:13.5px;font-weight:600;color:{{ ak.verbal.titleColor }}">Verbal confirmation</span></div>
+            </div>
+            <sc-if value="{{ ak.verbal.on }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:2px 16px 18px 47px;display:flex;gap:16px">
+                <div style="flex:1">
+                  <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Confirmed by</div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid #d7d3ca;border-radius:9px;background:#fff;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058" style-hover="border-color:#202058"><span>Ruhan</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
+                </div>
+                <div style="flex:1">
+                  <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">Confirmed with</div>
+                  <div style="display:flex;gap:8px">
+                    <sc-for list="{{ ackWithOpts }}" as="w" hint-placeholder-count="2">
+                      <div onClick="{{ w.pick }}" style="flex:1;text-align:center;padding:9px 8px;border-radius:8px;border:1px solid {{ w.border }};background:{{ w.bg }};color:{{ w.color }};font-size:12px;font-weight:{{ w.weight }};cursor:pointer">{{ w.label }}</div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- Digital -->
+          <div style="border-radius:12px;border:1.5px solid {{ ak.digital.border }};background:{{ ak.digital.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ ak.digital.pick }}" style="display:flex;gap:13px;padding:13px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ ak.digital.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ ak.digital.dot }}"></span></span>
+              <div style="flex:1"><span style="font-size:13.5px;font-weight:600;color:{{ ak.digital.titleColor }}">Digital acknowledgment</span> <span style="font-size:12px;color:#9ca3af">&mdash; UPI / bank transfer</span></div>
+            </div>
+            <sc-if value="{{ ak.digital.on }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:2px 16px 18px 47px">
+                <div style="display:flex;gap:10px;padding:11px 13px;border-radius:9px;background:#eef2ff;font-size:12.5px;color:#4338ca;line-height:1.5">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linecap="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  Transfer reference serves as acknowledgment. Auto-logged once the bank statement confirms the credit.
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- Not yet -->
+          <div style="border-radius:12px;border:1.5px solid {{ ak.notyet.border }};background:{{ ak.notyet.bg }};transition:all .15s;overflow:hidden">
+            <div onClick="{{ ak.notyet.pick }}" style="display:flex;gap:13px;padding:13px 15px;cursor:pointer">
+              <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ ak.notyet.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ ak.notyet.dot }}"></span></span>
+              <div style="flex:1"><span style="font-size:13.5px;font-weight:600;color:{{ ak.notyet.titleColor }}">Not yet acknowledged</span></div>
+            </div>
+            <sc-if value="{{ ak.notyet.on }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:2px 16px 18px 47px">
+                <div style="display:flex;gap:10px;padding:11px 13px;border-radius:9px;background:#fffbeb;border:1px solid #fcd9a4;font-size:12.5px;color:#92400e;line-height:1.5">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  Complete the release now and capture acknowledgment later. Deposit will be marked <strong>released &mdash; pending acknowledgment</strong>.
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ============ SECTION 5: REFUND RECEIPT ============ -->
+      <sc-if value="{{ notDispute }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">REFUND RECEIPT</div>
+        <div style="border:1px solid #ece9e3;border-radius:12px;overflow:hidden">
+          <!-- receipt paper -->
+          <div style="padding:18px 20px;background:#faf9f7">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;padding-bottom:12px;border-bottom:1px dashed #d9d2c4">
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:#202058">DSLRSWALA &mdash; Deposit Refund Receipt</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af">DEP-2026-0029-01-REFUND</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ receiptRows }}" as="r" hint-placeholder-count="6">
+                <div style="display:flex;align-items:baseline;justify-content:space-between">
+                  <span style="font-size:12.5px;color:#6b7280">{{ r.k }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:{{ r.w }};color:{{ r.c }};text-align:right">{{ r.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="border-top:1px dashed #d9d2c4;margin:13px 0 11px"></div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;justify-content:space-between"><span style="font-size:12px;color:#9ca3af">Original deposit received</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#4b4b63">Jul 15 &middot; cash &middot; &#8377;25,000</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="font-size:12px;color:#9ca3af">Adjustments</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#d97706">&minus;&#8377;3,000 (DI-2026-0029-001)</span></div>
+              <div style="display:flex;justify-content:space-between;padding-top:3px"><span style="font-size:13px;font-weight:700;color:#202058">Amount refunded</span><span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#059669">&#8377;22,000</span></div>
+            </div>
+            <div style="margin-top:13px;padding-top:11px;border-top:1px dashed #d9d2c4;font-size:12px;color:#6b7280">Customer acknowledgment: <span style="color:#202058;font-weight:600">{{ receiptAck }}</span></div>
+          </div>
+          <!-- delivery -->
+          <div style="padding:15px 20px;border-top:1px solid #ece9e3;background:#fff">
+            <div style="font-size:11.5px;color:#9ca3af;margin-bottom:11px">Delivery</div>
+            <div style="display:flex;flex-direction:column;gap:11px">
+              <div onClick="{{ del.print.toggle }}" style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#202058">
+                <span style="width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid {{ del.print.border }};background:{{ del.print.bg }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ del.print.check }}"></span></span>
+                Print at counter (thermal printer)
+              </div>
+              <div onClick="{{ del.email.toggle }}" style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#202058">
+                <span style="width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid {{ del.email.border }};background:{{ del.email.bg }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ del.email.check }}"></span></span>
+                Email to customer at <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#4b4b63">rahul@example.com</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:#c9c5bd;cursor:not-allowed">
+                <span style="width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid #e2ded6;background:#f7f5f1"></span>
+                SMS with link <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#c9c5bd">FUTURE</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ============ APPROVAL / AUTHORITY ============ -->
+      <sc-if value="{{ notDispute }}" hint-placeholder-val="{{ true }}">
+      <div style="margin-bottom:6px">
+        <sc-if value="{{ approvalRequired }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:13px;border:1px solid #fcd9a4;background:rgba(217,119,6,.08);border-radius:12px;padding:16px">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div style="flex:1">
+              <div style="font-size:13.5px;font-weight:700;color:#26235a">Approval required</div>
+              <div style="margin-top:6px;font-size:12.5px;color:#6b7280;line-height:1.55">Refund method changed (cash &rarr; bank transfer) and the amount crosses the &#8377;25,000 review threshold. Routed to a Manager for sign-off before funds move.</div>
+              <div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#6b7280">
+                <span>Will be routed to:</span>
+                <span style="display:inline-flex;align-items:center;gap:7px;padding:3px 10px 3px 3px;border-radius:999px;background:#fff;border:1px solid #ece6db">
+                  <span style="width:22px;height:22px;border-radius:50%;background:#d9d5cc;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#202058">SH</span>
+                  <span style="font-size:12.5px;font-weight:600;color:#202058">Shoaib (Manager)</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ withinAuthority }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:flex-start;gap:11px;padding:13px 15px;border-radius:11px;background:#ecfdf5;border:1px solid #a7f3d0">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><polyline points="20 6 9 17 4 12"/></svg>
+            <div style="font-size:12.5px;color:#065f46;line-height:1.55"><span style="font-weight:700">Within your authority</span> &mdash; &#8377;22,000 is under the &#8377;50,000 limit and below the &#8377;25,000 method-change threshold. No sign-off needed.
+              <div style="margin-top:6px;color:#6b7280;font-size:11.5px">Approval triggers when: amount &gt; &#8377;50,000 (Manager) &middot; disputed release (Owner) &middot; method change + amount &gt; &#8377;25,000 (Manager).</div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+    </div>
+
+    <!-- FOOTER (sticky) -->
+    <div style="flex:none;border-top:1px solid #ece6db;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fbfaf7">
+      <button style="border:1px solid #e7e4de;background:#fff;cursor:pointer;font-family:'Manrope',sans-serif;font-size:13px;font-weight:600;color:#6b7280;padding:10px 18px;border-radius:10px;transition:all .15s" style-hover="border-color:#202058;color:#202058">Cancel</button>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+        <button style="display:inline-flex;align-items:center;gap:9px;border:none;cursor:pointer;background:{{ primaryBg }};color:#fff;font-family:'Manrope',sans-serif;font-size:14px;font-weight:700;padding:12px 24px;border-radius:10px;box-shadow:0 2px 8px {{ primaryShadow }};transition:background .15s" style-hover="background:{{ primaryHover }}">
+          <span dangerouslySetInnerHTML="{{ primaryIcon }}"></span>
+          {{ primaryLabel }}
+        </button>
+        <div style="font-size:11px;color:#9ca3af">{{ primarySub }}</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1360},&quot;approvalRequired&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Scenario&quot;},&quot;positiveAccent&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Scenario&quot;},&quot;showBackdrop&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Scenario&quot;}}">
+class Component extends DCLogic {
+  state = {
+    releaseType: 'full',
+    refundMethod: 'bank',
+    ack: 'verbal',
+    ackWith: 'counter',
+    chequeMode: 'counter',
+    partial: '15000',
+    delivery: { print: false, email: true },
+  };
+
+  radioDot(on, color) {
+    color = color || '#4f46e5';
+    return { __html: on ? '<span style="display:block;width:8px;height:8px;border-radius:50%;background:' + color + '"></span>' : '' };
+  }
+  checkMark(on) {
+    return { __html: on ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : '' };
+  }
+  mkOpt(on) {
+    return {
+      on,
+      border: on ? '#4f46e5' : '#e6e3dc',
+      bg: on ? '#f5f5ff' : '#fff',
+      ring: on ? '#4f46e5' : '#cfcbc2',
+      dot: this.radioDot(on),
+      titleColor: on ? '#202058' : '#4b4b63',
+    };
+  }
+
+  renderVals() {
+    const p = this.props || {};
+    const approvalRequired = p.approvalRequired ?? false;
+    const positiveAccent = p.positiveAccent ?? true;
+    const showBackdrop = p.showBackdrop ?? true;
+
+    const rtSel = this.state.releaseType;
+    const rt = {
+      full: { ...this.mkOpt(rtSel === 'full'), pick: () => this.setState({ releaseType: 'full' }) },
+      partial: { ...this.mkOpt(rtSel === 'partial'), pick: () => this.setState({ releaseType: 'partial' }) },
+      dispute: { ...this.mkOpt(rtSel === 'dispute'), pick: () => this.setState({ releaseType: 'dispute' }) },
+    };
+    const notDispute = rtSel !== 'dispute';
+
+    const avail = 22000;
+    const relNum = parseInt(String(this.state.partial).replace(/[^0-9]/g, '')) || 0;
+    const hold = Math.max(0, avail - Math.min(relNum, avail));
+    const holdFmt = '\u20B9' + hold.toLocaleString('en-IN');
+    const setPartial = (e) => this.setState({ partial: e.target.value });
+
+    const rmSel = this.state.refundMethod;
+    const mkRm = (id) => ({ ...this.mkOpt(rmSel === id), pick: () => this.setState({ refundMethod: id }) });
+    const rm = {
+      cash: mkRm('cash'), upi: mkRm('upi'), bank: mkRm('bank'),
+      chequeReturn: mkRm('chequeReturn'), newCheque: mkRm('newCheque'),
+    };
+    const chequeSel = this.state.chequeMode;
+    const chequeModes = [['counter', 'Handed at counter'], ['courier', 'Couriered'], ['pickup', 'Held for pickup']].map(([id, label]) => {
+      const on = chequeSel === id;
+      return { label, pick: () => this.setState({ chequeMode: id }),
+        border: on ? '#4f46e5' : '#e2dfd8', bg: on ? '#eef2ff' : '#fff', color: on ? '#4f46e5' : '#6b7280', weight: on ? '600' : '500' };
+    });
+
+    const akSel = this.state.ack;
+    const mkAk = (id) => ({ ...this.mkOpt(akSel === id), pick: () => this.setState({ ack: id }) });
+    const ak = { signed: mkAk('signed'), verbal: mkAk('verbal'), digital: mkAk('digital'), notyet: mkAk('notyet') };
+    const awSel = this.state.ackWith;
+    const ackWithOpts = [['counter', 'At counter'], ['phone', 'Over phone']].map(([id, label]) => {
+      const on = awSel === id;
+      return { label, pick: () => this.setState({ ackWith: id }),
+        border: on ? '#4f46e5' : '#e2dfd8', bg: on ? '#eef2ff' : '#fff', color: on ? '#4f46e5' : '#6b7280', weight: on ? '600' : '500' };
+    });
+
+    const methodLabels = {
+      cash: 'Cash \u2014 physical handover',
+      upi: 'UPI to rahul@paytm',
+      bank: 'Bank transfer to HDFC ****XXXX',
+      chequeReturn: 'Cheque #123456 returned',
+      newCheque: 'New cheque issued',
+    };
+    const relForReceipt = rtSel === 'partial' ? ('\u20B9' + (Math.min(relNum, avail)).toLocaleString('en-IN')) : '\u20B922,000';
+    const receiptRows = [
+      { k: 'Refunded to', v: 'Rahul Malhotra', w: '600', c: '#202058' },
+      { k: 'Order', v: '#BK2214', w: '500', c: '#4b4b63' },
+      { k: 'Amount', v: relForReceipt, w: '700', c: '#059669' },
+      { k: 'Method', v: methodLabels[rmSel], w: '600', c: '#202058' },
+      { k: 'Refund date', v: 'Jul 28, 2026', w: '500', c: '#4b4b63' },
+      { k: 'Refunded by', v: 'Aamir', w: '500', c: '#4b4b63' },
+    ];
+    const ackLabels = {
+      signed: 'Signed physical receipt',
+      verbal: 'Verbal confirmation by Ruhan (' + (awSel === 'phone' ? 'over phone' : 'at counter') + ')',
+      digital: 'Digital \u2014 transfer reference',
+      notyet: 'Pending acknowledgment',
+    };
+    const receiptAck = ackLabels[akSel];
+
+    const dv = this.state.delivery;
+    const mkDel = (key) => {
+      const on = dv[key];
+      return { on, toggle: () => this.setState((s) => ({ delivery: { ...s.delivery, [key]: !s.delivery[key] } })),
+        border: on ? '#4f46e5' : '#c9c5bc', bg: on ? '#4f46e5' : '#fff', check: this.checkMark(on) };
+    };
+    const del = { print: mkDel('print'), email: mkDel('email') };
+
+    const accent = positiveAccent ? '#059669' : '#4f46e5';
+    const accentHover = positiveAccent ? '#047857' : '#4338ca';
+    const accentShadow = positiveAccent ? 'rgba(5,150,105,.3)' : 'rgba(79,70,229,.3)';
+    const withinAuthority = !approvalRequired;
+    let primaryLabel, primarySub, primaryBg, primaryHover, primaryShadow, primaryIcon;
+    if (approvalRequired) {
+      primaryLabel = 'Request Approval';
+      primarySub = 'Shoaib will be notified';
+      primaryBg = '#4f46e5'; primaryHover = '#4338ca'; primaryShadow = 'rgba(79,70,229,.3)';
+      primaryIcon = { __html: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>' };
+    } else {
+      primaryLabel = 'Release Deposit';
+      primarySub = '\u20B922,000 refunded to customer';
+      primaryBg = accent; primaryHover = accentHover; primaryShadow = accentShadow;
+      primaryIcon = { __html: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' };
+    }
+
+    return {
+      showBackdrop, notDispute, approvalRequired, withinAuthority,
+      rt, rm, ak, del,
+      partialVal: this.state.partial, setPartial, holdFmt,
+      chequeModes, ackWithOpts, receiptRows, receiptAck,
+      primaryLabel, primarySub, primaryBg, primaryHover, primaryShadow, primaryIcon,
+    };
+  }
+}
+</script>
+</body>
+</html>

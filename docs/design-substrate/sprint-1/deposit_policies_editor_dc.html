@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f2ee;font-family:'Manrope',system-ui,sans-serif;color:#26235a;-webkit-font-smoothing:antialiased}
+a{color:#4f46e5;text-decoration:none}
+a:hover{color:#3f37c9}
+input,select,textarea{font-family:'Manrope',system-ui,sans-serif}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#ddd8ce;border-radius:6px;border:2px solid #f4f2ee}
+.mono{font-family:'JetBrains Mono',monospace}
+</style>
+</helmet>
+
+<div style="width:1280px;margin:0 auto;display:flex;background:#ffffff;min-height:100vh;position:relative">
+
+  <!-- ICON RAIL -->
+  <sc-if value="{{ showRail }}" hint-placeholder-val="{{ true }}">
+  <aside style="width:60px;flex:none;background:#faf9f7;border-right:1px solid #ece9e3;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;position:sticky;top:0;height:100vh">
+    <div style="width:32px;height:32px;border-radius:8px;background:#202058;color:#fff;font:600 16px 'Space Grotesk';display:flex;align-items:center;justify-content:center;margin-bottom:14px">R</div>
+    <sc-for list="{{ rail }}" as="r" hint-placeholder-count="6">
+      <div title="{{ r.name }}" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:{{ r.color }};background:{{ r.bg }}"><span dangerouslySetInnerHTML="{{ r.icon }}" style="display:flex"></span></div>
+    </sc-for>
+    <div style="flex:1"></div>
+    <div title="Settings" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#eceafb;color:#4f46e5"><span dangerouslySetInnerHTML="{{ gearIcon }}" style="display:flex"></span></div>
+  </aside>
+  </sc-if>
+
+  <!-- RIGHT SIDE -->
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+
+    <!-- TOP BAR -->
+    <header style="height:56px;flex:none;background:#fff;border-bottom:1px solid #ece9e3;display:flex;align-items:center;gap:18px;padding:0 22px;position:sticky;top:0;z-index:40">
+      <a href="#" style="display:flex;align-items:center;gap:7px;color:#6b7280;font:600 13px 'Manrope'" style-hover="color:#4f46e5"><span dangerouslySetInnerHTML="{{ backIcon }}" style="display:flex"></span>Back to Dashboard</a>
+      <span style="width:1px;height:20px;background:#ece9e3"></span>
+      <div style="display:flex;align-items:center;gap:8px;font:400 12.5px 'Manrope';color:#9ca3af">
+        <span dangerouslySetInnerHTML="{{ gearMini }}" style="display:flex;color:#c0bdb4"></span>
+        <span>Settings</span><span style="color:#cfcbc3">›</span>
+        <span>{{ crumbCat }}</span><span style="color:#cfcbc3">›</span>
+        <span style="color:#26235a;font-weight:600">{{ crumbItem }}</span>
+      </div>
+
+      <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+        <sc-if value="{{ dirty }}">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="display:flex;align-items:center;gap:6px;font:600 11px 'JetBrains Mono';letter-spacing:.02em;color:#d97706;background:rgba(217,118,6,.1);padding:3px 8px;border-radius:7px"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span>{{ changedCount }} UNSAVED</span>
+            <button onClick="{{ onDiscard }}" style="padding:10px 14px;background:#fff;color:#6b7280;border:1px solid #e4e0d9;border-radius:9px;font:600 12.5px 'Manrope';cursor:pointer" style-hover="background:#faf9f7;color:#26235a">Discard</button>
+            <button onClick="{{ onSave }}" style="padding:10px 16px;background:#4f46e5;color:#fff;border:none;border-radius:9px;font:600 12.5px 'Manrope';cursor:pointer;box-shadow:0 1px 2px rgba(79,70,229,.28)" style-hover="background:#3f37c9">Save changes</button>
+          </div>
+        </sc-if>
+
+        <div style="position:relative">
+          <button onClick="{{ onToggleRole }}" style="display:flex;align-items:center;gap:9px;height:38px;padding:0 8px 0 10px;border:1px solid #ece9e3;background:#faf9f7;border-radius:20px;cursor:pointer" style-hover="border-color:#d8d4ee">
+            <span style="width:26px;height:26px;border-radius:50%;background:#eef0f4;color:#202058;font:600 10px 'Space Grotesk';display:flex;align-items:center;justify-content:center">{{ roleInitials }}</span>
+            <div style="text-align:left;line-height:1.1">
+              <div style="font:600 12px 'Manrope';color:#26235a">{{ roleUser }}</div>
+              <div style="font:600 9px 'JetBrains Mono';letter-spacing:.04em;color:#9ca3af">{{ roleUpper }}</div>
+            </div>
+            <span dangerouslySetInnerHTML="{{ caretIcon }}" style="display:flex;color:#9ca3af"></span>
+          </button>
+          <sc-if value="{{ roleOpen }}">
+            <div style="position:absolute;top:46px;right:0;width:270px;background:#fff;border:1px solid #ece9e3;border-radius:12px;box-shadow:0 14px 40px rgba(32,32,88,.16);padding:7px;z-index:60">
+              <div style="padding:7px 9px 9px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af">VIEW SETTINGS AS ROLE</div>
+              <sc-for list="{{ roleOptions }}" as="ro" hint-placeholder-count="5">
+                <div onClick="{{ ro.onSelect }}" style="display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;cursor:pointer;background:{{ ro.bg }}" style-hover="background:#f4f2ee">
+                  <span style="width:28px;height:28px;border-radius:50%;background:{{ ro.avBg }};color:#202058;font:600 10px 'Space Grotesk';display:flex;align-items:center;justify-content:center;flex:none">{{ ro.initials }}</span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font:600 12.5px 'Manrope';color:#26235a">{{ ro.user }}</div>
+                    <div style="font:400 11px 'Manrope';color:#9ca3af">{{ ro.scope }}</div>
+                  </div>
+                  <sc-if value="{{ ro.active }}"><span dangerouslySetInnerHTML="{{ ro.check }}" style="display:flex;color:#4f46e5"></span></sc-if>
+                </div>
+              </sc-for>
+              <div style="padding:8px 9px 5px;font:400 10.5px 'Manrope';color:#b0aca4;border-top:1px solid #f0ede8;margin-top:5px">Single-tenant workspace · DSLRSWALA</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </header>
+
+    <!-- SHELL: NAV + CONTENT -->
+    <div style="flex:1;display:flex;align-items:flex-start;min-height:0">
+
+      <!-- LEFT NAV -->
+      <!--
+  SETTINGS SHELL SIDEBAR — Authoritative source
+  This sidebar structure must be identical across ALL Settings sub-pages.
+  Only the "currently selected" highlight differs between pages.
+-->
+<nav style="width:240px;flex:none;background:#faf9f7;border-right:1px solid #ece9e3;align-self:stretch;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;padding:18px 14px 30px">
+        <div style="font:600 12px 'Space Grotesk';letter-spacing:.1em;color:#9a9690;padding:0 6px 12px">SETTINGS</div>
+        <div style="display:flex;align-items:center;gap:8px;height:38px;padding:0 11px;border:1px solid #ece9e3;border-radius:9px;background:#fff;margin-bottom:6px">
+          <span dangerouslySetInnerHTML="{{ searchIcon }}" style="display:flex;color:#9ca3af"></span>
+          <input value="{{ search }}" onInput="{{ onSearch }}" placeholder="Search settings…" style="flex:1;min-width:0;border:none;background:transparent;font:400 13px 'Manrope';color:#26235a;padding:0" />
+          <sc-if value="{{ hasSearch }}"><span onClick="{{ clearSearch }}" style="cursor:pointer;color:#c0bdb4;font-size:14px" style-hover="color:#6b7280">✕</span></sc-if>
+        </div>
+        <sc-if value="{{ hasSearch }}"><div style="font:400 11px 'Manrope';color:#9ca3af;padding:5px 7px 10px">{{ resultLabel }}</div></sc-if>
+        <sc-if value="{{ noResults }}"><div style="padding:16px 8px;font:400 12.5px 'Manrope';color:#b0aca4;text-align:center">No settings match “{{ search }}”.</div></sc-if>
+
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px">
+          <sc-for list="{{ nav }}" as="c" hint-placeholder-count="8">
+            <div style="{{ c.wrap }}">
+              <sc-if value="{{ c.owner }}"><div style="height:1px;background:#ece9e3;margin:12px 6px 10px"></div><div style="font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#c08a2e;padding:0 7px 6px;display:flex;align-items:center;gap:6px"><span dangerouslySetInnerHTML="{{ crownIcon }}" style="display:flex"></span>OWNER-ONLY</div></sc-if>
+              <div onClick="{{ c.onToggle }}" style="display:flex;align-items:center;gap:9px;padding:8px 7px;border-radius:8px;cursor:pointer" style-hover="background:#f0ede8">
+                <span dangerouslySetInnerHTML="{{ c.icon }}" style="display:flex;color:#8a8780"></span>
+                <span style="flex:1;font:600 12px 'Space Grotesk';letter-spacing:.05em;color:#6b6860;text-transform:uppercase">{{ c.name }}</span>
+                <sc-if value="{{ c.note }}"><span style="font:600 8px 'JetBrains Mono';letter-spacing:.03em;color:#9a9690;background:#ece9e3;padding:2px 5px;border-radius:4px">{{ c.note }}</span></sc-if>
+                <span style="color:#c0bdb4;font-size:10px">{{ c.chev }}</span>
+              </div>
+              <sc-if value="{{ c.open }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:1px;padding:2px 0 6px">
+                  <sc-for list="{{ c.items }}" as="i" hint-placeholder-count="3">
+                    <div onClick="{{ i.onClick }}" style="display:flex;align-items:center;gap:10px;padding:7px 10px 7px 30px;border-radius:8px;cursor:pointer;background:{{ i.bg }}" style-hover="background:{{ i.hover }}">
+                      <span style="width:7px;height:7px;border-radius:50%;flex:none;background:{{ i.dotBg }};border:{{ i.dotBorder }}"></span>
+                      <span style="flex:1;font:{{ i.weight }} 13.5px 'Manrope';color:{{ i.color }}">{{ i.name }}</span>
+                      <sc-if value="{{ i.changed }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706;flex:none"></span></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </nav>
+
+      <!-- CONTENT -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-self:stretch">
+      <div style="flex:1;min-width:0;padding:30px 40px 40px">
+        <div style="max-width:860px">
+
+          <!-- ===== DEPOSIT POLICIES ===== -->
+          <sc-if value="{{ showDeposit }}" hint-placeholder-val="{{ true }}">
+
+            <!-- Page header -->
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:6px">
+              <div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <span style="font:600 10px 'JetBrains Mono';letter-spacing:.07em;color:#4f46e5;background:#eef2ff;padding:3px 8px;border-radius:6px">FINANCIAL</span>
+                  <span style="font:600 10px 'JetBrains Mono';letter-spacing:.05em;color:#9a9690;background:#f0ede8;padding:3px 8px;border-radius:6px">DS-10.2</span>
+                </div>
+                <h1 style="margin:0;font:600 24px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Deposit Policies</h1>
+                <p style="margin:7px 0 0;font:400 13px 'Manrope';color:#8a8780;max-width:560px;text-wrap:pretty">Configure how deposits are calculated, collected, refunded, and forfeited. Set the policy once — staff follow it automatically on every order.</p>
+              </div>
+              <span style="display:inline-flex;align-items:center;gap:6px;font:600 10px 'JetBrains Mono';letter-spacing:.03em;color:#6b7280;background:#f4f2ee;border:1px solid #ece9e3;padding:5px 9px;border-radius:8px;white-space:nowrap;flex:none"><span dangerouslySetInnerHTML="{{ lockIcon }}" style="display:flex"></span>INR · paise</span>
+            </div>
+            <div style="height:1px;background:#ece9e3;margin:20px 0 4px"></div>
+
+            <!-- ============ SECTION 1 ============ -->
+            <section style="padding:26px 0 6px">
+              <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:3px"><span style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#4f46e5">01</span><h2 style="margin:0;font:600 18px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Deposit Calculation Method</h2></div>
+              <p style="margin:0 0 0 31px;font:400 12.5px 'Manrope';color:#8a8780">How should default deposit amounts be calculated?</p>
+              <div style="height:1px;background:#f0ede8;margin:16px 0 20px"></div>
+
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ calcRows }}" as="o" hint-placeholder-count="4">
+                  <div onClick="{{ o.onSelect }}" style="display:flex;align-items:center;gap:13px;padding:13px 16px;border-radius:11px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }}">
+                    <span style="width:18px;height:18px;border-radius:50%;flex:none;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:8px;height:8px;border-radius:50%;background:{{ o.fill }}"></span></span>
+                    <span style="flex:1;font:600 13px 'Manrope';color:#26235a">{{ o.title }}</span>
+                    <sc-if value="{{ o.recommended }}"><span style="font:600 9px 'JetBrains Mono';letter-spacing:.04em;color:#4f46e5;background:#eef2ff;padding:3px 7px;border-radius:5px">DEFAULT</span></sc-if>
+                    <sc-if value="{{ o.hasInput }}">
+                      <div style="display:flex;align-items:center;height:34px;border:1px solid #e4e0d9;border-radius:8px;background:#fff;overflow:hidden;width:118px">
+                        <span class="mono" style="padding:0 3px 0 11px;color:#9ca3af;font-size:12.5px">{{ o.prefix }}</span>
+                        <input value="{{ o.value }}" onInput="{{ o.onInput }}" onClick="{{ stop }}" class="mono" style="flex:1;min-width:0;border:none;height:100%;padding:0 10px 0 3px;font-size:12.5px;color:#26235a;text-align:right;background:transparent" />
+                        <span class="mono" style="padding:0 10px 0 0;color:#9ca3af;font-size:12.5px">{{ o.suffix }}</span>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- Additional rules -->
+              <div style="margin-top:22px">
+                <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:12px">ADDITIONAL RULES</div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ ruleRows }}" as="rr" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:13px;padding:11px 16px;border-radius:11px;border:1px solid {{ rr.border }};background:{{ rr.bg }}">
+                      <span onClick="{{ rr.onToggle }}" style="width:20px;height:20px;border-radius:6px;flex:none;cursor:pointer;border:2px solid {{ rr.ring }};background:{{ rr.fill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ rr.on }}"><span dangerouslySetInnerHTML="{{ rr.check }}" style="display:flex;color:#fff"></span></sc-if></span>
+                      <span style="flex:1;font:600 12.5px 'Manrope';color:#26235a">{{ rr.label }}</span>
+                      <div style="display:flex;align-items:center;height:34px;border:1px solid #e4e0d9;border-radius:8px;background:#fff;overflow:hidden;width:130px;opacity:{{ rr.op }}">
+                        <span class="mono" style="padding:0 3px 0 11px;color:#9ca3af;font-size:12.5px">₹</span>
+                        <input value="{{ rr.value }}" data-field="{{ rr.field }}" onInput="{{ markField }}" class="mono" style="flex:1;min-width:0;border:none;height:100%;padding:0 10px 0 3px;font-size:12.5px;color:#26235a;text-align:right;background:transparent" />
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <!-- Sample calculation -->
+              <div style="margin-top:22px;background:#202058;border-radius:14px;padding:20px 22px;color:#fff">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><span dangerouslySetInnerHTML="{{ calcIcon }}" style="display:flex;color:#a5b4fc"></span><span style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#a5b4fc">SAMPLE CALCULATION · LIVE</span></div>
+                <div style="display:flex;align-items:flex-end;gap:0;flex-wrap:wrap">
+                  <div style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:11px">
+                    <div style="display:flex;justify-content:space-between;gap:14px"><span style="font:400 12.5px 'Manrope';color:#b8bce6">Rental value</span><span class="mono" style="font-size:13px;color:#fff">{{ sampleRental }}</span></div>
+                    <div style="display:flex;justify-content:space-between;gap:14px"><span style="font:400 12.5px 'Manrope';color:#b8bce6">Method</span><span class="mono" style="font-size:13px;color:#fff">{{ sampleMethod }}</span></div>
+                    <div style="display:flex;justify-content:space-between;gap:14px"><span style="font:400 12.5px 'Manrope';color:#b8bce6">Calculated</span><span class="mono" style="font-size:13px;color:#fff">{{ sampleRaw }}</span></div>
+                  </div>
+                  <div style="width:1px;align-self:stretch;background:rgba(255,255,255,.13);margin:0 24px"></div>
+                  <div style="flex:none;text-align:right">
+                    <div style="font:400 11px 'JetBrains Mono';letter-spacing:.05em;color:#8b90cc;margin-bottom:4px">DEPOSIT APPLIED</div>
+                    <div class="mono" style="font-size:30px;font-weight:600;color:#fff;letter-spacing:-.01em">{{ sampleApplied }}</div>
+                    <div style="font:400 11px 'Manrope';color:#a5b4fc;margin-top:3px">{{ sampleNote }}</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ============ SECTION 2 ============ -->
+            <section style="padding:26px 0 6px">
+              <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:3px"><span style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#4f46e5">02</span><h2 style="margin:0;font:600 18px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Segment-Based Overrides</h2></div>
+              <p style="margin:0 0 0 31px;font:400 12.5px 'Manrope';color:#8a8780">Different customer segments can carry different deposit rules — applied automatically at collection.</p>
+              <div style="height:1px;background:#f0ede8;margin:16px 0 18px"></div>
+
+              <div style="border:1px solid #ece9e3;border-radius:13px;overflow:hidden">
+                <div style="display:grid;grid-template-columns:1.5fr 1.3fr 1fr 68px;gap:10px;padding:11px 18px;background:#faf9f7;border-bottom:1px solid #ece9e3;font:600 10px 'JetBrains Mono';letter-spacing:.05em;color:#9a9690">
+                  <span>CUSTOMER SEGMENT</span><span>DEPOSIT RULE</span><span>OVERRIDE</span><span></span>
+                </div>
+                <sc-for list="{{ segments }}" as="s" hint-placeholder-count="5">
+                  <div style="display:grid;grid-template-columns:1.5fr 1.3fr 1fr 68px;gap:10px;padding:14px 18px;align-items:center;border-bottom:1px solid {{ s.rule2border }}">
+                    <div style="display:flex;flex-direction:column;gap:3px">
+                      <div style="display:flex;align-items:center;gap:9px"><span style="width:9px;height:9px;border-radius:50%;flex:none;background:{{ s.dot }}"></span><span style="font:600 13px 'Manrope';color:#26235a">{{ s.name }}</span></div>
+                      <span style="font:400 11px 'Manrope';color:#9a9690;padding-left:18px">{{ s.rationale }}</span>
+                    </div>
+                    <span class="mono" style="font-size:12.5px;color:#26235a">{{ s.rule }}</span>
+                    <span style="font:600 10.5px 'JetBrains Mono';letter-spacing:.02em;color:{{ s.ovColor }}">{{ s.override }}</span>
+                    <button style="justify-self:end;padding:5px 11px;background:#fff;border:1px solid #e4e0d9;border-radius:7px;font:600 11px 'Manrope';color:#4f46e5;cursor:pointer" style-hover="background:#eef2ff">Edit</button>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+
+            <!-- ============ SECTION 3 ============ -->
+            <section style="padding:26px 0 6px">
+              <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:3px"><span style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#4f46e5">03</span><h2 style="margin:0;font:600 18px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Category-Based Deposit Rules</h2></div>
+              <p style="margin:0 0 0 31px;font:400 12.5px 'Manrope';color:#8a8780">Some asset categories need different deposit treatment based on value and risk.</p>
+              <div style="height:1px;background:#f0ede8;margin:16px 0 18px"></div>
+
+              <div style="border:1px solid #ece9e3;border-radius:13px;overflow:hidden">
+                <div style="display:grid;grid-template-columns:1.4fr .7fr .8fr 1.6fr;gap:10px;padding:11px 18px;background:#faf9f7;border-bottom:1px solid #ece9e3;font:600 10px 'JetBrains Mono';letter-spacing:.05em;color:#9a9690">
+                  <span>CATEGORY</span><span>DEPOSIT %</span><span>MIN</span><span>NOTES</span>
+                </div>
+                <sc-for list="{{ categories }}" as="c" hint-placeholder-count="7">
+                  <div style="display:grid;grid-template-columns:1.4fr .7fr .8fr 1.6fr;gap:10px;padding:12px 18px;align-items:center;border-bottom:1px solid {{ c.border }}">
+                    <div style="display:flex;align-items:center;gap:9px"><span style="width:26px;height:26px;border-radius:7px;flex:none;background:{{ c.iconBg }};color:{{ c.iconColor }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ c.icon }}" style="display:flex"></span></span><span style="font:600 12.5px 'Manrope';color:#26235a">{{ c.name }}</span></div>
+                    <span class="mono" style="font-size:12.5px;color:#202058;font-weight:600">{{ c.pct }}</span>
+                    <span class="mono" style="font-size:12px;color:#6b7280">{{ c.min }}</span>
+                    <span style="font:400 11.5px 'Manrope';color:#8a8780">{{ c.notes }}</span>
+                  </div>
+                </sc-for>
+                <div style="padding:11px 18px;background:#fcfbf9">
+                  <button style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:#fff;border:1px solid #d8d4ee;border-radius:8px;font:600 11.5px 'Manrope';color:#4f46e5;cursor:pointer" style-hover="background:#eef2ff"><span style="font-size:15px;line-height:1;margin-top:-1px">+</span> Add category rule</button>
+                </div>
+              </div>
+            </section>
+
+            <!-- ============ SECTION 4 ============ -->
+            <section style="padding:26px 0 6px">
+              <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:3px"><span style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#4f46e5">04</span><h2 style="margin:0;font:600 18px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Deposit Collection Methods</h2></div>
+              <p style="margin:0 0 0 31px;font:400 12.5px 'Manrope';color:#8a8780">Which payment methods are accepted for deposits, and any per-method rules.</p>
+              <div style="height:1px;background:#f0ede8;margin:16px 0 18px"></div>
+
+              <div style="border:1px solid #ece9e3;border-radius:13px;overflow:hidden">
+                <div style="display:grid;grid-template-columns:1.1fr 70px 1fr 1.7fr;gap:12px;padding:11px 18px;background:#faf9f7;border-bottom:1px solid #ece9e3;font:600 10px 'JetBrains Mono';letter-spacing:.05em;color:#9a9690">
+                  <span>METHOD</span><span>ENABLED</span><span>CEILING</span><span>RULES</span>
+                </div>
+                <sc-for list="{{ methods }}" as="m" hint-placeholder-count="5">
+                  <div style="display:grid;grid-template-columns:1.1fr 70px 1fr 1.7fr;gap:12px;padding:13px 18px;align-items:center;border-bottom:1px solid {{ m.border }};background:{{ m.rowBg }};opacity:{{ m.op }}">
+                    <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:7px;flex:none;background:{{ m.iconBg }};color:{{ m.iconColor }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ m.icon }}" style="display:flex"></span></span><span style="font:600 12.5px 'Manrope';color:#26235a">{{ m.name }}</span></div>
+                    <span onClick="{{ m.onToggle }}" style="width:36px;height:21px;border-radius:11px;flex:none;background:{{ m.trackBg }};position:relative;cursor:{{ m.cursor }};transition:background .15s"><span style="position:absolute;top:2px;left:{{ m.knobX }};width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s"></span></span>
+                    <span class="mono" style="font-size:12px;color:{{ m.ceilColor }}">{{ m.ceil }}</span>
+                    <span style="font:400 11.5px 'Manrope';color:{{ m.ruleColor }}">{{ m.rule }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="margin-top:14px;display:flex;align-items:center;gap:13px;padding:13px 16px;border-radius:11px;border:1px solid {{ splitBorder }};background:{{ splitBg }}">
+                <span onClick="{{ splitToggle }}" style="width:20px;height:20px;border-radius:6px;flex:none;cursor:pointer;border:2px solid {{ splitRing }};background:{{ splitFill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ splitOn }}"><span dangerouslySetInnerHTML="{{ checkIcon }}" style="display:flex;color:#fff"></span></sc-if></span>
+                <div style="flex:1"><div style="font:600 12.5px 'Manrope';color:#26235a">Allow split payment across methods</div><div style="font:400 11.5px 'Manrope';color:#8a8780;margin-top:2px">A single deposit can combine methods — e.g. ₹5,000 cash + ₹5,000 post-dated cheque.</div></div>
+              </div>
+            </section>
+
+            <!-- ============ SECTION 5 ============ -->
+            <section style="padding:26px 0 6px">
+              <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:3px"><span style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#4f46e5">05</span><h2 style="margin:0;font:600 18px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Refund Timeline Rules</h2></div>
+              <p style="margin:0 0 0 31px;font:400 12.5px 'Manrope';color:#8a8780">How quickly deposits are released after an order completes.</p>
+              <div style="height:1px;background:#f0ede8;margin:16px 0 20px"></div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:26px">
+                <div>
+                  <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:11px">TRIGGER FOR RELEASE</div>
+                  <div style="display:flex;flex-direction:column;gap:9px">
+                    <sc-for list="{{ trigRows }}" as="o" hint-placeholder-count="3">
+                      <div onClick="{{ o.onSelect }}" style="display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:10px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }}">
+                        <span style="width:17px;height:17px;border-radius:50%;flex:none;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:7px;height:7px;border-radius:50%;background:{{ o.fill }}"></span></span>
+                        <span style="flex:1;font:600 12.5px 'Manrope';color:#26235a">{{ o.title }}</span>
+                        <sc-if value="{{ o.recommended }}"><span style="font:600 8.5px 'JetBrains Mono';color:#059669;background:#ecfdf5;padding:2px 6px;border-radius:5px">REC</span></sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div>
+                  <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:11px">RELEASE TIMING</div>
+                  <div style="display:flex;flex-direction:column;gap:9px">
+                    <sc-for list="{{ timeRows }}" as="o" hint-placeholder-count="4">
+                      <div onClick="{{ o.onSelect }}" style="display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:10px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }}">
+                        <span style="width:17px;height:17px;border-radius:50%;flex:none;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:7px;height:7px;border-radius:50%;background:{{ o.fill }}"></span></span>
+                        <span style="flex:1;font:600 12.5px 'Manrope';color:#26235a">{{ o.title }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top:20px;background:#faf9f7;border:1px solid #ece9e3;border-radius:13px;padding:18px 20px">
+                <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:14px">REFUND METHOD · BY ORIGINAL COLLECTION</div>
+                <div style="display:flex;flex-direction:column;gap:12px">
+                  <sc-for list="{{ refundMap }}" as="rm" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:flex-start;gap:12px">
+                      <span style="width:96px;flex:none;font:600 12px 'Manrope';color:#6b6860;padding-top:1px">{{ rm.method }}</span>
+                      <span style="color:#c0bdb4;padding-top:1px">→</span>
+                      <div style="display:flex;flex-direction:column;gap:6px">
+                        <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:50%;flex:none;border:2px solid #4f46e5;display:flex;align-items:center;justify-content:center"><span style="width:6px;height:6px;border-radius:50%;background:#4f46e5"></span></span><span style="font:500 12.5px 'Manrope';color:#26235a">{{ rm.opt }}</span></div>
+                        <sc-if value="{{ rm.alt }}"><div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:50%;flex:none;border:2px solid #cfcbc3"></span><span style="font:400 12px 'Manrope';color:#9a9690">{{ rm.alt }}</span></div></sc-if>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="margin-top:14px;display:flex;flex-direction:column;gap:9px">
+                <sc-for list="{{ notifyRows }}" as="n" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:12px;padding:10px 15px;border-radius:10px;border:1px solid {{ n.border }};background:{{ n.bg }}">
+                    <span onClick="{{ n.onToggle }}" style="width:19px;height:19px;border-radius:6px;flex:none;cursor:pointer;border:2px solid {{ n.ring }};background:{{ n.fill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ n.on }}"><span dangerouslySetInnerHTML="{{ n.check }}" style="display:flex;color:#fff"></span></sc-if></span>
+                    <span style="flex:1;font:500 12.5px 'Manrope';color:#26235a">{{ n.label }}</span>
+                    <sc-if value="{{ n.parked }}"><span style="font:600 8.5px 'JetBrains Mono';letter-spacing:.03em;color:#9a9690;background:#ece9e3;padding:2px 6px;border-radius:5px">PARKED V1</span></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+
+            <!-- ============ SECTION 6 ============ -->
+            <section style="padding:26px 0 6px">
+              <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:3px"><span style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#4f46e5">06</span><h2 style="margin:0;font:600 18px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Forfeit Rules &amp; Approvals</h2></div>
+              <p style="margin:0 0 0 31px;font:400 12.5px 'Manrope';color:#8a8780">When deposits can be forfeited, and who must approve.</p>
+              <div style="height:1px;background:#f0ede8;margin:16px 0 20px"></div>
+
+              <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#059669;margin-bottom:11px;display:flex;align-items:center;gap:7px"><span dangerouslySetInnerHTML="{{ boltIcon }}" style="display:flex"></span>AUTO-FORFEIT · NO APPROVAL NEEDED</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ autoForfeit }}" as="a" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:13px;padding:12px 16px;border-radius:11px;border:1px solid {{ a.border }};background:{{ a.bg }}">
+                    <span onClick="{{ a.onToggle }}" style="width:20px;height:20px;border-radius:6px;flex:none;cursor:pointer;border:2px solid {{ a.ring }};background:{{ a.fill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ a.on }}"><span dangerouslySetInnerHTML="{{ a.check }}" style="display:flex;color:#fff"></span></sc-if></span>
+                    <span style="flex:1;font:600 12.5px 'Manrope';color:#26235a">{{ a.label }}</span>
+                    <span style="font:400 11.5px 'Manrope';color:#8a8780">{{ a.forfeitLabel }}</span>
+                    <div style="display:flex;align-items:center;height:34px;border:1px solid #e4e0d9;border-radius:8px;background:#fff;overflow:hidden;width:110px;opacity:{{ a.op }}">
+                      <span class="mono" style="padding:0 3px 0 11px;color:#9ca3af;font-size:12.5px">₹</span>
+                      <input value="{{ a.value }}" data-field="{{ a.field }}" onInput="{{ markField }}" class="mono" style="flex:1;min-width:0;border:none;height:100%;padding:0 10px 0 3px;font-size:12.5px;color:#26235a;text-align:right;background:transparent" />
+                    </div>
+                    <span style="font:400 11px 'Manrope';color:#9a9690;width:52px">{{ a.unit }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#d97706;margin:22px 0 12px;display:flex;align-items:center;gap:7px"><span dangerouslySetInnerHTML="{{ shieldIcon }}" style="display:flex"></span>REQUIRES APPROVAL · ESCALATION LADDER</div>
+              <div style="border:1px solid #ece9e3;border-radius:13px;overflow:hidden">
+                <sc-for list="{{ approvalTiers }}" as="t" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid {{ t.border }};background:{{ t.rowBg }}">
+                    <span style="width:4px;align-self:stretch;border-radius:3px;background:{{ t.accent }};flex:none;margin:-14px 0;min-height:52px"></span>
+                    <div style="flex:1;min-width:0">
+                      <div style="font:600 13px 'Manrope';color:#26235a">{{ t.range }}</div>
+                    </div>
+                    <span style="display:inline-flex;align-items:center;gap:7px;font:600 11.5px 'Manrope';color:{{ t.accent }};background:{{ t.chipBg }};padding:6px 12px;border-radius:8px;white-space:nowrap"><span style="width:7px;height:7px;border-radius:50%;background:{{ t.accent }}"></span>{{ t.who }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="margin-top:16px;background:#faf9f7;border:1px solid #ece9e3;border-radius:13px;padding:18px 20px">
+                <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:16px">APPROVAL PROCESS</div>
+                <div style="display:flex;align-items:stretch;gap:0;flex-wrap:wrap">
+                  <sc-for list="{{ approvalSteps }}" as="p" hint-placeholder-count="4">
+                    <div style="flex:1;min-width:150px;display:flex;align-items:flex-start;gap:11px;padding-right:16px">
+                      <span style="width:26px;height:26px;border-radius:50%;flex:none;background:#eef2ff;color:#4f46e5;font:600 12px 'JetBrains Mono';display:flex;align-items:center;justify-content:center">{{ p.n }}</span>
+                      <span style="font:500 12px 'Manrope';color:#4a4760;line-height:1.4;padding-top:3px">{{ p.text }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </section>
+
+            <!-- ============ SECTION 7 ============ -->
+            <section style="padding:26px 0 6px">
+              <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:3px"><span style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#4f46e5">07</span><h2 style="margin:0;font:600 18px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Custody Transfer Rules</h2></div>
+              <p style="margin:0 0 0 31px;font:400 12.5px 'Manrope';color:#8a8780">Physical deposit custody (cash / cheque) may transfer between team members.</p>
+              <div style="height:1px;background:#f0ede8;margin:16px 0 20px"></div>
+
+              <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:11px">WHO CAN HOLD CASH DEPOSITS</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ custodyRows }}" as="c" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:13px;padding:12px 16px;border-radius:11px;border:1px solid {{ c.border }};background:{{ c.bg }}">
+                    <span onClick="{{ c.onToggle }}" style="width:20px;height:20px;border-radius:6px;flex:none;cursor:pointer;border:2px solid {{ c.ring }};background:{{ c.fill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ c.on }}"><span dangerouslySetInnerHTML="{{ c.check }}" style="display:flex;color:#fff"></span></sc-if></span>
+                    <span style="width:26px;height:26px;border-radius:50%;flex:none;background:#eef0f4;color:#202058;font:600 9px 'Space Grotesk';display:flex;align-items:center;justify-content:center">{{ c.initials }}</span>
+                    <span style="flex:1;font:600 12.5px 'Manrope';color:#26235a">{{ c.name }}</span>
+                    <sc-if value="{{ c.hasLimit }}">
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font:400 11px 'Manrope';color:#9a9690">Up to</span>
+                        <div style="display:flex;align-items:center;height:32px;border:1px solid #e4e0d9;border-radius:8px;background:#fff;overflow:hidden;width:118px;opacity:{{ c.op }}">
+                          <span class="mono" style="padding:0 3px 0 11px;color:#9ca3af;font-size:12px">₹</span>
+                          <input value="{{ c.limit }}" data-field="managerCeiling" onInput="{{ markField }}" class="mono" style="flex:1;min-width:0;border:none;height:100%;padding:0 10px 0 3px;font-size:12px;color:#26235a;text-align:right;background:transparent" />
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ c.noLimit }}"><span style="font:600 10px 'JetBrains Mono';color:#059669;background:#ecfdf5;padding:3px 9px;border-radius:6px">NO LIMIT</span></sc-if>
+                    <sc-if value="{{ c.blocked }}"><span style="font:600 10px 'JetBrains Mono';color:#9a9690;background:#f0ede8;padding:3px 9px;border-radius:6px">NOT ALLOWED</span></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:22px">
+                <div>
+                  <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:11px">CHEQUE HANDLING</div>
+                  <div style="display:flex;flex-direction:column;gap:9px">
+                    <sc-for list="{{ chequeRows }}" as="q" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:center;gap:11px;padding:11px 14px;border-radius:10px;border:1px solid {{ q.border }};background:{{ q.bg }}">
+                        <span onClick="{{ q.onToggle }}" style="width:19px;height:19px;border-radius:6px;flex:none;cursor:pointer;border:2px solid {{ q.ring }};background:{{ q.fill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ q.on }}"><span dangerouslySetInnerHTML="{{ q.check }}" style="display:flex;color:#fff"></span></sc-if></span>
+                        <span style="flex:1;font:500 12px 'Manrope';color:#26235a;line-height:1.35">{{ q.label }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div>
+                  <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:11px">DAILY RECONCILIATION</div>
+                  <div style="display:flex;flex-direction:column;gap:9px">
+                    <sc-for list="{{ reconRows }}" as="o" hint-placeholder-count="3">
+                      <div onClick="{{ o.onSelect }}" style="display:flex;align-items:center;gap:11px;padding:11px 14px;border-radius:10px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }}">
+                        <span style="width:17px;height:17px;border-radius:50%;flex:none;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:7px;height:7px;border-radius:50%;background:{{ o.fill }}"></span></span>
+                        <span style="flex:1;font:600 12px 'Manrope';color:#26235a">{{ o.title }}</span>
+                        <sc-if value="{{ o.recommended }}"><span style="font:600 8.5px 'JetBrains Mono';color:#059669;background:#ecfdf5;padding:2px 6px;border-radius:5px">REC</span></sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="margin-top:11px;display:flex;flex-direction:column;gap:9px">
+                    <sc-for list="{{ discRows }}" as="d" hint-placeholder-count="2">
+                      <div style="display:flex;align-items:flex-start;gap:11px;padding:10px 14px;border-radius:10px;border:1px solid {{ d.border }};background:{{ d.bg }}">
+                        <span onClick="{{ d.onToggle }}" style="width:19px;height:19px;border-radius:6px;flex:none;cursor:pointer;border:2px solid {{ d.ring }};background:{{ d.fill }};display:flex;align-items:center;justify-content:center;margin-top:1px"><sc-if value="{{ d.on }}"><span dangerouslySetInnerHTML="{{ d.check }}" style="display:flex;color:#fff"></span></sc-if></span>
+                        <span style="flex:1;font:500 11.5px 'Manrope';color:#26235a;line-height:1.35">{{ d.label }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ============ SECTION 8 ============ -->
+            <section style="padding:26px 0 10px">
+              <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:3px"><span style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#4f46e5">08</span><h2 style="margin:0;font:600 18px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Cheque Bounce Handling</h2></div>
+              <p style="margin:0 0 0 31px;font:400 12.5px 'Manrope';color:#8a8780">What happens when a deposit cheque bounces.</p>
+              <div style="height:1px;background:#f0ede8;margin:16px 0 20px"></div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px">
+                <div>
+                  <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:11px">NOTIFICATION TRIGGERS</div>
+                  <div style="display:flex;flex-direction:column;gap:9px">
+                    <sc-for list="{{ bounceNotify }}" as="b" hint-placeholder-count="4">
+                      <div style="display:flex;align-items:center;gap:11px;padding:11px 14px;border-radius:10px;border:1px solid {{ b.border }};background:{{ b.bg }}">
+                        <span onClick="{{ b.onToggle }}" style="width:19px;height:19px;border-radius:6px;flex:none;cursor:pointer;border:2px solid {{ b.ring }};background:{{ b.fill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ b.on }}"><span dangerouslySetInnerHTML="{{ b.check }}" style="display:flex;color:#fff"></span></sc-if></span>
+                        <span style="flex:1;font:500 12px 'Manrope';color:#26235a;line-height:1.35">{{ b.label }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div>
+                  <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:11px">ACTIONS TO TRIGGER</div>
+                  <div style="display:flex;flex-direction:column;gap:9px">
+                    <sc-for list="{{ bounceActions }}" as="b" hint-placeholder-count="4">
+                      <div style="display:flex;align-items:center;gap:11px;padding:11px 14px;border-radius:10px;border:1px solid {{ b.border }};background:{{ b.bg }}">
+                        <span onClick="{{ b.onToggle }}" style="width:19px;height:19px;border-radius:6px;flex:none;cursor:pointer;border:2px solid {{ b.ring }};background:{{ b.fill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ b.on }}"><span dangerouslySetInnerHTML="{{ b.check }}" style="display:flex;color:#fff"></span></sc-if></span>
+                        <span style="flex:1;font:500 12px 'Manrope';color:#26235a;line-height:1.35">{{ b.label }}</span>
+                        <sc-if value="{{ b.hasInput }}">
+                          <div style="display:flex;align-items:center;height:31px;border:1px solid #e4e0d9;border-radius:7px;background:#fff;overflow:hidden;width:{{ b.inputW }};opacity:{{ b.op }}">
+                            <sc-if value="{{ b.prefix }}"><span class="mono" style="padding:0 2px 0 9px;color:#9ca3af;font-size:11.5px">{{ b.prefix }}</span></sc-if>
+                            <input value="{{ b.value }}" data-field="{{ b.field }}" onInput="{{ markField }}" class="mono" style="flex:1;min-width:0;border:none;height:100%;padding:0 9px;font-size:11.5px;color:#26235a;text-align:center;background:transparent" />
+                          </div>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top:20px;background:#faf9f7;border:1px solid #ece9e3;border-radius:13px;padding:18px 20px">
+                <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:13px">ALTERNATIVE PAYMENT WINDOW</div>
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <sc-for list="{{ altRows }}" as="o" hint-placeholder-count="2">
+                    <div onClick="{{ o.onSelect }}" style="display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:10px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }}">
+                      <span style="width:17px;height:17px;border-radius:50%;flex:none;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:7px;height:7px;border-radius:50%;background:{{ o.fill }}"></span></span>
+                      <span style="flex:1;font:600 12px 'Manrope';color:#26235a">{{ o.title }}</span>
+                      <sc-if value="{{ o.hasInput }}">
+                        <div style="display:flex;align-items:center;height:31px;border:1px solid #e4e0d9;border-radius:7px;background:#fff;overflow:hidden;width:96px" onClick="{{ stop }}">
+                          <input value="{{ o.value }}" data-field="altDays" onInput="{{ markField }}" class="mono" style="flex:1;min-width:0;border:none;height:100%;padding:0 5px 0 11px;font-size:12px;color:#26235a;text-align:right;background:transparent" />
+                          <span class="mono" style="padding:0 10px 0 3px;color:#9ca3af;font-size:11.5px">days</span>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="margin-top:14px;display:flex;flex-direction:column;gap:9px">
+                <sc-for list="{{ reminderRows }}" as="r" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:12px;padding:10px 15px;border-radius:10px;border:1px solid {{ r.border }};background:{{ r.bg }}">
+                    <span onClick="{{ r.onToggle }}" style="width:19px;height:19px;border-radius:6px;flex:none;cursor:pointer;border:2px solid {{ r.ring }};background:{{ r.fill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ r.on }}"><span dangerouslySetInnerHTML="{{ r.check }}" style="display:flex;color:#fff"></span></sc-if></span>
+                    <span style="flex:1;font:500 12.5px 'Manrope';color:#26235a">{{ r.label }}</span>
+                    <sc-if value="{{ r.parked }}"><span style="font:600 8.5px 'JetBrains Mono';letter-spacing:.03em;color:#9a9690;background:#ece9e3;padding:2px 6px;border-radius:5px">PARKED V1</span></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+
+          </sc-if>
+
+          <!-- ===== GENERIC FALLBACK ===== -->
+          <sc-if value="{{ showGeneric }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:8px;font:400 11.5px 'JetBrains Mono';color:#9ca3af;margin-bottom:10px">{{ crumbCat }} <span style="color:#cfcbc3">/</span> <span style="color:#6b6860">{{ crumbItem }}</span></div>
+            <h1 style="margin:0;font:600 24px 'Space Grotesk';color:#202058;letter-spacing:-.01em">{{ crumbItem }}</h1>
+            <p style="margin:7px 0 0;font:400 13px 'Manrope';color:#8a8780">This section lives inside the same Settings shell — its form fields render in this content area.</p>
+            <div style="height:1px;background:#ece9e3;margin:22px 0 24px"></div>
+            <div style="border:1px dashed #ddd8ce;border-radius:14px;padding:44px 30px;display:flex;flex-direction:column;align-items:center;text-align:center;background:#faf9f7">
+              <div style="width:46px;height:46px;border-radius:12px;background:#eef2ff;color:#4f46e5;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><span dangerouslySetInnerHTML="{{ slidersIcon }}" style="display:flex"></span></div>
+              <div style="font:600 15px 'Space Grotesk';color:#26235a">{{ crumbItem }}</div>
+              <div style="font:400 12.5px 'Manrope';color:#9a9690;max-width:360px;margin-top:6px">Specced in a dedicated brief. This page builds out <strong style="color:#4f46e5">Deposit policies</strong> — select it under Financial.</div>
+            </div>
+          </sc-if>
+
+        </div>
+      </div>
+
+      <!-- ===== SECTION 9 · STICKY SAVE BAR ===== -->
+      <sc-if value="{{ showDeposit }}" hint-placeholder-val="{{ true }}">
+      <div style="position:sticky;bottom:0;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);border-top:1px solid #ece9e3;padding:14px 40px;display:flex;align-items:center;gap:16px;z-index:30">
+        <sc-if value="{{ dirty }}"><span style="display:flex;align-items:center;gap:7px;font:600 11px 'JetBrains Mono';letter-spacing:.02em;color:#d97706"><span style="width:7px;height:7px;border-radius:50%;background:#d97706"></span>{{ changedCount }} unsaved change{{ changedPlural }}</span></sc-if>
+        <sc-if value="{{ clean }}"><span style="display:flex;align-items:center;gap:7px;font:600 11px 'JetBrains Mono';letter-spacing:.02em;color:#059669"><span dangerouslySetInnerHTML="{{ checkIcon }}" style="display:flex"></span>All changes saved</span></sc-if>
+        <span style="font:400 11px 'Manrope';color:#b0aca4">Rule changes emit an audit event · stored in workspaces.settings.deposit_policy</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+          <button onClick="{{ onDiscard }}" style="padding:11px 18px;background:#fff;color:#6b7280;border:1px solid #e4e0d9;border-radius:10px;font:600 13px 'Manrope';cursor:pointer" style-hover="background:#faf9f7;color:#26235a">Discard</button>
+          <button onClick="{{ onSave }}" style="padding:11px 22px;background:#4f46e5;color:#fff;border:none;border-radius:10px;font:600 13px 'Manrope';cursor:pointer;box-shadow:0 1px 2px rgba(79,70,229,.28)" style-hover="background:#3f37c9">Save changes</button>
+        </div>
+      </div>
+      </sc-if>
+
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:940},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#4f46e5&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#4f46e5&quot;,&quot;#202058&quot;,&quot;#059669&quot;,&quot;#d97706&quot;],&quot;section&quot;:&quot;Theme&quot;},&quot;showRail&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  constructor(p){
+    super(p);
+    this.state = {
+      selected:'deposit',
+      collapsed:{}, search:'', role:'Owner', roleOpen:false,
+      changed:{ default_percentage:true, segment_vip:true, collection_cash:true },
+      dp:{
+        calcMethod:'pct_rental', pctRental:'30', fixedAmount:'5,000', pctAsset:'50',
+        minOn:true, minVal:'500', maxOn:true, maxVal:'1,00,000', noDepOn:false, noDepVal:'1,000',
+        m_cash:true, m_cheque:true, m_upi:true, m_bank:true, m_card:false, allowSplit:true,
+        refundTrigger:'inspection', refundTiming:'immediate', notifyWA:true, notifyEmail:true,
+        lateReturn:true, lateAmt:'1,000', noShow:true, noShowAmt:'500', chequeBounce:false, chequeBounceAmt:'500',
+        custOwner:true, custManager:true, custAccounts:true, custWarehouse:false, managerCeiling:'50,000',
+        chBank:true, chPostdated:true, chBounced:true,
+        recon:'daily', discAlert:true, discLock:false,
+        bnLog:true, bnAccounts:true, bnCustomer:true, bnFlag:true,
+        bnRetain:true, bnFee:true, bnFeeVal:'500', bnAutoBlock:false, autoBlockCount:'3', bnAutoBlockAmt:false, autoBlockAmtVal:'10,000',
+        altWindow:'fixed', altDays:'7', remWA:true, remEmail:true, remSMS:false
+      }
+    };
+  }
+
+  ic(path,w){ return {__html:'<svg width="'+(w||18)+'" height="'+(w||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+path+'</svg>'}; }
+  chk(){ return this.ic('<path d="M20 6 9 17l-5-5"/>',13); }
+
+  tog(k){ this.setState(s=>({dp:{...s.dp,[k]:!s.dp[k]}, changed:{...s.changed,['t_'+k]:true}})); }
+  setR(g,v){ this.setState(s=>({dp:{...s.dp,[g]:v}, changed:{...s.changed,['r_'+g]:true}})); }
+  setPct = (e)=>{ const v=e.currentTarget.value; this.setState(s=>({dp:{...s.dp,pctRental:v}, changed:{...s.changed,default_percentage:true}})); };
+  setFixed = (e)=>{ const v=e.currentTarget.value; this.setState(s=>({dp:{...s.dp,fixedAmount:v}, changed:{...s.changed,default_fixed:true}})); };
+  setAsset = (e)=>{ const v=e.currentTarget.value; this.setState(s=>({dp:{...s.dp,pctAsset:v}, changed:{...s.changed,default_asset:true}})); };
+  markChanged = (e)=>{ const f=e.currentTarget.dataset.field; if(!f) return; this.setState(s=>({changed:{...s.changed,[f]:true}})); };
+  stopClick = (e)=>{ e.stopPropagation(); };
+
+  cats(){
+    return [
+      {id:'general', name:'General', icon:'<rect x="4" y="4" width="7" height="7" rx="1.4"/><rect x="13" y="4" width="7" height="7" rx="1.4"/><rect x="4" y="13" width="7" height="7" rx="1.4"/><rect x="13" y="13" width="7" height="7" rx="1.4"/>',
+        items:[['workspace-info','Workspace info'],['regional','Regional settings'],['branding','Branding']]},
+      {id:'team', name:'Team & Access', icon:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.3 2.7-6 6-6"/><path d="M16 4.5a3 3 0 0 1 0 6"/><path d="M15 14c2.5.5 4.5 2.8 4.5 6"/>',
+        items:[['staff','Staff members'],['roles','Roles & permissions'],['sessions','Session policies']]},
+      {id:'financial', name:'Financial', icon:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14" r="1.4"/>',
+        items:[['tax','Tax rates (GST)'],['invoice','Invoice format'],['deposit','Deposit policies'],['latefee','Late fee rules'],['refund','Refund policies']]},
+      {id:'rental', name:'Rental Rules', icon:'<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v4h-4"/>',
+        items:[['lifecycle','Order lifecycle'],['standby','Standby policies'],['extension','Extension rules'],['cancellation','Cancellation rules'],['substitution','Substitution defaults']]},
+      {id:'assets', name:'Assets', icon:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5"/><path d="M12 12v9"/>',
+        items:[['categories','Categories'],['custody','Custody types'],['maintenance','Maintenance defaults'],['barcode','Barcode / labels']]},
+      {id:'people', name:'People', icon:'<circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3-6.5 7-6.5s7 2.9 7 6.5"/>',
+        items:[['pvocab','Roles vocabulary'],['segments','Segment thresholds'],['trust','Trust score weights'],['commprefs','Communication preferences defaults']]},
+      {id:'notifications', name:'Notifications', icon:'<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+        items:[['events','Event notifications'],['templates','Templates'],['channels','Delivery channels'],['approvals','Approval thresholds']]},
+      {id:'advanced', name:'Advanced', icon:'<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>',
+        items:[['audit','Audit log'],['export','Data export'],['integrations','Integration status'],['sysinfo','System info']]},
+      {id:'owner', name:'Workspace', owner:true, icon:'<path d="M3 7l4 4 5-6 5 6 4-4v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+        items:[['billing','Billing'],['delete','Delete workspace']]}
+    ];
+  }
+
+  roleAccess(role){
+    switch(role){
+      case 'Owner':     return {all:true};
+      case 'Manager':   return {set:['general','team','financial','rental','assets','people','notifications','advanced']};
+      case 'Sales':     return {set:['general','notifications','people']};
+      case 'Warehouse': return {set:['general','assets'], viewOnly:['general']};
+      case 'Accounts':  return {set:['general','financial','advanced'], onlyItems:{advanced:['audit']}};
+      default: return {all:true};
+    }
+  }
+
+  roleMeta(){
+    return {
+      Owner:     {user:'Aamir Patel',   initials:'AP', scope:'Full access · all sections'},
+      Manager:   {user:'Shoaib Khan',   initials:'SK', scope:'All except Owner-only & Billing'},
+      Sales:     {user:'Priya Nair',    initials:'PN', scope:'General · Notifications · People'},
+      Warehouse: {user:'Ruhan Sheikh',  initials:'RS', scope:'General (view) · Assets'},
+      Accounts:  {user:'Neha Desai',    initials:'ND', scope:'General · Financial · Audit log'}
+    };
+  }
+
+  visibleCats(){
+    const acc = this.roleAccess(this.state.role);
+    return this.cats().map(c=>{
+      let vis = acc.all || (acc.set && acc.set.includes(c.id));
+      if(!vis) return null;
+      let items = c.items;
+      if(acc.onlyItems && acc.onlyItems[c.id]) items = items.filter(i=>acc.onlyItems[c.id].includes(i[0]));
+      const note = (acc.viewOnly && acc.viewOnly.includes(c.id)) ? 'VIEW' : null;
+      return {...c, items, note};
+    }).filter(Boolean);
+  }
+
+  inr(n){ return '₹'+Number(n).toLocaleString('en-IN'); }
+  numOf(s){ return parseInt(String(s).replace(/[^0-9]/g,''))||0; }
+
+  renderVals(){
+    const S = this.state, dp = S.dp;
+    const A = this.props.accent ?? '#4f46e5';
+    const q = S.search.trim().toLowerCase();
+    const hasSearch = q.length>0;
+    const meta = this.roleMeta(), rm = meta[S.role];
+    const chk = this.chk();
+
+    // ---- nav ----
+    let nav = [], matchCount = 0;
+    this.visibleCats().forEach(c=>{
+      let items = c.items;
+      if(hasSearch) items = items.filter(it=> it[1].toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+      if(hasSearch && items.length===0) return;
+      matchCount += items.length;
+      const open = hasSearch ? true : !S.collapsed[c.id];
+      nav.push({
+        id:c.id, name:c.name, owner:!!c.owner, note:c.note, icon:this.ic(c.icon,17),
+        open, chev: open?'▾':'▸', wrap:'',
+        onToggle: ()=> this.setState(s=>({collapsed:{...s.collapsed,[c.id]:!(hasSearch?true:!s.collapsed[c.id])}})),
+        items: items.map(it=>{
+          const sel = S.selected===it[0];
+          return { id:it[0], name:it[1], onClick:()=>this.setState({selected:it[0]}),
+            bg: sel?A:'transparent', hover: sel?A:'#eef2ff', color: sel?'#fff':'#4a4760',
+            weight: sel?'600':'500', dotBg: sel?'#fff':'transparent',
+            dotBorder: sel?'none':'1.5px solid #c9c6d9', changed:false };
+        })
+      });
+    });
+
+    let crumbCat='General', crumbItem='Workspace info';
+    this.cats().forEach(c=> c.items.forEach(it=>{ if(it[0]===S.selected){crumbCat=c.name;crumbItem=it[1];} }));
+    const showDeposit = S.selected==='deposit';
+    const showGeneric = !showDeposit;
+
+    const changedCount = Object.keys(S.changed).filter(k=>S.changed[k]).length;
+    const dirty = changedCount>0;
+
+    // ---- role menu ----
+    const roleOptions = Object.keys(meta).map(r=>{
+      const m = meta[r];
+      return {user:m.user, initials:m.initials, scope:m.scope, active:S.role===r,
+        avBg: S.role===r?'#e5e2fb':'#eef0f4', bg: S.role===r?'#f7f7ff':'transparent',
+        check:this.ic('<path d="M20 6 9 17l-5-5"/>',15),
+        onSelect:()=> this.setState({role:r, roleOpen:false}) };
+    });
+
+    const rail = [
+      {name:'Dashboard', icon:this.ic('<rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'Rentals', icon:this.ic('<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'Inventory', icon:this.ic('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'Customers', icon:this.ic('<circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3-6.5 7-6.5s7 2.9 7 6.5"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'Finance', icon:this.ic('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1.3"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'Insights', icon:this.ic('<path d="M4 20V4M4 20h16"/><rect x="7" y="12" width="3" height="5"/><rect x="12" y="8" width="3" height="9"/>',20), color:'#9a9690', bg:'transparent'}
+    ];
+
+    // ---- helpers ----
+    const rad = (group,val)=>{ const sel=dp[group]===val; return {sel,onSelect:()=>this.setR(group,val),ring:sel?A:'#cfcbc3',fill:sel?A:'transparent',border:sel?A:'#e4e0d9',bg:sel?'#f7f7ff':'#fff'}; };
+    const cbx = (key)=>{ const on=dp[key]; return {on,onToggle:()=>this.tog(key),ring:on?A:'#cfcbc3',fill:on?A:'transparent',border:on?'#d6d2ee':'#ece9e3',bg:on?'#fbfbff':'#fff',check:chk,op:on?'1':'.5'}; };
+
+    // ---- Section 1 ----
+    const calcDef = [
+      ['fixed','Fixed amount per order', true, '₹','', dp.fixedAmount, this.setFixed, false],
+      ['pct_rental','Percentage of rental value', true, '','%', dp.pctRental, this.setPct, true],
+      ['pct_asset','Percentage of asset value', true, '','%', dp.pctAsset, this.setAsset, false],
+      ['custom','Custom rule per category (advanced)', false, '','','', null, false]
+    ];
+    const calcRows = calcDef.map(([v,title,hasInput,prefix,suffix,value,onInput,recommended])=>{
+      const r=rad('calcMethod',v);
+      return {...r, title, hasInput, prefix, suffix, value, onInput, recommended};
+    });
+    const ruleDef = [
+      ['minOn','Minimum deposit per order','minVal',dp.minVal,'min_deposit'],
+      ['maxOn','Maximum deposit per order','maxVal',dp.maxVal,'max_deposit'],
+      ['noDepOn','No deposit for orders under','noDepVal',dp.noDepVal,'no_deposit_under']
+    ];
+    const ruleRows = ruleDef.map(([key,label,vk,value,field])=>{ const c=cbx(key); return {...c,label,value,field}; });
+
+    // sample calc
+    const rentalSample = 15000, assetSample = 30000;
+    let raw = 0, methodText = '';
+    if(dp.calcMethod==='fixed'){ raw = this.numOf(dp.fixedAmount); methodText = 'Fixed '+this.inr(raw)+' per order'; }
+    else if(dp.calcMethod==='pct_rental'){ const p=parseFloat(String(dp.pctRental).replace(/[^0-9.]/g,''))||0; raw=Math.round(rentalSample*p/100); methodText=p+'% of rental value'; }
+    else if(dp.calcMethod==='pct_asset'){ const p=parseFloat(String(dp.pctAsset).replace(/[^0-9.]/g,''))||0; raw=Math.round(assetSample*p/100); methodText=p+'% of asset value (₹30,000)'; }
+    else { methodText='Custom rule per category'; raw=0; }
+    const minV=this.numOf(dp.minVal), maxV=this.numOf(dp.maxVal);
+    let applied=raw, note='within min / max range';
+    if(dp.calcMethod==='custom'){ note='resolved per category rule'; }
+    else { if(dp.minOn && applied<minV){applied=minV;note='raised to minimum ('+this.inr(minV)+')';} if(dp.maxOn && applied>maxV){applied=maxV;note='capped at maximum ('+this.inr(maxV)+')';} }
+
+    // ---- Section 2 segments ----
+    const segDef = [
+      ['VIP','50% of default','Auto-apply',A,'Loyalty benefit — reduced deposit','#4f46e5'],
+      ['Repeat','75% of default','Auto-apply','#0ea5e9','Trusted customer — standard 75%','#0ea5e9'],
+      ['New Customer','100% of default','Auto-apply','#6b7280','First rental — full deposit','#6b7280'],
+      ['At-risk','125% of default','Auto-apply','#d97706','Elevated risk — increased deposit','#d97706'],
+      ['Blocked','N/A (order blocked)','—','#dc2626','Order cannot proceed','#dc2626']
+    ];
+    const segments = segDef.map(([name,rule,override,dot,rationale],i)=>({name,rule,override,dot,rationale,
+      ovColor: override==='—'?'#c0bdb4':'#059669',
+      rule2border: i===segDef.length-1?'transparent':'#f0ede8'}));
+
+    // ---- Section 3 categories ----
+    const camIcon='<path d="M3 8a2 2 0 0 1 2-2h1.5l1-1.5h5l1 1.5H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12" r="3.2"/>';
+    const lensIcon='<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.4"/>';
+    const lightIcon='<path d="M9 18h6M10 21h4M12 3a6 6 0 0 1 4 10.5c-.6.6-1 1.3-1 2.1H9c0-.8-.4-1.5-1-2.1A6 6 0 0 1 12 3z"/>';
+    const audioIcon='<path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>';
+    const gearIcon2='<path d="M4 7h4M4 12h2M4 17h6"/><rect x="9" y="5" width="4" height="4" rx="1"/><rect x="7" y="14" width="4" height="4" rx="1"/>';
+    const boxIcon='<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5"/>';
+    const battIcon='<rect x="3" y="8" width="15" height="8" rx="2"/><path d="M21 11v2"/><path d="M7 12h4"/>';
+    const catDef = [
+      ['Cameras','50%','₹5,000','High-value, high-risk',camIcon,'#eef2ff','#4f46e5'],
+      ['Lenses','50%','₹3,000','Fragile',lensIcon,'#eef2ff','#4f46e5'],
+      ['Lighting','30%','₹1,000','Standard',lightIcon,'#f0f6ff','#0ea5e9'],
+      ['Audio','30%','₹1,000','Standard',audioIcon,'#f0f6ff','#0ea5e9'],
+      ['Support gear','20%','₹500','Low-risk',gearIcon2,'#f4f2ee','#8a8780'],
+      ['Consumables','0%','—','Owned outright',boxIcon,'#f4f2ee','#8a8780'],
+      ['Batteries','10%','₹500','Low-cost items',battIcon,'#f4f2ee','#8a8780']
+    ];
+    const categories = catDef.map(([name,pct,min,notes,icon,iconBg,iconColor],i)=>({name,pct,min,notes,icon:this.ic(icon,15),iconBg,iconColor,
+      border: i===catDef.length-1?'transparent':'#f0ede8'}));
+
+    // ---- Section 4 methods ----
+    const cashIcon='<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/>';
+    const chequeIcon='<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M6 10h6M6 13h4"/>';
+    const upiIcon='<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 7h6M9 11h6"/><circle cx="12" cy="16.5" r="1"/>';
+    const bankIcon='<path d="M4 10h16M5 10V9l7-4 7 4v1M6 10v7M10 10v7M14 10v7M18 10v7M4 20h16"/>';
+    const cardIcon='<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>';
+    const methDef = [
+      ['m_cash','Cash','₹50,000','Approval over ₹25,000 required',false,cashIcon],
+      ['m_cheque','Cheque','No limit','Post-dated OK · bounce fee ₹500',false,chequeIcon],
+      ['m_upi','UPI','₹1,00,000','QR reference required',false,upiIcon],
+      ['m_bank','Bank transfer','No limit','Reference number required',false,bankIcon],
+      ['m_card','Card','—','Coming soon (PG integration)',true,cardIcon]
+    ];
+    const methods = methDef.map(([k,name,ceil,rule,disabled,icon],i)=>{
+      const on = dp[k];
+      return {name,ceil,rule,disabled,icon:this.ic(icon,16),
+        iconBg: disabled?'#f4f2ee':(on?'#eef2ff':'#f4f2ee'), iconColor: disabled?'#b0aca4':(on?'#4f46e5':'#8a8780'),
+        on, onToggle: disabled?(()=>{}):(()=>this.tog(k)), cursor: disabled?'not-allowed':'pointer',
+        trackBg: disabled?'#e0ddd6':(on?A:'#d0ccc4'), knobX: (on&&!disabled)?'17px':'2px',
+        rowBg: (on&&!disabled)?'#fbfbff':'#fff', op: disabled?'.6':'1',
+        ceilColor: disabled?'#b0aca4':'#6b7280', ruleColor: disabled?'#b0aca4':'#8a8780',
+        border: i===methDef.length-1?'transparent':'#f0ede8'};
+    });
+    const splitC = cbx('allowSplit');
+
+    // ---- Section 5 refund ----
+    const trigDef = [['inspection','On inspection pass',true],['return','On return receipt (before inspection)',false],['close','On order close',false]];
+    const trigRows = trigDef.map(([v,title,recommended])=>({...rad('refundTrigger',v),title,recommended}));
+    const timeDef = [['immediate','Immediate — same day'],['t1','Next business day (T+1)'],['t3','3 business days (T+3)'],['t7','7 business days (T+7)']];
+    const timeRows = timeDef.map(([v,title])=>({...rad('refundTiming',v),title}));
+    const refundMap = [
+      {method:'Cash', opt:'Cash refund at counter', alt:null},
+      {method:'Cheque', opt:'Return original cheque (uncashed)', alt:'Cancel cheque + UPI refund'},
+      {method:'UPI', opt:'UPI refund to original account', alt:null},
+      {method:'Bank transfer', opt:'Bank refund to originating account', alt:null}
+    ];
+    const notifyDef = [['notifyWA','Send WhatsApp notification when refund initiated',true],['notifyEmail','Send email notification when refund initiated',false]];
+    const notifyRows = notifyDef.map(([k,label,parked])=>({...cbx(k),label,parked}));
+
+    // ---- Section 6 forfeit ----
+    const afDef = [
+      ['lateReturn','Late return over 24 hours','Forfeit up to','lateAmt',dp.lateAmt,'late_return_amt','per day'],
+      ['noShow','No-show pickup','Forfeit','noShowAmt',dp.noShowAmt,'no_show_amt',''],
+      ['chequeBounce','Cheque bounce','Forfeit','chequeBounceAmt',dp.chequeBounceAmt,'cheque_bounce_amt','logged']
+    ];
+    const autoForfeit = afDef.map(([key,label,forfeitLabel,vk,value,field,unit])=>({...cbx(key),label,forfeitLabel,value,field,unit}));
+    const tierDef = [
+      ['Damage forfeit up to ₹5,000','Staff can approve','#059669','#ecfdf5'],
+      ['Damage forfeit ₹5,000 – ₹25,000','Manager approval','#4f46e5','#eef2ff'],
+      ['Damage forfeit over ₹25,000','Owner approval','#d97706','#fffbeb'],
+      ['Full deposit forfeit (any amount)','Owner approval','#dc2626','#fef2f2']
+    ];
+    const approvalTiers = tierDef.map(([range,who,accent,chipBg],i)=>({range,who,accent,chipBg,
+      rowBg: i%2?'#fcfbf9':'#fff', border: i===tierDef.length-1?'transparent':'#f0ede8'}));
+    const approvalSteps = [
+      {n:'1',text:'Staff proposes forfeit with reason + photos'},
+      {n:'2',text:'Approver notified via in-app + email'},
+      {n:'3',text:'Customer notified after approval'},
+      {n:'4',text:'Forfeit applied, remaining amount released'}
+    ];
+
+    // ---- Section 7 custody ----
+    const custDef = [
+      ['custOwner','Owner (Aamir)','AP',false,true,false,''],
+      ['custManager','Manager (Shoaib)','SK',true,false,false,dp.managerCeiling],
+      ['custAccounts','Accounts (Neha)','ND',false,true,false,''],
+      ['custWarehouse','Warehouse staff','WH',false,false,true,'']
+    ];
+    const custodyRows = custDef.map(([key,name,initials,hasLimit,noLimit,blocked,limit])=>({...cbx(key),name,initials,hasLimit,noLimit,blocked,limit}));
+    const chDef = [
+      ['chBank','Only Owner + Accounts can bank cheques'],
+      ['chPostdated','Post-dated cheques stored in Owner custody'],
+      ['chBounced','Bounced cheques require Owner action']
+    ];
+    const chequeRows = chDef.map(([k,label])=>({...cbx(k),label}));
+    const reconDef = [['daily','Required end-of-day',true],['weekly','Weekly reconciliation',false],['monthly','Monthly reconciliation',false]];
+    const reconRows = reconDef.map(([v,title,recommended])=>({...rad('recon',v),title,recommended}));
+    const discDef = [['discAlert','Alert Owner if physical count ≠ digital record'],['discLock','Auto-lock deposit collection until reconciled']];
+    const discRows = discDef.map(([k,label])=>({...cbx(k),label}));
+
+    // ---- Section 8 bounce ----
+    const bnNotifyDef = [
+      ['bnLog','Log bounce event on order timeline'],
+      ['bnAccounts','Notify Accounts team immediately'],
+      ['bnCustomer','Notify customer with bounce reason + fee'],
+      ['bnFlag','Auto-flag customer as “payment issue”']
+    ];
+    const bounceNotify = bnNotifyDef.map(([k,label])=>({...cbx(k),label}));
+    const bnActionDef = [
+      ['bnRetain','Retain equivalent from deposit (if available)',false,'','','',''],
+      ['bnFee','Add bounce fee',true,'₹',dp.bnFeeVal,'bounce_fee','96px'],
+      ['bnAutoBlock','Auto-block customer after',true,'',dp.autoBlockCount,'auto_block_count','82px'],
+      ['bnAutoBlockAmt','Auto-block if amount over',true,'₹',dp.autoBlockAmtVal,'auto_block_amt','110px']
+    ];
+    const bounceActions = bnActionDef.map(([key,label,hasInput,prefix,value,field,inputW])=>({...cbx(key),label,hasInput,prefix,value,field,inputW}));
+    const altDef = [['fixed','Customer must arrange payment within',true,dp.altDays],['custom','Custom window per case',false,'']];
+    const altRows = altDef.map(([v,title,hasInput,value])=>({...rad('altWindow',v),title,hasInput,value}));
+    const remDef = [['remWA','Send WhatsApp reminder',true],['remEmail','Send email reminder',false],['remSMS','SMS reminder',true]];
+    const reminderRows = remDef.map(([k,label,parked])=>({...cbx(k),label,parked}));
+
+    return {
+      showRail: this.props.showRail ?? true, rail,
+      nav, hasSearch, search:S.search,
+      resultLabel: matchCount+' result'+(matchCount===1?'':'s'),
+      noResults: hasSearch && matchCount===0,
+      onSearch:(e)=> this.setState({search:e.currentTarget.value}),
+      clearSearch:()=> this.setState({search:''}),
+      crumbCat, crumbItem, showDeposit, showGeneric,
+      dirty, clean:!dirty, changedCount, changedPlural: changedCount===1?'':'s',
+      onSave:()=> this.setState({changed:{}}), onDiscard:()=> this.setState({changed:{}}),
+      markField:this.markChanged, stop:this.stopClick,
+      role:S.role, roleOpen:S.roleOpen,
+      roleUser:rm.user, roleInitials:rm.initials, roleUpper:S.role.toUpperCase(),
+      onToggleRole:()=> this.setState(s=>({roleOpen:!s.roleOpen})), roleOptions,
+
+      calcRows, ruleRows,
+      sampleRental:this.inr(rentalSample), sampleMethod:methodText,
+      sampleRaw: dp.calcMethod==='custom'?'—':this.inr(raw),
+      sampleApplied: dp.calcMethod==='custom'?'per rule':this.inr(applied), sampleNote:note,
+      segments, categories, methods,
+      splitOn:splitC.on, splitToggle:splitC.onToggle, splitRing:splitC.ring, splitFill:splitC.fill, splitBorder:splitC.border, splitBg:splitC.bg,
+      trigRows, timeRows, refundMap, notifyRows,
+      autoForfeit, approvalTiers, approvalSteps,
+      custodyRows, chequeRows, reconRows, discRows,
+      bounceNotify, bounceActions, altRows, reminderRows,
+
+      checkIcon:chk,
+      gearIcon:this.ic('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',20),
+      gearMini:this.ic('<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8"/>',15),
+      backIcon:this.ic('<path d="M15 18l-6-6 6-6"/>',16),
+      searchIcon:this.ic('<circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/>',15),
+      caretIcon:this.ic('<path d="M6 9l6 6 6-6"/>',14),
+      crownIcon:this.ic('<path d="M4 8l4 4 4-6 4 6 4-4v9H4z"/>',12),
+      lockIcon:this.ic('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',11),
+      calcIcon:this.ic('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 11h2M13 11h2M9 15h2M13 15h2"/>',16),
+      boltIcon:this.ic('<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',13),
+      shieldIcon:this.ic('<path d="M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/>',13),
+      slidersIcon:this.ic('<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>',22)
+    };
+  }
+}
+</script>
+</body>
+</html>
