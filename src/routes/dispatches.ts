@@ -48,7 +48,7 @@ import { requirePermission } from '../lib/permissions.js';
 import { idempotencyMiddleware } from '../lib/idempotency.js';
 import { audit, type AuditEventType } from '../lib/audit.js';
 import { commitDispatchToPhysicalState } from '../lib/dispatch_commit.js';
-import { emitCustomerNotification, sendWhatsAppTemplate } from '../lib/notify.js';
+import { emitCustomerNotification } from '../lib/notify.js';
 
 type SessionVar = { sessionId: string; user: SessionUser; workspace: SessionWorkspace } | null;
 type Env = { Variables: { session: SessionVar } };
@@ -642,11 +642,12 @@ dispatches.post('/:dispatchId/otp', requirePermission('dispatch.execute'), async
   const channel = parsed.data.channel ?? 'whatsapp';
   const policy = await loadPolicy(workspaceId);
 
-  const custPhone = await query<{ phone: string | null }>(sql`
-    SELECT p.phone FROM orders o LEFT JOIN people p ON p.id = o.customer_person_id
+  const cust = await query<{ id: string | null; phone: string | null }>(sql`
+    SELECT p.id, p.phone FROM orders o LEFT JOIN people p ON p.id = o.customer_person_id
     WHERE o.id = ${d.order_id}::uuid AND o.workspace_id = ${workspaceId}::uuid LIMIT 1
   `);
-  const phone = custPhone[0]?.phone ?? null;
+  const phone = cust[0]?.phone ?? null;
+  const personId = cust[0]?.id ?? null;
 
   // REAL crypto: mint a 6-digit code (crypto.randomInt, not Math.random), bcrypt-hash
   // it, and store ONLY the hash + a generation timestamp. The plaintext is sent to the
@@ -654,17 +655,29 @@ dispatches.post('/:dispatchId/otp', requirePermission('dispatch.execute'), async
   const code = String(randomInt(100000, 1000000));
   const codeHash = await bcrypt.hash(code, 10);
 
-  // Attempt the real WhatsApp send via the active adapter (reuses notify.ts →
-  // decrypts creds, calls the WATI template). No active real provider → do NOT
-  // store a row; the frontend offers skip-with-reason if policy allows.
+  // Slice 10 (Q3): route the WhatsApp OTP through the ONE canonical customer
+  // pipeline (emitCustomerNotification) instead of calling the adapter directly.
+  // dispatch_otp_send is seeded mode='auto' (real-time critical); policy + the
+  // customer's channel opt-in still apply uniformly. redactRender keeps the
+  // plaintext code out of the persisted delivery snapshot. Map the unified result
+  // back to the existing send-result shape so the downstream OTP-row logic is
+  // unchanged. No active real provider / opted-out → no OTP row; the frontend
+  // offers skip-with-reason if policy allows.
   let sendResult: { status: 'sent' | 'failed' | 'provider_not_configured'; messageId?: string; error?: string } =
     { status: 'provider_not_configured' };
   if (phone) {
-    sendResult = await sendWhatsAppTemplate(workspaceId, {
-      to: phone,
-      templateName: policy.otp_template_name,
-      variables: { '1': code },
+    const notif = await emitCustomerNotification({
+      workspaceId, orderId: d.order_id, personId, eventType: 'dispatch_otp_send',
+      message: 'Dispatch verification OTP', channels: ['whatsapp'], contact: { phone },
+      whatsapp: { templateName: policy.otp_template_name, variables: { '1': code } },
+      redactRender: true,
     });
+    const wa = notif.deliveries.find((x) => x.channel === 'whatsapp');
+    sendResult = wa?.status === 'sent'
+      ? { status: 'sent', messageId: wa.provider_ref ?? undefined }
+      : wa?.status === 'failed'
+        ? { status: 'failed', error: wa.reason ?? 'send_failed' }
+        : { status: 'provider_not_configured', error: wa?.reason };
   } else {
     sendResult = { status: 'failed', error: 'customer_has_no_phone' };
   }
@@ -672,6 +685,7 @@ dispatches.post('/:dispatchId/otp', requirePermission('dispatch.execute'), async
   if (sendResult.status === 'provider_not_configured') {
     return c.json({
       status: 'provider_not_configured',
+      reason: sendResult.error ?? null,
       fallback_allowed: policy.otp_fallback_when_no_provider === 'allow_skip_with_reason',
     }, 200);
   }

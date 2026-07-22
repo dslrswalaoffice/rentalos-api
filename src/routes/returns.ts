@@ -36,7 +36,7 @@ import { requirePermission } from '../lib/permissions.js';
 import { idempotencyMiddleware } from '../lib/idempotency.js';
 import { audit, type AuditEventType } from '../lib/audit.js';
 import { createInspectionHolds } from '../lib/return_commit.js';
-import { emitCustomerNotification, sendWhatsAppTemplate } from '../lib/notify.js';
+import { emitCustomerNotification } from '../lib/notify.js';
 
 type SessionVar = { sessionId: string; user: SessionUser; workspace: SessionWorkspace } | null;
 type Env = { Variables: { session: SessionVar } };
@@ -507,14 +507,30 @@ returns.post('/:returnId/otp', requirePermission('returns.execute'), async (c) =
   if (!parsed.success) return c.json(err('invalid_body', 'Invalid OTP payload', parsed.error.issues), 400);
   const channel = parsed.data.channel ?? 'whatsapp';
   const policy = await loadPolicy(workspaceId);
-  const cust = await query<{ phone: string | null }>(sql`SELECT p.phone FROM orders o LEFT JOIN people p ON p.id = o.customer_person_id WHERE o.id = ${r.order_id}::uuid AND o.workspace_id = ${workspaceId}::uuid LIMIT 1`);
+  const cust = await query<{ id: string | null; phone: string | null }>(sql`SELECT p.id, p.phone FROM orders o LEFT JOIN people p ON p.id = o.customer_person_id WHERE o.id = ${r.order_id}::uuid AND o.workspace_id = ${workspaceId}::uuid LIMIT 1`);
   const phone = cust[0]?.phone ?? null;
+  const personId = cust[0]?.id ?? null;
   const code = String(randomInt(100000, 1000000));
   const codeHash = await bcrypt.hash(code, 10);
+  // Slice 10 (Q3): unify the WhatsApp OTP through emitCustomerNotification (one
+  // canonical pipeline). return_otp_send is seeded mode='auto'; policy + opt-in
+  // apply; redactRender keeps the plaintext code out of the delivery snapshot.
   let send: { status: 'sent' | 'failed' | 'provider_not_configured'; messageId?: string; error?: string } = { status: 'provider_not_configured' };
-  if (phone) send = await sendWhatsAppTemplate(workspaceId, { to: phone, templateName: policy.otp_template_name, variables: { '1': code } });
-  else send = { status: 'failed', error: 'customer_has_no_phone' };
-  if (send.status === 'provider_not_configured') return c.json({ status: 'provider_not_configured', fallback_allowed: policy.otp_fallback_when_no_provider === 'allow_skip_with_reason' }, 200);
+  if (phone) {
+    const notif = await emitCustomerNotification({
+      workspaceId, orderId: r.order_id, personId, eventType: 'return_otp_send',
+      message: 'Return verification OTP', channels: ['whatsapp'], contact: { phone },
+      whatsapp: { templateName: policy.otp_template_name, variables: { '1': code } },
+      redactRender: true,
+    });
+    const wa = notif.deliveries.find((x) => x.channel === 'whatsapp');
+    send = wa?.status === 'sent'
+      ? { status: 'sent', messageId: wa.provider_ref ?? undefined }
+      : wa?.status === 'failed'
+        ? { status: 'failed', error: wa.reason ?? 'send_failed' }
+        : { status: 'provider_not_configured', error: wa?.reason };
+  } else send = { status: 'failed', error: 'customer_has_no_phone' };
+  if (send.status === 'provider_not_configured') return c.json({ status: 'provider_not_configured', reason: send.error ?? null, fallback_allowed: policy.otp_fallback_when_no_provider === 'allow_skip_with_reason' }, 200);
   const otp = await query<{ id: string }>(sql`
     INSERT INTO return_otp_verifications (workspace_id, return_id, otp_sent_to_phone, otp_sent_via, otp_code_hash, otp_generated_at, provider_ref)
     VALUES (${workspaceId}::uuid, ${r.id}::uuid, ${phone}::text, ${channel}::text, ${codeHash}::text, now(), ${send.messageId ?? null}::text) RETURNING id
