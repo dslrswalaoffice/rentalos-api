@@ -315,7 +315,7 @@ function notInThisView(label){toast((label||'That action')+' isn’t available i
 const AGG_LABEL={draft:'DRAFT',quoted:'QUOTED',confirmed:'CONFIRMED',allocated:'ALLOCATED',partially_dispatched:'PARTIALLY DISPATCHED',fully_dispatched:'DISPATCHED',active:'ON RENT',partial_return:'PARTIAL RETURN',awaiting_inspection:'AWAITING INSPECTION',ready_to_close:'READY TO CLOSE',returned:'RETURNED',closed:'CLOSED',cancelled:'CANCELLED'};
 const AGG_TONE={draft:'neutral',quoted:'neutral',confirmed:'info',allocated:'info',partially_dispatched:'progress',fully_dispatched:'progress',active:'progress',partial_return:'attention',awaiting_inspection:'attention',ready_to_close:'success',returned:'success',closed:'success',cancelled:'danger'};
 // primary CTA by resolved status
-const CTA={draft:{label:'Send Quote',to:'quoted'},quoted:{label:'Confirm Order',to:'confirmed'},confirmed:{label:'Prepare Dispatch',to:null,dispatch:true},allocated:{label:'Prepare Dispatch',to:null,dispatch:true},partially_dispatched:{label:'Dispatch Remaining',to:null,soon:true},fully_dispatched:{label:'Return',to:'returned'},dispatched:{label:'Return',to:'returned'},active:{label:'Return',to:'returned'},partial_return:{label:'Complete Return',to:'returned'},awaiting_inspection:{label:'Start Inspection',to:null,scroll:'equipment'},ready_to_close:{label:'Generate Final Invoice',to:null,link:function(id){return '/invoice.html?order='+id;}},returned:{label:'Generate Final Invoice',to:null,link:function(id){return '/invoice.html?order='+id;}},closed:{label:'Close Order',to:null,disabled:true},cancelled:{label:'Cancelled',to:null,disabled:true}};
+const CTA={draft:{label:'Send Quote',to:'quoted'},quoted:{label:'Confirm Order',to:'confirmed'},confirmed:{label:'Prepare Dispatch',to:null,dispatch:true},allocated:{label:'Prepare Dispatch',to:null,dispatch:true},partially_dispatched:{label:'Dispatch Remaining',to:null,soon:true},fully_dispatched:{label:'Prepare Return',to:null,'return':true},dispatched:{label:'Prepare Return',to:null,'return':true},active:{label:'Prepare Return',to:null,'return':true},partial_return:{label:'Complete Return',to:null,'return':true},awaiting_inspection:{label:'Start Inspection',to:null,scroll:'equipment'},ready_to_close:{label:'Generate Final Invoice',to:null,link:function(id){return '/invoice.html?order='+id;}},returned:{label:'Generate Final Invoice',to:null,link:function(id){return '/invoice.html?order='+id;}},closed:{label:'Close Order',to:null,disabled:true},cancelled:{label:'Cancelled',to:null,disabled:true}};
 // item micro-status
 const ITEM_STATUS={pending_dispatch:{label:'ALLOCATED',tone:'neutral'},dispatched:{label:'ON RENT',tone:'success'},returned:{label:'RETURNED',tone:'success'},returned_with_damage:{label:'RETURNED · DAMAGE',tone:'attention'},not_returned_chargeable:{label:'NOT RETURNED',tone:'danger'},not_returned_non_chargeable:{label:'NOT RETURNED',tone:'neutral'},missing:{label:'MISSING',tone:'danger'},substituted_out:{label:'SUBSTITUTED OUT',tone:'neutral'}};
 // Sub-slice 2.3 taxonomies (mirror the DB CHECKs / lib constants).
@@ -882,6 +882,7 @@ function primaryCta(){
   if(!cta||cta.disabled)return;
   S.blocker=null;
   if(cta.dispatch){doStartDispatch();return;}
+  if(cta['return']){doStartReturn();return;}
   if(cta.to){doTransition(cta.to);return;}
   if(cta.soon){notInThisView(cta.label);return;}
   if(cta.link){window.location.href=cta.link(S.id);return;}
@@ -980,6 +981,18 @@ async function doStartDispatch(){
     window.location.href='/dispatch.html?dispatch_id='+encodeURIComponent(id);
   }catch(err){
     toast('Could not start dispatch: '+((err.body&&err.body.error&&(err.body.error.message||err.body.error))||err.message),'err');
+  }
+}
+
+// Slice 5: open a first-class return record + navigate to the return flow.
+async function doStartReturn(){
+  try{
+    const r=await api.post('/api/orders/'+S.id+'/returns',{});
+    const id=r['return']&&r['return'].id;
+    if(!id)throw new Error('no return id returned');
+    window.location.href='/return.html?return_id='+encodeURIComponent(id);
+  }catch(err){
+    toast('Could not start return: '+((err.body&&err.body.error&&(err.body.error.message||err.body.error))||err.message),'err');
   }
 }
 

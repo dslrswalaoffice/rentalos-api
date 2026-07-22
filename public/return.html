@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#202058">
+<title>Return · RentalOS</title>
+<link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23059669'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+<!--
+  /return.html — Slice 5 Session 1. Structured return + inspection routing.
+  Visual language: docs/design-substrate/sprint-1/return_ui_dc.html +
+  inspection_modal_dc.html (3-phase Receive -> Handover -> Inspection Routing).
+  Capture components (recipient/serial/photo/OTP/signature) are DUPLICATED from
+  dispatch.html per Approach A (extract when a 3rd caller emerges). Rail + top-bar
+  via /_lib/shell.js.
+-->
+<style>
+  :root{
+    --page:#efece6; --card:#fff; --ink:#202058; --head:#26235a; --line:#e7e4de; --line2:#f2f0eb;
+    --muted:#6b7280; --muted2:#9ca3af; --field:#faf9f6; --disp:'Space Grotesk',system-ui,sans-serif;
+    --body:'Manrope',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+    --indigo:#4f46e5; --indigo-hover:#4338ca; --indigo-soft:#eef2ff; --indigo-border:#c7d2fe;
+    --amber:#d97706; --amber-soft:#fffbeb; --amber-border:#fcd9a4; --green:#059669; --green-soft:#ecfdf5; --green-border:#a7f3d0;
+    --danger:#dc2626; --danger-soft:#fef2f2; --danger-border:#fbcaca;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--page);font-family:var(--body);color:var(--ink);-webkit-font-smoothing:antialiased}
+  a{color:var(--indigo);text-decoration:none}
+  .shell{display:flex;min-height:100vh}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .phasebar{background:#fff;border-bottom:1px solid var(--line);padding:18px 26px 20px;position:sticky;top:60px;z-index:30;box-shadow:0 4px 14px rgba(32,32,88,.03)}
+  .phasebar-top{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:var(--green-soft);border:1px solid var(--green-border)}
+  .pill .d{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(5,150,105,.18)}
+  .pill span{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.11em;color:var(--green)}
+  .cust{margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px;color:#4b4b63}
+  .cust .name{font-family:var(--disp);font-weight:600;font-size:16px;color:var(--ink)}
+  .phase-label{text-align:right;flex:none}
+  .phase-label .k{font-family:var(--mono);font-size:11px;color:var(--muted2);margin-bottom:2px}
+  .phase-label .v{font-family:var(--disp);font-size:22px;font-weight:600;color:var(--ink)}
+  .phases{margin-top:18px;display:flex;align-items:center}
+  .phase{display:flex;flex-direction:column;align-items:center;gap:8px;flex:none;width:140px}
+  .phase .node{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:15px}
+  .phase.cur .node{background:var(--green);color:#fff}
+  .phase.done .node{background:var(--green);color:#fff}
+  .phase.up .node{background:#fff;border:2px solid #d7d3ca;color:#b6b1a6}
+  .phase .n{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.1em}
+  .phase .l{font-family:var(--disp);font-size:13px;font-weight:600;white-space:nowrap}
+  .phase.cur .n,.phase.done .n{color:var(--green)} .phase.cur .l,.phase.done .l{color:var(--ink)}
+  .phase.up .n,.phase.up .l{color:var(--muted2)}
+  .conn{flex:1;height:3px;border-radius:2px;margin:0 4px 34px;background:#e0dccf}
+  .conn.done{background:var(--green-border)}
+  .body{flex:1;padding:24px 26px 120px;max-width:820px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+  .card.active{border:1.5px solid var(--green-border);box-shadow:0 0 0 4px rgba(5,150,105,.05)}
+  .card.locked{opacity:.55}
+  .sec-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .sec-label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2)}
+  .req{color:var(--danger)}
+  .badge-ok{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--green-soft);border:1px solid var(--green-border);font-family:var(--mono);font-size:10px;font-weight:600;color:var(--green)}
+  .badge-lock{margin-left:auto;font-family:var(--mono);font-size:10px;font-weight:600;color:var(--muted2)}
+  .choice{border-radius:11px;border:1.5px solid var(--line);background:#fff;padding:14px 15px;cursor:pointer}
+  .choice.on{border-color:var(--green);background:#f0fdf8}
+  .choice-row{display:flex;align-items:center;gap:11px}
+  .radio{width:19px;height:19px;flex:none;border-radius:50%;border:2px solid #cfcbc2;display:flex;align-items:center;justify-content:center}
+  .choice.on .radio{border-color:var(--green)}
+  .radio .dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:none}
+  .choice.on .radio .dot{display:block}
+  .choice .t{font-size:14px;font-weight:600;color:var(--ink)} .choice .s{font-size:13px;color:var(--muted)}
+  .delegate{margin-top:14px;margin-left:30px;display:flex;flex-direction:column;gap:13px}
+  .frow{display:flex;gap:12px;flex-wrap:wrap} .field{flex:1;min-width:180px}
+  .field .lbl{font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:6px}
+  input,select,textarea{width:100%;height:40px;padding:0 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:var(--body);font-size:13.5px;color:var(--head);background:#fff;outline:none}
+  textarea{height:auto;min-height:56px;padding:10px 13px;resize:vertical}
+  input:focus,select:focus,textarea:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(5,150,105,.12)}
+  .mono{font-family:var(--mono)}
+  .drop{height:74px;border-radius:10px;border:1.5px dashed #cfcbc2;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted2);cursor:pointer;background:var(--field);font-size:12px;font-weight:600}
+  .drop.has{border-style:solid;border-color:var(--green-border);background:var(--green-soft);color:var(--green)}
+  .warn{display:flex;gap:10px;padding:12px 14px;border-radius:10px;background:var(--amber-soft);border:1px solid var(--amber-border);font-size:12.5px;color:#92400e;line-height:1.5}
+  .info-banner{display:flex;align-items:center;gap:9px;padding:11px 13px;border-radius:10px;background:var(--green-soft);border:1px solid var(--green-border);font-size:13px;color:#065f46;font-weight:600}
+  .err-banner{display:flex;gap:10px;padding:12px 14px;border-radius:10px;background:var(--danger-soft);border:1px solid var(--danger-border);font-size:12.5px;color:#991b1b}
+  .item-row{border:1px solid var(--line);border-radius:12px;padding:14px 15px;margin-bottom:12px}
+  .item-row.ok{border-color:var(--green-border);background:var(--green-soft)}
+  .item-name{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .item-name .qty{font-size:11px;color:var(--muted);font-weight:500}
+  .photo-item{margin-bottom:16px}
+  .photo-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .photo-head .nm{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--ink)}
+  .slots{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .slot{aspect-ratio:4/3;border-radius:10px;border:1.5px dashed #cfcbc2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--muted2);cursor:pointer;background:var(--field);font-size:10px;font-weight:600;position:relative;overflow:hidden;text-align:center;padding:4px}
+  .slot.filled{border-style:solid;border-color:var(--green-border)}
+  .slot .cap{position:absolute;bottom:0;left:0;right:0;padding:3px 6px;background:linear-gradient(transparent,rgba(0,0,0,.55));font-family:var(--mono);font-size:8px;color:#fff;display:flex;justify-content:space-between}
+  .otp-boxes{display:flex;gap:9px;margin:12px 0}
+  .otp-boxes input{width:46px;height:54px;text-align:center;border:1.5px solid #d9d6cf;border-radius:11px;font-family:var(--mono);font-size:22px;font-weight:600;color:var(--ink);padding:0}
+  .linkbtn{background:none;border:none;font-family:var(--body);font-size:12.5px;font-weight:600;color:var(--green);cursor:pointer;padding:0}
+  .sigtabs{display:flex;gap:8px;margin-bottom:12px}
+  .sigtab{padding:7px 14px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer}
+  .sigtab.on{border-color:var(--green);background:var(--green-soft);color:var(--green)}
+  .sigwrap{position:relative;border-radius:12px;border:1.5px solid var(--line);background:var(--field);overflow:hidden}
+  #sigcanvas{display:block;width:100%;height:170px;cursor:crosshair;touch-action:none}
+  .sighint{position:absolute;left:0;right:0;bottom:14px;text-align:center;font-size:12.5px;color:#b6b1a6;pointer-events:none}
+  .sumrow{display:flex;padding:8px 0}
+  .sumrow .k{width:150px;flex:none;font-size:12px;color:var(--muted2);font-weight:600}
+  .sumrow .v{font-size:12.5px;color:var(--head)}
+  .divider{height:1px;background:var(--line2);margin:6px 0}
+  .route-btns{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px}
+  .route-btn{flex:1;min-width:240px;border-radius:12px;border:1.5px solid var(--line);background:#fff;padding:18px;cursor:pointer;text-align:left}
+  .route-btn.primary{border-color:var(--green);background:var(--green-soft)}
+  .route-btn .rt{font-family:var(--disp);font-size:15px;font-weight:600;color:var(--ink);margin-bottom:4px}
+  .route-btn .rs{font-size:12.5px;color:var(--muted);line-height:1.5}
+  .insp-item{border:1px solid var(--line);border-radius:11px;padding:14px;margin-bottom:12px}
+  .insp-opts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .insp-opt{padding:8px 14px;border-radius:9px;border:1.5px solid var(--line);background:#fff;font-size:12.5px;font-weight:600;cursor:pointer}
+  .insp-opt.pass.on{border-color:var(--green);background:var(--green-soft);color:var(--green)}
+  .insp-opt.fail_minor.on{border-color:var(--amber);background:var(--amber-soft);color:var(--amber)}
+  .insp-opt.fail_major.on{border-color:var(--danger);background:var(--danger-soft);color:var(--danger)}
+  .footer{position:sticky;bottom:0;z-index:20;background:#fbfaf7;border-top:1px solid #e7e1d6;padding:15px 26px;display:flex;align-items:center;gap:16px;box-shadow:0 -4px 16px rgba(32,32,88,.05)}
+  .footer .hint{font-size:12px;color:var(--muted)}
+  .btn{border:none;cursor:pointer;font-family:var(--body);font-weight:700;font-size:14px;padding:12px 22px;border-radius:10px}
+  .btn.primary{background:var(--green);color:#fff;box-shadow:0 2px 8px rgba(5,150,105,.28)}
+  .btn.primary:hover{background:#047857} .btn.primary:disabled{background:#e5e1d8;color:#a8a496;cursor:not-allowed;box-shadow:none}
+  .btn.ghost{background:#fff;color:var(--muted);border:1px solid var(--line)} .btn.ghost:hover{border-color:var(--ink);color:var(--ink)}
+  .btn.small{padding:9px 15px;font-size:12.5px}
+  .loading{padding:60px;text-align:center;color:var(--muted2);font-family:var(--mono);font-size:13px}
+  .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--head);color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;box-shadow:0 8px 24px rgba(32,32,88,.24);z-index:200;opacity:0;transition:opacity .2s}
+  .toast.show{opacity:1} .toast.ok{background:var(--green)} .toast.err{background:var(--danger)}
+  .modal-back{position:fixed;inset:0;background:rgba(32,32,88,.32);display:flex;align-items:center;justify-content:center;z-index:150;padding:20px}
+  .modal{background:#fff;border-radius:14px;max-width:560px;width:100%;padding:22px 24px;box-shadow:0 20px 60px rgba(32,32,88,.3);max-height:88vh;overflow:auto}
+  .modal h3{font-family:var(--disp);font-size:17px;margin:0 0 14px}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <main class="main">
+    <div class="phasebar" id="phasebar" style="display:none"></div>
+    <div class="body" id="body"><div class="loading">Loading return…</div></div>
+    <div class="footer" id="footer" style="display:none">
+      <a class="btn ghost" id="back" href="#">‹ Back to Order</a>
+      <span class="hint" id="foot-hint"></span>
+      <div style="margin-left:auto"></div>
+      <button class="btn primary" id="advance" disabled>Continue ›</button>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<div id="modal-root"></div>
+
+<script type="module">
+import { api, ensureAuth } from '/_lib/api.js';
+import { renderShell } from '/_lib/shell.js?v=6';
+
+const esc=(s)=>String(s==null?'':s).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $=(id)=>document.getElementById(id);
+function toast(m,k){const t=$('toast');t.textContent=m;t.className='toast show'+(k?' '+k:'');setTimeout(()=>{t.className='toast'+(k?' '+k:'');},2800);}
+renderShell('orders',{topbar:true,breadcrumb:'<a href="/orders.html" style="color:inherit;text-decoration:none">Orders</a> &rsaquo; Return'});
+
+const S={ id:null, r:null, policy:null, items:[], otp:null, sig:null, phase:2, pickup:'customer', idProofUrl:null,
+  otpState:'idle', otpError:null, otpAttempts:0, sigMode:'draw', paperUrl:null, completed:null };
+const CONDITIONS=[['pristine','Pristine'],['good','Good'],['minor_wear','Minor wear'],['damage_flagged','Damage flagged'],['missing','Missing']];
+const REL=[['assistant','Assistant'],['driver','Driver'],['family','Family'],['colleague','Colleague'],['other','Other']];
+const SKIP_REASONS=[['customer_offline','Customer phone off'],['provider_down','Provider unavailable'],['verbal_confirmation','Verbal at counter'],['other','Other']];
+const PHOTO_TYPES=[['equipment','Equipment'],['serial','Serial'],['condition_front','Front'],['condition_back','Back']];
+
+function needPhotos(){return (S.policy&&S.policy.photos_required_per_item_type_return)||{equipment:1,serial:1,condition_front:1,condition_back:1};}
+function otpRequired(){return !!(S.policy&&S.policy.otp_required_at_return);}
+function sigRequired(){return S.policy?S.policy.signature_required_at_return!==false:true;}
+function aDone(){return S.r&&['handover','inspection_routing','completed'].includes(S.r.status);}
+function bDone(){return S.items.length>0&&S.items.every(it=>it.captured_serial&&it.condition_in);}
+function cDone(){const n=needPhotos();return S.items.length>0&&S.items.every(it=>it.equipment_photos>=(n.equipment||0)&&it.serial_photos>=(n.serial||0)&&it.condition_front_photos>=(n.condition_front||0)&&it.condition_back_photos>=(n.condition_back||0));}
+function dDone(){return !otpRequired()||!!(S.otp&&(S.otp.verified||S.otp.skipped));}
+function eDone(){return !sigRequired()||!!(S.sig&&(S.sig.signature_url||S.sig.skipped));}
+function allDone(){return aDone()&&bDone()&&cDone()&&dDone()&&eDone();}
+
+function compressImage(file){return new Promise((res,rej)=>{const img=new Image(),rd=new FileReader();rd.onload=()=>{img.onload=()=>{const max=1280;let{width:w,height:h}=img;if(w>max||h>max){const r=Math.min(max/w,max/h);w=Math.round(w*r);h=Math.round(h*r);}const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);res(cv.toDataURL('image/jpeg',0.8));};img.onerror=rej;img.src=rd.result;};rd.onerror=rej;rd.readAsDataURL(file);});}
+
+function renderPhasebar(){
+  const r=S.r; $('phasebar').style.display='block';
+  const labels=['Receive','Handover','Inspection Routing'];
+  const st=S.phase===3?['done','done','cur']:['done','cur','up'];
+  const nodes=labels.map((label,i)=>{const cls=st[i];const num=cls==='done'?'✓':(i+1);const conn=i<2?`<div class="conn ${st[i]==='done'?'done':''}"></div>`:'';return `<div class="phase ${cls}"><div class="node">${num}</div><div style="text-align:center;line-height:1.2"><div class="n">PHASE ${i+1}</div><div class="l">${label}</div></div></div>${conn}`;}).join('');
+  $('phasebar').innerHTML=`<div class="phasebar-top"><div style="flex:1;min-width:0">
+    <span class="pill"><span class="d"></span><span>RETURN &mdash; ORDER #${esc(r.order_number)}</span></span>
+    <div class="cust"><span class="name">${esc(r.customer_name||'Customer')}</span><span style="color:#cfc9bd">&middot;</span><span class="mono" style="font-size:12px">${esc(r.return_number||'')}</span></div></div>
+    <div class="phase-label"><div class="k">PHASE <span style="color:var(--green);font-weight:700">${S.phase} of 3</span></div><div class="v">${S.phase===3?'Inspection':'Handover'}</div></div></div>
+    <div class="phases">${nodes}</div>`;
+}
+
+function lateBanner(){
+  const r=S.r; if(!r.is_early_return&&!r.is_late_return)return '';
+  if(r.is_late_return)return `<div class="warn">⏰ Late return — ${Math.round(r.late_return_hours||0)}h past the rental end. A late fee may apply per policy (advisory, not blocking).</div>`;
+  return `<div class="warn">↩ Early return — ${Math.round(r.early_return_hours||0)}h before the rental end. A pro-rated credit may apply per policy (advisory, not blocking).</div>`;
+}
+
+function sectionA(){
+  const r=S.r,del=S.pickup==='delegate',done=aDone();
+  if(done&&S.pickup===r.recipient_type){
+    return `<div class="card" id="sec-a">${lateBanner()}<div class="sec-head"><span class="sec-label">A &middot; Who is returning?</span><span class="badge-ok">✓ RECORDED</span></div>
+      <div style="font-size:13.5px;color:var(--head)">${r.recipient_type==='delegate'?('Delegate — '+esc(r.delegate_name||'')):('Customer — '+esc(r.customer_name||''))}<button class="linkbtn" data-edit-a style="margin-left:10px">edit</button></div></div>`;
+  }
+  return `<div class="card active" id="sec-a">${lateBanner()}<div class="sec-head"><span class="sec-label">A &middot; Who is returning? <span class="req">*</span></span></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="choice ${S.pickup==='customer'?'on':''}" data-pick="customer"><div class="choice-row"><span class="radio"><span class="dot"></span></span><span class="t">Customer</span><span class="s">(${esc(r.customer_name||'on file')})</span></div></div>
+      <div class="choice ${del?'on':''}" data-pick="delegate"><div class="choice-row"><span class="radio"><span class="dot"></span></span><span class="t">Delegate</span><span class="s">someone returning on their behalf</span></div>
+        ${del?`<div class="delegate"><div class="frow">
+          <div class="field"><div class="lbl">Delegate name <span class="req">*</span></div><input id="del-name" placeholder="Full name" value="${esc(r.delegate_name||'')}"></div>
+          <div class="field"><div class="lbl">Delegate phone <span class="req">*</span></div><input id="del-phone" class="mono" placeholder="+91" value="${esc(r.delegate_phone||'')}"></div></div>
+          <div class="frow"><div class="field"><div class="lbl">Relationship</div><select id="del-rel">${REL.map(([v,l])=>`<option value="${v}" ${r.delegate_relationship===v?'selected':''}>${l}</option>`).join('')}</select></div></div></div>`:''}
+      </div></div>
+    <div style="margin-top:14px"><button class="btn primary small" data-save-a>Save recipient</button></div></div>`;
+}
+
+function sectionB(){
+  const unlocked=aDone(),done=bDone(),cls=done?'card':(unlocked?'card active':'card locked');
+  const head=`<div class="sec-head"><span class="sec-label">B &middot; Equipment check-in <span class="req">*</span></span>${done?'<span class="badge-ok">✓ CHECKED</span>':''}${!unlocked?'<span class="badge-lock">🔒 complete A first</span>':''}</div>`;
+  if(!unlocked)return `<div class="${cls}" id="sec-b">${head}</div>`;
+  const rows=S.items.map(it=>{const ok=it.captured_serial&&it.condition_in;return `<div class="item-row ${ok?'ok':''}" data-item="${esc(it.order_item_id)}">
+    <div class="item-name">${esc(it.description)}<span class="qty">× ${esc(it.quantity)}</span>${ok?'<span class="badge-ok" style="margin-left:auto">✓</span>':''}</div>
+    <div class="frow">
+      <div class="field"><div class="lbl">Serial / QR</div><input class="mono b-serial" placeholder="Scan or type" value="${esc(it.captured_serial||'')}"></div>
+      <div class="field"><div class="lbl">Condition IN</div><select class="b-cond"><option value="">Select…</option>${CONDITIONS.map(([v,l])=>`<option value="${v}" ${it.condition_in===v?'selected':''}>${l}</option>`).join('')}</select></div>
+    </div>
+    <div class="frow" style="margin-top:10px"><div class="field" style="min-width:100%"><div class="lbl">Missing accessories (free-text)</div><textarea class="b-acc" placeholder="e.g. Rear cap missing, strap present">${esc(it.missing_accessories_notes||'')}</textarea></div></div>
+    <div style="margin-top:10px"><button class="btn primary small b-save">Save item</button></div></div>`;}).join('');
+  return `<div class="${cls}" id="sec-b">${head}<div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">Check each returned unit: serial (verified vs the expected unit), condition, and any missing accessories.</div>${rows}</div>`;
+}
+
+function sectionC(){
+  const unlocked=aDone()&&bDone(),done=cDone(),n=needPhotos(),cls=done?'card':(unlocked?'card active':'card locked');
+  const head=`<div class="sec-head"><span class="sec-label">C &middot; Return condition photos</span>${done?'<span class="badge-ok">✓ CAPTURED</span>':''}${!unlocked?'<span class="badge-lock">🔒 complete B first</span>':''}</div>`;
+  if(!unlocked)return `<div class="${cls}" id="sec-c">${head}</div>`;
+  const items=S.items.map(it=>{const have={equipment:it.equipment_photos,serial:it.serial_photos,condition_front:it.condition_front_photos,condition_back:it.condition_back_photos};
+    const slots=PHOTO_TYPES.filter(([t])=>Number(n[t]||0)>0).map(([t,l])=>{const filled=have[t]>=Number(n[t]||0);return `<label class="slot ${filled?'filled':''}" data-photo-item="${esc(it.order_item_id)}" data-photo-type="${t}">${filled?`<div style="position:absolute;inset:0;background:linear-gradient(135deg,#e9e6df,#d6d1c7)"></div><div class="cap"><span>${l}</span><span>✓</span></div>`:`<span style="font-size:16px">📷</span><span>${l}</span>`}${filled?'':`<input type="file" accept="image/*" capture="environment" class="c-file" style="display:none">`}</label>`;}).join('');
+    return `<div class="photo-item"><div class="photo-head"><span class="nm">${esc(it.description)}</span></div><div class="slots">${slots}</div></div>`;}).join('');
+  return `<div class="${cls}" id="sec-c">${head}<div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">Capture the return condition with the customer witnessing — ${Object.entries(n).filter(([,v])=>v>0).map(([k,v])=>v+' '+k.replace('_',' ')).join(' + ')} per item.</div>${items}</div>`;
+}
+
+function sectionD(){
+  if(!otpRequired())return `<div class="card" id="sec-d"><div class="sec-head"><span class="sec-label">D &middot; OTP verification</span><span class="badge-ok" style="background:var(--line2);border-color:var(--line);color:var(--muted)">NOT REQUIRED</span></div><div style="font-size:13px;color:var(--muted)">OTP is not required for returns per workspace policy — the customer is present at the counter.</div></div>`;
+  const unlocked=aDone()&&bDone()&&cDone(),done=dDone(),cls=done?'card':(unlocked?'card active':'card locked');
+  const head=`<div class="sec-head"><span class="sec-label">D &middot; OTP verification <span class="req">*</span></span>${done?(S.otp&&S.otp.skipped?'<span class="badge-ok" style="background:var(--amber-soft);border-color:var(--amber-border);color:var(--amber)">SKIPPED</span>':'<span class="badge-ok">✓ VERIFIED</span>'):''}${!unlocked?'<span class="badge-lock">🔒 complete C first</span>':''}</div>`;
+  if(!unlocked)return `<div class="${cls}" id="sec-d">${head}</div>`;
+  if(done)return `<div class="${cls}" id="sec-d">${head}<div style="font-size:13px;color:var(--head)">${S.otp.skipped?('Skipped — '+esc(S.otp.skip_reason||'')):'Verified'}</div></div>`;
+  const skipForm=`<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line2)"><div style="font-size:12px;color:var(--muted);margin-bottom:9px">Skip with a reason:</div><div class="frow"><div class="field"><select id="otp-skip-reason">${SKIP_REASONS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div><div class="field" style="flex:0 0 auto;display:flex;align-items:flex-end"><button class="btn ghost small" id="otp-skip-btn">Skip OTP</button></div></div></div>`;
+  let mid='';
+  if(S.otpState==='idle')mid=`<button class="btn primary small" id="otp-send">📲 Send OTP</button>${skipForm}`;
+  else if(S.otpState==='sent')mid=`<div class="info-banner" style="margin-bottom:14px">📲 OTP sent. Ask the customer to read the code.</div><div class="otp-boxes">${[0,1,2,3,4,5].map(i=>`<input class="otp-box" data-i="${i}" inputmode="numeric" maxlength="1">`).join('')}</div>${S.otpError?`<div class="err-banner" style="margin-bottom:12px">${esc(S.otpError)}</div>`:''}<div style="display:flex;gap:16px"><button class="btn primary small" id="otp-verify">Verify</button><button class="linkbtn" id="otp-resend">Resend</button></div>${skipForm}`;
+  else mid=`<div class="warn" style="margin-bottom:14px">${S.otpState==='provider_not_configured'?'Provider not configured.':'Send failed.'} You can skip with a reason.</div>${skipForm}`;
+  return `<div class="${cls}" id="sec-d">${head}${mid}</div>`;
+}
+
+function sectionE(){
+  if(!sigRequired())return `<div class="card" id="sec-e"><div class="sec-head"><span class="sec-label">E &middot; Signature</span><span class="badge-ok" style="background:var(--line2);border-color:var(--line);color:var(--muted)">NOT REQUIRED</span></div><div style="font-size:13px;color:var(--muted)">Signature not required for returns per policy.</div></div>`;
+  const unlocked=aDone()&&bDone()&&cDone()&&dDone(),done=eDone(),cls=done?'card':(unlocked?'card active':'card locked');
+  const head=`<div class="sec-head"><span class="sec-label">E &middot; Return signature <span class="req">*</span></span>${done?(S.sig&&S.sig.skipped?'<span class="badge-ok" style="background:var(--amber-soft);border-color:var(--amber-border);color:var(--amber)">SKIPPED</span>':'<span class="badge-ok">✓ CAPTURED</span>'):''}${!unlocked?'<span class="badge-lock">🔒 complete D first</span>':''}</div>`;
+  if(!unlocked)return `<div class="${cls}" id="sec-e">${head}</div>`;
+  if(done)return `<div class="${cls}" id="sec-e">${head}<div style="font-size:13px;color:var(--head)">${S.sig.skipped?('Skipped — '+esc(S.sig.skip_reason||'')):'Signature captured'}</div></div>`;
+  const bodyHtml=S.sigMode==='draw'
+    ?`<div class="sigwrap"><canvas id="sigcanvas" width="760" height="170"></canvas><div class="sighint">Sign to acknowledge return</div></div><div style="display:flex;gap:11px;margin-top:12px"><button class="btn ghost small" id="sig-clear">Clear</button><button class="btn primary small" id="sig-save">Confirm signature</button></div>`
+    :`<label class="drop ${S.paperUrl?'has':''}" id="paper-drop" style="height:120px">${S.paperUrl?'✓ Signed slip captured':'Upload the signed slip'}<input type="file" accept="image/*" capture="environment" id="paper-file" style="display:none"></label><div style="margin-top:12px"><button class="btn primary small" id="paper-save" ${S.paperUrl?'':'disabled'}>Save slip</button></div>`;
+  return `<div class="${cls}" id="sec-e">${head}<div class="sigtabs"><div class="sigtab ${S.sigMode==='draw'?'on':''}" data-sigmode="draw">Digital draw</div><div class="sigtab ${S.sigMode==='paper'?'on':''}" data-sigmode="paper">Paper photo</div></div>${bodyHtml}
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line2)"><div style="font-size:12px;color:var(--muted);margin-bottom:9px">Customer left? Skip with a reason:</div><div class="frow"><div class="field"><input id="sig-skip-reason" placeholder="Reason"></div><div class="field" style="flex:0 0 auto;display:flex;align-items:flex-end"><button class="btn ghost small" id="sig-skip-btn">Skip signature</button></div></div></div></div>`;
+}
+
+// ---- Phase 3: inspection routing ----
+function renderRouting(){
+  const c=S.completed;
+  const items=S.items.map(it=>`<div class="sumrow"><span class="k">${esc(it.description)}</span><span class="v">${esc(it.captured_serial||'—')} · ${esc((it.condition_in||'').replace('_',' ')||'—')}${it.missing_accessories_notes?' · ⚠ '+esc(it.missing_accessories_notes):''}</span></div>`).join('<div class="divider"></div>');
+  const nMsg=c&&c.notification_sent?'Notification sent to customer.':(c&&c.notification_reason==='provider_not_configured'?'Notification skipped — provider not configured.':'Notification not sent.');
+  $('body').innerHTML=`
+    <div class="card"><div class="sec-head"><span class="sec-label">Return summary</span><span class="mono" style="margin-left:auto;font-size:11px;color:var(--muted)">${esc(S.r.return_number||'')}</span></div>
+      ${items}<div class="divider"></div>
+      <div class="${c&&c.notification_sent?'info-banner':'warn'}" style="margin-top:10px">${c&&c.notification_sent?'✅ ':'⚠️ '}${esc(nMsg)}</div></div>
+    <div class="card"><div class="sec-head"><span class="sec-label">Inspection routing</span></div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Gear is held <strong>Awaiting Inspection</strong> (out of availability) until an inspector clears it.</div>
+      <div class="route-btns">
+        <div class="route-btn primary" id="rt-now"><div class="rt">▶ Start Inspection Now</div><div class="rs">Inspect each unit and record Pass / Fail Minor / Fail Major. On pass, the unit rejoins availability and the deposit is flagged for release.</div></div>
+        <div class="route-btn" id="rt-later"><div class="rt">🗓 Schedule for Later</div><div class="rs">Leave the ${(S.completed&&S.completed.inspection_routing_options.inspection_event_ids.length)||0} inspection(s) scheduled for the warehouse. Availability stays held until done.</div></div>
+      </div></div>`;
+  $('foot-hint').textContent='Return recorded — route the inspection.';
+  $('advance').style.display='none';
+  $('back').textContent='‹ Back to Order'; $('back').onclick=null; $('back').href='/order-360.html?id='+esc(S.r.order_id);
+  $('rt-now').onclick=openInspectionModal;
+  $('rt-later').onclick=()=>{ toast('Inspection scheduled for the warehouse','ok'); setTimeout(()=>location.href='/order-360.html?id='+esc(S.r.order_id),1200); };
+}
+
+function openInspectionModal(){
+  const ids=(S.completed&&S.completed.inspection_routing_options.inspection_event_ids)||[];
+  const rows=S.items.map((it,i)=>`<div class="insp-item" data-insp="${esc(ids[i]||'')}" data-desc="${esc(it.description)}">
+    <div class="item-name">${esc(it.description)} <span class="qty">${esc(it.captured_serial||'')}</span></div>
+    <div class="insp-opts">${['pass','fail_minor','fail_major'].map(v=>`<div class="insp-opt ${v}" data-result="${v}">${v==='pass'?'✓ Pass':v==='fail_minor'?'△ Fail Minor':'✕ Fail Major'}</div>`).join('')}</div>
+    <textarea class="insp-notes" placeholder="Inspection notes (optional)"></textarea></div>`).join('');
+  $('modal-root').innerHTML=`<div class="modal-back"><div class="modal"><h3>Inspect ${S.items.length} unit(s)</h3><div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">Record an outcome per unit. Pass → available + deposit ready; Fail Major → damage + repair hold.</div>${rows}
+    <div class="modal-actions"><button class="btn ghost small" id="m-cancel">Cancel</button><button class="btn primary small" id="m-submit">Submit inspections</button></div></div></div>`;
+  $('modal-root').querySelectorAll('.insp-opt').forEach(o=>o.onclick=()=>{ o.parentElement.querySelectorAll('.insp-opt').forEach(x=>x.classList.remove('on')); o.classList.add('on'); });
+  $('m-cancel').onclick=()=>{$('modal-root').innerHTML='';};
+  $('m-submit').onclick=submitInspections;
+}
+
+async function submitInspections(){
+  const rows=[...$('modal-root').querySelectorAll('.insp-item')];
+  const picks=rows.map(row=>({ id:row.getAttribute('data-insp'), result:(row.querySelector('.insp-opt.on')||{}).getAttribute?.('data-result'), notes:(row.querySelector('.insp-notes')||{}).value||'' }));
+  if(picks.some(p=>!p.result)){ toast('Pick an outcome for every unit','err'); return; }
+  $('m-submit').disabled=true; $('m-submit').textContent='Submitting…';
+  try{
+    for(const p of picks){ if(!p.id)continue;
+      await api.post('/api/inspections/'+p.id+'/start',{}).catch(()=>{});
+      await api.post('/api/inspections/'+p.id+'/complete',{result:p.result,notes:p.notes||null});
+    }
+    $('modal-root').innerHTML='';
+    toast('Inspections recorded','ok');
+    setTimeout(()=>location.href='/order-360.html?id='+esc(S.r.order_id),1200);
+  }catch(err){ $('m-submit').disabled=false; $('m-submit').textContent='Submit inspections'; toast('Inspection failed: '+errMsg(err),'err'); }
+}
+
+function render(){
+  renderPhasebar();
+  if(S.phase===3){ renderRouting(); return; }
+  $('back').textContent='‹ Back to Order'; $('back').onclick=null; $('back').href='/order-360.html?id='+esc(S.r.order_id);
+  $('advance').style.display='';
+  $('body').innerHTML=sectionA()+sectionB()+sectionC()+sectionD()+sectionE();
+  wireSig();
+  const done=allDone();
+  $('advance').textContent='Complete Return ›'; $('advance').disabled=!done;
+  const next=!aDone()?'recipient':!bDone()?'equipment check-in':!cDone()?'condition photos':!dDone()?'OTP':!eDone()?'signature':'';
+  $('foot-hint').textContent=done?'All steps complete — ready to record the return.':('Next: '+next);
+}
+
+async function reload(){ const res=await api.get('/api/returns/'+S.id); S.r=res['return']; S.policy=res.policy; S.items=res.items||[]; S.otp=res.otp_state; S.sig=res.signature_state; }
+
+async function saveRecipient(){
+  const payload={recipient_type:S.pickup};
+  if(S.pickup==='delegate'){payload.delegate_name=($('del-name')||{}).value||'';payload.delegate_phone=($('del-phone')||{}).value||'';payload.delegate_relationship=($('del-rel')||{}).value||'other';if(S.idProofUrl)payload.delegate_id_proof_url=S.idProofUrl;if(!payload.delegate_name||!payload.delegate_phone){toast('Delegate name and phone required','err');return;}}
+  try{await api.post('/api/returns/'+S.id+'/recipient',payload);toast('Recipient recorded','ok');await reload();render();}catch(err){toast('Could not save: '+errMsg(err),'err');}
+}
+async function saveItem(row){
+  const id=row.getAttribute('data-item');const serial=(row.querySelector('.b-serial')||{}).value||'';const cond=(row.querySelector('.b-cond')||{}).value||'';const acc=(row.querySelector('.b-acc')||{}).value||'';
+  if(!serial.trim()){toast('Enter the serial','err');return;} if(!cond){toast('Select a condition','err');return;}
+  try{
+    try{ await api.post('/api/returns/'+S.id+'/items/'+id+'/serial',{captured_serial:serial}); }
+    catch(err){ if(err.status===409&&err.body&&err.body.status==='mismatch'){ const ok=await confirmModal('Serial mismatch',`No unit matches <strong>${esc(serial)}</strong>.<br>Expected: <span class="mono">${(err.body.expected_serials||[]).map(esc).join(', ')||'—'}</span><br><br>Continue anyway?`,'Override'); if(!ok)return; await api.post('/api/returns/'+S.id+'/items/'+id+'/serial',{captured_serial:serial,override:true}); } else throw err; }
+    await api.post('/api/returns/'+S.id+'/items/'+id+'/condition',{condition:cond});
+    if(acc.trim())await api.post('/api/returns/'+S.id+'/items/'+id+'/missing-accessories',{notes:acc});
+    toast('Item recorded','ok');await reload();render();
+  }catch(err){toast('Could not save item: '+errMsg(err),'err');}
+}
+async function uploadPhoto(label,file){
+  const itemId=label.getAttribute('data-photo-item'),type=label.getAttribute('data-photo-type');
+  try{label.style.opacity='.5';const b64=await compressImage(file);await api.post('/api/returns/'+S.id+'/photos',{order_item_id:itemId,photo_type:type,photo_base64:b64,content_type:'image/jpeg'});toast('Photo captured','ok');await reload();render();}catch(err){toast('Upload failed: '+errMsg(err),'err');label.style.opacity='1';}
+}
+async function sendOtp(){try{const r=await api.post('/api/returns/'+S.id+'/otp',{channel:'whatsapp'});if(r.status==='sent'){S.otpState='sent';S.otpError=null;}else if(r.status==='provider_not_configured')S.otpState='provider_not_configured';else{S.otpState='send_failed';S.otpError=r.error;}render();}catch(err){toast('OTP send failed: '+errMsg(err),'err');}}
+async function verifyOtp(){const code=[...document.querySelectorAll('.otp-box')].map(b=>b.value).join('');if(code.length!==6){S.otpError='Enter 6 digits';render();return;}try{await api.post('/api/returns/'+S.id+'/otp/verify',{code});toast('Verified','ok');await reload();render();}catch(err){S.otpAttempts++;S.otpError=(err.body&&err.body.error&&err.body.error.message)||'Incorrect';render();}}
+async function skipOtp(){const reason=($('otp-skip-reason')||{}).value||'other';try{await api.post('/api/returns/'+S.id+'/otp/skip',{skip_reason:reason});toast('OTP skipped','ok');await reload();render();}catch(err){toast('Could not skip: '+errMsg(err),'err');}}
+
+let _sig={ctx:null,drawing:false,dirty:false};
+function wireSig(){const cv=$('sigcanvas');if(!cv||cv.__wired)return;cv.__wired=true;const ctx=cv.getContext('2d');ctx.strokeStyle='#202058';ctx.lineWidth=2.2;ctx.lineCap='round';ctx.lineJoin='round';_sig.ctx=ctx;
+  const pos=(e)=>{const r=cv.getBoundingClientRect();const p=e.touches?e.touches[0]:e;return{x:(p.clientX-r.left)*(cv.width/r.width),y:(p.clientY-r.top)*(cv.height/r.height)};};
+  const start=(e)=>{e.preventDefault();_sig.drawing=true;_sig.dirty=true;const{x,y}=pos(e);ctx.beginPath();ctx.moveTo(x,y);};
+  const move=(e)=>{if(!_sig.drawing)return;e.preventDefault();const{x,y}=pos(e);ctx.lineTo(x,y);ctx.stroke();};
+  const end=()=>{_sig.drawing=false;};
+  cv.addEventListener('mousedown',start);cv.addEventListener('mousemove',move);window.addEventListener('mouseup',end);
+  cv.addEventListener('touchstart',start,{passive:false});cv.addEventListener('touchmove',move,{passive:false});cv.addEventListener('touchend',end);}
+async function saveSig(){const cv=$('sigcanvas');if(!cv||!_sig.dirty){toast('Please sign first','err');return;}try{await api.post('/api/returns/'+S.id+'/signature',{signature_type:'digital_draw',signature_base64:cv.toDataURL('image/png'),content_type:'image/png'});toast('Signature captured','ok');_sig.dirty=false;await reload();render();}catch(err){toast('Could not save: '+errMsg(err),'err');}}
+async function savePaper(){if(!S.paperUrl){toast('Capture the slip','err');return;}try{await api.post('/api/returns/'+S.id+'/signature',{signature_type:'paper_photo',signature_base64:S.paperUrl,content_type:'image/jpeg'});toast('Slip saved','ok');S.paperUrl=null;await reload();render();}catch(err){toast('Could not save: '+errMsg(err),'err');}}
+async function skipSig(){const reason=($('sig-skip-reason')||{}).value||'';if(S.policy&&S.policy.signature_skip_requires_reason&&!reason.trim()){toast('A reason is required','err');return;}try{await api.post('/api/returns/'+S.id+'/signature',{skipped:true,skip_reason:reason||null});toast('Signature skipped','ok');await reload();render();}catch(err){toast('Could not skip: '+errMsg(err),'err');}}
+
+async function completeReturn(){
+  const btn=$('advance');btn.disabled=true;btn.textContent='Recording…';
+  try{ const r=await api.post('/api/returns/'+S.id+'/complete',{item_ids:S.items.map(i=>i.order_item_id)}); S.completed=r; await reload(); S.phase=3; render(); window.scrollTo(0,0); }
+  catch(err){ btn.disabled=false;btn.textContent='Complete Return ›'; if(err.status===403&&err.body&&err.body.error&&err.body.error.reasons)toast('Not ready: '+err.body.error.reasons.map(x=>x.message).join('; '),'err'); else toast('Could not complete: '+errMsg(err),'err'); }
+}
+
+function errMsg(err){return (err.body&&err.body.error&&(err.body.error.message||err.body.error))||err.message||'error';}
+function confirmModal(title,html,ok){return new Promise((res)=>{$('modal-root').innerHTML=`<div class="modal-back"><div class="modal"><h3>${esc(title)}</h3><div style="font-size:13.5px;color:var(--head);line-height:1.6">${html}</div><div class="modal-actions"><button class="btn ghost small" id="m-cancel">Cancel</button><button class="btn primary small" id="m-ok">${esc(ok||'OK')}</button></div></div></div>`;const close=(v)=>{$('modal-root').innerHTML='';res(v);};$('m-cancel').onclick=()=>close(false);$('m-ok').onclick=()=>close(true);});}
+
+function wire(){
+  $('body').addEventListener('click',async(e)=>{
+    const pick=e.target.closest('[data-pick]');if(pick){S.pickup=pick.getAttribute('data-pick');render();return;}
+    if(e.target.closest('[data-save-a]')){saveRecipient();return;}
+    if(e.target.closest('[data-edit-a]')){S.r={...S.r,status:'receive'};render();return;}
+    const bs=e.target.closest('.b-save');if(bs){saveItem(bs.closest('[data-item]'));return;}
+    const sm=e.target.closest('[data-sigmode]');if(sm){S.sigMode=sm.getAttribute('data-sigmode');render();return;}
+    if(e.target.id==='otp-send'||e.target.id==='otp-resend'){sendOtp();return;}
+    if(e.target.id==='otp-verify'){verifyOtp();return;}
+    if(e.target.id==='otp-skip-btn'){skipOtp();return;}
+    if(e.target.id==='sig-clear'){const cv=$('sigcanvas');if(cv&&_sig.ctx){_sig.ctx.clearRect(0,0,cv.width,cv.height);_sig.dirty=false;}return;}
+    if(e.target.id==='sig-save'){saveSig();return;}
+    if(e.target.id==='paper-save'){savePaper();return;}
+    if(e.target.id==='sig-skip-btn'){skipSig();return;}
+  });
+  $('body').addEventListener('change',async(e)=>{
+    if(e.target.classList&&e.target.classList.contains('c-file')){const f=e.target.files&&e.target.files[0];if(f)uploadPhoto(e.target.closest('.slot'),f);return;}
+    if(e.target.id==='paper-file'){const f=e.target.files&&e.target.files[0];if(f){S.paperUrl=await compressImage(f);render();}return;}
+  });
+  $('body').addEventListener('input',(e)=>{if(e.target.classList&&e.target.classList.contains('otp-box')){e.target.value=e.target.value.replace(/\D/g,'').slice(0,1);const i=Number(e.target.getAttribute('data-i'));if(e.target.value&&i<5){const nx=document.querySelector('.otp-box[data-i="'+(i+1)+'"]');if(nx)nx.focus();}}});
+  $('advance').addEventListener('click',()=>{ if(S.phase!==3&&allDone())completeReturn(); });
+}
+
+(async function boot(){
+  await ensureAuth();
+  const qs=new URLSearchParams(location.search);
+  S.id=qs.get('return_id')||qs.get('id');
+  if(!S.id){$('body').innerHTML='<div class="loading">Missing return_id.</div>';return;}
+  try{await reload();}catch(err){$('body').innerHTML='<div class="loading">Return not found.</div>';return;}
+  S.pickup=S.r.recipient_type||'customer';
+  const crumb=document.querySelector('.topbar .tb-crumb');
+  if(crumb)crumb.innerHTML='<a href="/orders.html" style="color:inherit;text-decoration:none">Orders</a> &rsaquo; <a href="/order-360.html?id='+esc(S.r.order_id)+'" style="color:inherit;text-decoration:none">#'+esc(S.r.order_number)+'</a> &rsaquo; Return';
+  $('back').href='/order-360.html?id='+esc(S.r.order_id);
+  $('footer').style.display='flex';
+  render();wire();
+})();
+</script>
+</body>
+</html>
