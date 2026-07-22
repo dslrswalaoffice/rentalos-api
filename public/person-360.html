@@ -531,7 +531,13 @@
             headers:{ 'Idempotency-Key': (window.crypto&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random()) },
             body: fd,
           });
-          if(!res.ok){ const b=await res.json().catch(()=>({})); throw new Error(b.error||('http_'+res.status)); }
+          if(!res.ok){
+            const b=await res.json().catch(()=>({}));
+            // Surface the human-readable detail (e.g. "BLOB_READ_WRITE_TOKEN is
+            // not set", "received 8.0MB, cap 5.0MB") instead of the opaque code.
+            const reason = (typeof b.detail==='string' && b.detail) ? b.detail : (b.error || ('http_'+res.status));
+            throw new Error(reason);
+          }
           msg.textContent='Uploaded.'; msg.style.color='#059669';
           await loadKycCard();
         } catch(err){ msg.textContent='Upload failed: '+err.message; msg.style.color='#dc2626'; }

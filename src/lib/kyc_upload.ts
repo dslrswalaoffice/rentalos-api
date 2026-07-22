@@ -30,7 +30,11 @@ export type KYCFile = {
 
 export type UploadResult =
   | { ok: true; files: KYCFile[] }
-  | { ok: false; error: string; detail?: unknown };
+  | { ok: false; error: string; detail?: string };
+
+function mb(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
 
 const EXT: Record<string, string> = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf',
@@ -60,16 +64,28 @@ export async function uploadKYCFiles(args: {
   nowIso?: string;
 }): Promise<UploadResult> {
   const { workspaceId, personId, documentType, files } = args;
-  if (!files.length) return { ok: false, error: 'no_files' };
-  if (files.length > KYC_MAX_FILES) return { ok: false, error: 'too_many_files', detail: { max: KYC_MAX_FILES, got: files.length } };
+  // Typed, human-readable errors — NEVER a masked "upload_failed" (that opacity
+  // cost a long debug on the KYC bug: the real cause, a missing Blob token, was
+  // hidden behind a generic string). Each branch returns a specific code + a
+  // detail the operator can read directly in the UI.
+  if (!files.length) return { ok: false, error: 'no_files', detail: 'No files were provided.' };
+  if (files.length > KYC_MAX_FILES) {
+    return { ok: false, error: 'too_many_files', detail: `received ${files.length}, max ${KYC_MAX_FILES} per document` };
+  }
 
   for (const f of files) {
     if (!(KYC_ALLOWED_TYPES as readonly string[]).includes(f.type)) {
-      return { ok: false, error: 'invalid_file_type', detail: { filename: f.name, type: f.type, allowed: KYC_ALLOWED_TYPES } };
+      return { ok: false, error: 'invalid_mime_type', detail: `${f.name}: received ${f.type || 'unknown'}, expected ${KYC_ALLOWED_TYPES.join(' | ')}` };
     }
     if (f.size > KYC_MAX_BYTES) {
-      return { ok: false, error: 'file_too_large', detail: { filename: f.name, size: f.size, max: KYC_MAX_BYTES } };
+      return { ok: false, error: 'file_size_exceeded', detail: `${f.name}: received ${mb(f.size)}, cap ${mb(KYC_MAX_BYTES)}` };
     }
+  }
+
+  // Fail fast + explicit when the Blob token is absent in this environment — the
+  // classic cause of an opaque put() failure (and the actual KYC-upload bug).
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return { ok: false, error: 'blob_token_missing', detail: 'BLOB_READ_WRITE_TOKEN is not set in this environment.' };
   }
 
   const uploadedAt = args.nowIso ?? new Date().toISOString();
@@ -82,7 +98,12 @@ export async function uploadKYCFiles(args: {
     }
   } catch (err) {
     console.error('[kyc_upload] blob upload failed', err);
-    return { ok: false, error: 'upload_failed', detail: String(err) };
+    const msg = err instanceof Error ? err.message : String(err);
+    // A token error can still surface here (e.g. an invalid/expired token that
+    // passed the presence check above) — classify it distinctly from a genuine
+    // upload failure so Accounts knows whether to check config vs retry.
+    const isToken = /token/i.test(msg);
+    return { ok: false, error: isToken ? 'blob_token_missing' : 'blob_upload_failed', detail: msg };
   }
   return { ok: true, files: out };
 }
