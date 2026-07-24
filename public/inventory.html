@@ -102,6 +102,22 @@
     .content-head .sub { font-size: 12px; color: var(--muted); margin-left: 10px; }
     .trunc-note { color: var(--warn-strong); font-weight: 600; }
     .category-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    /* Asset List S1 — Products/Assets view toggle + Assets table. */
+    .view-toggle { display: inline-flex; gap: 2px; background: var(--surface-2, #f4f2ee); border-radius: 9px; padding: 3px; }
+    .vt-btn { border: none; background: transparent; padding: 6px 16px; border-radius: 7px; font: 600 12.5px var(--font-body); color: var(--neutral, #6b7280); cursor: pointer; }
+    .vt-btn.active { background: #fff; color: var(--ink, #202058); box-shadow: 0 1px 2px rgba(32,32,88,.08); }
+    .asset-table { width: 100%; border-collapse: collapse; }
+    .asset-table thead th { text-align: left; font: 600 10px var(--font-mono, monospace); letter-spacing: .06em; text-transform: uppercase; color: #9ca3af; padding: 8px 10px; border-bottom: 1px solid var(--border, #ece9e3); }
+    .asset-table tbody td { padding: 10px; border-bottom: 1px solid #f4f1ec; font-size: 13px; vertical-align: middle; }
+    .asset-table tbody tr:hover { background: #faf9f7; }
+    .apill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 6px; font: 600 10px var(--font-mono, monospace); }
+    .apill.success { color: #059669; background: rgba(5,150,105,.1); } .apill.indigo { color: #4f46e5; background: rgba(79,70,229,.1); } .apill.neutral { color: #6b7280; background: #f3f4f6; }
+    .util-bar { height: 5px; width: 60px; border-radius: 3px; background: #eceaf3; overflow: hidden; display: inline-block; vertical-align: middle; }
+    .util-bar > span { display: block; height: 100%; background: #4f46e5; }
+    .attn { font-size: 11px; font-weight: 600; }
+    .attn.amber { color: #d97706; } .attn.red { color: #dc2626; }
+    .bulk-bar { position: sticky; bottom: 0; background: #fff; border-top: 1px solid var(--border, #ece9e3); padding: 10px 12px; display: none; align-items: center; gap: 10px; box-shadow: 0 -4px 12px rgba(32,32,88,.05); }
+    .bulk-bar.show { display: flex; }
     .cat-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--muted-strong); cursor: pointer; text-transform: uppercase; }
     .cat-chip:hover { border-color: var(--border-strong); background: var(--thead); }
     .cat-chip.active { background: var(--head); color: #fff; border-color: var(--head); }
@@ -372,6 +388,13 @@
            search moved into the content filter row below (it filters the table, so it stays with the content). -->
 
       <div class="content">
+        <!-- Asset List S1 — Products / Assets view toggle (Products default). -->
+        <div class="content-head" style="padding-bottom:0;">
+          <div class="view-toggle" id="view-toggle">
+            <button type="button" class="vt-btn active" data-view="products">Products</button>
+            <button type="button" class="vt-btn" data-view="assets">Assets</button>
+          </div>
+        </div>
         <div class="content-head">
           <div>
             <h3 style="display:inline;">Catalog</h3>
@@ -393,6 +416,26 @@
         </div>
         <div class="content-head" id="tag-filter-row" style="display:none;padding-top:0;">
           <div class="category-chips" id="tag-filter-chips"></div>
+        </div>
+
+        <!-- Asset List S1 — Assets view (per-unit). Hidden until toggled. -->
+        <div id="assets-wrap" style="display:none;">
+          <div class="content-head" style="padding-left:0;padding-right:0;gap:8px;flex-wrap:wrap;">
+            <select id="av-status" class="av-filter"><option value="">All statuses</option><option value="available">Available</option><option value="out">Out</option><option value="retired">Retired</option></select>
+            <select id="av-category" class="av-filter"><option value="">All categories</option></select>
+            <select id="av-location" class="av-filter"><option value="">All locations</option></select>
+            <select id="av-util" class="av-filter"><option value="">Any utilization</option><option value="under_20">Under 20%</option><option value="20_to_80">20–80%</option><option value="over_80">Over 80%</option></select>
+            <select id="av-sort" class="av-filter"><option value="code_asc">Code A–Z</option><option value="code_desc">Code Z–A</option><option value="ytd_revenue_desc">YTD revenue</option><option value="utilization_desc">Utilization</option><option value="last_used_desc">Last used</option></select>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--neutral);"><input type="checkbox" id="av-damage"> Has open damage</label>
+            <label class="search" for="av-search" style="max-width:260px;"><input id="av-search" type="search" placeholder="Search code / serial / product…" autocomplete="off"></label>
+          </div>
+          <div id="assets-table-wrap"><div class="data-container"><div class="skeleton-table-row" style="--cols:9;"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div></div>
+          <div class="bulk-bar" id="av-bulk-bar">
+            <span id="av-selcount" style="font-size:12.5px;font-weight:600;">0 selected</span>
+            <span style="flex:1;"></span>
+            <button class="btn small" type="button" id="av-transfer">Transfer location</button>
+            <button class="btn small" type="button" id="av-retire" style="color:#dc2626;">Retire</button>
+          </div>
         </div>
 
         <div id="list-wrap">
@@ -2815,6 +2858,131 @@
       });
       fetchCount();
       startPolling();
+    })();
+
+    // ======================================================================
+    // Asset List S1 — Assets view (per-unit). Products view stays default +
+    // byte-identical; toggling just hides it and lazy-loads this table.
+    // ======================================================================
+    const AV = { rows: [], selected: new Set(), loaded: false };
+    const relTime = (iso) => { if (!iso) return '—'; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1d ago' : d + 'd ago'; };
+    const PRODUCT_ONLY_ROWS = ['capital-bar', 'location-filter-row', 'tag-filter-row'];
+
+    function setView(view) {
+      const assets = view === 'assets';
+      document.querySelectorAll('#view-toggle .vt-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+      document.getElementById('list-wrap').style.display = assets ? 'none' : '';
+      document.getElementById('assets-wrap').style.display = assets ? '' : 'none';
+      // Product-only chrome hides in Assets view.
+      document.getElementById('category-chips').closest('.content-head').style.display = assets ? 'none' : '';
+      for (const id of PRODUCT_ONLY_ROWS) { const el = document.getElementById(id); if (el && !assets) { /* let their own logic manage */ } else if (el) el.style.display = 'none'; }
+      try { localStorage.setItem('inventory_view', view); } catch {}
+      if (assets && !AV.loaded) { populateAssetCategoryLocation(); loadAssets(); }
+    }
+
+    async function populateAssetCategoryLocation() {
+      try {
+        const cats = await api.get('/api/inventory/categories');
+        const sel = document.getElementById('av-category');
+        (cats.categories || cats || []).forEach(c => { const name = typeof c === 'string' ? c : c.name; if (name) { const o = document.createElement('option'); o.value = name; o.textContent = name; sel.appendChild(o); } });
+      } catch {}
+      try {
+        const locs = await api.get('/api/locations');
+        const sel = document.getElementById('av-location');
+        (locs.locations || locs || []).filter(l => l.is_active !== false).forEach(l => { const o = document.createElement('option'); o.value = l.id; o.textContent = l.name; sel.appendChild(o); });
+      } catch {}
+    }
+
+    function avParams() {
+      const p = new URLSearchParams();
+      const g = (id) => document.getElementById(id).value;
+      if (g('av-status')) p.set('status', g('av-status'));
+      if (g('av-category')) p.set('category', g('av-category'));
+      if (g('av-location')) p.set('location_id', g('av-location'));
+      if (g('av-util')) p.set('utilization_range', g('av-util'));
+      if (g('av-sort')) p.set('sort', g('av-sort'));
+      if (document.getElementById('av-damage').checked) p.set('has_open_damage', '1');
+      if (g('av-search').trim()) p.set('search', g('av-search').trim());
+      p.set('limit', '100');
+      return p.toString();
+    }
+
+    async function loadAssets() {
+      AV.loaded = true; AV.selected.clear(); updateBulkBar();
+      const wrap = document.getElementById('assets-table-wrap');
+      let res;
+      try { res = await api.get('/api/inventory/assets?' + avParams()); }
+      catch (err) { wrap.innerHTML = `<div class="empty-state"><p>${err.status === 403 ? 'You do not have permission to view assets.' : 'Could not load assets.'}</p></div>`; return; }
+      AV.rows = res.data || [];
+      if (!AV.rows.length) {
+        wrap.innerHTML = `<div class="empty-state"><p>No assets match the filters. <a href="#" id="av-clear">Clear filters</a></p></div>`;
+        const c = document.getElementById('av-clear'); if (c) c.addEventListener('click', (e) => { e.preventDefault(); ['av-status', 'av-category', 'av-location', 'av-util'].forEach(id => document.getElementById(id).value = ''); document.getElementById('av-damage').checked = false; document.getElementById('av-search').value = ''; loadAssets(); });
+        return;
+      }
+      const showCost = canManageCost();
+      const statusPill = (s) => `<span class="apill ${s === 'available' ? 'success' : s === 'out' ? 'indigo' : 'neutral'}">${esc(String(s).toUpperCase())}</span>`;
+      wrap.innerHTML = `<table class="asset-table"><thead><tr>
+        <th style="width:28px;"><input type="checkbox" id="av-all"></th>
+        <th>Asset</th><th>Product</th><th>Status</th><th>Current holder</th><th>Since</th>
+        ${showCost ? '<th>YTD revenue</th>' : ''}<th>Utilization</th><th>Attention</th><th></th></tr></thead>
+        <tbody>${AV.rows.map(r => {
+          const attn = [];
+          if (r.attention_flags.has_open_damage) attn.push('<span class="attn red">● Open damage</span>');
+          if (r.attention_flags.utilization_over_80) attn.push('<span class="attn amber">▲ Over-utilized</span>');
+          if (r.attention_flags.utilization_under_20) attn.push('<span class="attn amber">▽ Under-utilized</span>');
+          const holder = r.current_holder ? `<a href="/order-360.html?id=${esc(r.current_holder.order_id)}">#${esc(String(r.current_holder.order_number))}</a> · ${esc(r.current_holder.customer_name || '')}` : '—';
+          return `<tr>
+            <td><input type="checkbox" class="av-row" data-id="${esc(r.asset_id)}"></td>
+            <td><div style="font-family:var(--font-mono,monospace);font-weight:600;">${esc(r.asset_code)}</div><div style="font-size:11px;color:#9ca3af;font-family:var(--font-mono,monospace);">${esc(r.serial_number || '')}</div></td>
+            <td>${esc(r.product_name || '')}<div style="font-size:11px;color:#9ca3af;">${esc(r.product_category || '')}</div></td>
+            <td>${statusPill(r.status)}${r.active_downtime ? ' <span class="attn amber">🔧</span>' : ''}</td>
+            <td>${holder}</td><td style="color:#6b7280;">${esc(relTime(r.current_holder ? r.current_holder.since_datetime : r.last_used_at))}</td>
+            ${showCost ? `<td style="font-family:var(--font-mono,monospace);">${r.ytd_revenue_paise == null ? '—' : formatINR(r.ytd_revenue_paise)}</td>` : ''}
+            <td><span class="util-bar"><span style="width:${Math.min(100, r.utilization_percent)}%;"></span></span> ${r.utilization_percent}%</td>
+            <td>${attn.join(' ') || '<span style="color:#cbd0d6;">—</span>'}</td>
+            <td><a href="/asset-360.html?id=${esc(r.asset_id)}" style="font-size:12px;">View →</a></td>
+          </tr>`;
+        }).join('')}</tbody></table>
+        <div style="font-size:12px;color:#9ca3af;padding:8px 10px;">${res.meta.total_count} unit(s)${res.meta.scan_capped ? ' · showing first ' + AV.rows.length + ' (narrow filters to see more)' : ''}</div>`;
+      document.getElementById('av-all').addEventListener('change', (e) => { document.querySelectorAll('.av-row').forEach(cb => { cb.checked = e.target.checked; if (e.target.checked) AV.selected.add(cb.dataset.id); else AV.selected.delete(cb.dataset.id); }); updateBulkBar(); });
+      document.querySelectorAll('.av-row').forEach(cb => cb.addEventListener('change', () => { if (cb.checked) AV.selected.add(cb.dataset.id); else AV.selected.delete(cb.dataset.id); updateBulkBar(); }));
+    }
+    function updateBulkBar() {
+      const n = AV.selected.size;
+      document.getElementById('av-bulk-bar').classList.toggle('show', n > 0);
+      document.getElementById('av-selcount').textContent = n + ' selected';
+    }
+
+    async function bulkTransfer() {
+      const ids = [...AV.selected]; if (!ids.length) return;
+      const opts = [...document.getElementById('av-location').options].filter(o => o.value).map(o => `${o.textContent} (${o.value})`).join('\n');
+      const loc = document.getElementById('av-location').value || (document.getElementById('av-location').options[1] && document.getElementById('av-location').options[1].value);
+      if (!loc) { alert('Pick a target location from the Location filter first.'); return; }
+      if (!confirm(`Transfer ${ids.length} unit(s) to the selected location filter's location?\n\n(Set the Location filter to the destination first.)\n\nAvailable:\n${opts}`)) return;
+      try { const r = await api.post('/api/inventory/assets/bulk-location-transfer', { asset_ids: ids, target_location_id: loc }); alert(`Transferred ${r.transferred} unit(s).`); loadAssets(); }
+      catch (err) { alert('Transfer failed: ' + ((err.body && err.body.error) || err.message)); }
+    }
+    async function bulkRetire() {
+      const ids = [...AV.selected]; if (!ids.length) return;
+      const reason = prompt(`Retire ${ids.length} unit(s). Reason (end_of_life / damage_write_off / sold / other):`, 'end_of_life');
+      if (!reason) return;
+      if (ids.length > 5 && !confirm(`Retiring ${ids.length} units (>5) will require owner approval before it executes. Continue?`)) return;
+      try {
+        const r = await api.post('/api/inventory/assets/bulk-retire', { asset_ids: ids, reason: ['end_of_life', 'damage_write_off', 'sold', 'other'].includes(reason) ? reason : 'other' });
+        alert(r.requires_approval ? `Approval requested for ${r.count} unit(s) (₹${Math.round(r.total_value_paise / 100).toLocaleString('en-IN')}). An owner must approve before they retire.` : `Retired ${r.retired} unit(s).`);
+        loadAssets();
+      } catch (err) { alert('Retire failed: ' + ((err.body && err.body.error) || err.message)); }
+    }
+
+    (function initAssetsView() {
+      document.querySelectorAll('#view-toggle .vt-btn').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+      ['av-status', 'av-category', 'av-location', 'av-util', 'av-sort'].forEach(id => document.getElementById(id).addEventListener('change', loadAssets));
+      document.getElementById('av-damage').addEventListener('change', loadAssets);
+      let t; document.getElementById('av-search').addEventListener('input', () => { clearTimeout(t); t = setTimeout(loadAssets, 300); });
+      document.getElementById('av-transfer').addEventListener('click', bulkTransfer);
+      document.getElementById('av-retire').addEventListener('click', bulkRetire);
+      let initial = 'products'; try { initial = localStorage.getItem('inventory_view') || 'products'; } catch {}
+      if (initial === 'assets') setView('assets');
     })();
 
   </script>

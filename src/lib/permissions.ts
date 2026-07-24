@@ -52,6 +52,7 @@ export const PERMISSIONS = {
   'inventory.manage':       'Add, edit, remove products, stock, and downtime',
   'inventory.pricing':      'Set product pricing',
   'inventory.costs':        'View and set purchase costs and ROI',
+  'inventory.retire':       'Retire assets from the operational fleet',
   // People
   'people.view':            'View customers',
   'people.manage':          'Create and edit customers',
@@ -78,7 +79,7 @@ export const PERMISSION_GROUPS: { label: string; keys: PermissionKey[] }[] = [
   { label: 'Orders',    keys: ['orders.view','orders.create','orders.edit','orders.cancel','orders.revert_status','orders.override_period','orders.override_price','orders.apply_discount'] },
   { label: 'Operations', keys: ['dispatch.execute','returns.execute','damage.record','substitutions.manage','substitutions.financial','damage.resolve_financial','damage.approve','inspections.perform'] },
   { label: 'Money',     keys: ['payments.record','payments.refund','deposits.retain','deposits.transfer_custody','invoices.manage'] },
-  { label: 'Inventory', keys: ['inventory.view','inventory.manage','inventory.pricing','inventory.costs'] },
+  { label: 'Inventory', keys: ['inventory.view','inventory.manage','inventory.pricing','inventory.costs','inventory.retire'] },
   { label: 'People',    keys: ['people.view','people.manage','people.view_sensitive','people.review_kyc'] },
   { label: 'Insight',   keys: ['reports.view','reports.export','audit.view'] },
   { label: 'Notifications', keys: ['notifications.review','settings.edit_notifications'] },
@@ -100,7 +101,7 @@ export const PRESETS: { owner: '*'; manager: PermissionKey[]; staff: PermissionK
     'substitutions.manage', 'substitutions.financial', 'damage.resolve_financial',
     'inspections.perform',
     'payments.record', 'payments.refund', 'deposits.retain', 'deposits.transfer_custody', 'invoices.manage',
-    'inventory.view', 'inventory.manage', 'inventory.pricing',
+    'inventory.view', 'inventory.manage', 'inventory.pricing', 'inventory.retire',
     'people.view', 'people.manage', 'people.view_sensitive', 'people.review_kyc',
     'reports.view', 'reports.export',
     // Slice 10: manager reviews the notification queue + edits notification policy
