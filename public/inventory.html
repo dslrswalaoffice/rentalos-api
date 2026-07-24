@@ -120,6 +120,8 @@
     .spill.booked    { background: rgba(37,99,235,.1); color: #2563eb; } .spill.booked .dot { background: #2563eb; }
     .spill.maint     { background: rgba(217,118,6,.1); color: #d97706; } .spill.maint .dot { background: #d97706; }
     .spill.none      { background: #f3f4f6; color: #6b7280; } .spill.none .dot { background: #9ca3af; }
+    .spill.out       { background: var(--accent-soft2); color: var(--accent); } .spill.out .dot { background: var(--accent); }
+    .spill.retired   { background: #f3f4f6; color: #6b7280; } .spill.retired .dot { background: #9ca3af; }
     table.products td.attn-rail { box-shadow: inset 4px 0 0 transparent; }
     table.products tr.attn-red   td.attn-rail { box-shadow: inset 4px 0 0 #dc2626; }
     table.products tr.attn-amber td.attn-rail { box-shadow: inset 4px 0 0 #d97706; }
@@ -133,8 +135,13 @@
     .util-bar > span { display: block; height: 100%; background: #4f46e5; }
     .attn { font-size: 11px; font-weight: 600; }
     .attn.amber { color: #d97706; } .attn.red { color: #dc2626; }
-    .bulk-bar { position: sticky; bottom: 0; background: #fff; border-top: 1px solid var(--border, #ece9e3); padding: 10px 12px; display: none; align-items: center; gap: 10px; box-shadow: 0 -4px 12px rgba(32,32,88,.05); }
+    /* Asset List S2 — substrate bulk-selection toolbar: indigo tint + left rail. */
+    .bulk-bar { position: sticky; bottom: 0; background: var(--accent-soft2); border-top: 1px solid var(--border, #ece9e3); border-left: 4px solid var(--accent); padding: 10px 14px; display: none; align-items: center; gap: 12px; box-shadow: 0 -4px 12px rgba(32,32,88,.05); }
     .bulk-bar.show { display: flex; }
+    .bulk-bar #av-selcount { font-family: var(--font-mono); font-weight: 600; letter-spacing: .04em; color: var(--accent); }
+    /* Non-blocking success toast for the bulk paths. */
+    .av-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(12px); background: var(--ink); color: #fff; font: 600 12.5px var(--font-body); padding: 11px 18px; border-radius: 10px; box-shadow: 0 10px 30px -8px rgba(32,32,88,.45); opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease; z-index: 200; max-width: 90vw; }
+    .av-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     .cat-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--muted-strong); cursor: pointer; text-transform: uppercase; }
     .cat-chip:hover { border-color: var(--border-strong); background: var(--thead); }
     .cat-chip.active { background: var(--head); color: #fff; border-color: var(--head); }
@@ -618,6 +625,56 @@
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
         <button class="btn ghost" id="bulk-cancel" type="button">Cancel</button>
         <button class="btn primary" id="bulk-save" type="button">Save costs</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Asset List S2 (PR A2) — bulk asset actions promoted from native
+       confirm()/prompt() to proper modals (Item-12). -->
+  <div class="modal-backdrop" id="av-transfer-modal">
+    <div class="modal" role="dialog" aria-labelledby="avt-title" style="max-width:440px;">
+      <header class="modal-head">
+        <div class="modal-title" id="avt-title">Transfer units</div>
+        <button class="modal-close" id="avt-close" aria-label="Close">✕</button>
+      </header>
+      <div class="modal-body">
+        <div id="avt-error" class="notice" style="display:none;background:var(--bad-soft);color:var(--bad-strong);margin:0 0 10px;"></div>
+        <p class="field-hint" style="margin:0 0 12px;"><span id="avt-count" style="font-weight:600;color:var(--ink);"></span> will be moved to the location you pick below.</p>
+        <div class="field">
+          <label for="avt-location">Destination location <span class="req">*</span></label>
+          <select id="avt-location"></select>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" type="button" id="avt-cancel">Cancel</button>
+        <button class="btn primary" type="button" id="avt-confirm">Transfer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="av-retire-modal">
+    <div class="modal" role="dialog" aria-labelledby="avr-title" style="max-width:440px;">
+      <header class="modal-head">
+        <div class="modal-title" id="avr-title">Retire units</div>
+        <button class="modal-close" id="avr-close" aria-label="Close">✕</button>
+      </header>
+      <div class="modal-body">
+        <div id="avr-error" class="notice" style="display:none;background:var(--bad-soft);color:var(--bad-strong);margin:0 0 10px;"></div>
+        <p class="field-hint" style="margin:0 0 12px;"><span id="avr-count" style="font-weight:600;color:var(--ink);"></span> will be removed from the operational fleet. Retired units drop out of capacity.</p>
+        <div class="field">
+          <label for="avr-reason">Reason <span class="req">*</span></label>
+          <select id="avr-reason">
+            <option value="end_of_life">End of life</option>
+            <option value="damage_write_off">Damage write-off</option>
+            <option value="sold">Sold</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div id="avr-approval" class="notice" style="display:none;background:var(--warn-soft);color:var(--warn-strong);margin:10px 0 0;"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" type="button" id="avr-cancel">Cancel</button>
+        <button class="btn primary" type="button" id="avr-confirm" style="background:var(--bad-strong);box-shadow:none;">Retire</button>
       </div>
     </div>
   </div>
@@ -2952,7 +3009,7 @@
         return;
       }
       const showCost = canManageCost();
-      const statusPill = (s) => `<span class="apill ${s === 'available' ? 'success' : s === 'out' ? 'indigo' : 'neutral'}">${esc(String(s).toUpperCase())}</span>`;
+      const statusPill = (s) => { const cls = s === 'available' ? 'available' : s === 'out' ? 'out' : 'retired'; return `<span class="spill ${cls}"><span class="dot"></span>${esc(String(s).toUpperCase())}</span>`; };
       wrap.innerHTML = `<table class="asset-table"><thead><tr>
         <th style="width:28px;"><input type="checkbox" id="av-all"></th>
         <th>Asset</th><th>Product</th><th>Status</th><th>Current holder</th><th>Since</th>
@@ -2985,25 +3042,75 @@
       document.getElementById('av-selcount').textContent = n + ' selected';
     }
 
+    // Asset List S2 (PR A2) — bulk actions now open modals (Item-12) instead of
+    // native confirm()/prompt(). The API calls are unchanged; only the chrome is.
+    const unitWord = (n) => `${n} unit${n === 1 ? '' : 's'}`;
+    const avtModal = document.getElementById('av-transfer-modal');
+    const avrModal = document.getElementById('av-retire-modal');
+
     async function bulkTransfer() {
       const ids = [...AV.selected]; if (!ids.length) return;
-      const opts = [...document.getElementById('av-location').options].filter(o => o.value).map(o => `${o.textContent} (${o.value})`).join('\n');
-      const loc = document.getElementById('av-location').value || (document.getElementById('av-location').options[1] && document.getElementById('av-location').options[1].value);
-      if (!loc) { alert('Pick a target location from the Location filter first.'); return; }
-      if (!confirm(`Transfer ${ids.length} unit(s) to the selected location filter's location?\n\n(Set the Location filter to the destination first.)\n\nAvailable:\n${opts}`)) return;
-      try { const r = await api.post('/api/inventory/assets/bulk-location-transfer', { asset_ids: ids, target_location_id: loc }); alert(`Transferred ${r.transferred} unit(s).`); loadAssets(); }
-      catch (err) { alert('Transfer failed: ' + ((err.body && err.body.error) || err.message)); }
-    }
-    async function bulkRetire() {
-      const ids = [...AV.selected]; if (!ids.length) return;
-      const reason = prompt(`Retire ${ids.length} unit(s). Reason (end_of_life / damage_write_off / sold / other):`, 'end_of_life');
-      if (!reason) return;
-      if (ids.length > 5 && !confirm(`Retiring ${ids.length} units (>5) will require owner approval before it executes. Continue?`)) return;
+      const sel = document.getElementById('avt-location');
+      document.getElementById('avt-error').style.display = 'none';
+      document.getElementById('avt-count').textContent = unitWord(ids.length);
+      // Populate destinations from the workspace locations (active only).
+      sel.innerHTML = '<option value="">Loading…</option>';
       try {
-        const r = await api.post('/api/inventory/assets/bulk-retire', { asset_ids: ids, reason: ['end_of_life', 'damage_write_off', 'sold', 'other'].includes(reason) ? reason : 'other' });
-        alert(r.requires_approval ? `Approval requested for ${r.count} unit(s) (₹${Math.round(r.total_value_paise / 100).toLocaleString('en-IN')}). An owner must approve before they retire.` : `Retired ${r.retired} unit(s).`);
+        const locs = await api.get('/api/locations');
+        const list = (locs.locations || locs || []).filter(l => l.is_active !== false);
+        sel.innerHTML = list.length
+          ? list.map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('')
+          : '<option value="">No locations available</option>';
+      } catch { sel.innerHTML = '<option value="">Could not load locations</option>'; }
+      avtModal.classList.add('open');
+    }
+    async function confirmTransfer() {
+      const ids = [...AV.selected]; if (!ids.length) return;
+      const loc = document.getElementById('avt-location').value;
+      const err = document.getElementById('avt-error');
+      if (!loc) { err.textContent = 'Pick a destination location.'; err.style.display = ''; return; }
+      const btn = document.getElementById('avt-confirm'); btn.disabled = true;
+      try {
+        const r = await api.post('/api/inventory/assets/bulk-location-transfer', { asset_ids: ids, target_location_id: loc });
+        avtModal.classList.remove('open'); toast(`Transferred ${unitWord(r.transferred)}.`); loadAssets();
+      } catch (e) { err.textContent = 'Transfer failed: ' + ((e.body && e.body.error) || e.message); err.style.display = ''; }
+      finally { btn.disabled = false; }
+    }
+
+    function bulkRetire() {
+      const ids = [...AV.selected]; if (!ids.length) return;
+      document.getElementById('avr-error').style.display = 'none';
+      document.getElementById('avr-reason').value = 'end_of_life';
+      document.getElementById('avr-count').textContent = unitWord(ids.length);
+      const note = document.getElementById('avr-approval');
+      if (ids.length > 5) { note.textContent = `Retiring more than 5 units at once needs owner approval — this will be queued, not applied immediately.`; note.style.display = ''; }
+      else note.style.display = 'none';
+      avrModal.classList.add('open');
+    }
+    async function confirmRetire() {
+      const ids = [...AV.selected]; if (!ids.length) return;
+      const reason = document.getElementById('avr-reason').value;
+      const err = document.getElementById('avr-error');
+      const btn = document.getElementById('avr-confirm'); btn.disabled = true;
+      try {
+        const r = await api.post('/api/inventory/assets/bulk-retire', { asset_ids: ids, reason });
+        avrModal.classList.remove('open');
+        toast(r.requires_approval
+          ? `Approval requested for ${unitWord(r.count)} (₹${Math.round(r.total_value_paise / 100).toLocaleString('en-IN')}). An owner must approve before they retire.`
+          : `Retired ${unitWord(r.retired)}.`);
         loadAssets();
-      } catch (err) { alert('Retire failed: ' + ((err.body && err.body.error) || err.message)); }
+      } catch (e) { err.textContent = 'Retire failed: ' + ((e.body && e.body.error) || e.message); err.style.display = ''; }
+      finally { btn.disabled = false; }
+    }
+
+    // Lightweight, non-blocking success toast (replaces the old alert() calls
+    // on the bulk paths — the confirm/prompt were promoted to modals above).
+    let toastTimer;
+    function toast(msg) {
+      let el = document.getElementById('av-toast');
+      if (!el) { el = document.createElement('div'); el.id = 'av-toast'; el.className = 'av-toast'; document.body.appendChild(el); }
+      el.textContent = msg; el.classList.add('show');
+      clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3600);
     }
 
     (function initAssetsView() {
@@ -3013,6 +3120,17 @@
       let t; document.getElementById('av-search').addEventListener('input', () => { clearTimeout(t); t = setTimeout(loadAssets, 300); });
       document.getElementById('av-transfer').addEventListener('click', bulkTransfer);
       document.getElementById('av-retire').addEventListener('click', bulkRetire);
+      // Bulk-action modal wiring (PR A2).
+      const closeAvt = () => avtModal.classList.remove('open');
+      const closeAvr = () => avrModal.classList.remove('open');
+      document.getElementById('avt-close').addEventListener('click', closeAvt);
+      document.getElementById('avt-cancel').addEventListener('click', closeAvt);
+      document.getElementById('avt-confirm').addEventListener('click', confirmTransfer);
+      document.getElementById('avr-close').addEventListener('click', closeAvr);
+      document.getElementById('avr-cancel').addEventListener('click', closeAvr);
+      document.getElementById('avr-confirm').addEventListener('click', confirmRetire);
+      avtModal.addEventListener('click', (e) => { if (e.target === avtModal) closeAvt(); });
+      avrModal.addEventListener('click', (e) => { if (e.target === avrModal) closeAvr(); });
       let initial = 'products'; try { initial = localStorage.getItem('inventory_view') || 'products'; } catch {}
       if (initial === 'assets') setView('assets');
     })();
