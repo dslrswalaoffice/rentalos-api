@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f2ee}
+a{color:#4f46e5;text-decoration:none}
+a:hover{color:#3f37c9}
+</style>
+</helmet>
+<div style="width:1440px;margin:0 auto;display:flex;background:#ffffff;min-height:1120px;font-family:'Manrope',sans-serif;color:#26235a;position:relative">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside style="width:60px;flex:none;background:#faf9f7;border-right:1px solid #ece9e3;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px">
+    <div style="width:32px;height:32px;border-radius:8px;background:#202058;color:#fff;font:600 16px 'Space Grotesk';display:flex;align-items:center;justify-content:center;margin-bottom:14px">R</div>
+    <div title="Dashboard" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1.2"/><rect x="11" y="3" width="6" height="6" rx="1.2"/><rect x="3" y="11" width="6" height="6" rx="1.2"/><rect x="11" y="11" width="6" height="6" rx="1.2"/></svg></div>
+    <div title="Rentals" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.2 17 6v8l-7 3.8L3 14V6z"/><path d="M3 6l7 3.8L17 6"/><path d="M10 9.8V17.8"/></svg></div>
+    <div title="Inventory" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#eceafb;color:#4f46e5"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5 17.5 6 10 9.5 2.5 6z"/><path d="M2.5 10 10 13.5 17.5 10"/><path d="M2.5 14 10 17.5 17.5 14"/></svg></div>
+    <div title="Customers" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3.2"/><path d="M4 17c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2"/></svg></div>
+    <div title="Finance" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="15" height="11" rx="2"/><path d="M2.5 8.5h15"/><circle cx="13.5" cy="12" r="1.2"/></svg></div>
+    <div title="Insights" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17V3"/><path d="M3 17h14"/><rect x="6" y="10" width="2.6" height="4"/><rect x="10.5" y="6.5" width="2.6" height="7.5"/><rect x="15" y="8.5" width="0.1" height="5.5"/></svg></div>
+    <div style="flex:1"></div>
+    <div title="System" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#9a9690"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M2.5 10h2.2M15.3 10h2.2M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/></svg></div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+
+    <!-- TOP BAR -->
+    <header style="height:56px;flex:none;border-bottom:1px solid #ece9e3;display:flex;align-items:center;gap:16px;padding:0 22px">
+      <button style="width:34px;height:34px;border-radius:8px;border:none;background:transparent;color:#6b7280;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14"/></svg></button>
+      <div style="flex:1;max-width:520px;height:36px;border:1px solid #ece9e3;border-radius:9px;background:#faf9f7;display:flex;align-items:center;gap:9px;padding:0 12px">
+        <svg width="16" height="16" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5"/><path d="M11.5 11.5 15 15"/></svg>
+        <span style="color:#9ca3af;font:400 13px 'Manrope'">Search anything</span>
+        <span style="margin-left:auto;font:600 10px 'JetBrains Mono';color:#b6b3ad;border:1px solid #e4e0d9;border-radius:5px;padding:2px 6px">⌘K</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:14px">
+        <button style="position:relative;width:34px;height:34px;border-radius:8px;border:none;background:transparent;color:#6b7280;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5a5 5 0 0 0-5 5c0 4-1.5 5.5-1.5 5.5h13S15 11.5 15 7.5a5 5 0 0 0-5-5z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg><span style="position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:#dc2626;border:1.5px solid #fff"></span></button>
+        <div style="display:flex;align-items:center;gap:8px;padding:3px 4px 3px 3px;border:1px solid #ece9e3;border-radius:20px">
+          <span style="width:28px;height:28px;border-radius:50%;background:#eef0f4;color:#202058;font:600 10px 'Space Grotesk';display:flex;align-items:center;justify-content:center">RS</span>
+          <svg width="14" height="14" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l3 3 3-3"/></svg>
+        </div>
+      </div>
+    </header>
+
+    <!-- SUB-NAV -->
+    <div style="height:34px;flex:none;border-bottom:1px solid #f0ede8;display:flex;align-items:center;padding:0 24px">
+      <span style="font:600 10px 'JetBrains Mono';letter-spacing:.08em;color:#9ca3af;text-transform:uppercase">Inventory &nbsp;&rsaquo;&nbsp; Products</span>
+    </div>
+
+    <!-- SCROLL AREA -->
+    <div style="flex:1;padding:24px 32px 48px;position:relative">
+
+      <!-- REGION 1: TOP STRIP -->
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px">
+        <div>
+          <h1 style="margin:0;font:600 28px 'Space Grotesk';color:#202058;letter-spacing:-.01em">INVENTORY</h1>
+          <p style="margin:6px 0 0;font:400 13px 'Manrope';color:#8a8780"><span style="font-family:'JetBrains Mono';font-weight:600;color:#6b7280">47</span> products <span style="color:#cfcbc3">·</span> <span style="font-family:'JetBrains Mono';font-weight:600;color:#6b7280">128</span> physical units</p>
+        </div>
+        <button style="display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;background:#4f46e5;color:#fff;border:none;border-radius:9px;font:600 13px 'Manrope';cursor:pointer;box-shadow:0 1px 2px rgba(79,70,229,.25)">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M7.5 3v9M3 7.5h9"/></svg>
+          New Product
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="margin-left:2px;opacity:.85"><path d="M3.5 5l3 3 3-3"/></svg>
+        </button>
+      </div>
+
+      <!-- REGION 2: VIEW TOGGLE + FILTER CHIPS -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px">
+        <!-- mode chips -->
+        <div style="display:flex;align-items:center;gap:0;padding:3px;background:#f2f0ec;border-radius:9px;margin-right:6px">
+          <span style="display:inline-flex;align-items:center;height:26px;padding:0 13px;border-radius:7px;background:#4f46e5;color:#fff;font:600 12px 'Manrope';cursor:pointer;box-shadow:0 1px 2px rgba(79,70,229,.25)">Products view</span>
+          <span style="display:inline-flex;align-items:center;height:26px;padding:0 13px;border-radius:7px;color:#6b7280;font:600 12px 'Manrope';cursor:pointer">Assets view</span>
+        </div>
+        <span style="width:1px;height:22px;background:#e4e0d9;margin-right:2px"></span>
+        <!-- filter chips -->
+        <span style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;background:rgba(79,70,229,.1);color:#4f46e5;font:600 12px 'Manrope';cursor:pointer">All Products <span style="font:600 11px 'JetBrains Mono';opacity:.75">(47)</span></span>
+        <span style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;color:#6b7280;font:500 12px 'Manrope';cursor:pointer">Available Now <span style="font:600 11px 'JetBrains Mono';color:#059669">(32)</span></span>
+        <span style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;color:#6b7280;font:500 12px 'Manrope';cursor:pointer">Fully Booked <span style="font:600 11px 'JetBrains Mono';color:#2563eb">(8)</span></span>
+        <span style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;color:#6b7280;font:500 12px 'Manrope';cursor:pointer">Under-utilized <span style="font:600 11px 'JetBrains Mono';color:#d97706">(5)</span></span>
+        <span style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;color:#6b7280;font:500 12px 'Manrope';cursor:pointer">Over-utilized <span style="font:600 11px 'JetBrains Mono';color:#dc2626">(3)</span></span>
+        <span style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;color:#6b7280;font:500 12px 'Manrope';cursor:pointer">In Maintenance <span style="font:600 11px 'JetBrains Mono';color:#d97706">(4)</span></span>
+        <span style="display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:8px;color:#6b7280;font:500 12px 'Manrope';cursor:pointer">Retired</span>
+        <a href="#" style="display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 6px;font:600 12px 'Manrope';color:#4f46e5">+ Saved view</a>
+      </div>
+
+      <!-- REGION 3: FILTER + SEARCH -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+        <div style="flex:1;height:40px;border:1px solid #ece9e3;border-radius:10px;background:#fff;display:flex;align-items:center;gap:10px;padding:0 14px">
+          <svg width="17" height="17" fill="none" stroke="#9ca3af" stroke-width="1.7" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5"/><path d="M11.5 11.5 15.5 15.5"/></svg>
+          <span style="color:#9ca3af;font:400 13px 'Manrope'">Search products / category / brand / SKU…</span>
+        </div>
+        <button style="display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid #e4e0d9;background:#fff;border-radius:10px;color:#26235a;font:600 12px 'Manrope';cursor:pointer">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h10M4.5 7.5h6M6.5 11h2"/></svg>
+          Filters
+          <svg width="12" height="12" fill="none" stroke="#9ca3af" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5l3 3 3-3"/></svg>
+        </button>
+        <button style="width:40px;height:40px;border:1px solid #e4e0d9;background:#fff;border-radius:10px;color:#6b7280;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="18" height="18" fill="currentColor"><circle cx="4" cy="9" r="1.4"/><circle cx="9" cy="9" r="1.4"/><circle cx="14" cy="9" r="1.4"/></svg></button>
+      </div>
+
+      <!-- REGION 4: CONTROL BAR -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font:500 12px 'Manrope';color:#8a8780"><span style="font-family:'JetBrains Mono';font-weight:600;color:#6b7280">47</span> products</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button style="display:flex;align-items:center;gap:7px;height:32px;padding:0 11px;border:1px solid #e4e0d9;background:#fff;border-radius:8px;cursor:pointer"><span style="font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af;text-transform:uppercase">Sort</span><span style="font:600 11px 'Manrope';color:#26235a">Priority</span><svg width="11" height="11" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3 3-3"/></svg></button>
+          <button style="display:flex;align-items:center;gap:7px;height:32px;padding:0 11px;border:1px solid #e4e0d9;background:#fff;border-radius:8px;cursor:pointer"><span style="font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af;text-transform:uppercase">Density</span><svg width="11" height="11" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3 3-3"/></svg></button>
+          <button style="display:flex;align-items:center;gap:7px;height:32px;padding:0 11px;border:1px solid #e4e0d9;background:#fff;border-radius:8px;cursor:pointer"><span style="font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af;text-transform:uppercase">Columns</span><svg width="11" height="11" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3 3-3"/></svg></button>
+          <button style="display:flex;align-items:center;gap:7px;height:32px;padding:0 11px;border:1px solid #e4e0d9;background:#fff;border-radius:8px;cursor:pointer"><span style="font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af;text-transform:uppercase">Export</span><svg width="11" height="11" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4l3 3 3-3"/></svg></button>
+        </div>
+      </div>
+
+      <!-- ============ TABLE ============ -->
+      <div style="border:1px solid #ece9e3;border-radius:14px;overflow:visible;box-shadow:0 1px 3px rgba(32,32,88,.04);background:#fff;position:relative">
+
+        <!-- HEADER ROW -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;background:#faf9f7;border-bottom:1px solid #ece9e3;border-radius:14px 14px 0 0;height:42px;padding-left:4px">
+          <div style="display:flex;justify-content:center"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af">PRODUCT</div>
+          <div style="padding:0 10px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af">SKU</div>
+          <div style="padding:0 10px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af">CATEGORY</div>
+          <div style="padding:0 10px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af;text-align:right">RATE/DAY</div>
+          <div style="padding:0 10px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af">UNITS</div>
+          <div style="padding:0 10px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af">STATUS</div>
+          <div style="padding:0 10px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af">UTILIZATION</div>
+          <div style="padding:0 10px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af;text-align:right">YTD REVENUE</div>
+          <div style="padding:0 10px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af">NEXT ACTION</div>
+          <div style="display:flex;justify-content:center"><svg width="14" height="14" fill="none" stroke="#cfcbc3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2 13 12H1z"/><path d="M7 6v3M7 11v.1"/></svg></div>
+        </div>
+
+        <!-- ROW 1 · Sony FX3 · normal -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;min-height:60px;border-bottom:1px solid #f4f1ec;border-left:4px solid transparent;cursor:pointer" style-hover="background:#faf9f7">
+          <div style="display:flex;justify-content:center;margin-left:-4px"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px"><div style="display:flex;align-items:center;gap:11px"><span style="width:40px;height:40px;border-radius:9px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4.5" width="15" height="11" rx="2"/><circle cx="9.5" cy="10" r="2.6"/><path d="M6 4.5l1.2-1.6h4.6L13 4.5"/></svg></span><div style="min-width:0"><div style="font:600 13px 'Manrope';color:#26235a">Sony FX3</div><div style="font:500 11px 'Manrope';color:#a7a29a;margin-top:1px">Sony</div></div></div></div>
+          <div style="padding:0 10px"><span style="font:500 11.5px 'JetBrains Mono';color:#6b7280">FX3</span></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Camera</span></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#26235a">₹5,500</span></div>
+          <div style="padding:0 10px"><div style="font:500 12px 'Manrope';color:#26235a">3 total</div><div style="font:500 10px 'Manrope';color:#059669;margin-top:2px">2 available</div></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;background:rgba(5,150,105,.1);color:#059669;font:600 9.5px 'JetBrains Mono';letter-spacing:.02em;white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:#059669;flex:none"></span>AVAILABLE</span></div>
+          <div style="padding:0 10px"><div style="font:600 12px 'JetBrains Mono';color:#26235a">72%</div><div style="height:4px;border-radius:3px;background:#f0ede8;margin-top:5px;overflow:hidden"><div style="width:72%;height:100%;background:#4f46e5;border-radius:3px"></div></div></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#202058">₹4,25,000</span></div>
+          <div style="padding:0 10px"><button style="height:30px;padding:0 12px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap">Reserve for order</button></div>
+          <div style="display:flex;justify-content:center"></div>
+        </div>
+
+        <!-- ROW 2 · Sony 24-70 GM · normal -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;min-height:60px;border-bottom:1px solid #f4f1ec;border-left:4px solid transparent;cursor:pointer" style-hover="background:#faf9f7">
+          <div style="display:flex;justify-content:center;margin-left:-4px"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px"><div style="display:flex;align-items:center;gap:11px"><span style="width:40px;height:40px;border-radius:9px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.5" cy="9.5" r="7"/><circle cx="9.5" cy="9.5" r="3.4"/></svg></span><div style="min-width:0"><div style="font:600 13px 'Manrope';color:#26235a">Sony 24-70 GM</div><div style="font:500 11px 'Manrope';color:#a7a29a;margin-top:1px">Sony</div></div></div></div>
+          <div style="padding:0 10px"><span style="font:500 11.5px 'JetBrains Mono';color:#6b7280">2470GM</span></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Lens</span></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#26235a">₹1,800</span></div>
+          <div style="padding:0 10px"><div style="font:500 12px 'Manrope';color:#26235a">2 total</div><div style="font:500 10px 'Manrope';color:#059669;margin-top:2px">1 available</div></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;background:rgba(5,150,105,.1);color:#059669;font:600 9.5px 'JetBrains Mono';letter-spacing:.02em;white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:#059669;flex:none"></span>AVAILABLE</span></div>
+          <div style="padding:0 10px"><div style="font:600 12px 'JetBrains Mono';color:#26235a">85%</div><div style="height:4px;border-radius:3px;background:#f0ede8;margin-top:5px;overflow:hidden"><div style="width:85%;height:100%;background:#4f46e5;border-radius:3px"></div></div></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#202058">₹2,15,000</span></div>
+          <div style="padding:0 10px"><button style="height:30px;padding:0 12px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap">Reserve</button></div>
+          <div style="display:flex;justify-content:center"></div>
+        </div>
+
+        <!-- ROW 3 · Sony 70-200 · over-utilized · red border -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;min-height:60px;border-bottom:1px solid #f4f1ec;border-left:4px solid #dc2626;cursor:pointer" style-hover="background:#faf9f7">
+          <div style="display:flex;justify-content:center;margin-left:-4px"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px"><div style="display:flex;align-items:center;gap:11px"><span style="width:40px;height:40px;border-radius:9px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.5" cy="9.5" r="7"/><circle cx="9.5" cy="9.5" r="3.4"/></svg></span><div style="min-width:0"><div style="font:600 13px 'Manrope';color:#26235a">Sony 70-200</div><div style="font:500 11px 'Manrope';color:#a7a29a;margin-top:1px">Sony</div></div></div></div>
+          <div style="padding:0 10px"><span style="font:500 11.5px 'JetBrains Mono';color:#6b7280">70200</span></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Lens</span></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#26235a">₹2,200</span></div>
+          <div style="padding:0 10px"><div style="font:500 12px 'Manrope';color:#26235a">2 total</div><div style="font:500 10px 'Manrope';color:#dc2626;margin-top:2px">0 available</div></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;background:rgba(37,99,235,.1);color:#2563eb;font:600 9.5px 'JetBrains Mono';letter-spacing:.02em;white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:#2563eb;flex:none"></span>FULLY BOOKED</span></div>
+          <div style="padding:0 10px"><div style="font:600 12px 'JetBrains Mono';color:#dc2626">92%</div><div style="height:4px;border-radius:3px;background:#f0ede8;margin-top:5px;overflow:hidden"><div style="width:92%;height:100%;background:#dc2626;border-radius:3px"></div></div></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#202058">₹3,10,000</span></div>
+          <div style="padding:0 10px"><button style="height:30px;padding:0 12px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap">View schedule</button></div>
+          <div style="display:flex;justify-content:center"><svg width="15" height="15" fill="none" stroke="#dc2626" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 2 14 13H1z"/><path d="M7.5 6.5v3M7.5 11.4v.1"/></svg></div>
+        </div>
+
+        <!-- ROW 4 · DJI RS4 Pro · under-utilized · amber border -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;min-height:60px;border-bottom:1px solid #f4f1ec;border-left:4px solid #d97706;cursor:pointer" style-hover="background:#faf9f7">
+          <div style="display:flex;justify-content:center;margin-left:-4px"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px"><div style="display:flex;align-items:center;gap:11px"><span style="width:40px;height:40px;border-radius:9px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h11M6 5.5V14M13 5.5V14M9.5 5.5V3"/><rect x="4" y="14" width="11" height="2.2" rx="1"/></svg></span><div style="min-width:0"><div style="font:600 13px 'Manrope';color:#26235a">DJI RS4 Pro</div><div style="font:500 11px 'Manrope';color:#a7a29a;margin-top:1px">DJI</div></div></div></div>
+          <div style="padding:0 10px"><span style="font:500 11.5px 'JetBrains Mono';color:#6b7280">RS4-PRO</span></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Grip</span></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#26235a">₹1,500</span></div>
+          <div style="padding:0 10px"><div style="font:500 12px 'Manrope';color:#26235a">1 total</div><div style="font:500 10px 'Manrope';color:#059669;margin-top:2px">1 available</div></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;background:rgba(5,150,105,.1);color:#059669;font:600 9.5px 'JetBrains Mono';letter-spacing:.02em;white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:#059669;flex:none"></span>AVAILABLE</span></div>
+          <div style="padding:0 10px"><div style="font:600 12px 'JetBrains Mono';color:#d97706">18%</div><div style="height:4px;border-radius:3px;background:#f0ede8;margin-top:5px;overflow:hidden"><div style="width:18%;height:100%;background:#d97706;border-radius:3px"></div></div></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#202058">₹42,000</span></div>
+          <div style="padding:0 10px"><button style="height:30px;padding:0 12px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap">Reserve</button></div>
+          <div style="display:flex;justify-content:center"><svg width="15" height="15" fill="none" stroke="#d97706" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 2 14 13H1z"/><path d="M7.5 6.5v3M7.5 11.4v.1"/></svg></div>
+        </div>
+
+        <!-- ROW 5 · Godox VL300 · in maintenance · amber border -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;min-height:60px;border-bottom:1px solid #f4f1ec;border-left:4px solid #d97706;cursor:pointer" style-hover="background:#faf9f7">
+          <div style="display:flex;justify-content:center;margin-left:-4px"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px"><div style="display:flex;align-items:center;gap:11px"><span style="width:40px;height:40px;border-radius:9px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5a5 5 0 0 0-2.6 9.3v2.2h5.2v-2.2A5 5 0 0 0 9.5 2.5z"/><path d="M7.5 16.5h4"/></svg></span><div style="min-width:0"><div style="font:600 13px 'Manrope';color:#26235a">Godox VL300</div><div style="font:500 11px 'Manrope';color:#a7a29a;margin-top:1px">Godox</div></div></div></div>
+          <div style="padding:0 10px"><span style="font:500 11.5px 'JetBrains Mono';color:#6b7280">VL300</span></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Lighting</span></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#26235a">₹800</span></div>
+          <div style="padding:0 10px"><div style="font:500 12px 'Manrope';color:#26235a">4 total</div><div style="font:500 10px 'Manrope';color:#059669;margin-top:2px">3 available</div></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;background:rgba(217,118,6,.1);color:#d97706;font:600 9.5px 'JetBrains Mono';letter-spacing:.02em;white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:#d97706;flex:none"></span>IN MAINTENANCE</span></div>
+          <div style="padding:0 10px"><div style="font:600 12px 'JetBrains Mono';color:#26235a">55%</div><div style="height:4px;border-radius:3px;background:#f0ede8;margin-top:5px;overflow:hidden"><div style="width:55%;height:100%;background:#4f46e5;border-radius:3px"></div></div></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#202058">₹85,000</span></div>
+          <div style="padding:0 10px"><button style="height:30px;padding:0 12px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap">View unit</button></div>
+          <div style="display:flex;justify-content:center"><svg width="15" height="15" fill="none" stroke="#d97706" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 2 14 13H1z"/><path d="M7.5 6.5v3M7.5 11.4v.1"/></svg></div>
+        </div>
+
+        <!-- ROW 6 · Aputure 300X · normal -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;min-height:60px;border-bottom:1px solid #f4f1ec;border-left:4px solid transparent;cursor:pointer" style-hover="background:#faf9f7">
+          <div style="display:flex;justify-content:center;margin-left:-4px"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px"><div style="display:flex;align-items:center;gap:11px"><span style="width:40px;height:40px;border-radius:9px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5a5 5 0 0 0-2.6 9.3v2.2h5.2v-2.2A5 5 0 0 0 9.5 2.5z"/><path d="M7.5 16.5h4"/></svg></span><div style="min-width:0"><div style="font:600 13px 'Manrope';color:#26235a">Aputure 300X</div><div style="font:500 11px 'Manrope';color:#a7a29a;margin-top:1px">Aputure</div></div></div></div>
+          <div style="padding:0 10px"><span style="font:500 11.5px 'JetBrains Mono';color:#6b7280">APT-300X</span></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Lighting</span></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#26235a">₹950</span></div>
+          <div style="padding:0 10px"><div style="font:500 12px 'Manrope';color:#26235a">2 total</div><div style="font:500 10px 'Manrope';color:#059669;margin-top:2px">1 available</div></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;background:rgba(5,150,105,.1);color:#059669;font:600 9.5px 'JetBrains Mono';letter-spacing:.02em;white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:#059669;flex:none"></span>AVAILABLE</span></div>
+          <div style="padding:0 10px"><div style="font:600 12px 'JetBrains Mono';color:#26235a">68%</div><div style="height:4px;border-radius:3px;background:#f0ede8;margin-top:5px;overflow:hidden"><div style="width:68%;height:100%;background:#4f46e5;border-radius:3px"></div></div></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#202058">₹95,000</span></div>
+          <div style="padding:0 10px"><button style="height:30px;padding:0 12px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap">Reserve</button></div>
+          <div style="display:flex;justify-content:center"></div>
+        </div>
+
+        <!-- ROW 7 · Manfrotto Tripod · normal -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;min-height:60px;border-bottom:1px solid #f4f1ec;border-left:4px solid transparent;cursor:pointer" style-hover="background:#faf9f7">
+          <div style="display:flex;justify-content:center;margin-left:-4px"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px"><div style="display:flex;align-items:center;gap:11px"><span style="width:40px;height:40px;border-radius:9px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3v6M9.5 9 4.5 16.5M9.5 9l5 7.5M6.5 12.5h6"/></svg></span><div style="min-width:0"><div style="font:600 13px 'Manrope';color:#26235a">Manfrotto Tripod</div><div style="font:500 11px 'Manrope';color:#a7a29a;margin-top:1px">Manfrotto</div></div></div></div>
+          <div style="padding:0 10px"><span style="font:500 11.5px 'JetBrains Mono';color:#6b7280">TRP-402</span></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Grip</span></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#26235a">₹300</span></div>
+          <div style="padding:0 10px"><div style="font:500 12px 'Manrope';color:#26235a">6 total</div><div style="font:500 10px 'Manrope';color:#059669;margin-top:2px">4 available</div></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;background:rgba(5,150,105,.1);color:#059669;font:600 9.5px 'JetBrains Mono';letter-spacing:.02em;white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:#059669;flex:none"></span>AVAILABLE</span></div>
+          <div style="padding:0 10px"><div style="font:600 12px 'JetBrains Mono';color:#26235a">45%</div><div style="height:4px;border-radius:3px;background:#f0ede8;margin-top:5px;overflow:hidden"><div style="width:45%;height:100%;background:#4f46e5;border-radius:3px"></div></div></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#202058">₹28,000</span></div>
+          <div style="padding:0 10px"><button style="height:30px;padding:0 12px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap">Reserve</button></div>
+          <div style="display:flex;justify-content:center"></div>
+        </div>
+
+        <!-- ROW 8 · Rode NTG5 Mic · under-utilized · amber border -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;min-height:60px;border-bottom:1px solid #f4f1ec;border-left:4px solid #d97706;cursor:pointer" style-hover="background:#faf9f7">
+          <div style="display:flex;justify-content:center;margin-left:-4px"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px"><div style="display:flex;align-items:center;gap:11px"><span style="width:40px;height:40px;border-radius:9px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="5.5" height="9.5" rx="2.75"/><path d="M4.5 9.5a5 5 0 0 0 10 0M9.5 14.5v2.5M7 17h5"/></svg></span><div style="min-width:0"><div style="font:600 13px 'Manrope';color:#26235a">Rode NTG5 Mic</div><div style="font:500 11px 'Manrope';color:#a7a29a;margin-top:1px">Rode</div></div></div></div>
+          <div style="padding:0 10px"><span style="font:500 11.5px 'JetBrains Mono';color:#6b7280">NTG5</span></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Audio</span></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#26235a">₹700</span></div>
+          <div style="padding:0 10px"><div style="font:500 12px 'Manrope';color:#26235a">2 total</div><div style="font:500 10px 'Manrope';color:#059669;margin-top:2px">2 available</div></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;background:rgba(5,150,105,.1);color:#059669;font:600 9.5px 'JetBrains Mono';letter-spacing:.02em;white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:#059669;flex:none"></span>AVAILABLE</span></div>
+          <div style="padding:0 10px"><div style="font:600 12px 'JetBrains Mono';color:#d97706">12%</div><div style="height:4px;border-radius:3px;background:#f0ede8;margin-top:5px;overflow:hidden"><div style="width:12%;height:100%;background:#d97706;border-radius:3px"></div></div></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#202058">₹18,000</span></div>
+          <div style="padding:0 10px"><button style="height:30px;padding:0 12px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap">Reserve</button></div>
+          <div style="display:flex;justify-content:center"><svg width="15" height="15" fill="none" stroke="#d97706" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 2 14 13H1z"/><path d="M7.5 6.5v3M7.5 11.4v.1"/></svg></div>
+        </div>
+
+        <!-- ROW 9 · SmallHD Monitor 703 · normal -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;min-height:60px;border-bottom:1px solid #f4f1ec;border-left:4px solid transparent;cursor:pointer" style-hover="background:#faf9f7">
+          <div style="display:flex;justify-content:center;margin-left:-4px"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px"><div style="display:flex;align-items:center;gap:11px"><span style="width:40px;height:40px;border-radius:9px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="14" height="9" rx="1.5"/><path d="M7 16.5h5M9.5 13v3.5"/></svg></span><div style="min-width:0"><div style="font:600 13px 'Manrope';color:#26235a">SmallHD Monitor 703</div><div style="font:500 11px 'Manrope';color:#a7a29a;margin-top:1px">SmallHD</div></div></div></div>
+          <div style="padding:0 10px"><span style="font:500 11.5px 'JetBrains Mono';color:#6b7280">SHD-703</span></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Camera</span></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#26235a">₹1,200</span></div>
+          <div style="padding:0 10px"><div style="font:500 12px 'Manrope';color:#26235a">1 total</div><div style="font:500 10px 'Manrope';color:#dc2626;margin-top:2px">0 available</div></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;background:rgba(37,99,235,.1);color:#2563eb;font:600 9.5px 'JetBrains Mono';letter-spacing:.02em;white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:#2563eb;flex:none"></span>FULLY BOOKED</span></div>
+          <div style="padding:0 10px"><div style="font:600 12px 'JetBrains Mono';color:#26235a">88%</div><div style="height:4px;border-radius:3px;background:#f0ede8;margin-top:5px;overflow:hidden"><div style="width:88%;height:100%;background:#4f46e5;border-radius:3px"></div></div></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#202058">₹1,10,000</span></div>
+          <div style="padding:0 10px"><button style="height:30px;padding:0 12px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap">View schedule</button></div>
+          <div style="display:flex;justify-content:center"></div>
+        </div>
+
+        <!-- ROW 10 · Sony A7 III · warranty critical · red border -->
+        <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 96px 132px 148px 118px 122px 148px 44px;align-items:center;min-height:60px;border-left:4px solid #dc2626;cursor:pointer" style-hover="background:#faf9f7">
+          <div style="display:flex;justify-content:center;margin-left:-4px"><span style="width:15px;height:15px;border:1.5px solid #cfcbc3;border-radius:4px;display:block"></span></div>
+          <div style="padding:0 10px"><div style="display:flex;align-items:center;gap:11px"><span style="width:40px;height:40px;border-radius:9px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4.5" width="15" height="11" rx="2"/><circle cx="9.5" cy="10" r="2.6"/><path d="M6 4.5l1.2-1.6h4.6L13 4.5"/></svg></span><div style="min-width:0"><div style="font:600 13px 'Manrope';color:#26235a">Sony A7 III</div><div style="font:500 11px 'Manrope';color:#a7a29a;margin-top:1px">Sony</div></div></div></div>
+          <div style="padding:0 10px"><span style="font:500 11.5px 'JetBrains Mono';color:#6b7280">A7III</span></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Camera</span></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#26235a">₹3,500</span></div>
+          <div style="padding:0 10px"><div style="font:500 12px 'Manrope';color:#26235a">2 total</div><div style="font:500 10px 'Manrope';color:#059669;margin-top:2px">2 available</div></div>
+          <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:6px;background:rgba(5,150,105,.1);color:#059669;font:600 9.5px 'JetBrains Mono';letter-spacing:.02em;white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:#059669;flex:none"></span>AVAILABLE</span></div>
+          <div style="padding:0 10px"><div style="font:600 12px 'JetBrains Mono';color:#d97706">8%</div><div style="height:4px;border-radius:3px;background:#f0ede8;margin-top:5px;overflow:hidden"><div style="width:8%;height:100%;background:#d97706;border-radius:3px"></div></div></div>
+          <div style="padding:0 10px;text-align:right"><span style="font:600 12px 'JetBrains Mono';color:#202058">₹15,000</span></div>
+          <div style="padding:0 10px"><button style="height:30px;padding:0 12px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:8px;font:600 11px 'Manrope';cursor:pointer;white-space:nowrap">Reserve</button></div>
+          <div style="display:flex;justify-content:center"><svg width="15" height="15" fill="none" stroke="#dc2626" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 2 14 13H1z"/><path d="M7.5 6.5v3M7.5 11.4v.1"/></svg></div>
+        </div>
+
+        <!-- REGION 7: PAGINATION -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-top:1px solid #ece9e3">
+          <span style="font:500 12px 'Manrope';color:#9ca3af">Showing <span style="font-family:'JetBrains Mono';color:#6b7280">1-10</span> of <span style="font-family:'JetBrains Mono';color:#6b7280">47</span></span>
+          <button style="height:34px;padding:0 16px;border:1px solid #e4e0d9;background:#fff;border-radius:9px;color:#26235a;font:600 12px 'Manrope';cursor:pointer">Load 50 more</button>
+        </div>
+
+        <!-- OVERLAY A: SMART PREVIEW (anchored to Row 3 · Sony 70-200) -->
+        <div style="position:absolute;top:172px;right:-18px;width:380px;z-index:20">
+          <div style="position:absolute;top:34px;left:-42px;width:42px;height:1px;background:#4f46e5;opacity:.5"></div>
+          <div style="position:absolute;top:31px;left:-44px;width:6px;height:6px;border-radius:50%;background:#4f46e5"></div>
+          <div style="background:#fff;border:1px solid #e6e2db;border-radius:14px;box-shadow:0 18px 44px rgba(32,32,88,.16);overflow:hidden">
+            <!-- 1. IDENTITY -->
+            <div style="padding:16px 16px 14px;display:flex;align-items:center;gap:11px;border-bottom:1px solid #f0ede8">
+              <span style="width:42px;height:42px;border-radius:10px;background:#eef0f4;display:flex;align-items:center;justify-content:center;flex:none"><svg width="21" height="21" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="7.5"/><circle cx="10.5" cy="10.5" r="3.6"/></svg></span>
+              <div style="flex:1;min-width:0">
+                <div style="font:600 14px 'Manrope';color:#202058">Sony 70-200</div>
+                <div style="font:400 11px 'Manrope';color:#9ca3af;margin-top:1px">Sony · Lens · SKU 70200</div>
+              </div>
+              <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:rgba(37,99,235,.1);color:#2563eb;font:600 9px 'JetBrains Mono';letter-spacing:.03em"><span style="width:5px;height:5px;border-radius:50%;background:#2563eb"></span>FULLY BOOKED</span>
+            </div>
+            <!-- 2. KEY DATA -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#f0ede8">
+              <div style="background:#fff;padding:11px 14px"><div style="font:600 8px 'JetBrains Mono';letter-spacing:.08em;color:#9ca3af">RATE / DAY</div><div style="font:600 12px 'JetBrains Mono';color:#26235a;margin-top:3px">₹2,200</div></div>
+              <div style="background:#fff;padding:11px 14px"><div style="font:600 8px 'JetBrains Mono';letter-spacing:.08em;color:#9ca3af">UTILIZATION YTD</div><div style="font:600 12px 'JetBrains Mono';color:#dc2626;margin-top:3px">92%</div></div>
+              <div style="background:#fff;padding:11px 14px"><div style="font:600 8px 'JetBrains Mono';letter-spacing:.08em;color:#9ca3af">REVENUE YTD</div><div style="font:600 12px 'JetBrains Mono';color:#202058;margin-top:3px">₹3,10,000</div></div>
+              <div style="background:#fff;padding:11px 14px"><div style="font:600 8px 'JetBrains Mono';letter-spacing:.08em;color:#9ca3af">UNITS</div><div style="font:600 12px 'JetBrains Mono';color:#26235a;margin-top:3px">2 total · <span style="color:#dc2626">0 avail</span></div></div>
+            </div>
+            <!-- 3. TIMELINE -->
+            <div style="padding:14px 16px;border-top:1px solid #f0ede8;display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;align-items:flex-start;gap:10px">
+                <span style="width:14px;height:14px;border-radius:50%;background:#e6f2ec;border:2px solid #059669;flex:none;margin-top:1px"></span>
+                <div><div style="font:600 11px 'Manrope';color:#26235a">Last dispatch · Nov 18</div><div style="font:400 10.5px 'Manrope';color:#9ca3af;margin-top:1px">Studio 8 Films</div></div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:10px">
+                <span style="width:14px;height:14px;border-radius:50%;background:#2563eb;border:3px solid #d3e0fb;flex:none;margin-top:1px"></span>
+                <div><div style="font:600 11px 'Manrope';color:#2563eb">Currently · Both units out</div><div style="font:400 10.5px 'Manrope';color:#9ca3af;margin-top:1px">Fully allocated across 2 orders</div></div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:10px">
+                <span style="width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid #d2cec6;flex:none;margin-top:1px"></span>
+                <div><div style="font:600 11px 'Manrope';color:#26235a">Next available · Nov 26</div><div style="font:400 10.5px 'Manrope';color:#9ca3af;margin-top:1px">6:00 PM</div></div>
+              </div>
+            </div>
+            <!-- 4. ATTENTION -->
+            <div style="padding:0 16px 14px">
+              <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:9px;background:rgba(217,118,6,.08);border:1px solid rgba(217,118,6,.2)">
+                <svg width="14" height="14" fill="none" stroke="#d97706" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M7 1.5 13 12H1z"/><path d="M7 5.5v3.2M7 10.5v.1"/></svg>
+                <span style="font:600 10.5px 'Manrope';color:#b45309">Over-utilized 92% — consider buying more</span>
+              </div>
+            </div>
+            <!-- 5. QUICK ACTIONS -->
+            <div style="padding:12px 16px 16px;border-top:1px solid #f0ede8;display:flex;flex-direction:column;gap:8px">
+              <button style="width:100%;height:36px;background:#4f46e5;color:#fff;border:none;border-radius:9px;font:600 12px 'Manrope';cursor:pointer">Reserve for order</button>
+              <div style="display:flex;gap:8px">
+                <button style="flex:1;height:34px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:9px;font:600 11.5px 'Manrope';cursor:pointer">Adjust price</button>
+                <button style="flex:1;height:34px;background:#fff;color:#26235a;border:1px solid #e4e0d9;border-radius:9px;font:600 11.5px 'Manrope';cursor:pointer">View schedule</button>
+              </div>
+              <a href="#" style="text-align:center;font:600 12px 'Manrope';color:#9ca3af;margin-top:2px">Open Product 360 →</a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ============ OVERLAY B: BULK TOOLBAR VARIANT ============ -->
+      <div style="margin-top:40px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <span style="font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#d97706;background:rgba(217,118,6,.1);padding:4px 9px;border-radius:6px">ALTERNATE STATE · BULK SELECTION MODE</span>
+          <span style="font:400 12px 'Manrope';color:#9ca3af">Replaces the control bar when product rows are checkbox-selected</span>
+        </div>
+        <div style="border:1px solid #ece9e3;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(32,32,88,.04)">
+          <div style="display:flex;align-items:center;gap:12px;height:52px;padding:0 18px;background:rgba(79,70,229,.08);border-left:4px solid #4f46e5;flex-wrap:wrap">
+            <span style="font:600 11px 'JetBrains Mono';letter-spacing:.04em;color:#4f46e5">3 SELECTED</span>
+            <a href="#" style="font:600 11px 'Manrope';color:#6b7280">✕ Clear</a>
+            <span style="width:1px;height:20px;background:#dcd8f0"></span>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <button style="display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #d8d4ee;background:#fff;border-radius:8px;font:600 11px 'Manrope';color:#26235a;cursor:pointer"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 6.5h10M6.5 1.5v10"/></svg>Bulk price update</button>
+              <button style="display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #d8d4ee;background:#fff;border-radius:8px;font:600 11px 'Manrope';color:#26235a;cursor:pointer"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h4l6 6-4 4-6-6z"/><circle cx="4.5" cy="4.5" r="1"/></svg>Update tags</button>
+              <button style="display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #d8d4ee;background:#fff;border-radius:8px;font:600 11px 'Manrope';color:#26235a;cursor:pointer"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="6.5" r="2.4"/><path d="M6.5 1v1.6M6.5 10.4V12M1 6.5h1.6M10.4 6.5H12M2.6 2.6l1.1 1.1M9.3 9.3l1.1 1.1M2.6 10.4l1.1-1.1M9.3 3.7l1.1-1.1"/></svg>Schedule maintenance</button>
+              <button style="display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #d8d4ee;background:#fff;border-radius:8px;font:600 11px 'Manrope';color:#26235a;cursor:pointer"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1.5c2.5 0 4.5 2 4.5 4.4C11 9 6.5 12.5 6.5 12.5S2 9 2 5.9c0-2.4 2-4.4 4.5-4.4z"/><circle cx="6.5" cy="5.8" r="1.5"/></svg>Assign to location</button>
+              <button style="display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #d8d4ee;background:#fff;border-radius:8px;font:600 11px 'Manrope';color:#26235a;cursor:pointer"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="4" height="4" rx=".5"/><rect x="7.5" y="1.5" width="4" height="4" rx=".5"/><rect x="1.5" y="7.5" width="4" height="4" rx=".5"/><path d="M7.5 7.5h1.5v1.5M11.5 7.5v.1M11.5 11v.5M8.5 11.5H9"/></svg>Print QR labels</button>
+              <button style="display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #d8d4ee;background:#fff;border-radius:8px;font:600 11px 'Manrope';color:#26235a;cursor:pointer"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1.5v7M3.5 5.5 6.5 8.5l3-3M1.5 10v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/></svg>Export</button>
+              <button style="width:32px;height:32px;border:1px solid #d8d4ee;background:#fff;border-radius:8px;color:#6b7280;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="15" height="15" fill="currentColor"><circle cx="3.5" cy="7.5" r="1.3"/><circle cx="7.5" cy="7.5" r="1.3"/><circle cx="11.5" cy="7.5" r="1.3"/></svg></button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 148px;align-items:center;height:54px;border-bottom:1px solid #f4f1ec;background:rgba(79,70,229,.03);padding-left:4px">
+            <div style="display:flex;justify-content:center"><span style="width:15px;height:15px;border-radius:4px;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="10" height="10" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 5l2.5 2.5 4.5-5"/></svg></span></div>
+            <div style="padding:0 10px;display:flex;align-items:center;gap:11px"><span style="width:32px;height:32px;border-radius:8px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="16" height="16" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="4" width="13" height="9" rx="1.6"/><circle cx="8" cy="8.5" r="2.2"/></svg></span><span style="font:600 13px 'Manrope';color:#26235a">Sony FX3</span></div>
+            <div style="padding:0 10px;font:500 11.5px 'JetBrains Mono';color:#6b7280">FX3</div>
+            <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Camera</span></div>
+            <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:rgba(5,150,105,.1);color:#059669;font:600 9px 'JetBrains Mono'"><span style="width:5px;height:5px;border-radius:50%;background:#059669"></span>AVAILABLE</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 148px;align-items:center;height:54px;border-bottom:1px solid #f4f1ec;background:rgba(79,70,229,.03);padding-left:4px">
+            <div style="display:flex;justify-content:center"><span style="width:15px;height:15px;border-radius:4px;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="10" height="10" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 5l2.5 2.5 4.5-5"/></svg></span></div>
+            <div style="padding:0 10px;display:flex;align-items:center;gap:11px"><span style="width:32px;height:32px;border-radius:8px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="16" height="16" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.8"/></svg></span><span style="font:600 13px 'Manrope';color:#26235a">Sony 70-200</span></div>
+            <div style="padding:0 10px;font:500 11.5px 'JetBrains Mono';color:#6b7280">70200</div>
+            <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Lens</span></div>
+            <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:rgba(37,99,235,.1);color:#2563eb;font:600 9px 'JetBrains Mono'"><span style="width:5px;height:5px;border-radius:50%;background:#2563eb"></span>FULLY BOOKED</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:40px minmax(210px,1.3fr) 104px 112px 148px;align-items:center;height:54px;background:rgba(79,70,229,.03);padding-left:4px">
+            <div style="display:flex;justify-content:center"><span style="width:15px;height:15px;border-radius:4px;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="10" height="10" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 5l2.5 2.5 4.5-5"/></svg></span></div>
+            <div style="padding:0 10px;display:flex;align-items:center;gap:11px"><span style="width:32px;height:32px;border-radius:8px;background:#eef0f4;display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="16" height="16" fill="none" stroke="#a7a29a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2a4 4 0 0 0-2 7.5V11h4V9.5A4 4 0 0 0 8 2z"/><path d="M6.5 13.5h3"/></svg></span><span style="font:600 13px 'Manrope';color:#26235a">Godox VL300</span></div>
+            <div style="padding:0 10px;font:500 11.5px 'JetBrains Mono';color:#6b7280">VL300</div>
+            <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10px 'Manrope'">Lighting</span></div>
+            <div style="padding:0 10px"><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:rgba(217,118,6,.1);color:#d97706;font:600 9px 'JetBrains Mono'"><span style="width:5px;height:5px;border-radius:50%;background:#d97706"></span>IN MAINTENANCE</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>

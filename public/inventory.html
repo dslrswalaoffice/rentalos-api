@@ -39,6 +39,12 @@
       --border-accent:  #c7cdf5;
       --orange:         #e88020;
       --orange-soft:    #fbeee0;
+      /* Asset List S2 — substrate accent (indigo), matching asset-360 + the
+         inventory_products design comp. Content buttons / active view-chips /
+         util bars use --accent; --orange is retained only for legacy touches. */
+      --accent:         #4f46e5;
+      --accent-hover:   #3f37c9;
+      --accent-soft2:   rgba(79,70,229,.10);
       --focus:          #b9c0ee;
       --ok-solid:       #177a45;
       --ok-soft:        #e8f6ee;
@@ -91,8 +97,8 @@
     .search input { border: none; outline: none; background: transparent; font-family: var(--font-body); font-size: 12.5px; color: var(--ink); flex: 1; min-width: 0; }
     .search input::placeholder { color: var(--muted-soft); }
     .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-    .primary-cta { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; background: var(--orange); color: #fff; border: none; border-radius: 9px; font-family: var(--font-body); font-weight: 600; font-size: 12.5px; cursor: pointer; text-decoration: none; box-shadow: 0 4px 12px -4px rgba(232, 128, 32, 0.5); }
-    .primary-cta:hover { background: #d97517; box-shadow: 0 6px 14px -4px rgba(232, 128, 32, 0.55); }
+    .primary-cta { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; background: var(--accent); color: #fff; border: none; border-radius: 9px; font-family: var(--font-body); font-weight: 600; font-size: 12.5px; cursor: pointer; text-decoration: none; box-shadow: 0 4px 12px -4px rgba(79, 70, 229, 0.5); }
+    .primary-cta:hover { background: var(--accent-hover); box-shadow: 0 6px 14px -4px rgba(79, 70, 229, 0.55); }
 
     .content { padding: 22px 24px 40px; }
 
@@ -105,7 +111,18 @@
     /* Asset List S1 — Products/Assets view toggle + Assets table. */
     .view-toggle { display: inline-flex; gap: 2px; background: var(--surface-2, #f4f2ee); border-radius: 9px; padding: 3px; }
     .vt-btn { border: none; background: transparent; padding: 6px 16px; border-radius: 7px; font: 600 12.5px var(--font-body); color: var(--neutral, #6b7280); cursor: pointer; }
-    .vt-btn.active { background: #fff; color: var(--ink, #202058); box-shadow: 0 1px 2px rgba(32,32,88,.08); }
+    .vt-btn.active { background: var(--accent); color: #fff; box-shadow: 0 1px 2px rgba(79,70,229,.25); }
+    /* Asset List S2 — derived status pill (from unit counts) + attention left-rail
+       on the products table, matching the inventory_products design comp. */
+    .spill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 6px; font: 600 9.5px var(--font-mono); letter-spacing: .02em; white-space: nowrap; }
+    .spill .dot { width: 5px; height: 5px; border-radius: 50%; flex: none; }
+    .spill.available { background: rgba(5,150,105,.1); color: #059669; } .spill.available .dot { background: #059669; }
+    .spill.booked    { background: rgba(37,99,235,.1); color: #2563eb; } .spill.booked .dot { background: #2563eb; }
+    .spill.maint     { background: rgba(217,118,6,.1); color: #d97706; } .spill.maint .dot { background: #d97706; }
+    .spill.none      { background: #f3f4f6; color: #6b7280; } .spill.none .dot { background: #9ca3af; }
+    table.products td.attn-rail { box-shadow: inset 4px 0 0 transparent; }
+    table.products tr.attn-red   td.attn-rail { box-shadow: inset 4px 0 0 #dc2626; }
+    table.products tr.attn-amber td.attn-rail { box-shadow: inset 4px 0 0 #d97706; }
     .asset-table { width: 100%; border-collapse: collapse; }
     .asset-table thead th { text-align: left; font: 600 10px var(--font-mono, monospace); letter-spacing: .06em; text-transform: uppercase; color: #9ca3af; padding: 8px 10px; border-bottom: 1px solid var(--border, #ece9e3); }
     .asset-table tbody td { padding: 10px; border-bottom: 1px solid #f4f1ec; font-size: 13px; vertical-align: middle; }
@@ -1059,6 +1076,7 @@
                 <th>HSN</th>
                 <th style="text-align:right;">Daily rate</th>
                 <th>Units</th>
+                <th>Status</th>
                 <th style="width:44px;"></th>
               </tr>
             </thead>
@@ -1081,15 +1099,28 @@
       if (tm === 'none') return { cls: 'service', label: 'SERVICE' };
       return { cls: 'tracked', label: 'TRACKED' };
     }
+    // Asset List S2 — status pill + attention rail derived purely from the unit
+    // counts the products list returns (no per-product utilization / YTD revenue
+    // in that endpoint — those columns are deferred to a later backend pass).
+    // Service products (tracking 'none') have no physical units, so no status.
+    function productStatus(p) {
+      const tm = p.tracking_method || (p.nature === 'service' ? 'none' : 'serialized');
+      if (tm === 'none') return { cls: 'none', label: 'SERVICE', attn: '' };
+      if ((p.offline_units || 0) > 0) return { cls: 'maint', label: 'IN MAINTENANCE', attn: 'attn-amber' };
+      if ((p.total_units || 0) > 0 && (p.available_units || 0) === 0) return { cls: 'booked', label: 'FULLY BOOKED', attn: 'attn-red' };
+      if ((p.available_units || 0) > 0) return { cls: 'available', label: 'AVAILABLE', attn: '' };
+      return { cls: 'none', label: 'NO STOCK', attn: '' };
+    }
     function rowHtml(p) {
       const availClass = p.available_units === 0 ? 'style="color:var(--bad-strong);"' : '';
       const badge = trackingBadge(p);
+      const st = productStatus(p);
       const thumb = p.image_url
         ? `<img src="${escapeAttr(p.image_url)}" alt="" class="product-thumb" width="40" height="40" loading="lazy" decoding="async" onerror="this.style.display='none'">`
         : `<div class="product-thumb-placeholder">${escapeHtml((p.name || '?').charAt(0).toUpperCase())}</div>`;
       return `
-        <tr data-id="${p.id}">
-          <td class="product-image-cell">${thumb}</td>
+        <tr data-id="${p.id}" class="${st.attn}">
+          <td class="product-image-cell attn-rail">${thumb}</td>
           <td>
             <div class="product-name">${escapeHtml(p.name)}<span class="type-badge type-${badge.cls}">${badge.label}</span>${p.is_kit ? `<span class="kit-badge">KIT · ${p.component_count} item${p.component_count === 1 ? '' : 's'}</span>` : ''}${!p.is_active ? '<span class="archived-badge">archived</span>' : ''}</div>
             <div class="product-sku">${escapeHtml(p.sku)}</div>
@@ -1109,6 +1140,7 @@
             </span>
             ${p.deposit > 0 ? `<div class="rate-sub">${formatINR(p.deposit)} deposit</div>` : ''}
           </td>
+          <td><span class="spill ${st.cls}"><span class="dot"></span>${st.label}</span></td>
           <td>
             <button class="kebab" aria-label="More actions">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
