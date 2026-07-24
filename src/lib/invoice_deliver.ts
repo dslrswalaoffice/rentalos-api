@@ -1,8 +1,9 @@
 // ============================================================================
 // src/lib/invoice_deliver.ts (Slice 6 Session 1) — invoice delivery to customer.
 // ----------------------------------------------------------------------------
-// REUSES the existing notification pipeline (src/lib/notify.ts) — WhatsApp via
-// sendWhatsAppTemplate, email via emitCustomerNotification (SMTP). No new adapter
+// REUSES the existing notification pipeline (src/lib/notify.ts) — BOTH WhatsApp
+// and email go through the one canonical emitCustomerNotification (Slice 10 Q3;
+// WhatsApp was a direct sendWhatsAppTemplate call before). No new adapter
 // interface. Every attempt is logged to invoice_deliveries (channel + status +
 // provider_ref/failure_reason). Fail-open per channel: a channel with no active
 // adapter or no contact records status='failed', reason='provider_not_configured'
@@ -10,7 +11,7 @@
 // ============================================================================
 
 import { sql, query } from '../db.js';
-import { emitCustomerNotification, sendWhatsAppTemplate } from './notify.js';
+import { emitCustomerNotification } from './notify.js';
 
 export type DeliveryChannel = 'whatsapp' | 'email';
 export type DeliveryResult = {
@@ -57,9 +58,18 @@ export async function deliverInvoice(
       if (channel === 'whatsapp') {
         const to = opts.recipientOverride ?? phone;
         if (!to) { await recordDelivery({ workspaceId, invoiceId, channel, recipient: '', status: 'failed', failureReason: 'no_contact_method' }); result.channels.push({ channel, status: 'failed', recipient: null, reason: 'no_contact_method' }); continue; }
-        const send = await sendWhatsAppTemplate(workspaceId, { to, templateName: 'invoice_ready', variables: { '1': inv.invoice_number, '2': pdfUrl } });
-        if (send.status === 'sent') { await recordDelivery({ workspaceId, invoiceId, channel, recipient: to, status: 'sent', providerRef: send.messageId ?? null }); result.channels.push({ channel, status: 'sent', recipient: to, provider_ref: send.messageId ?? null }); result.any_sent = true; }
-        else { const reason = send.status === 'provider_not_configured' ? 'provider_not_configured' : (send.error ?? 'send_failed'); await recordDelivery({ workspaceId, invoiceId, channel, recipient: to, status: 'failed', failureReason: reason }); result.channels.push({ channel, status: 'failed', recipient: to, reason }); }
+        // Slice 10 (Q3): unify the WhatsApp send through emitCustomerNotification
+        // (one canonical pipeline). bypassPolicy mirrors the email branch below —
+        // invoice delivery is a deliberate document send that always attempts.
+        const notif = await emitCustomerNotification({
+          workspaceId, orderId: inv.order_id, personId: inv.customer_id, eventType: 'invoice_ready',
+          message: `Your invoice ${inv.invoice_number} is ready. Download: ${pdfUrl}`,
+          channels: ['whatsapp'], contact: { phone: to }, bypassPolicy: true,
+          whatsapp: { templateName: 'invoice_ready', variables: { '1': inv.invoice_number, '2': pdfUrl } },
+        });
+        const wa = notif.deliveries.find((x) => x.channel === 'whatsapp');
+        if (wa?.status === 'sent') { await recordDelivery({ workspaceId, invoiceId, channel, recipient: to, status: 'sent', providerRef: wa.provider_ref ?? null }); result.channels.push({ channel, status: 'sent', recipient: to, provider_ref: wa.provider_ref ?? null }); result.any_sent = true; }
+        else { const reason = wa?.reason === 'provider_not_configured' || wa?.reason === 'noop_adapter' || wa?.reason === 'no_active_adapter' ? 'provider_not_configured' : (wa?.reason ?? 'send_failed'); await recordDelivery({ workspaceId, invoiceId, channel, recipient: to, status: 'failed', failureReason: reason }); result.channels.push({ channel, status: 'failed', recipient: to, reason }); }
       } else {
         const to = opts.recipientOverride ?? email;
         if (!to) { await recordDelivery({ workspaceId, invoiceId, channel, recipient: '', status: 'failed', failureReason: 'no_contact_method' }); result.channels.push({ channel, status: 'failed', recipient: null, reason: 'no_contact_method' }); continue; }
