@@ -157,6 +157,12 @@ export type AuditEventType =
   | 'invoices.reminder.sent'
   | 'invoices.reminder.failed'
   | 'invoices.reminder.skipped'
+  // Slice 10 — notification policy + review queue + customer preferences.
+  | 'notifications.unsubscribed'
+  | 'notifications.review.approved'
+  | 'notifications.review.rejected'
+  | 'notifications.policy.updated'
+  | 'people.notification_preferences.updated'
   | 'custom_fields.definition_created'
   | 'custom_fields.definition_updated'
   | 'custom_fields.definition_removed'
