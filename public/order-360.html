@@ -1719,7 +1719,7 @@ function cardChanges(){
       for(const x of dmg){
         const tone=DMG_STATUS_TONE[x.status]||'attention';const sv=SEV_TONE[x.severity]||'neutral';
         html+='<div class="item-row"><div class="thumb" style="color:var(--danger)">'+I('warn',18)+'</div><div style="flex:1;min-width:0">'
-          +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="item-name">'+escapeHtml(x.incident_number)+'</span><span class="pill '+toneClass(sv)+'" style="font-size:10px"><span class="pdot"></span>'+escapeHtml(String(x.severity).replace(/_/g,' ').toUpperCase())+'</span></div>'
+          +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="item-name">'+escapeHtml(x.incident_number)+'</span><span class="pill '+toneClass(sv)+'" style="font-size:10px"><span class="pdot"></span>'+escapeHtml(String(x.severity).replace(/_/g,' ').toUpperCase())+'</span>'+(x.reported_by_type==='inspection_at_return'&&x.status==='reported'?'<span class="pill '+toneClass('info')+'" style="font-size:10px"><span class="pdot"></span>AUTO · REVIEW PENDING</span>':'')+'</div>'
           +'<div class="mono" style="font-size:11px;color:var(--neutral);margin-top:3px">'+escapeHtml(titleize(x.incident_type))+(x.operational_decision&&x.operational_decision!=='pending'?' · '+escapeHtml(titleize(x.operational_decision)):'')+(x.requires_approval?' · needs approval':'')+'</div>'
           +'<div class="item-actions"><button class="linkbtn" data-act="dmg-open" data-dmg="'+escapeAttr(x.id)+'">Open</button></div></div>'
           +'<span class="pill '+toneClass(tone)+'"><span class="pdot"></span>'+escapeHtml(String(x.status).replace(/_/g,' ').toUpperCase())+'</span></div>';
@@ -1877,7 +1877,8 @@ async function openDamageModal(itemId,dmgId){
     let inc=null;try{inc=(await api.get('/api/damage-incidents/'+dmgId)).damage_incident;}catch{}
     if(!inc){toast('Could not load incident','err');return;}
     M.kind='damage';M.busy=false;M.data={view:true,inc,step:3,decision:inc.operational_decision||'pending',products:[],replProduct:'',
-      liability:inc.customer_liability||'pending_investigation',resolution:inc.financial_resolution||'pending',deposit:inc.deposit_action||'no_change',finalCost:''};
+      liability:inc.customer_liability||'pending_investigation',resolution:inc.financial_resolution||'pending',deposit:inc.deposit_action||'no_change',finalCost:'',
+      forfeitAmt:inc.deposit_forfeit_amount_paise?String(Math.round(Number(inc.deposit_forfeit_amount_paise)/100)):'',sideEffectAck:false};
     mrender(renderDamageModal());
     try{const r=await api.get('/api/inventory/products');M.data.products=(r.products||[]).filter(p=>!p.is_kit);}catch{}
     if(M.kind==='damage')mrender(renderDamageModal());
@@ -1946,6 +1947,28 @@ function renderDamageModal(){
     +'<div class="m-ft"><button class="m-ghost" '+(d.step>1?'data-dstep="'+(d.step-1)+'"':'data-mclose')+'>'+(d.step>1?'Back':'Cancel')+'</button>'
     +(isLast?'<button class="m-btn danger" data-dsubmit '+(M.busy?'disabled':'')+'>'+(M.busy?'Creating…':'Create Incident')+'</button>':'<button class="m-btn" data-dstep="'+(d.step+1)+'">Next</button>')+'</div>';
 }
+// Slice 11 — compute the money side-effects a resolution save will fire, so the
+// operator confirms before they execute (Item 12 Blocked Action pattern).
+function damageSideEffects(d){
+  const forfeitPaise=(d.deposit==='forfeit_partial'||d.deposit==='forfeit_full')&&d.forfeitAmt?Math.round(Number(d.forfeitAmt)*100):0;
+  const finalPaise=d.finalCost?Math.round(Number(d.finalCost)*100):0;
+  const additional=Math.max(0,finalPaise-forfeitPaise);
+  const liable=d.liability==='yes';
+  return {forfeitPaise:liable?forfeitPaise:0,additional:liable?additional:0,fires:liable&&(forfeitPaise>0||additional>0)};
+}
+function damageNeedsAck(d){return damageSideEffects(d).fires;}
+function damageSideEffectPreview(d){
+  const s=damageSideEffects(d);
+  if(!s.fires)return '';
+  let rows='';
+  if(s.forfeitPaise>0)rows+='<li>Deposit forfeit of <b>'+formatINR(s.forfeitPaise)+'</b> will be executed automatically.</li>';
+  if(s.additional>0)rows+='<li>A damage line of <b>'+formatINR(s.additional)+'</b> will be added to the order invoice.</li>';
+  return '<div style="margin-top:10px;background:#fffbeb;border:1px solid #fcd9a4;border-radius:10px;padding:11px 13px">'
+    +'<div style="font-size:11.5px;font-weight:700;color:#b45309;margin-bottom:6px">ON SAVE, THESE WILL EXECUTE</div>'
+    +'<ul style="margin:0 0 8px 16px;padding:0;font-size:12.5px;color:var(--head);line-height:1.6">'+rows+'</ul>'
+    +'<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--head);cursor:pointer"><input type="checkbox" data-dack '+(d.sideEffectAck?'checked':'')+'> I understand the above actions will execute on save.</label>'
+    +'</div>';
+}
 function renderDamageView(){
   const x=M.data.inc;const d=M.data;
   const canFin=(x.status!=='closed');const canApprove=x.requires_approval;const canClose=(x.status!=='closed'&&!x.requires_approval);
@@ -1960,8 +1983,10 @@ function renderDamageView(){
     +'<select data-f="liability" class="m-select" style="margin-bottom:8px"><option value="">liability…</option>'+selOpts(DMG_LIABILITY,d.liability)+'</select>'
     +'<select data-f="resolution" class="m-select" style="margin-bottom:8px">'+selOpts(DMG_RESOLUTION,d.resolution)+'</select>'
     +'<select data-f="deposit" class="m-select" style="margin-bottom:8px">'+selOpts(DMG_DEPOSIT,d.deposit)+'</select>'
+    +((d.deposit==='forfeit_partial'||d.deposit==='forfeit_full')?'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="mono" style="color:var(--neutral)">₹</span><input data-f="forfeitAmt" class="m-input" style="max-width:180px" placeholder="Deposit forfeit amount" value="'+escapeAttr(d.forfeitAmt)+'"></div>':'')
     +'<div style="display:flex;align-items:center;gap:8px"><span class="mono" style="color:var(--neutral)">₹</span><input data-f="finalCost" class="m-input" style="max-width:180px" placeholder="Final cost" value="'+escapeAttr(d.finalCost)+'"></div>'
-    +(canFin?'<button class="btn btn-tiny btn-primary" style="margin-top:10px" data-dfin>Record resolution</button>':'')
+    +damageSideEffectPreview(d)
+    +(canFin?'<button class="btn btn-tiny btn-primary" style="margin-top:10px" data-dfin '+(damageNeedsAck(d)&&!d.sideEffectAck?'disabled':'')+'>Record resolution</button>':'')
     +'</div>'
     +'<div class="m-ft"><button class="m-ghost" data-mclose>Close</button><div style="display:flex;gap:8px">'
     +(canApprove?'<button class="btn btn-tiny btn-secondary" data-dapprove>Approve</button>':'')
@@ -1995,6 +2020,12 @@ document.addEventListener('input',(e)=>{
   if(M.kind==='substitution'){const f=t.getAttribute&&t.getAttribute('data-f');if(f){M.data[f]=t.value;if(f==='fin'||f==='type'||f==='reason'||f==='replProduct')mrender(renderSubModal(S.items.find(i=>i.id===M.data.itemId)||{}));}}
   else if(M.kind==='damage'){const f=t.getAttribute&&t.getAttribute('data-f');if(f)M.data[f]=t.value;}
 });
+// Re-render the damage VIEW on select/field change so the forfeit input +
+// side-effect preview reflect the current liability / deposit / amounts.
+document.addEventListener('change',(e)=>{
+  const t=e.target;if(!t||!t.getAttribute)return;
+  if(M.kind==='damage'&&M.data.view&&t.getAttribute('data-f'))mrender(renderDamageModal());
+});
 document.addEventListener('click',(e)=>{
   const t=e.target;if(!t.closest)return;
   if(t.closest('[data-mclose]')&&(M.kind==='substitution'||M.kind==='damage')){mclose();return;}
@@ -2004,6 +2035,7 @@ document.addEventListener('click',(e)=>{
   const dtype=t.closest('[data-dtype]');if(dtype){M.data.incidentType=dtype.getAttribute('data-dtype');mrender(renderDamageModal());return;}
   const dsev=t.closest('[data-dsev]');if(dsev){M.data.severity=dsev.getAttribute('data-dsev');mrender(renderDamageModal());return;}
   const ddec=t.closest('[data-ddec]');if(ddec){M.data.decision=ddec.getAttribute('data-ddec');mrender(renderDamageModal());return;}
+  if(t.closest('[data-dack]')){M.data.sideEffectAck=!M.data.sideEffectAck;mrender(renderDamageModal());return;}
   if(t.closest('[data-dsubmit]')){submitDamage();return;}
   if(t.closest('[data-dsave-shoot]')){damageViewAction('save-the-shoot');return;}
   if(t.closest('[data-dfin]')){damageViewAction('financial-resolution');return;}
@@ -2014,7 +2046,15 @@ async function damageViewAction(kind){
   const d=M.data;const id=d.inc.id;
   try{
     if(kind==='save-the-shoot'){const b={operational_decision:d.decision};if(d.decision==='substitute_with_another_unit')b.substitution={original_order_item_id:(d.inc.order_item_id||rentalItems()[0]&&rentalItems()[0].id),replacement_product_id:d.replProduct||undefined,substitution_type:'same_product_swap',timing:'rush_mid_rental'};await api.post('/api/damage-incidents/'+id+'/save-the-shoot',b);toast('Decision applied','ok');}
-    else if(kind==='financial-resolution'){await api.post('/api/damage-incidents/'+id+'/financial-resolution',{customer_liability:d.liability||'pending_investigation',financial_resolution:d.resolution,deposit_action:d.deposit,final_cost_paise:d.finalCost?Math.round(Number(d.finalCost)*100):undefined});toast('Resolution recorded','ok');}
+    else if(kind==='financial-resolution'){
+      if(damageNeedsAck(d)&&!d.sideEffectAck){toast('Please confirm the actions that will execute','err');return;}
+      const s=damageSideEffects(d);
+      const resp=await api.post('/api/damage-incidents/'+id+'/financial-resolution',{customer_liability:d.liability||'pending_investigation',financial_resolution:d.resolution,deposit_action:d.deposit,final_cost_paise:d.finalCost?Math.round(Number(d.finalCost)*100):undefined,deposit_forfeit_amount_paise:s.forfeitPaise||undefined});
+      const se=resp&&resp.side_effects;
+      let msg='Resolution recorded';
+      if(se){const bits=[];if(se.deposit_forfeit_payment_id)bits.push('deposit forfeit executed');if(se.damage_line_paise>0)bits.push('damage added to invoice');if(se.asset_effects&&se.asset_effects.length)bits.push(se.asset_effects.length+' asset action(s)');if(bits.length)msg+=' · '+bits.join(' · ');}
+      toast(msg,'ok');
+    }
     else if(kind==='approve'){await api.post('/api/damage-incidents/'+id+'/approve',{});toast('Approved','ok');}
     else if(kind==='close'){await api.post('/api/damage-incidents/'+id+'/close',{});toast('Incident closed','ok');}
     mclose();await load();

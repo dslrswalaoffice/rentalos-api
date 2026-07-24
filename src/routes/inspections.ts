@@ -34,6 +34,7 @@ import { emitNotification } from '../lib/notify.js';
 import { commitReturnToPhysicalState, releaseInspectionHolds } from '../lib/return_commit.js';
 import { commitOrderToClosedState } from '../lib/order_close.js';
 import { triggerDepositAutoRelease, autoReleaseEnabled, type AutoReleaseResult } from '../lib/deposit_lifecycle.js';
+import { triggerDamageIncidentFromInspection } from '../lib/damage_lifecycle.js';
 
 type SessionVar = { sessionId: string; user: SessionUser; workspace: SessionWorkspace } | null;
 type Env = { Variables: { session: SessionVar } };
@@ -203,6 +204,26 @@ inspections.post('/:inspectionId/complete', requirePermission('inspections.perfo
     WHERE id = ${insp.id}::uuid AND workspace_id = ${workspaceId}::uuid
   `;
 
+  // Slice 11 (Q1): a fail_major inspection auto-opens a damage incident when the
+  // workspace opts in (damage_policy.auto_create_from_inspection, default true).
+  // Reuses the canonical createDamageIncident path (via damage_lifecycle) so the
+  // incident, per-asset row, timeline, and notifications all flow the one way.
+  // FAIL-SOFT + idempotent: an error (or a retry) never blocks inspection completion.
+  let autoDamage: { incident_id: string; incident_number: string; deduped: boolean } | null = null;
+  if (triggersDamage && (wsRows[0]?.settings?.damage_policy?.auto_create_from_inspection !== false)) {
+    try {
+      const su = session.user as { display_name?: string; email?: string };
+      const r = await triggerDamageIncidentFromInspection({
+        workspaceId, orderId: insp.order_id, orderItemId: insp.order_item_id, assetId: null,
+        actorUserId: session.user.id, actorName: su.display_name ?? su.email ?? 'Operator',
+        ip: ipAddress, userAgent,
+      });
+      if (r.ok && r.incident) autoDamage = { incident_id: r.incident.id, incident_number: r.incident.incident_number, deduped: r.deduped === true };
+    } catch (e) {
+      console.error('[inspections] auto damage-incident creation failed', e);
+    }
+  }
+
   // Deposit (Slice 7 S2): when the workspace opts in — deposit_policy.
   // auto_release_on_inspection_pass, with a legacy dispatch_return_policy fallback
   // during the deprecation window — the deposit release is INITIATED here as a
@@ -237,7 +258,7 @@ inspections.post('/:inspectionId/complete', requirePermission('inspections.perfo
     workspaceId, orderId: insp.order_id, actorUserId: session.user.id,
     timelineType: result === 'pass' ? 'order.inspection.passed' : result === 'fail_minor' ? 'order.inspection.fail_minor' : 'order.inspection.fail_major',
     auditType: 'inspections.completed',
-    payload: { inspection_id: insp.id, inspection_number: insp.inspection_number, order_item_id: insp.order_item_id, result, dispositions, deposit_action: depositAction, auto_release_payment_id: autoRelease?.payment_id ?? null, auto_release_amount_paise: autoRelease?.amount_paise ?? null, triggers_damage: triggersDamage, needs_owner_review: result === 'fail_minor' },
+    payload: { inspection_id: insp.id, inspection_number: insp.inspection_number, order_item_id: insp.order_item_id, result, dispositions, deposit_action: depositAction, auto_release_payment_id: autoRelease?.payment_id ?? null, auto_release_amount_paise: autoRelease?.amount_paise ?? null, triggers_damage: triggersDamage, auto_damage_incident_id: autoDamage?.incident_id ?? null, needs_owner_review: result === 'fail_minor' },
     ip: ipAddress, ua: userAgent,
   });
 
@@ -270,6 +291,7 @@ inspections.post('/:inspectionId/complete', requirePermission('inspections.perfo
     status: result, inspection_id: insp.id, result,
     dispositions, deposit_ready_to_release: depositReadyToRelease, deposit_action: depositAction,
     triggers_damage: triggersDamage, needs_owner_review: result === 'fail_minor',
+    auto_damage: autoDamage,
     auto_close: autoClose,
   }, 200);
 });
