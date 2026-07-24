@@ -430,6 +430,19 @@
           </label>
           <div class="category-chips" id="category-chips"></div>
         </div>
+        <!-- Product analytics — utilization filter chips + metric sort (Products view). -->
+        <div class="content-head" id="metric-controls-row" style="padding-top:0;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="category-chips" id="util-chips"></div>
+          <label style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);">Sort
+            <select id="product-sort" class="av-filter">
+              <option value="category_name">Category</option>
+              <option value="utilization_desc">Utilization ↓</option>
+              <option value="utilization_asc">Utilization ↑</option>
+              <option value="ytd_revenue_desc">YTD revenue ↓</option>
+              <option value="ytd_revenue_asc">YTD revenue ↑</option>
+            </select>
+          </label>
+        </div>
         <!-- Sub-turn 11 — capital / idle-capital + bulk cost entry (owner/manager). -->
         <div class="content-head" id="capital-bar" hidden style="padding-top:0;align-items:center;">
           <div class="sub" id="idle-capital-line" style="margin-left:0;"></div>
@@ -1022,6 +1035,10 @@
     let categoryCounts = {};
     let activeCategory = null;
     let currentSearch = '';
+    // Product analytics (utilization + YTD revenue) filter/sort state.
+    let activeUtilRange = null;      // null | 'under_20' | '20_to_80' | 'over_80'
+    let productSort = 'category_name';
+    let utilizationCounts = { under_20: 0, band_20_80: 0, over_80: 0, no_data: 0 };
     // Sub-turn 6i — locations. The filter row + Location column only appear when
     // the workspace has more than one active location (single-location: invisible).
     let locationsList = [];
@@ -1100,16 +1117,40 @@
       if (activeCategory) params.set('category', activeCategory);
       if (activeLocation) params.set('location_id', activeLocation);
       for (const id of activeTagFilter) params.append('tag_ids', id);
+      if (activeUtilRange) params.set('utilization_range', activeUtilRange);
+      if (productSort && productSort !== 'category_name') params.set('sort', productSort);
       const url = '/api/inventory/products' + (params.toString() ? '?' + params : '');
-      const { products, by_category, total, limit } = await api.get(url);
+      const { products, by_category, total, limit, utilization_counts } = await api.get(url);
       allProducts = products;
       listTotal = Number.isFinite(total) ? total : products.length;
       listLimit = Number.isFinite(limit) ? limit : listLimit;
+      if (utilization_counts) utilizationCounts = utilization_counts;
       // Only refresh chips when there's no active filter (so chip counts stay stable while filtering)
       if (!activeCategory && !currentSearch) categoryCounts = by_category || {};
       renderList();
       renderChips();
+      renderUtilChips();
       renderSummary();
+    }
+
+    // Utilization filter chips (All / Under-utilized / Over-utilized) with live
+    // counts from the response. Utilization is operational, so these are visible
+    // to every role (unlike YTD revenue, which the server cost-redacts).
+    function renderUtilChips() {
+      const wrap = document.getElementById('util-chips');
+      if (!wrap) return;
+      const c = utilizationCounts || {};
+      const chip = (range, label, count, color) =>
+        `<button class="cat-chip ${activeUtilRange === range ? 'active' : ''}" data-range="${range}">${label}${count != null ? ` <span class="n" style="color:${color || 'inherit'};">${count}</span>` : ''}</button>`;
+      wrap.innerHTML =
+        `<button class="cat-chip ${activeUtilRange === null ? 'active' : ''}" data-range="">All</button>` +
+        chip('under_20', 'Under-utilized', c.under_20 ?? 0, '#d97706') +
+        chip('over_80', 'Over-utilized', c.over_80 ?? 0, '#dc2626');
+      wrap.querySelectorAll('.cat-chip').forEach(btn => btn.addEventListener('click', () => {
+        const r = btn.getAttribute('data-range');
+        activeUtilRange = r || null;
+        loadProducts();
+      }));
     }
 
     function renderList() {
@@ -1134,6 +1175,8 @@
                 <th style="text-align:right;">Daily rate</th>
                 <th>Units</th>
                 <th>Status</th>
+                <th style="text-align:right;">Utilization</th>
+                <th style="text-align:right;">YTD revenue</th>
                 <th style="width:44px;"></th>
               </tr>
             </thead>
@@ -1156,10 +1199,10 @@
       if (tm === 'none') return { cls: 'service', label: 'SERVICE' };
       return { cls: 'tracked', label: 'TRACKED' };
     }
-    // Asset List S2 — status pill + attention rail derived purely from the unit
-    // counts the products list returns (no per-product utilization / YTD revenue
-    // in that endpoint — those columns are deferred to a later backend pass).
-    // Service products (tracking 'none') have no physical units, so no status.
+    // Status pill + attention rail. The rail now blends the physical-count status
+    // (from unit counts) with the response's attention_flags (utilization +
+    // open damage) — red = fully-booked / over-utilized / open damage; amber =
+    // in-maintenance / under-utilized. Service products have no physical units.
     function productStatus(p) {
       const tm = p.tracking_method || (p.nature === 'service' ? 'none' : 'serialized');
       if (tm === 'none') return { cls: 'none', label: 'SERVICE', attn: '' };
@@ -1172,11 +1215,27 @@
       const availClass = p.available_units === 0 ? 'style="color:var(--bad-strong);"' : '';
       const badge = trackingBadge(p);
       const st = productStatus(p);
+      // Merge unit-count status with the response's utilization / damage flags.
+      const af = p.attention_flags || {};
+      const red = st.cls === 'booked' || af.has_open_damage_on_any_asset || af.utilization_over_80;
+      const amber = !red && (st.cls === 'maint' || af.utilization_under_20);
+      const attnClass = red ? 'attn-red' : amber ? 'attn-amber' : '';
+      // Utilization: bar + %, colour-coded (over 80 red, under 20 amber). Kit /
+      // zero-capacity products return null → "—".
+      const u = p.utilization_percent;
+      const uColor = u == null ? '' : (u > 80 ? '#dc2626' : u < 20 ? '#d97706' : 'var(--accent)');
+      const utilCell = (u == null)
+        ? '<span style="color:var(--muted-soft);">—</span>'
+        : `<div style="display:inline-flex;align-items:center;gap:7px;justify-content:flex-end;"><span class="util-bar"><span style="width:${Math.min(100, u)}%;background:${uColor};"></span></span><span class="rate" style="color:${u > 80 ? '#dc2626' : u < 20 ? '#d97706' : 'var(--ink)'};">${u}%</span></div>`;
+      // YTD revenue: null = cost-redacted (not authorized) → "—"; 0 renders "₹0".
+      const ytdCell = (p.ytd_revenue_paise == null)
+        ? '<span style="color:var(--muted-soft);">—</span>'
+        : `<span class="rate">${formatINR(p.ytd_revenue_paise)}</span>`;
       const thumb = p.image_url
         ? `<img src="${escapeAttr(p.image_url)}" alt="" class="product-thumb" width="40" height="40" loading="lazy" decoding="async" onerror="this.style.display='none'">`
         : `<div class="product-thumb-placeholder">${escapeHtml((p.name || '?').charAt(0).toUpperCase())}</div>`;
       return `
-        <tr data-id="${p.id}" class="${st.attn}">
+        <tr data-id="${p.id}" class="${attnClass}">
           <td class="product-image-cell attn-rail">${thumb}</td>
           <td>
             <div class="product-name">${escapeHtml(p.name)}<span class="type-badge type-${badge.cls}">${badge.label}</span>${p.is_kit ? `<span class="kit-badge">KIT · ${p.component_count} item${p.component_count === 1 ? '' : 's'}</span>` : ''}${!p.is_active ? '<span class="archived-badge">archived</span>' : ''}</div>
@@ -1198,6 +1257,8 @@
             ${p.deposit > 0 ? `<div class="rate-sub">${formatINR(p.deposit)} deposit</div>` : ''}
           </td>
           <td><span class="spill ${st.cls}"><span class="dot"></span>${st.label}</span></td>
+          <td style="text-align:right;">${utilCell}</td>
+          <td style="text-align:right;">${ytdCell}</td>
           <td>
             <button class="kebab" aria-label="More actions">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
@@ -1438,6 +1499,12 @@
         currentSearch = e.target.value.trim();
         loadProducts();
       }, 200);
+    });
+    // Metric sort (utilization / YTD revenue). Revenue sorts are server-enforced —
+    // a member without inventory.costs silently falls back to category order.
+    document.getElementById('product-sort').addEventListener('change', (e) => {
+      productSort = e.target.value || 'category_name';
+      loadProducts();
     });
 
     // ---------- edit product (Sub-turn 5c-1) ----------
@@ -2964,6 +3031,7 @@
       document.getElementById('assets-wrap').style.display = assets ? '' : 'none';
       // Product-only chrome hides in Assets view.
       document.getElementById('category-chips').closest('.content-head').style.display = assets ? 'none' : '';
+      document.getElementById('metric-controls-row').style.display = assets ? 'none' : '';
       for (const id of PRODUCT_ONLY_ROWS) { const el = document.getElementById(id); if (el && !assets) { /* let their own logic manage */ } else if (el) el.style.display = 'none'; }
       try { localStorage.setItem('inventory_view', view); } catch {}
       if (assets && !AV.loaded) { populateAssetCategoryLocation(); loadAssets(); }

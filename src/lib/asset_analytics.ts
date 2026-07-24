@@ -48,7 +48,10 @@ export async function computeAssetMetricsBatch(
         AND oi.item_type = 'rental'
         AND o.status::text IN ('dispatched', 'active', 'returned', 'closed')
         AND oa.dispatched_at IS NOT NULL
-        AND oa.dispatched_at >= date_trunc('year', now())
+        -- YTD boundary in Asia/Kolkata (the workspace operating tz), not UTC —
+        -- a UTC year boundary skews the window ~5.5h at the edges. (Locked to
+        -- Asia/Kolkata; should read workspaces.timezone when multi-tenant matures.)
+        AND oa.dispatched_at >= (date_trunc('year', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata')
       GROUP BY oa.asset_id
     `);
     // Utilization: unit-days out clipped to the trailing window / window days.
