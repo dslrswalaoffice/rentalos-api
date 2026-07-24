@@ -11,56 +11,69 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f46e5'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
   <!--
-    Asset List S2 — Asset 360 (per-unit workspace). Consumes the PR #133 endpoint
-    GET /api/inventory/assets/:id. Adapts the approved person-360 warm-cream card
-    pattern (DRY). NOTE: built freehand against person-360 — the Asset_360 design
-    substrate was not available in this environment, so this is NOT claimed as
-    substrate-accurate; a substrate re-skin can follow when the file lands.
+    Asset List S2 — Asset 360 (per-unit workspace), re-skinned to the
+    Asset_360_-_FX3-002 substrate (docs/design-substrate/sprint-1/asset_360_dc.html):
+    warm palette, collapsible cards (dot + Space Grotesk title + Mono meta + chevron),
+    2-col uppercase-label detail grids, KPI tiles. Consumes GET /api/inventory/
+    assets/:id (PR #133). Canonical shell.js rail/top-bar kept for app consistency
+    (like person-360), so the substrate's bespoke dark rail is intentionally not
+    reproduced. Warranty / maintenance-schedule / monthly sparkline have no schema
+    yet (Session 1 deferral) — rendered as honest stubs, never fabricated.
   -->
   <style>
     :root{
-      --ink:#202058; --head:#26235a; --muted:#8a8780; --muted2:#9ca3af; --muted3:#6b7280; --sub:#6c6c82;
-      --indigo:#4f46e5; --indigo-soft:rgba(79,70,229,.1); --green:#059669; --amber:#d97706; --red:#dc2626;
-      --page:#f4f2ee; --card:#ffffff; --rail:#faf9f7; --line:#ece9e3; --line2:#f4f1ec; --field:#faf9f7;
+      --ink:#202058; --head:#26235a; --sub:#6c6c82; --muted:#8b8ba0; --muted2:#a0a0b4;
+      --indigo:#4f46e5; --indigo-h:#3f37c9; --blue:#2563eb; --green:#059669; --amber:#d97706; --amber-d:#b6730f; --red:#dc2626;
+      --page:#f4f4f8; --card:#ffffff; --line:#e8e8f0; --line2:#eeeef3; --field:#fbfbfe;
       --disp:'Space Grotesk',system-ui,sans-serif; --body:'Manrope',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
     }
     *{box-sizing:border-box}
     body{margin:0;background:var(--page);font-family:var(--body);color:var(--head);-webkit-font-smoothing:antialiased}
-    a{color:var(--indigo);text-decoration:none} a:hover{text-decoration:underline}
+    a{color:var(--indigo);text-decoration:none} a:hover{color:var(--indigo-h)}
     .shell{width:100%;max-width:1440px;margin:0 auto;display:flex;background:var(--card);min-height:100vh;position:relative}
-    main{flex:1;min-width:0;display:flex;flex-direction:column}
-    .subnav{height:44px;flex:none;border-bottom:1px solid #f0ede8;display:flex;align-items:center;gap:14px;padding:0 24px;position:sticky;top:0;background:var(--card);z-index:39}
-    .crumb{font:600 11px var(--mono);letter-spacing:.04em;color:var(--muted2);display:flex;align-items:center;gap:7px}
-    .crumb .cur{color:var(--head)}
-    .pstrip{background:var(--card);border-bottom:1px solid var(--line);padding:16px 24px;display:flex;align-items:center;gap:14px}
-    .pav-lg{width:52px;height:52px;border-radius:13px;background:#eef0f4;display:flex;align-items:center;justify-content:center;flex:none;overflow:hidden}
-    .pav-lg img{width:100%;height:100%;object-fit:cover}
-    .pav-lg span{font:600 15px var(--mono);color:var(--ink)}
-    .pname-lg{font:600 22px var(--disp);color:var(--ink);letter-spacing:-.01em;font-family:var(--mono)}
-    .psub{font:400 13px var(--body);color:var(--sub)}
-    .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:7px;font:600 10px var(--mono);letter-spacing:.03em}
-    .pill .dot{width:6px;height:6px;border-radius:50%}
-    .pill.success{color:var(--green);background:rgba(5,150,105,.1)} .pill.indigo{color:var(--indigo);background:var(--indigo-soft)} .pill.neutral{color:var(--muted3);background:#f3f4f6}
-    .pill.amber{color:var(--amber);background:rgba(217,119,6,.12)} .pill.red{color:var(--red);background:rgba(220,38,38,.1)}
-    .content{flex:1;padding:20px 24px 48px}
-    .grid{display:flex;gap:16px;align-items:flex-start}
+    main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--page)}
+    .subnav{height:46px;flex:none;background:var(--card);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 26px;position:sticky;top:0;z-index:39}
+    .subnav a{display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px}
+    .crumb{font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;gap:7px;align-items:center}
+    .crumb .cur{color:var(--head);font-weight:600}
+    /* sticky asset strip */
+    .strip{background:var(--card);border-bottom:1px solid var(--line);padding:18px 26px;position:sticky;top:46px;z-index:38;box-shadow:0 4px 14px rgba(32,32,88,.03);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+    .thumb{width:64px;height:64px;border-radius:14px;background:#eef0f4;border:1px solid #e6e6ef;display:flex;align-items:center;justify-content:center;flex:none;overflow:hidden;color:var(--muted)}
+    .thumb img{width:100%;height:100%;object-fit:cover}
+    .thumb span{font:600 17px var(--mono);color:var(--ink)}
+    .aname{font:600 22px var(--disp);color:var(--ink);letter-spacing:-.4px}
+    .ameta{font:400 11.5px var(--mono);color:var(--muted);margin-top:3px}
+    .spill{display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:20px;font:600 11px var(--mono);letter-spacing:.3px}
+    .spill .ring{width:8px;height:8px;border-radius:50%}
+    .spill.out{background:#eaf1fe;border:1px solid #cfe0fc;color:var(--blue)} .spill.out .ring{background:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+    .spill.available{background:#e7f6ee;border:1px solid #c7ecd6;color:var(--green)} .spill.available .ring{background:var(--green)}
+    .spill.retired{background:#f3f3f7;border:1px solid #e4e4ec;color:var(--sub)} .spill.retired .ring{background:var(--sub)}
+    .ratechip{font:600 13px var(--mono);color:var(--head);background:var(--page);border:1px solid var(--line);padding:6px 12px;border-radius:20px}
+    .abtn{display:flex;align-items:center;gap:7px;background:#fff;color:var(--head);border:1px solid #e0e0ea;padding:9px 14px;border-radius:10px;font:600 13px var(--body);cursor:pointer}
+    .abtn:hover{background:var(--page)} .abtn.danger{color:var(--red);border-color:#f2c9c9}
+    .content{flex:1;padding:24px 26px 60px}
+    .grid{display:flex;gap:22px;align-items:flex-start}
     .maincol{flex:0 0 63%;max-width:63%;display:flex;flex-direction:column;gap:16px;min-width:0}
-    .sidecol{flex:1;min-width:0;display:flex;flex-direction:column;gap:16px;position:sticky;top:60px}
-    .card{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden}
-    .chead{display:flex;align-items:center;gap:9px;padding:13px 18px;border-bottom:1px solid var(--line2)}
-    .cdot{width:8px;height:8px;border-radius:50%}
-    .ctitle{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted3)}
-    .ccount{margin-left:auto;font:600 11px var(--mono);color:var(--muted2)}
-    .cbody{padding:16px 18px}
-    .kv{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 20px}
-    .kv .k{font:600 10px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--muted2);margin-bottom:3px}
-    .kv .v{font:500 13.5px var(--body);color:var(--head)}
+    .sidecol{flex:1;min-width:0;display:flex;flex-direction:column;gap:16px;position:sticky;top:120px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);overflow:hidden}
+    .card.amber{border-color:#f4e2c0}
+    .chead{display:flex;align-items:center;gap:12px;padding:17px 22px;cursor:pointer}
+    .cdot{width:9px;height:9px;border-radius:50%;flex:none}
+    .ctitle{font:600 15px var(--disp);color:var(--head)}
+    .cmeta{margin-left:auto;font:400 11px var(--mono);color:var(--muted)}
+    .chev{color:var(--muted2);font-size:12px}
+    .cbody{padding:2px 22px 22px}
+    .card.collapsed .cbody{display:none}
+    .kv{display:grid;grid-template-columns:1fr 1fr;gap:16px 26px}
+    .kv .k{font:600 10.5px var(--body);text-transform:uppercase;letter-spacing:.5px;color:var(--muted2);margin-bottom:4px}
+    .kv .v{font:500 13px var(--body);color:var(--head)}
     .kv .v.mono{font-family:var(--mono)}
-    .metric-row{display:flex;gap:12px;flex-wrap:wrap}
-    .metric{flex:1;min-width:120px;background:var(--field);border:1px solid var(--line2);border-radius:11px;padding:12px 14px}
-    .metric .m-k{font:600 10px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--muted2)}
-    .metric .m-v{font:600 19px var(--mono);color:var(--ink);margin-top:4px}
-    .ubar{height:6px;border-radius:3px;background:#eceaf3;overflow:hidden;margin-top:8px}
+    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .kpi{border:1px solid var(--line2);border-radius:12px;padding:14px 15px;background:var(--field)}
+    .kpi .kl{font:600 9.5px var(--body);text-transform:uppercase;letter-spacing:.6px;color:var(--muted2)}
+    .kpi .kvv{font:600 20px var(--mono);color:var(--ink);margin-top:8px}
+    .kpi .ks{font:500 10.5px var(--mono);color:var(--muted);margin-top:5px}
+    .ubar{height:5px;border-radius:3px;background:#eceaf3;overflow:hidden;margin-top:8px}
     .ubar>span{display:block;height:100%;background:var(--indigo)}
     table{width:100%;border-collapse:collapse}
     thead th{text-align:left;font:600 10px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted2);padding:7px 8px;border-bottom:1px solid var(--line2)}
@@ -68,36 +81,42 @@
     tbody tr:last-child td{border-bottom:none}
     .mono{font-family:var(--mono)}
     .stub{color:var(--muted2);font-size:12.5px;padding:6px 0}
-    .scard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px}
-    .scard .stitle{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted3);margin-bottom:12px}
-    .srow{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px}
+    .minipill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;font:600 9.5px var(--mono);letter-spacing:.02em}
+    .minipill .d{width:6px;height:6px;border-radius:50%}
+    .minipill.red{background:rgba(220,38,38,.1);color:var(--red)} .minipill.amber{background:rgba(217,119,6,.12);color:var(--amber)} .minipill.green{background:#e7f6ee;color:var(--green)}
+    .scard{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(32,32,88,.04);padding:18px 20px}
+    .stitle{font:600 10px var(--mono);letter-spacing:.7px;text-transform:uppercase;color:var(--muted2);margin-bottom:12px}
+    .srow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line2);font-size:12.5px}
     .srow:first-of-type{border-top:none}
-    .srow .sk{color:var(--muted3)} .srow .sv{font-family:var(--mono);color:var(--head);font-weight:600}
-    .actbtn{width:100%;height:38px;border-radius:10px;border:1px solid #e4e0d9;background:#fff;color:var(--head);font:600 13px var(--body);cursor:pointer;margin-top:8px}
-    .actbtn:hover{background:var(--field)} .actbtn.danger{color:var(--red);border-color:#f2c9c9}
-    .tl{display:flex;flex-direction:column;gap:0}
-    .tlrow{display:flex;gap:11px;padding:9px 0;border-top:1px solid var(--line2)}
+    .srow .sk{color:var(--sub)} .srow .sv{font-family:var(--mono);color:var(--head);font-weight:600}
+    .actbtn{width:100%;height:38px;border-radius:10px;border:1px solid #e0e0ea;background:#fff;color:var(--head);font:600 13px var(--body);cursor:pointer;margin-top:8px}
+    .actbtn:hover{background:var(--page)} .actbtn.danger{color:var(--red);border-color:#f2c9c9}
+    .tl{display:flex;flex-direction:column}
+    .tlrow{display:flex;gap:11px;padding:10px 0;border-top:1px solid var(--line2)}
     .tlrow:first-child{border-top:none}
     .tldot{width:9px;height:9px;border-radius:50%;margin-top:4px;flex:none;background:var(--muted2)}
     .tldot.dispatched{background:var(--indigo)} .tldot.returned{background:var(--green)} .tldot.damage{background:var(--red)} .tldot.downtime{background:var(--amber)}
-    .loading,.errbox{padding:60px 24px;text-align:center;color:var(--muted)}
-    @media(max-width:900px){.grid{flex-direction:column}.maincol,.sidecol{max-width:100%;flex:1;position:static}}
+    .loading,.errbox{padding:60px 26px;text-align:center;color:var(--muted)}
+    @media(max-width:980px){.grid{flex-direction:column}.maincol,.sidecol{max-width:100%;flex:1;position:static}.kpis{grid-template-columns:repeat(2,1fr)}}
   </style>
 </head>
 <body>
   <div class="shell">
     <!-- Rail + top-bar injected by /_lib/shell.js -->
     <main>
-      <div class="subnav"><span class="crumb"><a href="/inventory.html">Assets</a> ›&nbsp;<span class="cur" id="crumb-code">…</span></span></div>
+      <div class="subnav">
+        <a href="/inventory.html"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 3 8l5 5M3 8h10"/></svg>Back to Inventory</a>
+        <span style="color:#d0d0dc">|</span>
+        <span class="crumb"><span>Inventory</span><span style="color:#c8c8d4">›</span><span>Assets</span><span style="color:#c8c8d4">›</span><span class="cur" id="crumb-code">…</span></span>
+      </div>
       <div id="loading" class="loading">Loading asset…</div>
       <div id="error" class="errbox" style="display:none"></div>
-      <div id="pstrip" class="pstrip" style="display:none">
-        <div class="pav-lg" id="ps-thumb"><span id="ps-init">?</span></div>
-        <div style="min-width:0">
-          <div class="pname-lg" id="ps-code">—</div>
-          <div class="psub" id="ps-sub">—</div>
-        </div>
-        <div style="margin-left:auto;display:flex;align-items:center;gap:10px" id="ps-status"></div>
+      <div id="strip" class="strip" style="display:none">
+        <div class="thumb" id="ps-thumb"><span id="ps-init">?</span></div>
+        <div style="min-width:0"><div class="aname" id="ps-name">—</div><div class="ameta" id="ps-meta">—</div></div>
+        <div id="ps-status"></div>
+        <div class="ratechip" id="ps-rate" style="display:none"></div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:10px" id="ps-actions"></div>
       </div>
       <div id="content" class="content" style="display:none">
         <div class="grid">
@@ -114,13 +133,13 @@
     renderShell('assets', { topbar: true, breadcrumb: 'Assets › Unit' });
 
     const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-    const dash = '<span style="color:#cbd0d6">—</span>';
+    const dash = '<span style="color:#c8c8d4">—</span>';
     const fmtINR = (p) => (p == null ? dash : formatINR(p));
-    const fmtDate = (iso) => { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); };
+    const fmtDate = (iso) => { if (!iso) return '—'; return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); };
     const relTime = (iso) => { if (!iso) return '—'; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1d ago' : d + 'd ago'; };
     const titl = (s) => String(s || '').replace(/_/g,' ').replace(/\b\w/g, m => m.toUpperCase());
-    const STATUS_PILL = { available: 'success', out: 'indigo', retired: 'neutral' };
-    function pill(status) { const t = STATUS_PILL[status] || 'neutral'; return `<span class="pill ${t}"><span class="dot" style="background:currentColor"></span>${esc(String(status).toUpperCase())}</span>`; }
+    const STATUS = { available: ['available','AVAILABLE'], out: ['out','ON RENT'], retired: ['retired','RETIRED'] };
+    function spill(status) { const t = STATUS[status] || ['retired', String(status).toUpperCase()]; return `<span class="spill ${t[0]}"><span class="ring"></span>${esc(t[1])}</span>`; }
 
     let A = null;
     const id = new URLSearchParams(location.search).get('id');
@@ -133,117 +152,129 @@
       A = d;
       document.getElementById('loading').style.display = 'none';
       renderStrip(); renderMain(); renderSide();
-      document.getElementById('pstrip').style.display = ''; document.getElementById('content').style.display = '';
+      document.getElementById('strip').style.display = ''; document.getElementById('content').style.display = '';
+      wireCollapse();
     }
     function fail(html) { document.getElementById('loading').style.display = 'none'; const e = document.getElementById('error'); e.style.display = ''; e.innerHTML = html; }
 
     function renderStrip() {
-      const a = A.asset, p = A.product;
-      document.getElementById('crumb-code').textContent = a.asset_code;
+      const a = A.asset, p = A.product, ch = A.current_holder;
+      document.getElementById('crumb-code').textContent = `${p.name || ''} · ${a.asset_code}`;
       document.title = `${a.asset_code} · RentalOS`;
       const thumb = document.getElementById('ps-thumb');
       if (p.image_url) thumb.innerHTML = `<img src="${esc(p.image_url)}" alt="">`; else document.getElementById('ps-init').textContent = (a.asset_code || '?').slice(0, 2).toUpperCase();
-      document.getElementById('ps-code').textContent = a.asset_code;
-      document.getElementById('ps-sub').innerHTML = `${esc(p.name || '')} · <span class="mono">${esc(p.sku || '')}</span>${a.serial_number ? ' · SN ' + esc(a.serial_number) : ''}`;
-      document.getElementById('ps-status').innerHTML = pill(a.status) + (A.current_holder ? ` <a href="/order-360.html?id=${esc(A.current_holder.order_id)}" class="pill indigo" style="text-decoration:none">OUT · #${esc(String(A.current_holder.order_number))}</a>` : '');
+      document.getElementById('ps-name').textContent = p.name || a.asset_code;
+      document.getElementById('ps-meta').innerHTML = `${esc(titl(a.condition) || 'Unit')} · <span style="color:var(--head)">${esc(a.asset_code)}</span>${a.purchase_date ? ' · Purchased ' + fmtDate(a.purchase_date) : ''}`;
+      document.getElementById('ps-status').innerHTML = spill(a.status);
+      if (p.daily_rate != null) { const r = document.getElementById('ps-rate'); r.style.display = ''; r.textContent = formatINR(p.daily_rate) + '/day'; }
+      const acts = [];
+      acts.push(`<button class="abtn" id="act-transfer"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h8M9 3l3 3-3 3M11 12H3M6 9l-3 3 3 3"/></svg>Transfer</button>`);
+      if (a.status !== 'retired') acts.push(`<button class="abtn danger" id="act-retire"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10M6 4V2.8h4V4M5 4l.6 9h6L12 4"/></svg>Retire</button>`);
+      document.getElementById('ps-actions').innerHTML = acts.join('');
+      const t = document.getElementById('act-transfer'); if (t) t.addEventListener('click', doTransfer);
+      const r = document.getElementById('act-retire'); if (r) r.addEventListener('click', doRetire);
     }
 
-    function card(dotColor, title, count, body) {
-      return `<div class="card"><div class="chead"><span class="cdot" style="background:${dotColor}"></span><span class="ctitle">${esc(title)}</span>${count != null ? `<span class="ccount">${esc(String(count))}</span>` : ''}</div><div class="cbody">${body}</div></div>`;
+    function card(dot, title, meta, body, opts = {}) {
+      return `<div class="card ${opts.amber ? 'amber' : ''}" data-card><div class="chead" data-toggle><span class="cdot" style="background:${dot}"></span><span class="ctitle">${esc(title)}</span>${meta ? `<span class="cmeta">${meta}</span>` : '<span class="cmeta"></span>'}<span class="chev">▾</span></div><div class="cbody">${body}</div></div>`;
     }
+    const kv = (k, v) => `<div><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`;
 
     function renderMain() {
-      const a = A.asset, p = A.product, lm = A.lifetime_metrics || {};
+      const a = A.asset, p = A.product, lm = A.lifetime_metrics || {}, ch = A.current_holder;
       let h = '';
-      // Identity & details
-      h += card('var(--indigo)', 'Identity & Details', null,
+
+      // a) Asset Identity
+      h += card('var(--indigo)', 'Asset Identity', `${esc(p.category || 'Unit')}${p.hsn_code ? ' · HSN ' + esc(p.hsn_code) : ''}`,
         `<div class="kv">
-          ${kv('Asset code', `<span class="mono">${esc(a.asset_code)}</span>`)}
-          ${kv('Serial number', a.serial_number ? `<span class="mono">${esc(a.serial_number)}</span>` : dash)}
-          ${kv('Product', `${esc(p.name || '')} <span class="mono" style="color:var(--muted2)">${esc(p.sku || '')}</span>`)}
+          ${kv('Product', `<a href="/inventory.html">${esc(p.name || '')} →</a>`)}
+          ${kv('Serial (unit)', `<span class="mono" style="font-size:15px;font-weight:600;color:var(--ink)">${esc(a.asset_code)}</span>`)}
+          ${kv('Manufacturer serial', a.serial_number ? `<span class="v mono">${esc(a.serial_number)}</span>` : dash)}
           ${kv('Category', esc(p.category || '—'))}
           ${kv('Condition', esc(titl(a.condition) || '—'))}
-          ${kv('Location', esc(a.location_name || '—'))}
           ${kv('Purchase date', fmtDate(a.purchase_date))}
           ${kv('Purchase source', esc(a.purchase_source || '—'))}
-        </div>${a.notes ? `<div style="margin-top:14px"><div class="k" style="font:600 10px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--muted2);margin-bottom:4px">Notes</div><div style="font-size:13px;line-height:1.5">${esc(a.notes)}</div></div>` : ''}`);
+          ${kv('HSN code', p.hsn_code ? `<span class="v mono">${esc(p.hsn_code)}</span>` : dash)}
+        </div>${a.notes ? `<div style="margin-top:16px"><div class="k" style="font:600 10.5px var(--body);text-transform:uppercase;letter-spacing:.5px;color:var(--muted2);margin-bottom:4px">Notes</div><div style="font-size:13px;line-height:1.5">${esc(a.notes)}</div></div>` : ''}`);
 
-      // Current assignment
-      if (A.current_holder) {
-        const ch = A.current_holder;
-        h += card('var(--indigo)', 'Current Assignment', null,
-          `<div class="kv">
-            ${kv('Order', `<a href="/order-360.html?id=${esc(ch.order_id)}">#${esc(String(ch.order_number))}</a>`)}
-            ${kv('Customer', ch.customer_person_id ? `<a href="/person-360.html?id=${esc(ch.customer_person_id)}">${esc(ch.customer_name || '—')}</a>` : esc(ch.customer_name || '—'))}
-            ${kv('Dispatched', fmtDate(ch.dispatched_at) + ` <span style="color:var(--muted2)">(${relTime(ch.dispatched_at)})</span>`)}
+      // b) Current Status
+      const statusMeta = ch ? '<span style="color:var(--amber-d)">on rent</span>' : (a.status === 'available' ? '<span style="color:var(--green)">on the shelf</span>' : '');
+      h += card(ch ? 'var(--amber)' : 'var(--indigo)', 'Current Status', statusMeta,
+        ch ? `<div class="kv">
+            ${kv('Current order', `<a href="/order-360.html?id=${esc(ch.order_id)}" class="mono">#${esc(String(ch.order_number))} →</a>`)}
+            ${kv('Current holder', ch.customer_person_id ? `<a href="/person-360.html?id=${esc(ch.customer_person_id)}">${esc(ch.customer_name || '—')} →</a>` : esc(ch.customer_name || '—'))}
+            ${kv('Dispatched', fmtDate(ch.dispatched_at) + ` <span style="color:var(--muted)">(${relTime(ch.dispatched_at)})</span>`)}
             ${kv('Expected return', fmtDate(ch.expected_return_at))}
-          </div>`);
-      }
+          </div>` : `<div class="stub">This unit is ${esc(a.status === 'available' ? 'available on the shelf' : titl(a.status))} — no active assignment.</div>`,
+        { amber: !!ch });
 
-      // Utilization & revenue
-      h += card('var(--green)', 'Utilization & Revenue', null,
-        `<div class="metric-row">
-          ${metric('Lifetime revenue', fmtINR(lm.total_revenue_paise))}
-          ${metric('Total rentals', lm.total_rentals_count ?? 0)}
-          ${metric('Avg / rental', fmtINR(lm.average_revenue_per_rental_paise))}
-          ${metric('Days utilized', lm.total_days_utilized ?? 0)}
+      // c) Utilization & Revenue
+      h += card('var(--indigo)', 'Utilization & Revenue', `${lm.total_rentals_count ?? 0} rentals`,
+        `<div class="kpis">
+          <div class="kpi"><div class="kl">Lifetime revenue</div><div class="kvv">${fmtINR(lm.total_revenue_paise)}</div><div class="ks">${lm.total_rentals_count ?? 0} rentals</div></div>
+          <div class="kpi"><div class="kl">Avg / rental</div><div class="kvv">${fmtINR(lm.average_revenue_per_rental_paise)}</div><div class="ks">per booking</div></div>
+          <div class="kpi"><div class="kl">Days utilized</div><div class="kvv">${lm.total_days_utilized ?? 0}</div><div class="ks">lifetime</div></div>
+          <div class="kpi"><div class="kl">Maintenance</div><div class="kvv">${lm.total_maintenance_days ?? 0}<span style="font-size:12px;color:var(--muted)">d</span></div><div class="ks">${lm.total_damage_incidents ?? 0} incident(s)</div></div>
         </div>
-        <div style="margin-top:14px"><div class="k" style="font:600 10px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--muted2)">Lifetime utilization</div>
-        <div class="ubar"><span style="width:${Math.min(100, lm.lifetime_utilization_percent || 0)}%"></span></div></div>`);
+        <div style="margin-top:16px"><div class="k" style="font:600 10.5px var(--body);text-transform:uppercase;letter-spacing:.5px;color:var(--muted2)">Lifetime utilization</div><div class="ubar"><span style="width:${Math.min(100, lm.lifetime_utilization_percent || 0)}%"></span></div></div>`);
 
-      // Order history
+      // d) Order History
       const oh = A.order_history || [];
-      h += card('var(--head)', 'Order History', oh.length,
+      h += card('var(--head)', 'Order History', `${oh.length} rental(s)`,
         oh.length ? `<table><thead><tr><th>Order</th><th>Customer</th><th>Dispatched</th><th>Days</th><th style="text-align:right">Revenue</th></tr></thead><tbody>${oh.map(o => `<tr>
           <td><a href="/order-360.html?id=${esc(o.order_id)}" class="mono">#${esc(String(o.order_number))}</a></td>
-          <td>${esc(o.customer_name || '—')}</td><td class="mono" style="color:var(--muted3)">${fmtDate(o.dispatched_at)}</td>
+          <td>${esc(o.customer_name || '—')}</td><td class="mono" style="color:var(--sub)">${fmtDate(o.dispatched_at)}</td>
           <td class="mono">${esc(String(o.duration_days ?? '—'))}</td><td class="mono" style="text-align:right">${fmtINR(o.revenue_paise)}</td></tr>`).join('')}</tbody></table>` : '<div class="stub">No rental history yet.</div>');
 
-      // Damage history
+      // e) Damage History
       const dh = A.damage_history || [];
-      h += card('var(--red)', 'Damage History', dh.length,
-        dh.length ? dh.map(x => `<div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--line2)">
-          <span class="pill red" style="height:fit-content"><span class="dot" style="background:currentColor"></span>${esc(String(x.severity).toUpperCase())}</span>
-          <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(titl(x.incident_type))}${x.disposition ? ` <span style="font-weight:400;color:var(--muted3)">· ${esc(titl(x.disposition))}</span>` : ''}</div>
-          <div style="font-size:11.5px;color:var(--muted3)" class="mono">${fmtDate(x.reported_at)}</div>${x.notes ? `<div style="font-size:12px;color:var(--sub);margin-top:2px">${esc(x.notes)}</div>` : ''}</div></div>`).join('') : '<div class="stub">No damage incidents. ✅</div>');
+      h += card('var(--red)', 'Damage History', dh.length ? `${dh.length}` : null,
+        dh.length ? dh.map(x => `<div style="display:flex;gap:11px;padding:9px 0;border-top:1px solid var(--line2)">
+          <span class="minipill red"><span class="d" style="background:currentColor"></span>${esc(String(x.severity).toUpperCase())}</span>
+          <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(titl(x.incident_type))}${x.disposition ? ` <span style="font-weight:400;color:var(--sub)">· ${esc(titl(x.disposition))}</span>` : ''}</div>
+          <div class="mono" style="font-size:11px;color:var(--sub)">${fmtDate(x.reported_at)}</div>${x.notes ? `<div style="font-size:12px;color:var(--sub);margin-top:2px">${esc(x.notes)}</div>` : ''}</div></div>`).join('') : '<div class="stub">No damage incidents. ✅</div>');
 
-      // Maintenance & downtime
+      // f) Maintenance & Downtime
       const dt = A.downtime_history || [];
-      h += card('var(--amber)', 'Maintenance & Downtime', dt.length,
-        dt.length ? dt.map(x => `<div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--line2)">
-          <span class="pill amber" style="height:fit-content"><span class="dot" style="background:currentColor"></span>${esc(String(x.kind).toUpperCase())}</span>
-          <div style="flex:1"><div class="mono" style="font-size:12px">${fmtDate(x.start_at)} → ${x.end_at ? fmtDate(x.end_at) : 'open'}</div>${x.notes ? `<div style="font-size:12px;color:var(--sub);margin-top:2px">${esc(x.notes)}</div>` : ''}</div></div>`).join('') : '<div class="stub">No downtime recorded.</div>');
+      h += card('var(--amber)', 'Maintenance & Downtime', dt.length ? `${dt.length}` : null,
+        dt.length ? dt.map(x => `<div style="display:flex;gap:11px;padding:9px 0;border-top:1px solid var(--line2)">
+          <span class="minipill amber"><span class="d" style="background:currentColor"></span>${esc(String(x.kind).toUpperCase())}</span>
+          <div style="flex:1"><div class="mono" style="font-size:12px">${fmtDate(x.start_at)} → ${x.end_at ? fmtDate(x.end_at) : '<span style="color:var(--amber-d)">open</span>'}</div>${x.notes ? `<div style="font-size:12px;color:var(--sub);margin-top:2px">${esc(x.notes)}</div>` : ''}</div></div>`).join('') : '<div class="stub">No downtime recorded. Scheduled-maintenance tracking is a future capability.</div>');
 
-      // Timeline
+      // g) Timeline
       const tl = A.timeline || [];
-      h += card('var(--muted2)', 'Timeline', tl.length,
-        tl.length ? `<div class="tl">${tl.map(e => `<div class="tlrow"><span class="tldot ${esc(e.event_type)}"></span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">${esc(e.title || titl(e.event_type))}</div><div class="mono" style="font-size:11px;color:var(--muted3)">${fmtDate(e.occurred_at)} · ${relTime(e.occurred_at)}</div>${e.body ? `<div style="font-size:12px;color:var(--sub);margin-top:2px">${esc(e.body)}</div>` : ''}</div></div>`).join('')}</div>` : '<div class="stub">No events yet.</div>');
+      h += card('var(--muted2)', 'Timeline', tl.length ? `${tl.length} event(s)` : null,
+        tl.length ? `<div class="tl">${tl.map(e => `<div class="tlrow"><span class="tldot ${esc(e.event_type)}"></span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">${esc(e.title || titl(e.event_type))}</div><div class="mono" style="font-size:11px;color:var(--sub)">${fmtDate(e.occurred_at)} · ${relTime(e.occurred_at)}</div>${e.body ? `<div style="font-size:12px;color:var(--sub);margin-top:2px">${esc(e.body)}</div>` : ''}</div></div>`).join('')}</div>` : '<div class="stub">No events yet.</div>');
 
       document.getElementById('maincol').innerHTML = h;
     }
-    function kv(k, v) { return `<div><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`; }
-    function metric(k, v) { return `<div class="metric"><div class="m-k">${esc(k)}</div><div class="m-v">${v}</div></div>`; }
 
     function renderSide() {
       const a = A.asset, p = A.product, lm = A.lifetime_metrics || {};
-      let h = `<div class="scard"><div class="stitle">Metadata</div>
-        <div class="srow"><span class="sk">Status</span><span class="sv">${pill(a.status)}</span></div>
-        <div class="srow"><span class="sk">Cost basis</span><span class="sv">${fmtINR(a.effective_cost_paise)}</span></div>
-        <div class="srow"><span class="sk">Rate / day</span><span class="sv">${fmtINR(p.daily_rate)}</span></div>
-        <div class="srow"><span class="sk">Replacement</span><span class="sv">${fmtINR(p.replacement_value)}</span></div>
-        <div class="srow"><span class="sk">Lifetime rentals</span><span class="sv">${lm.total_rentals_count ?? 0}</span></div>
-        <div class="srow"><span class="sk">Damage incidents</span><span class="sv">${lm.total_damage_incidents ?? 0}</span></div>
-        <div class="srow"><span class="sk">Maintenance days</span><span class="sv">${lm.total_maintenance_days ?? 0}</span></div>
-        <div class="srow"><span class="sk">Warranty</span><span class="sv">${dash}</span></div>
-      </div>`;
-      // Actions (retire only for non-retired; transfer always).
-      h += `<div class="scard"><div class="stitle">Actions</div>
-        <button class="actbtn" id="act-transfer">Transfer location</button>
-        ${a.status !== 'retired' ? '<button class="actbtn danger" id="act-retire">Retire unit</button>' : ''}
-      </div>`;
-      document.getElementById('sidecol').innerHTML = h;
-      const t = document.getElementById('act-transfer'); if (t) t.addEventListener('click', doTransfer);
-      const r = document.getElementById('act-retire'); if (r) r.addEventListener('click', doRetire);
+      document.getElementById('sidecol').innerHTML = `
+        <div class="scard"><div class="stitle">Metadata</div>
+          <div class="srow"><span class="sk">Status</span><span class="sv">${spill(a.status)}</span></div>
+          <div class="srow"><span class="sk">Location</span><span class="sv" style="font-family:var(--body);font-weight:600">${esc(a.location_name || '—')}</span></div>
+          <div class="srow"><span class="sk">Cost basis</span><span class="sv">${fmtINR(a.effective_cost_paise)}</span></div>
+          <div class="srow"><span class="sk">Rate / day</span><span class="sv">${fmtINR(p.daily_rate)}</span></div>
+          <div class="srow"><span class="sk">Replacement</span><span class="sv">${fmtINR(p.replacement_value)}</span></div>
+          <div class="srow"><span class="sk">Lifetime rentals</span><span class="sv">${lm.total_rentals_count ?? 0}</span></div>
+          <div class="srow"><span class="sk">Damage incidents</span><span class="sv">${lm.total_damage_incidents ?? 0}</span></div>
+          <div class="srow"><span class="sk">Warranty</span><span class="sv">${dash}</span></div>
+        </div>
+        <div class="scard"><div class="stitle">Actions</div>
+          <button class="actbtn" id="act-transfer2">Transfer location</button>
+          ${a.status !== 'retired' ? '<button class="actbtn danger" id="act-retire2">Retire unit</button>' : ''}
+        </div>`;
+      const t = document.getElementById('act-transfer2'); if (t) t.addEventListener('click', doTransfer);
+      const r = document.getElementById('act-retire2'); if (r) r.addEventListener('click', doRetire);
+    }
+
+    function wireCollapse() {
+      document.querySelectorAll('[data-toggle]').forEach(h => h.addEventListener('click', () => {
+        const c = h.closest('[data-card]'); c.classList.toggle('collapsed');
+        const chev = h.querySelector('.chev'); if (chev) chev.textContent = c.classList.contains('collapsed') ? '▸' : '▾';
+      }));
     }
 
     async function doTransfer() {
