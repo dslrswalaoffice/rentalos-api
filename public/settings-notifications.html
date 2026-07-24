@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notifications · RentalOS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#202058;--head:#26235a;--neutral:#6b7280;--neutral-bg:#f3f4f6;--neutral-border:#d1d5db;
+  --info:#4f46e5;--info-bg:#eef2ff;--info-border:#c7d2fe;--info-hover:#4338ca;
+  --success:#059669;--success-bg:#ecfdf5;--attention:#d97706;--attention-bg:#fffbeb;--danger:#dc2626;
+  --bg:#ffffff;--surface-1:#faf9f7;--surface-2:#f4f2ee;--border:#ece9e3;
+  --head-font:'Space Grotesk',system-ui,sans-serif;--body-font:'Manrope',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;--radius:14px;
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--surface-1);font-family:var(--body-font);color:var(--ink);-webkit-font-smoothing:antialiased}
+a{color:var(--info);text-decoration:none}
+.shell{display:flex;min-height:100vh}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.subnav{background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 26px;height:46px;font-size:13px;position:sticky;top:0;z-index:39}
+.crumbs{font-family:var(--mono);font-size:12px;color:var(--neutral)}
+.wrap{max-width:880px;margin:0 auto;padding:28px 26px 90px}
+.pagehd{margin-bottom:22px}
+.pagehd h1{font-family:var(--head-font);font-weight:600;font-size:24px;color:var(--ink);margin:0 0 6px;letter-spacing:-.02em}
+.pagehd p{font-size:13.5px;color:var(--neutral);margin:0}
+.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 1px 2px rgba(32,32,88,.04);margin-bottom:20px;overflow:hidden}
+.card-hd{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.sec-dot{width:8px;height:8px;border-radius:50%}
+.card-hd .t{font-family:var(--head-font);font-weight:600;font-size:15px;color:var(--head)}
+.card-hd .d{font-size:12px;color:var(--neutral);margin-left:auto}
+.card-bd{padding:20px 22px}
+.frow{display:flex;align-items:center;gap:16px;padding:11px 0;border-top:1px solid var(--border)}
+.frow:first-child{border-top:none}
+.frow .lbl{flex:1;min-width:0}
+.frow .lbl .k{font-size:13.5px;color:var(--head);font-weight:500}
+.frow .lbl .h{font-size:12px;color:var(--neutral);margin-top:2px}
+select{font-family:var(--mono);font-size:13px;color:var(--head);border:1px solid var(--neutral-border);background:var(--bg);border-radius:8px;padding:8px 10px;outline:none;cursor:pointer}
+select:focus{border-color:var(--info)}
+.tog{width:42px;height:24px;border-radius:999px;background:var(--neutral-border);position:relative;cursor:pointer;transition:background .15s;flex:none}
+.tog.on{background:var(--info)}
+.tog::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .15s}
+.tog.on::after{left:21px}
+.grouplbl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--neutral);font-weight:600;margin:16px 0 6px}
+.badge{display:inline-flex;padding:2px 8px;border-radius:6px;background:var(--neutral-bg);color:var(--neutral);font:600 10px var(--mono);letter-spacing:.03em;text-transform:uppercase}
+.badge.mkt{background:var(--attention-bg);color:var(--attention)}
+.savebar{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--border);padding:14px 26px;display:flex;align-items:center;justify-content:flex-end;gap:14px;box-shadow:0 -4px 14px rgba(32,32,88,.05);z-index:40}
+.btn{border:none;cursor:pointer;font-family:var(--body-font);font-size:14px;font-weight:600;padding:10px 22px;border-radius:10px}
+.btn-primary{background:var(--info);color:#fff;box-shadow:0 2px 6px rgba(79,70,229,.3)}
+.btn-primary:hover{background:var(--info-hover)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.savehint{font-size:12.5px;color:var(--neutral)}
+.toast-wrap{position:fixed;top:16px;right:16px;z-index:300;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--head);color:#fff;padding:11px 16px;border-radius:10px;font-size:13px;box-shadow:0 8px 24px rgba(32,32,88,.24)}
+.toast.ok{background:var(--success)}.toast.err{background:var(--danger)}
+.denied{padding:60px 20px;text-align:center;color:var(--neutral)}
+.mono{font-family:var(--mono)}
+.note{background:var(--info-bg);border:1px solid var(--info-border);border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--head);line-height:1.5}
+.evgrp{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--neutral);font-weight:600;margin:16px 0 4px}
+.evrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border)}
+.evrow .en{flex:1;min-width:0}
+.evrow .en .k{font-size:13.5px;color:var(--head);font-weight:500}
+.evrow .en .key{font-family:var(--mono);font-size:10.5px;color:var(--neutral);margin-top:2px}
+</style>
+</head>
+<body>
+<!-- Rail injected by /_lib/shell.js (renderShell('system', { topbar: true })). -->
+<div class="shell">
+  <main class="main">
+    <div class="subnav"><a href="/settings.html">‹ Settings</a><span class="crumbs">Settings › Notifications</span></div>
+    <div class="wrap">
+      <div class="pagehd"><h1>Notifications</h1><p>Decide how each customer event is sent — automatically, held for review, or never. These modes govern every WhatsApp and email the system sends to customers.</p></div>
+      <div id="app"><div class="denied">Loading…</div></div>
+    </div>
+  </main>
+</div>
+<div class="savebar" id="savebar" style="display:none"><span class="savehint" id="savehint"></span><button class="btn btn-primary" id="saveBtn">Save changes</button></div>
+<div class="toast-wrap" id="toasts"></div>
+<script type="module">
+import { api, ensureAuth } from '/_lib/api.js';
+import { renderShell } from '/_lib/shell.js?v=6';
+renderShell('system', { topbar: true, breadcrumb: 'System › Notifications' });
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toast(m,k){const w=document.getElementById('toasts');const e=document.createElement('div');e.className='toast'+(k?' '+k:'');e.textContent=m;w.appendChild(e);setTimeout(()=>e.remove(),3200);}
+
+// Friendly labels + grouping for the seeded events. Any event present in the
+// policy but not listed here still renders (in an "Other" group) so a
+// future-seeded event is never silently hidden.
+const EVENT_META = [
+  ['Transactional', [
+    ['dispatch_completed','Dispatch completed'],
+    ['dispatch_otp_send','Dispatch OTP'],
+    ['return_received','Return received'],
+    ['return_otp_send','Return OTP'],
+    ['inspection_pass','Inspection passed'],
+    ['inspection_fail_minor','Inspection failed (minor)'],
+    ['invoice_issued','Invoice issued'],
+    ['invoice_ready','Invoice ready'],
+    ['invoice_overdue','Invoice overdue'],
+    ['payment_received','Payment received'],
+    ['deposit_released','Deposit released'],
+    ['extension_confirmed','Extension confirmed'],
+    ['quote_sent','Quote sent'],
+    ['quote_reminder','Quote reminder'],
+    ['standby_expiring','Standby expiring'],
+    ['kyc_approved','KYC approved'],
+  ]],
+  ['Sensitive — held for review by default', [
+    ['inspection_fail_major','Inspection failed (major)'],
+    ['deposit_forfeited','Deposit forfeited'],
+    ['kyc_rejected','KYC rejected'],
+    ['damage_reported','Damage reported'],
+    ['cancellation_confirmed','Cancellation confirmed'],
+  ]],
+];
+const MODES = [['auto','Send automatically'],['auto_with_review','Hold for review'],['manual_only','Manual only'],['off','Off']];
+const LANGS = [['en','English'],['hi','हिन्दी (Hindi)'],['gu','ગુજરાતી (Gujarati)']];
+
+let POLICY = {};
+function events(){ return (POLICY.events && typeof POLICY.events==='object') ? POLICY.events : {}; }
+
+function modeSelect(key,cur){
+  return '<select data-mode="'+esc(key)+'">'+MODES.map(([v,l])=>
+    '<option value="'+v+'"'+(cur===v?' selected':'')+'>'+esc(l)+'</option>').join('')+'</select>';
+}
+function evrow(key,label){
+  const ev=events()[key]||{};
+  const cur=typeof ev.mode==='string'?ev.mode:'auto';
+  const mkt=ev.is_marketing===true;
+  return '<div class="evrow"><div class="en"><div class="k">'+esc(label)
+    +(mkt?' <span class="badge mkt">Marketing</span>':'')+'</div><div class="key">'+esc(key)+'</div></div>'
+    +modeSelect(key,cur)+'</div>';
+}
+
+function render(){
+  const evs=events();
+  const listed=new Set(EVENT_META.flatMap(g=>g[1].map(e=>e[0])));
+  let h='';
+  // Event policy
+  h+='<div class="card"><div class="card-hd"><span class="sec-dot" style="background:var(--info)"></span><span class="t">Event policy</span><span class="d"><a href="/notification_review_queue.html">Review queue →</a></span></div><div class="card-bd">';
+  for(const [group,rows] of EVENT_META){
+    h+='<div class="evgrp">'+esc(group)+'</div>';
+    for(const [key,label] of rows) h+=evrow(key,label);
+  }
+  // Any extra events not in EVENT_META.
+  const extras=Object.keys(evs).filter(k=>!listed.has(k));
+  if(extras.length){
+    h+='<div class="evgrp">Other</div>';
+    for(const key of extras) h+=evrow(key,key.replace(/_/g,' '));
+  }
+  h+='</div></div>';
+  // Delivery & language
+  const dl=typeof POLICY.default_language==='string'?POLICY.default_language:'en';
+  h+='<div class="card"><div class="card-hd"><span class="sec-dot" style="background:var(--success)"></span><span class="t">Delivery &amp; language</span></div><div class="card-bd">'
+    +'<div class="frow"><div class="lbl"><div class="k">Default language</div><div class="h">Used when a customer has no language preference set.</div></div>'
+      +'<select id="def_lang">'+LANGS.map(([v,l])=>'<option value="'+v+'"'+(dl===v?' selected':'')+'>'+esc(l)+'</option>').join('')+'</select></div>'
+    +'<div class="frow"><div class="lbl"><div class="k">Respect customer preferences</div><div class="h">Skip a channel a customer has opted out of. Turn off to always send.</div></div>'
+      +'<div class="tog'+(POLICY.enforce_customer_preferences!==false?' on':'')+'" id="enforce_prefs" data-tog></div></div>'
+    +'<div class="frow"><div class="lbl"><div class="k">Delivery receipts</div><div class="h">Track delivered/read status from the provider (webhook wiring lands later).</div></div>'
+      +'<div class="tog'+(POLICY.enable_delivery_receipts===true?' on':'')+'" id="delivery_receipts" data-tog></div></div>'
+  +'</div></div>';
+  // Compliance
+  h+='<div class="card"><div class="card-hd"><span class="sec-dot" style="background:var(--attention)"></span><span class="t">Compliance</span></div><div class="card-bd">'
+    +'<div class="note">Marketing messages carry an unsubscribe link automatically. A customer who unsubscribes stops receiving <b>marketing</b> only — transactional updates (dispatch, return, invoices, OTPs) always continue. Opt-out is per-customer and can be managed from their profile.</div>'
+  +'</div></div>';
+  document.getElementById('app').innerHTML=h;
+  document.getElementById('savebar').style.display='flex';
+  document.querySelectorAll('[data-tog]').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('on')));
+}
+
+function togOn(id){const el=document.getElementById(id);return !!el&&el.classList.contains('on');}
+
+function collect(){
+  const events={};
+  document.querySelectorAll('[data-mode]').forEach(sel=>{ events[sel.getAttribute('data-mode')]={mode:sel.value}; });
+  return {
+    events,
+    default_language:(document.getElementById('def_lang')||{}).value||'en',
+    enforce_customer_preferences:togOn('enforce_prefs'),
+    enable_delivery_receipts:togOn('delivery_receipts'),
+  };
+}
+
+document.getElementById('saveBtn').addEventListener('click',async()=>{
+  const btn=document.getElementById('saveBtn');btn.disabled=true;
+  document.getElementById('savehint').textContent='Saving…';
+  try{
+    const res=await api.put('/api/notifications/policy',collect());
+    POLICY=(res&&res.policy)||POLICY;
+    document.getElementById('savehint').textContent='Saved';toast('Notification policy saved','ok');
+    setTimeout(()=>{document.getElementById('savehint').textContent='';},2000);
+  }catch(err){
+    toast('Save failed: '+((err.body&&err.body.error)||err.message),'err');
+    document.getElementById('savehint').textContent='';
+  }
+  btn.disabled=false;
+});
+
+(async function(){
+  const me=await ensureAuth();
+  const role=me&&me.user&&me.user.role;
+  if(role!=='owner'&&role!=='manager'){
+    document.getElementById('app').innerHTML='<div class="denied">Notification settings are managed by owners and managers only.</div>';
+    return;
+  }
+  try{
+    const res=await api.get('/api/notifications/policy');
+    POLICY=(res&&res.policy)||{};
+    render();
+  }catch(err){
+    document.getElementById('app').innerHTML='<div class="denied">'+(err.status===403?'You do not have permission to configure notifications.':'Could not load the notification policy.')+'</div>';
+  }
+})();
+</script>
+</body>
+</html>

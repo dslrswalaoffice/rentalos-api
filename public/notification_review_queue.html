@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>Notification Review · RentalOS</title>
+  <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f46e5'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <!--
+    Slice 10 · Notification Review Queue. Approve or reject customer notifications
+    held by an auto_with_review policy mode. Wired to GET /api/notifications/
+    review-queue + approve/reject. Mirrors the KYC review-queue pattern.
+  -->
+  <style>
+    :root{
+      --ink:#202058; --head:#26235a; --muted:#8a8780; --muted2:#9ca3af; --muted3:#6b7280;
+      --indigo:#4f46e5; --indigo-hover:#3f37c9; --indigo-soft:rgba(79,70,229,.1);
+      --green:#059669; --blue:#2563eb; --amber:#d97706; --red:#dc2626; --grey:#6b7280;
+      --page:#f4f2ee; --card:#ffffff; --rail:#faf9f7; --line:#ece9e3; --field:#faf9f7;
+      --disp:system-ui,sans-serif; --body:system-ui,sans-serif; --mono:ui-monospace,'JetBrains Mono',monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--page);font-family:var(--body);color:var(--head);-webkit-font-smoothing:antialiased}
+    a{color:var(--indigo);text-decoration:none} a:hover{color:var(--indigo-hover)}
+    .shell{width:100%;max-width:1440px;margin:0 auto;display:flex;background:var(--card);min-height:100vh;position:relative}
+    main{flex:1;min-width:0;display:flex;flex-direction:column}
+    .subnav{height:34px;flex:none;border-bottom:1px solid #f0ede8;display:flex;align-items:center;padding:0 24px;font:600 10px var(--mono);letter-spacing:.08em;color:var(--muted2);text-transform:uppercase}
+    .content{flex:1;padding:24px 32px 48px}
+    .strip{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px}
+    h1{font:700 22px var(--disp);margin:0;color:var(--ink)}
+    .subline{margin:5px 0 0;font-size:13px;color:var(--muted)}
+    .filters{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+    .filters select,.filters input{height:34px;border:1px solid var(--line);border-radius:8px;background:var(--field);padding:0 10px;font-size:13px;color:var(--head)}
+    .filters input{min-width:240px}
+    table{width:100%;border-collapse:collapse}
+    thead th{text-align:left;font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);padding:8px 10px;border-bottom:1px solid var(--line)}
+    tbody td{padding:11px 10px;border-bottom:1px solid #f4f1ec;font-size:13px;vertical-align:top}
+    tbody tr:hover{background:#faf9f7}
+    .avatar-sm{width:28px;height:28px;border-radius:50%;background:#eef0f4;color:var(--ink);font:600 10px var(--disp);display:flex;align-items:center;justify-content:center;flex:none}
+    .who{display:flex;align-items:center;gap:9px}
+    .badge{display:inline-flex;padding:2px 8px;border-radius:6px;background:#eef0f4;color:var(--head);font:600 11px var(--mono)}
+    .badge.mkt{background:rgba(217,119,6,.12);color:var(--amber)}
+    .chan{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted3)}
+    .msg{color:var(--muted3);max-width:360px;line-height:1.45}
+    .msg.full{white-space:pre-wrap;color:var(--head)}
+    .act{display:inline-flex;gap:6px;justify-content:flex-end}
+    .btn{padding:5px 11px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent}
+    .btn-v{background:var(--green);color:#fff;border:none} .btn-r{background:#fff;color:var(--red);border:1px solid var(--red)}
+    .btn-view{background:#fff;color:var(--indigo);border:1px solid var(--line)}
+    .empty{padding:40px;text-align:center;color:var(--muted);font-size:14px}
+    .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:9px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50}
+    .toast.show{opacity:1}
+    .toast.err{background:var(--red)}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- Rail + top-bar injected by /_lib/shell.js -->
+    <main>
+      <div class="subnav">System &nbsp;&rsaquo;&nbsp; Notification Review</div>
+      <div class="content">
+        <div class="strip">
+          <div>
+            <h1>Pending Notifications</h1>
+            <p class="subline" id="subline">Loading…</p>
+          </div>
+          <a class="btn btn-view" href="/settings-notifications.html">Notification settings →</a>
+        </div>
+
+        <div class="filters">
+          <select id="f-event"><option value="">All events</option></select>
+          <input id="f-q" type="search" placeholder="Search customer by name / phone…" autocomplete="off">
+        </div>
+
+        <table>
+          <thead><tr>
+            <th>Customer</th><th>Event</th><th>Message</th><th>Channel</th><th>Queued</th><th style="text-align:right">Actions</th>
+          </tr></thead>
+          <tbody id="rows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import { api, ensureAuth } from '/_lib/api.js';
+    import { renderShell } from '/_lib/shell.js?v=6';
+    renderShell('system', { topbar: true, breadcrumb: 'System &rsaquo; Notification Review' });
+
+    const esc=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    const initials=(n)=>{const p=String(n||'').trim().split(/\s+/).filter(Boolean);return ((p[0]?.[0]||'?')+(p[1]?.[0]||'')).toUpperCase();};
+    const fmtRel=(iso)=>{if(!iso)return '';const d=new Date(iso);const mins=Math.floor((Date.now()-d.getTime())/60000);if(mins<1)return 'just now';if(mins<60)return mins+'m ago';const h=Math.floor(mins/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';};
+    const chanIcon=(c)=>c==='whatsapp'?'🟢 WhatsApp':c==='email'?'✉️ Email':esc(c||'');
+    const evLabel=(e)=>String(e||'').replace(/_/g,' ').replace(/\b\w/g,m=>m.toUpperCase());
+    function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(err?' err':'');setTimeout(()=>t.className='toast',2600);}
+
+    const state={ event:'', q:'', rows:[] };
+
+    async function load(){
+      const params=new URLSearchParams();
+      if(state.event)params.set('event_type',state.event);
+      if(state.q)params.set('search',state.q);
+      let data;
+      try{ data=await api.get('/api/notifications/review-queue'+(params.toString()?('?'+params.toString()):'')); }
+      catch(err){
+        document.getElementById('rows').innerHTML=`<tr><td colspan="6" class="empty">${err.status===403?'You do not have permission to review notifications.':'Could not load the queue.'}</td></tr>`;
+        document.getElementById('subline').textContent='';
+        return;
+      }
+      state.rows=data.pending||[];
+      document.getElementById('subline').textContent=`${data.total} pending notification${data.total===1?'':'s'} awaiting review`;
+      populateEventFilter();
+      renderRows();
+    }
+
+    function populateEventFilter(){
+      const sel=document.getElementById('f-event');
+      const seen=new Set(state.rows.map(r=>r.event_type).filter(Boolean));
+      const cur=sel.value;
+      sel.innerHTML='<option value="">All events</option>'+[...seen].sort().map(e=>`<option value="${esc(e)}">${esc(evLabel(e))}</option>`).join('');
+      sel.value=cur;
+    }
+
+    function renderRows(){
+      const rows=state.rows;
+      if(!rows.length){ document.getElementById('rows').innerHTML=`<tr><td colspan="6" class="empty">Nothing to review — the queue is clear. ✅</td></tr>`; return; }
+      document.getElementById('rows').innerHTML=rows.map(d=>{
+        const name=d.person_name||d.target_address||'—';
+        const preview=String(d.message||'').slice(0,100);
+        const truncated=String(d.message||'').length>100;
+        const person = d.target_person_id
+          ? `<a href="/person-360.html?id=${esc(d.target_person_id)}">${esc(name)}</a>`
+          : esc(name);
+        return `<tr data-row="${esc(d.id)}">
+          <td><div class="who"><span class="avatar-sm">${esc(initials(d.person_name))}</span>${person}</div></td>
+          <td><span class="badge">${esc(evLabel(d.event_type))}</span>${d.is_marketing?' <span class="badge mkt">MKT</span>':''}</td>
+          <td><div class="msg" data-msg="${esc(d.id)}">${esc(preview)}${truncated?'…':''}</div></td>
+          <td><span class="chan">${chanIcon(d.channel)}</span></td>
+          <td class="mono" style="color:var(--muted3)">${esc(fmtRel(d.created_at))}</td>
+          <td><div class="act">
+            <button class="btn btn-v" data-act="approve" data-id="${esc(d.id)}">Approve</button>
+            <button class="btn btn-r" data-act="reject" data-id="${esc(d.id)}">Reject</button>
+            ${truncated?`<button class="btn btn-view" data-act="view" data-id="${esc(d.id)}">View</button>`:''}
+          </div></td>
+        </tr>`;
+      }).join('');
+    }
+
+    document.addEventListener('click', async (e)=>{
+      const btn=e.target.closest('[data-act]'); if(!btn) return;
+      const act=btn.getAttribute('data-act'); const id=btn.getAttribute('data-id');
+      if(act==='view'){
+        const row=state.rows.find(r=>r.id===id); const cell=document.querySelector(`[data-msg="${CSS.escape(id)}"]`);
+        if(row&&cell){ cell.textContent=row.message||''; cell.className='msg full'; }
+        return;
+      }
+      if(act==='approve'){
+        btn.disabled=true;
+        try{ const r=await api.post('/api/notifications/review-queue/'+id+'/approve',{}); toast(r.status==='sent'?'Approved · sent':('Approved · '+(r.status||'done'))); load(); }
+        catch(err){ btn.disabled=false; toast('Approve failed: '+((err.body&&err.body.error)||err.message),true); }
+      } else if(act==='reject'){
+        btn.disabled=true;
+        try{ await api.post('/api/notifications/review-queue/'+id+'/reject',{}); toast('Rejected'); load(); }
+        catch(err){ btn.disabled=false; toast('Reject failed: '+((err.body&&err.body.error)||err.message),true); }
+      }
+    });
+
+    let qTimer;
+    document.getElementById('f-event').addEventListener('change',(e)=>{ state.event=e.target.value; load(); });
+    document.getElementById('f-q').addEventListener('input',(e)=>{ clearTimeout(qTimer); state.q=e.target.value.trim(); qTimer=setTimeout(load,300); });
+
+    (async ()=>{ try{ await ensureAuth(); }catch{ return; } load(); })();
+  </script>
+</body>
+</html>
