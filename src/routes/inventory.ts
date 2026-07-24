@@ -22,6 +22,7 @@ import {
 } from '../middleware/session.js';
 import { requirePermission, can } from '../lib/permissions.js';
 import { computeAssetMetricsBatch, computeAssetLifetimeMetrics } from '../lib/asset_analytics.js';
+import { computeProductMetricsBatch, computeSingleProductMetrics } from '../lib/product_analytics.js';
 import { createApprovalRequest } from '../lib/approvals.js';
 
 type SessionVar = {
@@ -132,6 +133,14 @@ inventory.get('/products', async (c) => {
   const includeArchived = c.req.query('include_archived') === 'true';
   const locationId = c.req.query('location_id')?.trim() || null; // Sub-turn 6i
   const searchPattern = search ? `%${search}%` : null;
+  // Product analytics (batch utilization + YTD revenue). Metric filter + sort are
+  // applied in JS on the enriched (capped) set — same shape as the assets endpoint.
+  const utilRangeRaw = c.req.query('utilization_range');
+  const utilRange = (['under_20', '20_to_80', 'over_80'] as const).includes(utilRangeRaw as any)
+    ? (utilRangeRaw as 'under_20' | '20_to_80' | 'over_80') : null;
+  const sortRaw = c.req.query('sort');
+  const sortMode = (['category_name', 'utilization_desc', 'utilization_asc', 'ytd_revenue_desc', 'ytd_revenue_asc'] as const)
+    .includes(sortRaw as any) ? (sortRaw as string) : 'category_name';
 
   // Tag filter (Sub-turn 8a) — AND semantics. Resolve matching product ids up
   // front (the driver can't nest sql fragments), then constrain the main query.
@@ -237,19 +246,93 @@ inventory.get('/products', async (c) => {
     : 0;
   for (const p of products) delete (p as Partial<{ full_total: number }>).full_total;
 
+  // ── Product analytics enrichment (batch utilization + YTD revenue) ─────────
+  // Two set-based queries for the whole page (never per-row). Fail-soft: on a
+  // metrics error the Map is empty and rows carry null utilization / 0 revenue.
+  const showCost = can(session, 'inventory.costs');
+  const productIds = products.map((p) => p.id);
+  const metrics = await computeProductMetricsBatch(session.workspace.id, productIds, 30);
+  // Open-damage flag per product (one set query; NOT on the hot main SELECT).
+  const damageSet = new Set<string>();
+  if (productIds.length) {
+    try {
+      const dmg = await query<{ product_id: string }>(sql`
+        SELECT DISTINCT a.product_id
+        FROM damage_incident_assets dia
+        JOIN damage_incidents di ON di.id = dia.damage_incident_id
+        JOIN assets a ON a.id = dia.asset_id
+        WHERE dia.workspace_id = ${session.workspace.id}::uuid
+          AND a.product_id = ANY(string_to_array(${productIds.join(',')}::text, ',')::uuid[])
+          AND di.status::text NOT IN ('closed')
+      `);
+      for (const r of dmg) damageSet.add(r.product_id);
+    } catch { /* fail-soft — no damage flags rather than a failed list */ }
+  }
+
+  type Enriched = ProductRow & {
+    utilization_percent: number | null;
+    ytd_revenue_paise: number | null;
+    attention_flags: { utilization_over_80: boolean; utilization_under_20: boolean; has_open_damage_on_any_asset: boolean };
+  };
+  const enriched = products as unknown as Enriched[];
+  for (const p of enriched) {
+    const m = metrics.get(p.id);
+    const u = m ? m.utilization_percent : null;
+    p.utilization_percent = u;
+    p.ytd_revenue_paise = m ? m.ytd_revenue_paise : 0;
+    p.attention_flags = {
+      utilization_over_80: u != null && u > 80,
+      utilization_under_20: u != null && u < 20,
+      has_open_damage_on_any_asset: damageSet.has(p.id),
+    };
+  }
+
+  // Utilization band counts (over the full page, BEFORE the range filter) so the
+  // frontend filter chips can show live counts.
+  const utilization_counts = { under_20: 0, band_20_80: 0, over_80: 0, no_data: 0 };
+  for (const p of enriched) {
+    const u = p.utilization_percent;
+    if (u == null) utilization_counts.no_data++;
+    else if (u < 20) utilization_counts.under_20++;
+    else if (u > 80) utilization_counts.over_80++;
+    else utilization_counts.band_20_80++;
+  }
+
+  // Metric filter (JS post-filter on the enriched set).
+  let list = enriched;
+  if (utilRange === 'under_20') list = list.filter((p) => p.utilization_percent != null && p.utilization_percent < 20);
+  else if (utilRange === '20_to_80') list = list.filter((p) => p.utilization_percent != null && p.utilization_percent >= 20 && p.utilization_percent <= 80);
+  else if (utilRange === 'over_80') list = list.filter((p) => p.utilization_percent != null && p.utilization_percent > 80);
+
+  // Metric sort. Revenue sorts are refused without inventory.costs (they'd leak
+  // revenue ORDERING even with the values nulled) → fall back to the default.
+  let effectiveSort = sortMode;
+  if ((effectiveSort === 'ytd_revenue_desc' || effectiveSort === 'ytd_revenue_asc') && !showCost) effectiveSort = 'category_name';
+  if (effectiveSort === 'utilization_desc') list.sort((a, b) => (b.utilization_percent ?? -1) - (a.utilization_percent ?? -1));
+  else if (effectiveSort === 'utilization_asc') list.sort((a, b) => (a.utilization_percent ?? Infinity) - (b.utilization_percent ?? Infinity));
+  else if (effectiveSort === 'ytd_revenue_desc') list.sort((a, b) => (b.ytd_revenue_paise ?? 0) - (a.ytd_revenue_paise ?? 0));
+  else if (effectiveSort === 'ytd_revenue_asc') list.sort((a, b) => (a.ytd_revenue_paise ?? 0) - (b.ytd_revenue_paise ?? 0));
+  // else 'category_name' — the SQL ORDER BY already applied.
+
   // Cost redaction (Asset List S1 / Item 27) — the permission engine is the
   // security floor, not just the UI: a member without inventory.costs never
-  // RECEIVES cost data. Same field name, null value.
-  if (!can(session, 'inventory.costs')) {
-    for (const p of products) (p as Partial<{ default_purchase_cost_paise: number | null }>).default_purchase_cost_paise = null;
+  // RECEIVES cost or revenue data. Same field name, null value. Applied AFTER
+  // sort so an authorized sort still works, and revenue never leaves the server
+  // for an unauthorized member.
+  if (!showCost) {
+    for (const p of list) {
+      (p as Partial<{ default_purchase_cost_paise: number | null }>).default_purchase_cost_paise = null;
+      p.ytd_revenue_paise = null;
+    }
   }
 
   return c.json({
-    products,
+    products: list,
     total: fullTotal,
-    returned: products.length,
+    returned: list.length,
     limit: LIST_LIMIT,
     by_category: byCategory,
+    utilization_counts,
   });
 });
 
@@ -397,6 +480,15 @@ inventory.get('/products/:id', async (c) => {
     `);
     attention_flags.has_open_damage_on_any_asset = Number(dmg[0]?.n ?? 0) > 0;
   } catch { /* fail-soft */ }
+
+  // Product analytics (utilization + YTD revenue), same helper + redaction as the
+  // list. Utilization drives the two attention flags; revenue is cost-redacted.
+  const pm = await computeSingleProductMetrics(session.workspace.id, id, 30);
+  const u = pm.utilization_percent;
+  attention_flags.utilization_over_80 = u != null && u > 80;
+  attention_flags.utilization_under_20 = u != null && u < 20;
+  (product as any).utilization_percent = u;
+  (product as any).ytd_revenue_paise = can(session, 'inventory.costs') ? pm.ytd_revenue_paise : null;
 
   return c.json({ product, assets, assets_by_location, stock_levels, custom_fields, tags, downtimes, recommendations, attention_flags });
 });
@@ -1472,7 +1564,10 @@ inventory.get('/assets', requirePermission('inventory.view'), async (c) => {
       current_holder: r.order_id ? { order_id: r.order_id, order_number: r.order_number, customer_person_id: r.customer_person_id, customer_name: r.customer_name, since_datetime: r.since_datetime } : null,
       purchase_cost_paise: showCost ? (r.purchase_cost_paise == null ? null : Number(r.purchase_cost_paise)) : null,
       effective_cost_paise: showCost ? (r.effective_cost_paise == null ? null : Number(r.effective_cost_paise)) : null,
-      ytd_revenue_paise: m.revenue_paise, utilization_percent: util, last_used_at: m.last_used_at,
+      // Cost redaction (Q7 leak fix): YTD revenue is cost-sensitive — a member
+      // without inventory.costs never RECEIVES it (previously the UI hid the
+      // column but the API still returned the value). Matches the cost fields.
+      ytd_revenue_paise: showCost ? m.revenue_paise : null, utilization_percent: util, last_used_at: m.last_used_at,
       has_open_damage_incident: r.has_open_damage_incident === true,
       active_downtime: r.active_downtime === true,
       attention_flags: { utilization_over_80: util > 80, utilization_under_20: util < 20, has_open_damage: r.has_open_damage_incident === true },
@@ -1489,11 +1584,14 @@ inventory.get('/assets', requirePermission('inventory.view'), async (c) => {
   const cmp: Record<string, (a: any, b: any) => number> = {
     code_asc: (a, b) => a.asset_code.localeCompare(b.asset_code),
     code_desc: (a, b) => b.asset_code.localeCompare(a.asset_code),
-    ytd_revenue_desc: (a, b) => b.ytd_revenue_paise - a.ytd_revenue_paise,
+    ytd_revenue_desc: (a, b) => (b.ytd_revenue_paise ?? 0) - (a.ytd_revenue_paise ?? 0),
     utilization_desc: (a, b) => b.utilization_percent - a.utilization_percent,
     last_used_desc: (a, b) => new Date(b.last_used_at ?? 0).getTime() - new Date(a.last_used_at ?? 0).getTime(),
   };
-  enriched.sort(cmp[q.sort]);
+  // A revenue sort leaks revenue ORDERING even with values nulled → fall back to
+  // code_asc for members without inventory.costs.
+  const effectiveSort = (q.sort === 'ytd_revenue_desc' && !showCost) ? 'code_asc' : q.sort;
+  enriched.sort(cmp[effectiveSort]);
 
   const total = enriched.length;
   const page = enriched.slice(q.offset, q.offset + q.limit);
