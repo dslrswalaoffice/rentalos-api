@@ -326,8 +326,11 @@ notifications.put('/policy', requirePermission('settings.edit_notifications'), a
   if (p.enforce_customer_preferences !== undefined) nextPolicy.enforce_customer_preferences = p.enforce_customer_preferences;
   const nextSettings = { ...settings, notification_policy: nextPolicy };
 
+  // NOTE: workspaces has NO updated_at column (migration 001 defines only
+  // created_at + deleted_at) — matching the settings-write in workspace.ts, we
+  // update `settings` alone. Referencing updated_at here 500'd the save.
   await sql`
-    UPDATE workspaces SET settings = ${JSON.stringify(nextSettings)}::jsonb, updated_at = now()
+    UPDATE workspaces SET settings = ${JSON.stringify(nextSettings)}::jsonb
     WHERE id = ${session.workspace.id}::uuid
   `;
   await audit({

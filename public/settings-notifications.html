@@ -192,7 +192,7 @@ document.getElementById('saveBtn').addEventListener('click',async()=>{
     document.getElementById('savehint').textContent='Saved';toast('Notification policy saved','ok');
     setTimeout(()=>{document.getElementById('savehint').textContent='';},2000);
   }catch(err){
-    toast('Save failed: '+((err.body&&err.body.error)||err.message),'err');
+    toast('Save failed: '+((err.body&&(err.body.detail||err.body.error))||err.message),'err');
     document.getElementById('savehint').textContent='';
   }
   btn.disabled=false;

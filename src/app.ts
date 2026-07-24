@@ -125,5 +125,10 @@ app.notFound((c) => {
 });
 app.onError((err, c) => {
   console.error('[api error]', err);
-  return c.json({ error: 'internal_error' }, 500);
+  // Surface the underlying message as `detail` so an opaque 500 no longer masks
+  // the real cause (Lesson N — a missing column 500'd the notification-policy
+  // save for a full incident). The message is a developer-facing string (e.g. a
+  // Postgres error), not a stack trace; endpoints stay session-gated.
+  const detail = err instanceof Error ? err.message : String(err);
+  return c.json({ error: 'internal_error', detail }, 500);
 });
