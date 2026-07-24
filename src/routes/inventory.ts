@@ -21,6 +21,8 @@ import {
   type SessionWorkspace,
 } from '../middleware/session.js';
 import { requirePermission, can } from '../lib/permissions.js';
+import { computeAssetMetricsBatch, computeAssetLifetimeMetrics } from '../lib/asset_analytics.js';
+import { createApprovalRequest } from '../lib/approvals.js';
 
 type SessionVar = {
   sessionId: string;
@@ -235,6 +237,13 @@ inventory.get('/products', async (c) => {
     : 0;
   for (const p of products) delete (p as Partial<{ full_total: number }>).full_total;
 
+  // Cost redaction (Asset List S1 / Item 27) — the permission engine is the
+  // security floor, not just the UI: a member without inventory.costs never
+  // RECEIVES cost data. Same field name, null value.
+  if (!can(session, 'inventory.costs')) {
+    for (const p of products) (p as Partial<{ default_purchase_cost_paise: number | null }>).default_purchase_cost_paise = null;
+  }
+
   return c.json({
     products,
     total: fullTotal,
@@ -370,7 +379,26 @@ inventory.get('/products/:id', async (c) => {
       AND l.workspace_id = ${session.workspace.id}::uuid
     ORDER BY l.name ASC
   `);
-  return c.json({ product, assets, assets_by_location, stock_levels, custom_fields, tags, downtimes, recommendations });
+  // Cost redaction (Asset List S1 / Item 27) — strip product + per-asset cost
+  // for members without inventory.costs. Attention flags summarise utilization +
+  // open damage across this product's units (fail-soft; defaults false).
+  if (!can(session, 'inventory.costs')) {
+    (product as Partial<{ default_purchase_cost_paise: number | null }>).default_purchase_cost_paise = null;
+    for (const a of assets) { (a as any).purchase_cost_paise = null; (a as any).effective_cost_paise = null; (a as any).cost_source = 'none'; }
+  }
+  let attention_flags = { utilization_over_80: false, utilization_under_20: false, has_open_damage_on_any_asset: false };
+  try {
+    const dmg = await query<{ n: number }>(sql`
+      SELECT COUNT(*)::int AS n FROM damage_incident_assets dia
+      JOIN damage_incidents di ON di.id = dia.damage_incident_id
+      JOIN assets a ON a.id = dia.asset_id
+      WHERE dia.workspace_id = ${session.workspace.id}::uuid AND a.product_id = ${id}::uuid
+        AND di.status::text NOT IN ('closed')
+    `);
+    attention_flags.has_open_damage_on_any_asset = Number(dmg[0]?.n ?? 0) > 0;
+  } catch { /* fail-soft */ }
+
+  return c.json({ product, assets, assets_by_location, stock_levels, custom_fields, tags, downtimes, recommendations, attention_flags });
 });
 
 // ============================================================================
@@ -1366,4 +1394,274 @@ inventory.delete('/products/:id/image', requirePermission('inventory.manage'), a
   });
 
   return c.json({ ok: true, was_owned: wasOwned });
+});
+
+// ============================================================================
+// GET /api/inventory/assets — the per-UNIT list (Asset List S1, Assets view).
+// ----------------------------------------------------------------------------
+// Filters: product_id, status, location_id, category, search, has_open_damage,
+// utilization_range (under_20|20_to_80|over_80), sort, offset/limit. Metrics
+// (utilization / YTD revenue / last_used) are batch-computed for the matching
+// set so metric sorts are correct; cost fields are redacted server-side without
+// inventory.costs. Any member (inventory.view). Fail-soft on metrics.
+// ============================================================================
+export const assetListSchema = z.object({
+  product_id: z.string().uuid().optional(),
+  status: z.enum(['available', 'out', 'retired']).optional(),
+  location_id: z.string().uuid().optional(),
+  category: z.string().max(120).optional(),
+  search: z.string().max(120).optional(),
+  has_open_damage: z.coerce.boolean().optional(),
+  utilization_range: z.enum(['under_20', '20_to_80', 'over_80']).optional(),
+  sort: z.enum(['code_asc', 'code_desc', 'ytd_revenue_desc', 'utilization_desc', 'last_used_desc']).default('code_asc'),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+const ASSET_SCAN_CAP = 2000; // metrics are computed for the matching set; cap the scan.
+
+inventory.get('/assets', requirePermission('inventory.view'), async (c) => {
+  const session = c.get('session')!;
+  const parsed = assetListSchema.safeParse(Object.fromEntries(new URL(c.req.url).searchParams));
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const q = parsed.data;
+  const like = q.search ? `%${q.search}%` : null;
+  const showCost = can(session, 'inventory.costs');
+
+  // Base rows: unit + product + location + current holder + damage/downtime flags.
+  const rows = await query<any>(sql`
+    SELECT a.id AS asset_id, a.asset_code, a.serial_number, a.status::text AS status,
+           a.location_id, l.name AS location_name,
+           a.purchase_cost_paise,
+           COALESCE(a.purchase_cost_paise, p.default_purchase_cost_paise) AS effective_cost_paise,
+           p.id AS product_id, p.name AS product_name, p.sku AS product_sku,
+           p.category AS product_category, p.image_url AS product_thumbnail_url,
+           h.order_id, h.order_number, h.customer_person_id, h.customer_name, h.since_datetime,
+           EXISTS (SELECT 1 FROM damage_incident_assets dia JOIN damage_incidents di ON di.id = dia.damage_incident_id
+                   WHERE dia.asset_id = a.id AND dia.workspace_id = a.workspace_id AND di.status::text <> 'closed') AS has_open_damage_incident,
+           EXISTS (SELECT 1 FROM product_downtimes d WHERE d.asset_id = a.id AND d.workspace_id = a.workspace_id
+                   AND d.status IN ('scheduled','started')) AS active_downtime
+    FROM assets a
+    JOIN products p ON p.id = a.product_id
+    LEFT JOIN locations l ON l.id = a.location_id
+    LEFT JOIN LATERAL (
+      SELECT oa.order_id, o.order_number, o.customer_person_id, pe.display_name AS customer_name, oa.dispatched_at AS since_datetime
+      FROM order_assets oa JOIN orders o ON o.id = oa.order_id LEFT JOIN people pe ON pe.id = o.customer_person_id
+      WHERE oa.asset_id = a.id AND oa.workspace_id = a.workspace_id AND oa.returned_at IS NULL
+      ORDER BY oa.dispatched_at DESC NULLS LAST LIMIT 1
+    ) h ON true
+    WHERE a.workspace_id = ${session.workspace.id}::uuid
+      AND a.deleted_at IS NULL
+      AND (${q.product_id ?? null}::uuid IS NULL OR a.product_id = ${q.product_id ?? null}::uuid)
+      AND (${q.status ?? null}::text IS NULL OR a.status::text = ${q.status ?? null}::text)
+      AND (${q.location_id ?? null}::uuid IS NULL OR a.location_id = ${q.location_id ?? null}::uuid)
+      AND (${q.category ?? null}::text IS NULL OR p.category = ${q.category ?? null}::text)
+      AND (${like}::text IS NULL OR a.asset_code::text ILIKE ${like}::text OR a.serial_number ILIKE ${like}::text OR p.name ILIKE ${like}::text)
+    ORDER BY a.asset_code ASC
+    LIMIT ${ASSET_SCAN_CAP}
+  `);
+
+  const metrics = await computeAssetMetricsBatch(session.workspace.id, rows.map((r) => r.asset_id), 30);
+  let enriched = rows.map((r) => {
+    const m = metrics.get(r.asset_id) ?? { utilization_percent: 0, revenue_paise: 0, last_used_at: null };
+    const util = m.utilization_percent;
+    return {
+      asset_id: r.asset_id, asset_code: r.asset_code, serial_number: r.serial_number,
+      product_id: r.product_id, product_name: r.product_name, product_sku: r.product_sku,
+      product_category: r.product_category, product_thumbnail_url: r.product_thumbnail_url,
+      status: r.status, location_id: r.location_id, location_name: r.location_name,
+      current_holder: r.order_id ? { order_id: r.order_id, order_number: r.order_number, customer_person_id: r.customer_person_id, customer_name: r.customer_name, since_datetime: r.since_datetime } : null,
+      purchase_cost_paise: showCost ? (r.purchase_cost_paise == null ? null : Number(r.purchase_cost_paise)) : null,
+      effective_cost_paise: showCost ? (r.effective_cost_paise == null ? null : Number(r.effective_cost_paise)) : null,
+      ytd_revenue_paise: m.revenue_paise, utilization_percent: util, last_used_at: m.last_used_at,
+      has_open_damage_incident: r.has_open_damage_incident === true,
+      active_downtime: r.active_downtime === true,
+      attention_flags: { utilization_over_80: util > 80, utilization_under_20: util < 20, has_open_damage: r.has_open_damage_incident === true },
+    };
+  });
+
+  // Post-filters that depend on computed metrics / flags.
+  if (q.has_open_damage) enriched = enriched.filter((e) => e.has_open_damage_incident);
+  if (q.utilization_range === 'under_20') enriched = enriched.filter((e) => e.utilization_percent < 20);
+  else if (q.utilization_range === '20_to_80') enriched = enriched.filter((e) => e.utilization_percent >= 20 && e.utilization_percent <= 80);
+  else if (q.utilization_range === 'over_80') enriched = enriched.filter((e) => e.utilization_percent > 80);
+
+  // Sort.
+  const cmp: Record<string, (a: any, b: any) => number> = {
+    code_asc: (a, b) => a.asset_code.localeCompare(b.asset_code),
+    code_desc: (a, b) => b.asset_code.localeCompare(a.asset_code),
+    ytd_revenue_desc: (a, b) => b.ytd_revenue_paise - a.ytd_revenue_paise,
+    utilization_desc: (a, b) => b.utilization_percent - a.utilization_percent,
+    last_used_desc: (a, b) => new Date(b.last_used_at ?? 0).getTime() - new Date(a.last_used_at ?? 0).getTime(),
+  };
+  enriched.sort(cmp[q.sort]);
+
+  const total = enriched.length;
+  const page = enriched.slice(q.offset, q.offset + q.limit);
+  return c.json({
+    data: page,
+    meta: {
+      total_count: total,
+      next_cursor: q.offset + q.limit < total ? String(q.offset + q.limit) : null,
+      prev_cursor: q.offset > 0 ? String(Math.max(0, q.offset - q.limit)) : null,
+      scan_capped: rows.length >= ASSET_SCAN_CAP,
+    },
+  });
+});
+
+// ============================================================================
+// GET /api/inventory/assets/:id — the Asset-360 payload (UI ships in Session 2).
+// Derived timeline (no asset_events table): dispatch/return + damage + downtime.
+// ============================================================================
+inventory.get('/assets/:id', requirePermission('inventory.view'), async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const showCost = can(session, 'inventory.costs');
+
+  const arows = await query<any>(sql`
+    SELECT a.id, a.asset_code, a.serial_number, a.condition::text AS condition, a.status::text AS status,
+           a.purchase_date, a.purchase_source, a.notes, a.location_id, l.name AS location_name,
+           a.purchase_cost_paise, COALESCE(a.purchase_cost_paise, p.default_purchase_cost_paise) AS effective_cost_paise,
+           a.stock_type::text AS stock_type, a.available_from, a.available_until,
+           p.id AS p_id, p.sku AS p_sku, p.name AS p_name, p.category AS p_category, p.description AS p_description,
+           p.image_url AS p_image_url, p.daily_rate AS p_daily_rate, p.deposit AS p_deposit,
+           p.replacement_value AS p_replacement_value, p.hsn_code AS p_hsn_code, p.is_kit AS p_is_kit
+    FROM assets a JOIN products p ON p.id = a.product_id LEFT JOIN locations l ON l.id = a.location_id
+    WHERE a.id = ${id}::uuid AND a.workspace_id = ${session.workspace.id}::uuid AND a.deleted_at IS NULL
+    LIMIT 1
+  `);
+  const a = arows[0];
+  if (!a) return c.json({ error: 'not_found' }, 404);
+
+  const holderRows = await query<any>(sql`
+    SELECT oa.order_id, o.order_number, o.customer_person_id, pe.display_name AS customer_name,
+           oa.dispatched_at, o.rental_end AS expected_return_at
+    FROM order_assets oa JOIN orders o ON o.id = oa.order_id LEFT JOIN people pe ON pe.id = o.customer_person_id
+    WHERE oa.asset_id = ${id}::uuid AND oa.workspace_id = ${session.workspace.id}::uuid AND oa.returned_at IS NULL
+    ORDER BY oa.dispatched_at DESC NULLS LAST LIMIT 1
+  `);
+  const orderHistory = await query<any>(sql`
+    SELECT oa.order_id, o.order_number, oa.dispatched_at, oa.returned_at, o.customer_person_id, pe.display_name AS customer_name,
+           ROUND(oi.total_amount_paise::numeric / NULLIF(cnt.n, 0))::bigint AS revenue_paise,
+           GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(oa.returned_at, now()) - oa.dispatched_at)) / 86400.0)::int AS duration_days
+    FROM order_assets oa JOIN orders o ON o.id = oa.order_id
+    JOIN order_items oi ON oi.id = oa.order_item_id
+    JOIN (SELECT order_item_id, COUNT(*) AS n FROM order_assets WHERE workspace_id = ${session.workspace.id}::uuid GROUP BY order_item_id) cnt ON cnt.order_item_id = oa.order_item_id
+    LEFT JOIN people pe ON pe.id = o.customer_person_id
+    WHERE oa.asset_id = ${id}::uuid AND oa.workspace_id = ${session.workspace.id}::uuid AND oa.dispatched_at IS NOT NULL
+    ORDER BY oa.dispatched_at DESC LIMIT 20
+  `);
+  const damageHistory = await query<any>(sql`
+    SELECT di.id AS damage_incident_id, di.reported_at, di.severity, dia.disposition, di.incident_type, di.description AS notes
+    FROM damage_incident_assets dia JOIN damage_incidents di ON di.id = dia.damage_incident_id
+    WHERE dia.asset_id = ${id}::uuid AND dia.workspace_id = ${session.workspace.id}::uuid
+    ORDER BY di.reported_at DESC LIMIT 50
+  `);
+  const downtimeHistory = await query<any>(sql`
+    SELECT id AS downtime_id, kind::text AS kind, start_at, end_at, reason AS notes
+    FROM product_downtimes WHERE asset_id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
+    ORDER BY start_at DESC LIMIT 50
+  `);
+  const lifetime = await computeAssetLifetimeMetrics(session.workspace.id, id);
+
+  // Derived timeline (dispatch/return + damage + downtime), newest first, 50.
+  const timeline = [
+    ...orderHistory.flatMap((o: any) => [
+      o.dispatched_at ? { event_type: 'dispatched', occurred_at: o.dispatched_at, actor_name: null, title: `Dispatched on order #${o.order_number}`, body: o.customer_name ?? null } : null,
+      o.returned_at ? { event_type: 'returned', occurred_at: o.returned_at, actor_name: null, title: `Returned from order #${o.order_number}`, body: null } : null,
+    ].filter(Boolean)),
+    ...damageHistory.map((d: any) => ({ event_type: 'damage', occurred_at: d.reported_at, actor_name: null, title: `Damage: ${d.severity} ${d.incident_type}`, body: d.notes ?? null })),
+    ...downtimeHistory.map((d: any) => ({ event_type: 'downtime', occurred_at: d.start_at, actor_name: null, title: `${d.kind} downtime`, body: d.notes ?? null })),
+  ].sort((x: any, y: any) => new Date(y.occurred_at).getTime() - new Date(x.occurred_at).getTime()).slice(0, 50);
+
+  return c.json({
+    asset: {
+      id: a.id, asset_code: a.asset_code, serial_number: a.serial_number, condition: a.condition, status: a.status,
+      purchase_date: a.purchase_date, purchase_source: a.purchase_source, notes: a.notes,
+      location_id: a.location_id, location_name: a.location_name,
+      purchase_cost_paise: showCost ? a.purchase_cost_paise : null,
+      effective_cost_paise: showCost ? a.effective_cost_paise : null,
+      stock_type: a.stock_type, available_from: a.available_from, available_until: a.available_until,
+    },
+    product: { id: a.p_id, sku: a.p_sku, name: a.p_name, category: a.p_category, description: a.p_description, image_url: a.p_image_url, daily_rate: a.p_daily_rate, deposit: a.p_deposit, replacement_value: a.p_replacement_value, hsn_code: a.p_hsn_code, is_kit: a.p_is_kit },
+    current_holder: holderRows[0] ? { order_id: holderRows[0].order_id, order_number: holderRows[0].order_number, customer_person_id: holderRows[0].customer_person_id, customer_name: holderRows[0].customer_name, dispatched_at: holderRows[0].dispatched_at, expected_return_at: holderRows[0].expected_return_at } : null,
+    order_history: orderHistory,
+    damage_history: damageHistory,
+    downtime_history: downtimeHistory,
+    lifetime_metrics: { ...lifetime, total_revenue_paise: showCost ? lifetime.total_revenue_paise : null, average_revenue_per_rental_paise: showCost ? lifetime.average_revenue_per_rental_paise : null, lifetime_utilization_percent: 0 },
+    timeline,
+  });
+});
+
+// ============================================================================
+// POST /api/inventory/assets/bulk-location-transfer — relocate many units.
+// ============================================================================
+export const bulkTransferSchema = z.object({ asset_ids: z.array(z.string().uuid()).min(1).max(200), target_location_id: z.string().uuid(), reason: z.string().max(500).optional() });
+inventory.post('/assets/bulk-location-transfer', requirePermission('inventory.manage'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const parsed = bulkTransferSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const { asset_ids, target_location_id, reason } = parsed.data;
+  const loc = await query<{ id: string }>(sql`SELECT id FROM locations WHERE id = ${target_location_id}::uuid AND workspace_id = ${session.workspace.id}::uuid AND is_active = true LIMIT 1`);
+  if (!loc[0]) return c.json({ error: 'location_not_found' }, 404);
+  const csv = asset_ids.join(',');
+  const updated = await query<{ id: string; from_location_id: string | null }>(sql`
+    WITH before AS (SELECT id, location_id FROM assets WHERE workspace_id = ${session.workspace.id}::uuid AND deleted_at IS NULL AND id = ANY(string_to_array(${csv}::text, ',')::uuid[]))
+    UPDATE assets a SET location_id = ${target_location_id}::uuid, updated_at = now()
+    FROM before b WHERE a.id = b.id AND a.workspace_id = ${session.workspace.id}::uuid
+    RETURNING a.id, b.location_id AS from_location_id
+  `);
+  for (const u of updated) {
+    await audit({ workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'inventory.asset.relocated', targetType: 'asset', targetId: u.id, payload: { from_location_id: u.from_location_id, to_location_id: target_location_id, reason: reason ?? null, bulk: true }, ipAddress, userAgent });
+  }
+  return c.json({ transferred: updated.length, target_location_id });
+});
+
+// ============================================================================
+// POST /api/inventory/assets/bulk-retire — retire many units (approval-gated).
+// Large batches (> threshold count OR > value) route through the approval engine
+// and DEFER execution (Session 2 wires post-approval auto-execute — the request
+// lands in the shared approvals queue now). Small batches execute immediately.
+// ============================================================================
+export const bulkRetireSchema = z.object({ asset_ids: z.array(z.string().uuid()).min(1).max(200), reason: z.enum(['end_of_life', 'damage_write_off', 'sold', 'other']), notes: z.string().max(500).optional() });
+const BULK_RETIRE_APPROVAL_COUNT = 5;
+const BULK_RETIRE_APPROVAL_VALUE_PAISE = 5000000; // ₹50k
+inventory.post('/assets/bulk-retire', requirePermission('inventory.retire'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const parsed = bulkRetireSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const { asset_ids, reason, notes } = parsed.data;
+  const csv = asset_ids.join(',');
+  const live = await query<{ id: string; effective_cost_paise: number | null }>(sql`
+    SELECT a.id, COALESCE(a.purchase_cost_paise, p.default_purchase_cost_paise) AS effective_cost_paise
+    FROM assets a JOIN products p ON p.id = a.product_id
+    WHERE a.workspace_id = ${session.workspace.id}::uuid AND a.deleted_at IS NULL AND a.status::text <> 'retired'
+      AND a.id = ANY(string_to_array(${csv}::text, ',')::uuid[])
+  `);
+  if (!live.length) return c.json({ error: 'no_retirable_assets' }, 409);
+  const totalValue = live.reduce((s, r) => s + Number(r.effective_cost_paise ?? 0), 0);
+
+  if (live.length > BULK_RETIRE_APPROVAL_COUNT || totalValue > BULK_RETIRE_APPROVAL_VALUE_PAISE) {
+    const req = await createApprovalRequest({
+      workspaceId: session.workspace.id, requesterUserId: session.user.id, requiredRole: 'owner',
+      resourceType: 'asset_bulk_retire', resourceId: live[0]!.id, orderId: null,
+      reasonTag: reason, reasonNotes: notes ?? null,
+      requestSnapshot: { asset_ids: live.map((r) => r.id), count: live.length, total_value_paise: totalValue, reason },
+      policySnapshot: { threshold_count: BULK_RETIRE_APPROVAL_COUNT, threshold_value_paise: BULK_RETIRE_APPROVAL_VALUE_PAISE },
+    });
+    await audit({ workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'inventory.asset.updated', targetType: 'asset', targetId: live[0]!.id, payload: { action: 'bulk_retire_approval_requested', approval_request_id: req.id, count: live.length, total_value_paise: totalValue }, ipAddress, userAgent });
+    return c.json({ requires_approval: true, approval_request_id: req.id, count: live.length, total_value_paise: totalValue, retired: 0 });
+  }
+
+  const ids = live.map((r) => r.id).join(',');
+  const retired = await query<{ id: string }>(sql`
+    UPDATE assets SET status = 'retired'::asset_status, deleted_at = now(), updated_at = now()
+    WHERE workspace_id = ${session.workspace.id}::uuid AND id = ANY(string_to_array(${ids}::text, ',')::uuid[])
+    RETURNING id
+  `);
+  for (const r of retired) {
+    await audit({ workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'inventory.asset.updated', targetType: 'asset', targetId: r.id, payload: { action: 'retired', reason, notes: notes ?? null, bulk: true }, ipAddress, userAgent });
+  }
+  return c.json({ requires_approval: false, retired: retired.length });
 });
