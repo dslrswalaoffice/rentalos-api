@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<!--
+  Damage Incident Modal — v1 design (5-step workflow)
+  Author: Claude Design for Aamir Patel / DSLRSWALA
+  Scope: Modal for damage incident capture (Item 4)
+  Reference: Follows RentalOS v2 design (see Cancellation_Modal_dc.html)
+
+  Show Step 3 (Save the Shoot) as primary view.
+  Steps 1-2 completed above (compact). Steps 4-5 upcoming (muted).
+
+  MOBILE (<768px): modal becomes full-screen; progress bar collapses to a
+  compact "3/5" indicator; steps navigate via bottom-fixed Next/Back; photo
+  capture opens directly to camera (not picker); all grids become single-column.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Manrope',sans-serif;background:#efece6}
+  a{color:#4f46e5;text-decoration:none}
+  a:hover{color:#4338ca}
+  ::placeholder{color:#9ca3af}
+</style>
+</helmet>
+<div style="position:relative;width:1440px;min-height:1180px;background:#efece6;overflow:hidden;font-family:'Manrope',sans-serif">
+
+  <!-- ===== BACKDROP: Order 360 (blurred + dimmed) ===== -->
+  <div style="position:absolute;inset:0;filter:blur(3px);opacity:.6;pointer-events:none;user-select:none">
+    <div style="height:52px;background:#fff;border-bottom:1px solid #e6e3dc;display:flex;align-items:center;gap:28px;padding:0 32px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#202058">RentalOS</div>
+      <div style="display:flex;gap:22px;font-size:13px;color:#6b7280;font-weight:500">
+        <span>Dashboard</span><span style="color:#202058;font-weight:600">Orders</span><span>Inventory</span><span>Customers</span><span>Reports</span>
+      </div>
+      <div style="margin-left:auto;width:30px;height:30px;border-radius:50%;background:#d9d5cd"></div>
+    </div>
+    <div style="height:64px;background:#fff;border-bottom:1px solid #e6e3dc;display:flex;align-items:center;gap:16px;padding:0 32px">
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:600;font-size:15px;color:#26235a">BK2214</div>
+      <div style="color:#c9c5bd">&middot;</div>
+      <div style="font-size:14px;color:#26235a;font-weight:600">Rahul Malhotra</div>
+      <div style="color:#c9c5bd">&middot;</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:#fef2f2;color:#dc2626;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em">&#9679; ON RENT</div>
+      <div style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:16px;color:#202058">&#8377;28,000</div>
+    </div>
+    <div style="display:flex;gap:24px;padding:28px 32px">
+      <div style="flex:2;display:flex;flex-direction:column;gap:16px">
+        <div style="height:140px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:220px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:180px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px">
+        <div style="height:120px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:260px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;inset:0;background:rgba(38,35,90,.30);pointer-events:none"></div>
+
+  <!-- ===== MODAL ===== -->
+  <div style="position:absolute;top:52px;left:50%;transform:translateX(-50%);width:720px;max-height:1076px;background:#fff;border-radius:14px;box-shadow:0 24px 64px -12px rgba(24,22,60,.45),0 8px 24px -8px rgba(24,22,60,.30);display:flex;flex-direction:column;overflow:hidden">
+
+    <!-- HEADER -->
+    <div style="flex:none;padding:24px 28px 18px;border-bottom:1px solid #eeece6">
+      <div style="display:flex;align-items:flex-start;gap:16px">
+        <div style="flex:1">
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:#fef2f2;border:1px solid #fbcaca;margin-bottom:11px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#dc2626"></span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.13em;color:#dc2626">DAMAGE INCIDENT</span>
+          </div>
+          <div style="font-size:13px;color:#6b7280">
+            Order <span style="font-family:'JetBrains Mono',monospace;color:#26235a;font-weight:600">#BK2214</span>
+            &middot; Rahul Malhotra <span style="display:inline-flex;align-items:center;padding:1px 7px;margin-left:2px;border-radius:5px;background:#fffbeb;border:1px solid #fcd9a4;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#d97706;vertical-align:middle">VIP</span>
+            &middot; Sony FX3
+            <span style="color:#c9c5bd">&middot;</span>
+            <span style="color:#9ca3af">reported 15 min ago</span>
+          </div>
+        </div>
+        <button style="width:32px;height:32px;flex:none;border:1px solid #e7e4de;background:#fff;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280;transition:all .15s" style-hover="background:#f3f1ec;color:#202058">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- PROGRESS BAR -->
+      <div style="margin-top:18px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;color:#202058">Step 3 of 5 &middot; Save the Shoot</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af">operational triage</div>
+        </div>
+        <div style="display:flex;align-items:center">
+          <sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+            <div onClick="{{ s.go }}" style="display:flex;align-items:center;cursor:pointer;flex:{{ s.flex }}">
+              <span style="width:26px;height:26px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;border:2px solid {{ s.ring }};background:{{ s.fill }};color:{{ s.numColor }};transition:all .15s">
+                <span dangerouslySetInnerHTML="{{ s.mark }}"></span>
+              </span>
+              <sc-if value="{{ s.hasConn }}" hint-placeholder-val="{{ true }}">
+                <span style="flex:1;height:3px;border-radius:2px;margin:0 6px;background:{{ s.conn }}"></span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;margin-top:8px">
+          <sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+            <div style="flex:{{ s.flex }};font-size:10.5px;color:{{ s.labelColor }};font-weight:{{ s.labelWeight }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:6px">{{ s.short }}</div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- BODY (scrollable accordion) -->
+    <div style="flex:1;overflow-y:auto;padding:8px 20px 16px">
+
+      <!-- ============ STEP 1 (completed) ============ -->
+      <div style="border:1px solid #eeece6;border-radius:14px;margin:8px 0;overflow:hidden;background:#fff">
+        <div onClick="{{ toggle1 }}" style="display:flex;align-items:center;gap:13px;padding:15px 18px;cursor:pointer" style-hover="background:#faf9f6">
+          <span style="width:24px;height:24px;flex:none;border-radius:50%;background:#ecfdf5;border:2px solid #6ee7b7;display:flex;align-items:center;justify-content:center">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:baseline;gap:9px">
+              <span style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;color:#202058">What happened</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#9ca3af">STEP 1</span>
+            </div>
+            <div style="margin-top:3px;font-size:12px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              <span style="color:#4f46e5;font-weight:600">Accidental drop</span> &middot; Customer via WhatsApp &middot; 3 photos
+            </div>
+          </div>
+          <span style="font-size:12px;font-weight:600;color:#4f46e5">Edit</span>
+        </div>
+        <sc-if value="{{ open1 }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:4px 18px 20px;display:flex;flex-direction:column;gap:20px;border-top:1px solid #f3f1ec">
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin:16px 0 10px">When did this occur?</div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="display:inline-flex;align-items:center;gap:9px;padding:9px 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#26235a">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  Tue, Jul 16 &middot; 03:12 PM
+                </span>
+                <span style="display:inline-flex;align-items:center;padding:5px 11px;border-radius:7px;background:#eef2ff;color:#4f46e5;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600">Now &middot; in field</span>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Incident type <span style="color:#dc2626">*</span></div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+                <sc-for list="{{ incidentTypes }}" as="t" hint-placeholder-count="12">
+                  <div style="padding:9px 10px;border-radius:10px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.color }};font-size:12px;font-weight:{{ t.weight }};cursor:pointer;text-align:center">{{ t.label }}</div>
+                </sc-for>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Description <span style="color:#dc2626">*</span></div>
+              <textarea style="width:100%;min-height:70px;resize:vertical;padding:11px 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:'Manrope',sans-serif;font-size:13px;line-height:1.55;color:#26235a;outline:none" style-focus="border-color:#4f46e5">Customer's tripod tipped during shoot; the FX3 fell approx. 3ft to concrete. Body has visible scratches on the top-left corner. Camera still powers on and records normally.</textarea>
+            </div>
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Photos <span style="color:#dc2626">*</span> <span style="color:#c9c5bd;font-weight:400;text-transform:none;letter-spacing:0">(minimum 3)</span></div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+                <sc-for list="{{ photos }}" as="p" hint-placeholder-count="3">
+                  <div style="position:relative;aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,#e9e6df,#d9d5cd);border:1px solid #d9d6cf;overflow:hidden;display:flex;align-items:flex-end">
+                    <div style="position:absolute;top:8px;left:8px;color:#a8a496;display:flex"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+                    <div style="width:100%;padding:6px 7px;background:linear-gradient(transparent,rgba(0,0,0,.55));font-family:'JetBrains Mono',monospace;font-size:9px;color:#fff">{{ p.ts }}</div>
+                  </div>
+                </sc-for>
+                <div style="aspect-ratio:1;border-radius:10px;border:1.5px dashed #cfcbc2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#9ca3af;cursor:pointer" style-hover="border-color:#4f46e5;color:#4f46e5">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span style="font-size:10.5px;font-weight:600">Add</span>
+                </div>
+              </div>
+              <div style="margin-top:8px;font-size:11.5px;color:#9ca3af">Photos auto-tagged with GPS + timestamp on upload.</div>
+            </div>
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Who reported this?</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <sc-for list="{{ reporters }}" as="r" hint-placeholder-count="4">
+                  <span style="display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:9px;border:1px solid {{ r.border }};background:{{ r.bg }};color:{{ r.color }};font-size:12.5px;font-weight:{{ r.weight }};cursor:pointer">
+                    <span style="width:15px;height:15px;border-radius:50%;border:2px solid {{ r.dotRing }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ r.dot }}"></span></span>
+                    {{ r.label }}
+                  </span>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- ============ STEP 2 (completed) ============ -->
+      <div style="border:1px solid #eeece6;border-radius:14px;margin:8px 0;overflow:hidden;background:#fff">
+        <div onClick="{{ toggle2 }}" style="display:flex;align-items:center;gap:13px;padding:15px 18px;cursor:pointer" style-hover="background:#faf9f6">
+          <span style="width:24px;height:24px;flex:none;border-radius:50%;background:#ecfdf5;border:2px solid #6ee7b7;display:flex;align-items:center;justify-content:center">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:baseline;gap:9px">
+              <span style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;color:#202058">What's affected</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#9ca3af">STEP 2</span>
+            </div>
+            <div style="margin-top:3px;font-size:12px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              Sony FX3 &middot; <span style="color:#d97706;font-weight:600">Major</span> severity &middot; est. <span style="font-family:'JetBrains Mono',monospace">&#8377;15,000</span>
+            </div>
+          </div>
+          <span style="font-size:12px;font-weight:600;color:#4f46e5">Edit</span>
+        </div>
+        <sc-if value="{{ open2 }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:4px 18px 20px;display:flex;flex-direction:column;gap:18px;border-top:1px solid #f3f1ec">
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin:16px 0 10px">Affected items from this order</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid #c7d2fe;background:#eef2ff;border-radius:10px">
+                  <span style="width:18px;height:18px;flex:none;border-radius:5px;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                  <span style="flex:1;font-size:13px;color:#202058;font-weight:600">Sony FX3 <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#6b7280">FX3-002</span></span>
+                  <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:7px;background:#fffbeb;border:1px solid #fcd9a4;font-size:11.5px;font-weight:600;color:#d97706">Major severity</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid #eeece6;border-radius:10px">
+                  <span style="width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid #cfcbc2"></span>
+                  <span style="flex:1;font-size:13px;color:#6b7280">Sony 24-70mm Lens <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af">SEL2470-004</span></span>
+                  <span style="font-size:12px;color:#9ca3af">&mdash;</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid #eeece6;border-radius:10px">
+                  <span style="width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid #cfcbc2"></span>
+                  <span style="flex:1;font-size:13px;color:#6b7280">Sony NP-FZ100 Battery <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af">BAT-018</span></span>
+                  <span style="font-size:12px;color:#9ca3af">&mdash;</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Severity <span style="color:#dc2626">*</span> <span style="color:#c9c5bd;font-weight:400;text-transform:none;letter-spacing:0">&middot; Sony FX3</span></div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{ severities }}" as="v" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:flex-start;gap:11px;padding:8px 8px;border-radius:9px;cursor:pointer" style-hover="background:#faf9f6">
+                    <span style="margin-top:1px;width:17px;height:17px;flex:none;border-radius:50%;border:2px solid {{ v.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ v.dot }}"></span></span>
+                    <div style="font-size:13px;color:{{ v.color }};font-weight:{{ v.weight }}">{{ v.label }} <span style="font-size:12px;color:#9ca3af;font-weight:400">{{ v.hint }}</span></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;gap:16px">
+              <div style="flex:1">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Estimated repair cost</div>
+                <div style="display:flex;align-items:center;gap:8px;padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:15px;color:#9ca3af">&#8377;</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;color:#202058">15,000</span>
+                </div>
+              </div>
+              <div style="flex:1.4">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Notes</div>
+                <div style="padding:10px 13px;border:1px solid #d9d6cf;border-radius:9px;font-size:13px;color:#26235a">Body panel replacement + sensor calibration</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;background:#ecfdf5;border:1px solid #a7f3d0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <div style="font-size:12.5px;color:#065f46"><span style="font-weight:700">Photographed at dispatch</span> &mdash; 2 photos on file. Compare condition before/after. <a href="#">View dispatch photos</a></div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- ============ STEP 3 (CURRENT · Save the Shoot) ============ -->
+      <div style="border:1.5px solid #c7d2fe;border-radius:14px;margin:8px 0;overflow:hidden;background:#fff;box-shadow:0 0 0 4px rgba(79,70,229,.07)">
+        <div onClick="{{ toggle3 }}" style="display:flex;align-items:center;gap:13px;padding:16px 18px;cursor:pointer;background:linear-gradient(180deg,#f5f5ff,#fff)">
+          <span style="width:26px;height:26px;flex:none;border-radius:50%;background:#4f46e5;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#fff;box-shadow:0 2px 6px rgba(79,70,229,.4)">3</span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:#202058">Save the Shoot</span>
+              <span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:6px;background:#4f46e5;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#fff">CURRENT</span>
+            </div>
+            <div style="margin-top:3px;font-size:12px;color:#6b7280">Operational continuity &mdash; keep the customer working today</div>
+          </div>
+        </div>
+        <sc-if value="{{ open3 }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:4px 20px 22px;border-top:1px solid #eef0ff">
+            <div style="margin:16px 0 16px;font-size:14px;line-height:1.55;color:#26235a">Customer's shoot doesn't have to suffer. <span style="font-weight:600;color:#202058">Choose how we keep them working.</span></div>
+
+            <!-- OPTION CARDS -->
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ shootOptions }}" as="o" hint-placeholder-count="5">
+                <div onClick="{{ o.pick }}" style="display:flex;gap:13px;padding:14px 15px;border-radius:12px;border:1.5px solid {{ o.border }};background:{{ o.bg }};cursor:pointer;transition:all .15s" style-hover="border-color:#a5b4fc">
+                  <span style="margin-top:1px;width:19px;height:19px;flex:none;border-radius:50%;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ o.dot }}"></span></span>
+                  <div style="flex:1;min-width:0">
+                    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                      <span style="font-size:13.5px;font-weight:600;color:{{ o.titleColor }}">{{ o.title }}</span>
+                      <sc-if value="{{ o.hasBadge }}" hint-placeholder-val="{{ false }}">
+                        <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;background:#ecfdf5;border:1px solid #a7f3d0;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:#059669">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          {{ o.badge }}
+                        </span>
+                      </sc-if>
+                    </div>
+                    <div style="margin-top:5px;display:flex;flex-direction:column;gap:3px">
+                      <sc-for list="{{ o.lines }}" as="ln" hint-placeholder-count="2">
+                        <div style="font-size:12.5px;color:#6b7280;line-height:1.45">{{ ln.text }}</div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <!-- CUSTOMER PREFERENCE -->
+            <div style="margin-top:16px">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:9px">Customer preference</div>
+              <textarea style="width:100%;min-height:56px;resize:vertical;padding:11px 13px;border:1px solid #d9d6cf;border-radius:9px;font-family:'Manrope',sans-serif;font-size:13px;line-height:1.5;color:#26235a;outline:none" style-focus="border-color:#4f46e5">Rahul says the shoot runs until 8pm and he can't lose the body. Happy to take an identical FX3 if we can get it to him within the hour.</textarea>
+            </div>
+
+            <!-- ROUTE EXPLANATION -->
+            <div style="margin-top:16px;border:1px solid #c7d2fe;border-radius:12px;background:#eef2ff;padding:16px 18px">
+              <div style="display:flex;align-items:center;gap:9px;margin-bottom:11px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <span style="font-size:13px;font-weight:700;color:#3730a3">Chosen: <span dangerouslySetInnerHTML="{{ routeTitle }}"></span></span>
+              </div>
+              <div style="font-size:12px;color:#4f46e5;font-weight:600;margin-bottom:8px">This will:</div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <sc-for list="{{ routeBullets }}" as="b" hint-placeholder-count="4">
+                  <div style="display:flex;gap:9px;font-size:12.5px;color:#4338ca;line-height:1.45">
+                    <span style="color:#818cf8;flex:none">&bull;</span>
+                    <span dangerouslySetInnerHTML="{{ b.text }}"></span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- ============ STEP 4 (upcoming · Financial preliminary) ============ -->
+      <div style="border:1px solid #eeece6;border-radius:14px;margin:8px 0;overflow:hidden;background:#fff;opacity:{{ dim4 }}">
+        <div onClick="{{ toggle4 }}" style="display:flex;align-items:center;gap:13px;padding:15px 18px;cursor:pointer" style-hover="background:#faf9f6">
+          <span style="width:24px;height:24px;flex:none;border-radius:50%;border:2px solid #d7d3ca;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#9ca3af">4</span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:baseline;gap:9px">
+              <span style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;color:#6b7280">Financial preliminary</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#c9c5bd">STEP 4</span>
+            </div>
+            <div style="margin-top:3px;font-size:12px;color:#9ca3af">Liability + how the &#8377;15,000 gets settled &middot; can finalize after triage</div>
+          </div>
+          <span style="font-size:11px;color:#c9c5bd">Upcoming</span>
+        </div>
+        <sc-if value="{{ open4 }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:4px 18px 20px;display:flex;flex-direction:column;gap:18px;border-top:1px solid #f3f1ec">
+            <div style="margin-top:14px;display:flex;gap:10px;padding:11px 13px;border-radius:9px;background:#eef2ff;font-size:12px;color:#4338ca;line-height:1.45">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linecap="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              This is <strong>preliminary</strong>. Full financial resolution can happen after operational triage &mdash; fix now, decide the money later.
+            </div>
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:6px">Customer liability</div>
+              <div style="font-size:11.5px;color:#9ca3af;margin-bottom:10px">Auto-suggested for <span style="font-family:'JetBrains Mono',monospace;color:#6b7280">accidental_drop</span></div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{ liabilities }}" as="l" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:flex-start;gap:11px;padding:8px;border-radius:9px;cursor:pointer" style-hover="background:#faf9f6">
+                    <span style="margin-top:1px;width:17px;height:17px;flex:none;border-radius:50%;border:2px solid {{ l.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ l.dot }}"></span></span>
+                    <div style="font-size:13px;color:{{ l.color }};font-weight:{{ l.weight }}">{{ l.label }} <span style="font-size:12px;color:#9ca3af;font-weight:400">{{ l.hint }}</span></div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="margin-top:12px;padding:13px 15px;border:1px solid #eeece6;border-radius:10px;background:#faf9f7">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">
+                  <span style="font-size:12px;color:#6b7280">Liability percent</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#4f46e5">100%</span>
+                </div>
+                <div style="position:relative;height:6px;border-radius:3px;background:#e6e3dc">
+                  <div style="position:absolute;left:0;top:0;height:6px;width:100%;border-radius:3px;background:#4f46e5"></div>
+                  <div style="position:absolute;right:-8px;top:-5px;width:16px;height:16px;border-radius:50%;background:#fff;border:3px solid #4f46e5;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:6px">Financial resolution</div>
+              <div style="font-size:11.5px;color:#9ca3af;margin-bottom:10px">Preliminary cost estimate: <span style="font-family:'JetBrains Mono',monospace;color:#202058;font-weight:600">&#8377;15,000</span> (from Step 2)</div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{ resolutions }}" as="f" hint-placeholder-count="8">
+                  <div style="display:flex;align-items:flex-start;gap:11px;padding:8px;border-radius:9px;cursor:pointer" style-hover="background:#faf9f6">
+                    <span style="margin-top:1px;width:17px;height:17px;flex:none;border-radius:50%;border:2px solid {{ f.ring }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ f.dot }}"></span></span>
+                    <div style="font-size:13px;color:{{ f.color }};font-weight:{{ f.weight }}">{{ f.label }} <span style="font-size:12px;color:#9ca3af;font-weight:400">{{ f.hint }}</span></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="border:1px solid #e7e2d8;border-radius:12px;background:rgba(217,119,6,.045);padding:16px 18px">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#b45309;margin-bottom:12px">Deposit implication</div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;justify-content:space-between"><span style="font-size:13px;color:#4b4b63">Customer's deposit held</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#202058">&#8377;25,000</span></div>
+                <div style="display:flex;justify-content:space-between"><span style="font-size:13px;color:#4b4b63">Amount to forfeit</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#d97706">&minus;&#8377;15,000</span></div>
+                <div style="border-top:1px dashed #d9d2c4;margin:2px 0"></div>
+                <div style="display:flex;justify-content:space-between"><span style="font-size:14px;font-weight:700;color:#202058">Amount to release</span><span style="font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;color:#059669">&#8377;10,000</span></div>
+              </div>
+              <div style="margin-top:12px;font-size:12px;color:#6b7280">Timing: released on order close (per deposit policy).</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;background:#ecfdf5;border:1px solid #a7f3d0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <div style="font-size:12.5px;color:#065f46"><span style="font-weight:700">Within your authority</span> &mdash; &lt; &#8377;15k approval threshold. No manager sign-off needed.</div>
+            </div>
+            <div style="display:flex;gap:12px;padding:14px;border-radius:10px;background:#fffbeb;border:1px solid #fcd9a4">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <div style="font-size:12.5px;color:#26235a;line-height:1.5"><span style="font-weight:700">If this were Catastrophic / &gt; &#8377;15k:</span> would require Manager approval &mdash; routed to Shoaib for sign-off before the incident can be created. <span style="color:#9ca3af">(not triggered by this incident)</span></div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- ============ STEP 5 (upcoming · Communication) ============ -->
+      <div style="border:1px solid #eeece6;border-radius:14px;margin:8px 0;overflow:hidden;background:#fff;opacity:{{ dim5 }}">
+        <div onClick="{{ toggle5 }}" style="display:flex;align-items:center;gap:13px;padding:15px 18px;cursor:pointer" style-hover="background:#faf9f6">
+          <span style="width:24px;height:24px;flex:none;border-radius:50%;border:2px solid #d7d3ca;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#9ca3af">5</span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:baseline;gap:9px">
+              <span style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;color:#6b7280">Communication</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#c9c5bd">STEP 5</span>
+            </div>
+            <div style="margin-top:3px;font-size:12px;color:#9ca3af">Notify customer + internal team, with photos attached</div>
+          </div>
+          <span style="font-size:11px;color:#c9c5bd">Upcoming</span>
+        </div>
+        <sc-if value="{{ open5 }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:4px 18px 20px;display:flex;flex-direction:column;gap:18px;border-top:1px solid #f3f1ec">
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin:14px 0 12px">Customer notification</div>
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <sc-for list="{{ notifyOpts }}" as="n" hint-placeholder-count="3">
+                  <div onClick="{{ n.toggle }}" style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:{{ n.color }}">
+                    <span style="width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid {{ n.border }};background:{{ n.bg }};display:flex;align-items:center;justify-content:center"><span dangerouslySetInnerHTML="{{ n.check }}"></span></span>
+                    {{ n.label }}
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af">Message preview</div>
+                <a href="#" style="font-size:12px;font-weight:600">Edit message</a>
+              </div>
+              <div style="border:1px solid #e7e2d8;border-radius:12px;background:rgba(107,114,128,.05);padding:16px 17px;font-size:13px;color:#26235a;line-height:1.65">
+                Hi Rahul, we've documented a damage incident on your <span style="font-weight:600">Sony FX3</span> today. Photos attached. We're sending <span style="font-family:'JetBrains Mono',monospace;font-weight:600">FX3-003</span> as a replacement so your shoot continues without disruption.<br><br>
+                Preliminary assessment: <span style="font-family:'JetBrains Mono',monospace;font-weight:600">&#8377;15,000</span> repair cost, likely covered by your held deposit. Final decision on financial resolution after we inspect the damage in more detail.<br><br>
+                We'll be in touch. &mdash; DSLRSWALA
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Attachments</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                <sc-for list="{{ photos }}" as="p" hint-placeholder-count="3">
+                  <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#e9e6df,#d9d5cd);border:1px solid #d9d6cf;display:flex;align-items:center;justify-content:center;color:#a8a496"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+                </sc-for>
+                <span style="font-size:12px;color:#6b7280">3 photos auto-attached from Step 1</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:#26235a">
+                  <span style="width:18px;height:18px;flex:none;border-radius:5px;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                  Include preliminary cost estimate
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:#26235a">
+                  <span style="width:18px;height:18px;flex:none;border-radius:5px;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                  Include next steps
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px">Internal notification (staff)</div>
+              <div style="display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid #eeece6;border-radius:10px;background:#faf9f7">
+                <span style="width:18px;height:18px;flex:none;border-radius:5px;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                <span style="width:26px;height:26px;flex:none;border-radius:50%;background:#d9d5cc;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#202058">AP</span>
+                <div style="flex:1;font-size:13px;color:#26235a">Notify <span style="font-weight:600">Aamir (Owner)</span> &mdash; high-value damage on VIP customer</div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+    </div>
+
+    <!-- FOOTER (sticky) -->
+    <div style="flex:none;border-top:1px solid #ece6db;padding:15px 24px;display:flex;align-items:center;gap:16px;background:#fbfaf7">
+      <button style="display:inline-flex;align-items:center;gap:7px;border:1px solid #e7e4de;background:#fff;cursor:pointer;font-family:'Manrope',sans-serif;font-size:13px;font-weight:600;color:#6b7280;padding:10px 16px;border-radius:10px;transition:all .15s" style-hover="border-color:#202058;color:#202058">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Back
+      </button>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9ca3af;margin:0 auto">Step 3 of 5</div>
+      <button style="display:inline-flex;align-items:center;gap:8px;border:none;cursor:pointer;background:#4f46e5;color:#fff;font-family:'Manrope',sans-serif;font-size:14px;font-weight:700;padding:12px 22px;border-radius:10px;box-shadow:0 2px 8px rgba(79,70,229,.3);transition:background .15s" style-hover="background:#4338ca">
+        Next: Financial preliminary
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1180}}">
+class Component extends DCLogic {
+  state = {
+    open: 3,
+    shoot: 'substitute',
+    notify: { whatsapp: true, email: true, manual: false },
+  };
+
+  radioDot(active, color) {
+    color = color || '#4f46e5';
+    return { __html: active
+      ? `<span style="display:block;width:8px;height:8px;border-radius:50%;background:${color}"></span>`
+      : '' };
+  }
+  checkMark(on) {
+    return { __html: on === false ? '' : `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>` };
+  }
+
+  renderVals() {
+    const open = this.state.open;
+    const setOpen = (n) => () => this.setState(s => ({ open: s.open === n ? 0 : n }));
+
+    const stepMeta = [
+      { short: 'What happened', status: 'done' },
+      { short: "What's affected", status: 'done' },
+      { short: 'Save the Shoot', status: 'current' },
+      { short: 'Financial', status: 'todo' },
+      { short: 'Comms', status: 'todo' },
+    ];
+    const steps = stepMeta.map((s, i) => {
+      const n = i + 1;
+      const done = s.status === 'done', current = s.status === 'current';
+      const mark = { __html: done
+        ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+        : String(n) };
+      return {
+        go: setOpen(n),
+        flex: i < 4 ? '1' : '0 0 auto',
+        hasConn: i < 4,
+        conn: n < 3 ? '#4f46e5' : '#e6e3dc',
+        ring: done || current ? '#4f46e5' : '#d7d3ca',
+        fill: done || current ? '#4f46e5' : '#fff',
+        numColor: done || current ? '#fff' : '#9ca3af',
+        mark,
+        short: s.short,
+        labelColor: done ? '#4f46e5' : current ? '#202058' : '#9ca3af',
+        labelWeight: current ? '700' : done ? '600' : '400',
+      };
+    });
+
+    const typeList = [
+      ['accidental_drop', 'Accidental drop'], ['impact_damage', 'Impact damage'],
+      ['liquid_damage', 'Liquid damage'], ['electrical_damage', 'Electrical'],
+      ['operational_failure', 'Operational fail'], ['theft', 'Theft'],
+      ['loss', 'Loss'], ['third_party_damage', 'Third-party'],
+      ['weather', 'Weather'], ['misuse', 'Misuse'],
+      ['wear_and_tear_dispute', 'Wear & tear'], ['other', 'Other'],
+    ];
+    const selType = 'accidental_drop';
+    const incidentTypes = typeList.map(([id, label]) => {
+      const on = id === selType;
+      return {
+        label,
+        border: on ? '#4f46e5' : '#e2dfd8',
+        bg: on ? '#eef2ff' : '#fff',
+        color: on ? '#4f46e5' : '#6b7280',
+        weight: on ? '600' : '500',
+      };
+    });
+
+    const photos = [
+      { ts: '15:12 · GPS' }, { ts: '15:12 · GPS' }, { ts: '15:13 · GPS' },
+    ];
+
+    const reporterList = [
+      ['Customer (WhatsApp)', true], ['Staff (Ruhan)', false],
+      ['On-rent check-in', false], ['Inspection at return', false],
+    ];
+    const reporters = reporterList.map(([label, on]) => ({
+      label,
+      border: on ? '#4f46e5' : '#e2dfd8',
+      bg: on ? '#eef2ff' : '#fff',
+      color: on ? '#4f46e5' : '#6b7280',
+      weight: on ? '600' : '500',
+      dotRing: on ? '#4f46e5' : '#cfcbc2',
+      dot: this.radioDot(on),
+    }));
+
+    const sevList = [
+      ['Cosmetic', '— scratches, no functional impact', false],
+      ['Minor', '— small functional issue, cheap fix', false],
+      ['Major', '— significant repair needed', true],
+      ['Total Loss', '— beyond repair', false],
+      ['Catastrophic', '— total loss + collateral impact', false],
+    ];
+    const severities = sevList.map(([label, hint, on]) => ({
+      label, hint,
+      ring: on ? '#d97706' : '#cfcbc2',
+      dot: this.radioDot(on, '#d97706'),
+      color: on ? '#b45309' : '#6b7280',
+      weight: on ? '600' : '400',
+    }));
+
+    const shoot = this.state.shoot;
+    const optData = [
+      { id: 'substitute', title: 'Substitute with another unit', badge: 'FX3-003 available now',
+        lines: ['Routes to Substitution flow (Item 5)', 'Customer keeps shooting today'] },
+      { id: 'dispatch_keep', title: 'Dispatch replacement, keep damaged item for now', badge: null,
+        lines: ['Both items on rent temporarily', 'Zero downtime for the customer'] },
+      { id: 'early_return_damaged', title: 'Early return of damaged item only', badge: null,
+        lines: ['Continues rental with other items', 'Auto-suggests pro-rated credit'] },
+      { id: 'continue_damaged', title: 'Continue with damaged item', badge: null,
+        lines: ['Reduces rental rate (auto-suggested discount)', 'Financial resolution deferred to end'] },
+      { id: 'full_return', title: 'Full early return', badge: null,
+        lines: ['Customer returns entire order now', 'Auto-suggests pro-rated refund · routes to Return'] },
+    ];
+    const shootOptions = optData.map(o => {
+      const on = o.id === shoot;
+      return {
+        pick: () => this.setState({ shoot: o.id }),
+        border: on ? '#4f46e5' : '#e6e3dc',
+        bg: on ? '#f5f5ff' : '#fff',
+        ring: on ? '#4f46e5' : '#cfcbc2',
+        dot: this.radioDot(on),
+        title: o.title,
+        titleColor: on ? '#202058' : '#4b4b63',
+        hasBadge: !!o.badge,
+        badge: o.badge || '',
+        lines: o.lines.map(text => ({ text })),
+      };
+    });
+
+    const routes = {
+      substitute: { title: 'Substitute with another unit', bullets: [
+        'Create Substitution event (linked to this Damage Incident)',
+        'Dispatch <b style="font-family:\'JetBrains Mono\',monospace">FX3-003</b> to customer today',
+        'Return <b style="font-family:\'JetBrains Mono\',monospace">FX3-002</b> to warehouse for damage assessment',
+        'Original Substitution flow opens after you complete this modal' ] },
+      dispatch_keep: { title: 'Dispatch replacement, keep damaged item', bullets: [
+        'Dispatch <b style="font-family:\'JetBrains Mono\',monospace">FX3-003</b> now; damaged unit stays in field',
+        'Both units billed until damaged item is returned',
+        'Flag <b style="font-family:\'JetBrains Mono\',monospace">FX3-002</b> for return + assessment' ] },
+      early_return_damaged: { title: 'Early return of damaged item only', bullets: [
+        'Schedule return pickup for <b style="font-family:\'JetBrains Mono\',monospace">FX3-002</b>',
+        'Rental continues on remaining line items',
+        'Auto-suggest pro-rated credit for the returned unit' ] },
+      continue_damaged: { title: 'Continue with damaged item', bullets: [
+        'Customer keeps <b style="font-family:\'JetBrains Mono\',monospace">FX3-002</b> as-is',
+        'Apply auto-suggested rate reduction',
+        'Defer financial resolution to end of rental' ] },
+      full_return: { title: 'Full early return', bullets: [
+        'Schedule pickup for the entire order',
+        'Auto-suggest pro-rated refund',
+        'Route to the Return workflow after this modal' ] },
+    };
+    const r = routes[shoot];
+    const routeTitle = { __html: r.title };
+    const routeBullets = r.bullets.map(text => ({ text: { __html: text } }));
+
+    const liabList = [
+      ['Customer liable', '(default for accidental_drop)', true],
+      ['Not liable', '(equipment failure was our fault)', false],
+      ['Partial liability', '', false],
+      ['Under investigation', '', false],
+    ];
+    const liabilities = liabList.map(([label, hint, on]) => ({
+      label, hint,
+      ring: on ? '#4f46e5' : '#cfcbc2',
+      dot: this.radioDot(on),
+      color: on ? '#202058' : '#6b7280',
+      weight: on ? '600' : '400',
+    }));
+
+    const resList = [
+      ['Deposit only', '— ₹15,000 forfeit from deposit', true],
+      ['Deposit plus additional', '— ₹15,000 from deposit + more charged', false],
+      ['Customer pays full', '— invoice for repair cost', false],
+      ['Insurance claim', "— customer's or shop's insurer", false],
+      ['Warranty coverage', '— manufacturer warranty', false],
+      ['Business absorbs', '— DSLRSWALA eats cost (goodwill)', false],
+      ['Partial split', '— customer + business split', false],
+      ['Under investigation', '— defer decision', false],
+    ];
+    const resolutions = resList.map(([label, hint, on]) => ({
+      label, hint,
+      ring: on ? '#4f46e5' : '#cfcbc2',
+      dot: this.radioDot(on),
+      color: on ? '#202058' : '#6b7280',
+      weight: on ? '600' : '400',
+    }));
+
+    const nf = this.state.notify;
+    const notifDefs = [
+      ['whatsapp', 'Send WhatsApp with photos'],
+      ['email', 'Send email with details'],
+      ['manual', "Wait — I'll handle this manually"],
+    ];
+    const notifyOpts = notifDefs.map(([key, label]) => {
+      const on = nf[key];
+      return {
+        label,
+        toggle: () => this.setState(s => ({ notify: { ...s.notify, [key]: !s.notify[key] } })),
+        border: on ? '#4f46e5' : '#cfcbc2',
+        bg: on ? '#4f46e5' : '#fff',
+        check: this.checkMark(on),
+        color: key === 'manual' ? '#6b7280' : '#26235a',
+      };
+    });
+
+    return {
+      steps,
+      open1: open === 1, open2: open === 2, open3: open === 3, open4: open === 4, open5: open === 5,
+      toggle1: setOpen(1), toggle2: setOpen(2), toggle3: setOpen(3), toggle4: setOpen(4), toggle5: setOpen(5),
+      dim4: open === 4 ? '1' : '0.78',
+      dim5: open === 5 ? '1' : '0.78',
+      incidentTypes, photos, reporters, severities,
+      shootOptions, routeTitle, routeBullets,
+      liabilities, resolutions, notifyOpts,
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Manrope',sans-serif;}
+  a{color:#4f46e5;text-decoration:none;}
+  a:hover{color:#4338ca;}
+  ::placeholder{color:#9ca3af;}
+</style>
+</helmet>
+<div style="position:relative;width:1440px;height:900px;background:#efece6;overflow:hidden;font-family:'Manrope',sans-serif;">
+
+  <!-- ===== FAKE ORDER 360 BACKGROUND (blurred + dimmed) ===== -->
+  <div style="position:absolute;inset:0;filter:blur(3px);opacity:0.6;pointer-events:none;user-select:none;">
+    <!-- top app bar -->
+    <div style="height:52px;background:#fff;border-bottom:1px solid #e7e4de;display:flex;align-items:center;padding:0 28px;gap:26px;">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#26235a;">RentalOS</div>
+      <div style="display:flex;gap:22px;font-size:13px;color:#6b7280;">
+        <span>Dashboard</span><span style="color:#202058;font-weight:600;">Orders</span><span>Inventory</span><span>Customers</span><span>Reports</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:14px;">
+        <div style="width:220px;height:32px;border-radius:8px;background:#f3f1ec;border:1px solid #e7e4de;"></div>
+        <div style="width:30px;height:30px;border-radius:50%;background:#d9d5cc;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#202058;">RM</div>
+      </div>
+    </div>
+    <!-- sub nav -->
+    <div style="height:44px;background:#fff;border-bottom:1px solid #e7e4de;display:flex;align-items:center;padding:0 28px;gap:24px;font-size:13px;color:#6b7280;">
+      <span style="color:#6b7280;">← Orders</span>
+      <span style="color:#202058;font-weight:600;border-bottom:2px solid #202058;height:44px;display:flex;align-items:center;">Overview</span>
+      <span>Timeline</span><span>Items</span><span>Payments</span><span>Documents</span>
+    </div>
+    <!-- sticky order header strip -->
+    <div style="height:72px;background:#fff;border-bottom:1px solid #e7e4de;display:flex;align-items:center;padding:0 28px;gap:16px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;color:#202058;">BK2214</div>
+      <div style="color:#c9c5bc;">·</div>
+      <div style="font-size:15px;color:#26235a;font-weight:600;">Rahul Malhotra</div>
+      <div style="color:#c9c5bc;">·</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;background:#ecfdf5;border:1px solid #a7f3d0;">
+        <span style="width:7px;height:7px;border-radius:50%;background:#059669;"></span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.06em;color:#059669;">CONFIRMED</span>
+      </div>
+      <div style="color:#c9c5bc;">·</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:600;color:#202058;">₹28,000</div>
+      <div style="margin-left:auto;display:flex;gap:10px;">
+        <div style="width:96px;height:34px;border-radius:8px;border:1px solid #e7e4de;background:#fff;"></div>
+        <div style="width:34px;height:34px;border-radius:8px;border:1px solid #e7e4de;background:#fff;display:flex;align-items:center;justify-content:center;color:#6b7280;">⋯</div>
+      </div>
+    </div>
+    <!-- faux body content -->
+    <div style="display:flex;gap:20px;padding:24px 28px;">
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px;">
+        <div style="height:150px;background:#fff;border:1px solid #e7e4de;border-radius:14px;"></div>
+        <div style="height:230px;background:#fff;border:1px solid #e7e4de;border-radius:14px;"></div>
+        <div style="height:180px;background:#fff;border:1px solid #e7e4de;border-radius:14px;"></div>
+      </div>
+      <div style="width:360px;display:flex;flex-direction:column;gap:16px;">
+        <div style="height:200px;background:#fff;border:1px solid #e7e4de;border-radius:14px;"></div>
+        <div style="height:260px;background:#fff;border:1px solid #e7e4de;border-radius:14px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SCRIM ===== -->
+  <div style="position:absolute;inset:0;background:rgba(38,35,90,0.28);"></div>
+
+  <!-- ===== MODAL ===== -->
+  <div style="position:absolute;top:60px;left:50%;transform:translateX(-50%);width:720px;max-height:820px;background:#fff;border-radius:14px;box-shadow:0 24px 64px -12px rgba(24,22,60,0.45),0 8px 24px -8px rgba(24,22,60,0.30);display:flex;flex-direction:column;overflow:hidden;">
+
+    <!-- HEADER -->
+    <div style="display:flex;align-items:flex-start;gap:16px;padding:28px 28px 20px;">
+      <div style="flex:1;">
+        <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:600;letter-spacing:-0.01em;color:#202058;">CANCEL ORDER — BK2214</h2>
+        <div style="margin-top:6px;font-size:13px;color:#6b7280;">Rahul Malhotra · Currently: Confirmed</div>
+      </div>
+      <button style="width:32px;height:32px;flex:none;border:1px solid #e7e4de;background:#fff;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280;transition:all .15s;" style-hover="background:#f3f1ec;color:#202058;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+
+    <!-- BODY (scrollable) -->
+    <div style="flex:1;overflow-y:auto;padding:0 28px 8px;display:flex;flex-direction:column;gap:26px;">
+
+      <!-- SECTION 1: CURRENT STATE -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:0.14em;color:#9ca3af;margin-bottom:12px;">CURRENT STATE</div>
+        <div style="display:flex;flex-direction:column;gap:11px;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="width:150px;flex:none;font-size:13px;color:#6b7280;">Status</div>
+            <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;background:#ecfdf5;border:1px solid #a7f3d0;">
+              <span style="width:7px;height:7px;border-radius:50%;background:#059669;"></span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.06em;color:#059669;">CONFIRMED</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="width:150px;flex:none;font-size:13px;color:#6b7280;">Time to Dispatch</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#d97706;">20 hours</div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:12px;">
+            <div style="width:150px;flex:none;font-size:13px;color:#6b7280;">Policy applied</div>
+            <div style="font-size:12px;color:#d97706;line-height:1.5;">&lt;24hr window — 50% refund + approval required</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 2: CANCELLATION REASON -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:0.14em;color:#9ca3af;margin-bottom:12px;">CANCELLATION REASON</div>
+        <button style="display:inline-flex;align-items:center;justify-content:space-between;gap:12px;min-width:300px;padding:9px 13px;border:1px solid #d7d3ca;background:#fff;border-radius:9px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:13px;color:#202058;transition:all .15s;" style-hover="border-color:#202058;">
+          <span>customer_change_of_plans</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <textarea placeholder="Optional notes..." style="margin-top:10px;width:100%;min-height:64px;resize:vertical;padding:11px 13px;border:1px solid #d7d3ca;border-radius:9px;font-family:'Manrope',sans-serif;font-size:13px;color:#202058;outline:none;" style-focus="border-color:#4f46e5;"></textarea>
+      </div>
+
+      <!-- SECTION 3: FINANCIAL IMPACT -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:0.14em;color:#9ca3af;margin-bottom:12px;">FINANCIAL IMPACT</div>
+        <div style="border:1px solid #e7e2d8;border-radius:12px;background:rgba(217,119,6,0.045);padding:18px 20px;">
+          <div style="display:flex;flex-direction:column;gap:11px;">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;">
+              <span style="font-size:13px;color:#4b4b63;">Original amount</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#202058;">₹28,000</span>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;">
+              <span style="font-size:13px;color:#4b4b63;">Cancellation fee (50% forfeit)</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#d97706;">−₹14,000</span>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;">
+              <span style="font-size:13px;color:#4b4b63;">Refund to customer</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#202058;">₹14,000</span>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;">
+              <span style="font-size:13px;color:#4b4b63;">Deposit refund</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:14px;color:#202058;">₹5,000</span>
+            </div>
+            <div style="border-top:1px dashed #d9d2c4;margin:3px 0;"></div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;">
+              <span style="font-size:14px;font-weight:700;color:#202058;">Total to customer</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;color:#202058;">₹19,000</span>
+            </div>
+          </div>
+          <div style="margin-top:14px;font-size:12px;color:#6b7280;line-height:1.5;">Refund method: Card refund via Razorpay · Expected credit: 5–7 business days</div>
+        </div>
+      </div>
+
+      <!-- SECTION 4: OPERATIONAL IMPACT -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:0.14em;color:#9ca3af;margin-bottom:12px;">OPERATIONAL IMPACT</div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <div style="font-size:13px;color:#6b7280;margin-bottom:5px;">Availability released for</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:#202058;">Fri Nov 20 10:00 AM → Mon Nov 23 6:00 PM</div>
+          </div>
+          <div>
+            <div style="font-size:13px;color:#6b7280;margin-bottom:5px;">Equipment freed</div>
+            <div style="font-size:12px;color:#6b7280;line-height:1.6;">Sony FX3 #002 · Sony 24-70 GM #003 · Sony 70-200 #005 · Manfrotto Tripod #014 · Godox VL300 #002</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 5: NOTIFICATION -->
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:0.14em;color:#9ca3af;margin-bottom:12px;">NOTIFICATION</div>
+        <div style="display:flex;gap:22px;margin-bottom:13px;">
+          <label onClick="{{ toggleWhatsapp }}" style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:#202058;user-select:none;">
+            <span style="width:18px;height:18px;border-radius:5px;border:1.5px solid {{ waBorder }};background:{{ waBg }};display:flex;align-items:center;justify-content:center;transition:all .15s;">
+              <sc-if value="{{ whatsapp }}" hint-placeholder-val="{{ true }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
+            </span>
+            WhatsApp
+          </label>
+          <label onClick="{{ toggleEmail }}" style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:#202058;user-select:none;">
+            <span style="width:18px;height:18px;border-radius:5px;border:1.5px solid {{ emBorder }};background:{{ emBg }};display:flex;align-items:center;justify-content:center;transition:all .15s;">
+              <sc-if value="{{ email }}" hint-placeholder-val="{{ true }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
+            </span>
+            Email
+          </label>
+        </div>
+        <div style="border:1px solid #e7e2d8;border-radius:12px;background:rgba(107,114,128,0.05);padding:16px;">
+          <div style="font-size:13px;color:#26235a;line-height:1.65;">
+            Hi Rahul, your order <span style="font-family:'JetBrains Mono',monospace;">BK2214</span> has been cancelled. Refund of <span style="font-family:'JetBrains Mono',monospace;font-weight:600;">₹19,000</span> initiated to your card ending <span style="font-family:'JetBrains Mono',monospace;">4523</span>. Expected credit in <span style="font-family:'JetBrains Mono',monospace;">5–7</span> business days.
+          </div>
+        </div>
+        <div style="margin-top:9px;"><a href="#" style="font-size:12px;font-weight:600;">Edit message</a></div>
+      </div>
+
+      <!-- SECTION 6: APPROVAL -->
+      <div style="margin-bottom:8px;">
+        <div style="display:flex;gap:13px;border:1px solid #fcd9a4;background:rgba(217,119,6,0.08);border-radius:12px;padding:16px;">
+          <div style="flex:none;color:#d97706;margin-top:1px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:13.5px;font-weight:700;color:#26235a;">Cancellation within 24 hours of dispatch requires approval</div>
+            <div style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:13px;color:#6b7280;">
+              <span>Will be routed to:</span>
+              <span style="display:inline-flex;align-items:center;gap:7px;padding:3px 10px 3px 3px;border-radius:999px;background:#fff;border:1px solid #ece6db;">
+                <span style="width:22px;height:22px;border-radius:50%;background:#d9d5cc;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#202058;">AP</span>
+                <span style="font-size:12.5px;font-weight:600;color:#202058;">Aamir Patel</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <div style="border-top:1px solid #ece6db;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fff;">
+      <button style="border:none;background:none;cursor:pointer;font-family:'Manrope',sans-serif;font-size:13px;font-weight:600;color:#6b7280;padding:8px 4px;transition:color .15s;" style-hover="color:#202058;">Keep Order</button>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+        <button style="border:none;cursor:pointer;background:#4f46e5;color:#fff;font-family:'Manrope',sans-serif;font-size:14px;font-weight:600;padding:11px 22px;border-radius:10px;box-shadow:0 2px 6px rgba(79,70,229,0.3);transition:background .15s;" style-hover="background:#4338ca;">Request Approval</button>
+        <div style="font-size:11px;color:#9ca3af;">Approver will be notified via WhatsApp</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { whatsapp: true, email: true };
+  renderVals() {
+    const on = "#4f46e5", onB = "#4f46e5", offBg = "#fff", offB = "#c9c5bc";
+    return {
+      whatsapp: this.state.whatsapp,
+      email: this.state.email,
+      waBg: this.state.whatsapp ? on : offBg,
+      waBorder: this.state.whatsapp ? onB : offB,
+      emBg: this.state.email ? on : offBg,
+      emBorder: this.state.email ? onB : offB,
+      toggleWhatsapp: () => this.setState(s => ({ whatsapp: !s.whatsapp })),
+      toggleEmail: () => this.setState(s => ({ email: !s.email })),
+    };
+  }
+}
+</script>
+</body>
+</html>

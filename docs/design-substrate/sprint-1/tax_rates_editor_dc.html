@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f2ee;font-family:'Manrope',system-ui,sans-serif;color:#26235a;-webkit-font-smoothing:antialiased}
+a{color:#4f46e5;text-decoration:none}
+a:hover{color:#3f37c9}
+input,select,textarea{font-family:'Manrope',system-ui,sans-serif}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#ddd8ce;border-radius:6px;border:2px solid #f4f2ee}
+.mono{font-family:'JetBrains Mono',monospace}
+</style>
+</helmet>
+
+<!--
+  workspaces.settings.tax_policy (JSONB) — configuration mapping this UI writes:
+  {
+    "gst_registration_status": "regular",           // none | regular | composition
+    "gstin": "24AAAAA1234A1Z5", "pan": "AAAAA1234A",
+    "state_code": "24", "state_name": "Gujarat",
+    "default_gst_rate_bps": 1200,                    // basis points (12% = 1200)
+    "line_item_gst_rates_bps": { "rental_service":1200,"late_fee":1800,"damage_recovery":0,
+                                 "deposit_charge":0,"delivery_charge":1800,"damage_insurance":1800 },
+    "line_item_sac_codes": { "rental_service":"998552","late_fee":"998552",
+                             "delivery_charge":"996511","damage_insurance":"997133" },
+    "tax_type_logic": { "auto_detect_by_state": true, "default_when_state_missing": "intra_state" },
+    "category_hsn_defaults": { "cameras":{"hsn":"998552","rate_bps":1800}, ... },
+    "rounding": { "line_item_precision":"paisa","invoice_total_precision":"rupee",
+                  "round_off_treatment":"separate_line_item" }
+  }
+  All amounts stored as BIGINT paise (_paise suffix). Rates stored as bps. HSN/SAC as strings.
+  Every change emits an audit event to workspace_settings_events.
+-->
+
+<div style="width:1280px;margin:0 auto;display:flex;background:#ffffff;min-height:100vh;position:relative">
+
+  <!-- ICON RAIL -->
+  <sc-if value="{{ showRail }}" hint-placeholder-val="{{ true }}">
+  <aside style="width:60px;flex:none;background:#faf9f7;border-right:1px solid #ece9e3;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;position:sticky;top:0;height:100vh">
+    <div style="width:32px;height:32px;border-radius:8px;background:#202058;color:#fff;font:600 16px 'Space Grotesk';display:flex;align-items:center;justify-content:center;margin-bottom:14px">R</div>
+    <sc-for list="{{ rail }}" as="r" hint-placeholder-count="6">
+      <div title="{{ r.name }}" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#9a9690" style-hover="background:#f0ede8"><span dangerouslySetInnerHTML="{{ r.icon }}" style="display:flex"></span></div>
+    </sc-for>
+    <div style="flex:1"></div>
+    <div title="Settings" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#eceafb;color:#4f46e5"><span dangerouslySetInnerHTML="{{ gearIcon }}" style="display:flex"></span></div>
+  </aside>
+  </sc-if>
+
+  <!-- RIGHT SIDE -->
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+
+    <!-- TOP BAR -->
+    <header style="height:56px;flex:none;background:#fff;border-bottom:1px solid #ece9e3;display:flex;align-items:center;gap:18px;padding:0 22px;position:sticky;top:0;z-index:40">
+      <a href="#" style="display:flex;align-items:center;gap:7px;color:#6b7280;font:600 13px 'Manrope'" style-hover="color:#4f46e5"><span dangerouslySetInnerHTML="{{ backIcon }}" style="display:flex"></span>Back to Dashboard</a>
+      <span style="width:1px;height:20px;background:#ece9e3"></span>
+      <div style="display:flex;align-items:center;gap:8px;font:400 12.5px 'Manrope';color:#9ca3af">
+        <span dangerouslySetInnerHTML="{{ gearMini }}" style="display:flex;color:#c0bdb4"></span>
+        <span>Settings</span><span style="color:#cfcbc3">›</span>
+        <span>{{ crumbCat }}</span><span style="color:#cfcbc3">›</span>
+        <span style="color:#26235a;font-weight:600">{{ crumbItem }}</span>
+      </div>
+
+      <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+        <sc-if value="{{ dirty }}">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="display:flex;align-items:center;gap:6px;font:600 11px 'JetBrains Mono';letter-spacing:.02em;color:#d97706;background:rgba(217,118,6,.1);padding:3px 8px;border-radius:7px"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span>{{ changedCount }} UNSAVED</span>
+            <button onClick="{{ onDiscard }}" style="padding:10px 14px;background:#fff;color:#6b7280;border:1px solid #e4e0d9;border-radius:9px;font:600 12.5px 'Manrope';cursor:pointer" style-hover="background:#faf9f7;color:#26235a">Discard</button>
+            <button onClick="{{ onSave }}" style="padding:10px 16px;background:#4f46e5;color:#fff;border:none;border-radius:9px;font:600 12.5px 'Manrope';cursor:pointer;box-shadow:0 1px 2px rgba(79,70,229,.28)" style-hover="background:#3f37c9">Save changes</button>
+          </div>
+        </sc-if>
+
+        <div style="position:relative">
+          <button onClick="{{ onToggleRole }}" style="display:flex;align-items:center;gap:9px;height:38px;padding:0 8px 0 10px;border:1px solid #ece9e3;background:#faf9f7;border-radius:20px;cursor:pointer" style-hover="border-color:#d8d4ee">
+            <span style="width:26px;height:26px;border-radius:50%;background:#eef0f4;color:#202058;font:600 10px 'Space Grotesk';display:flex;align-items:center;justify-content:center">{{ roleInitials }}</span>
+            <div style="text-align:left;line-height:1.1">
+              <div style="font:600 12px 'Manrope';color:#26235a">{{ roleUser }}</div>
+              <div style="font:600 9px 'JetBrains Mono';letter-spacing:.04em;color:#9ca3af">{{ roleUpper }}</div>
+            </div>
+            <span dangerouslySetInnerHTML="{{ caretIcon }}" style="display:flex;color:#9ca3af"></span>
+          </button>
+          <sc-if value="{{ roleOpen }}">
+            <div style="position:absolute;top:46px;right:0;width:270px;background:#fff;border:1px solid #ece9e3;border-radius:12px;box-shadow:0 14px 40px rgba(32,32,88,.16);padding:7px;z-index:60">
+              <div style="padding:7px 9px 9px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af">VIEW SETTINGS AS ROLE</div>
+              <sc-for list="{{ roleOptions }}" as="ro" hint-placeholder-count="5">
+                <div onClick="{{ ro.onSelect }}" style="display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;cursor:pointer;background:{{ ro.bg }}" style-hover="background:#f4f2ee">
+                  <span style="width:28px;height:28px;border-radius:50%;background:{{ ro.avBg }};color:#202058;font:600 10px 'Space Grotesk';display:flex;align-items:center;justify-content:center;flex:none">{{ ro.initials }}</span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font:600 12.5px 'Manrope';color:#26235a">{{ ro.user }}</div>
+                    <div style="font:400 11px 'Manrope';color:#9ca3af">{{ ro.scope }}</div>
+                  </div>
+                  <sc-if value="{{ ro.active }}"><span dangerouslySetInnerHTML="{{ ro.check }}" style="display:flex;color:#4f46e5"></span></sc-if>
+                </div>
+              </sc-for>
+              <div style="padding:8px 9px 5px;font:400 10.5px 'Manrope';color:#b0aca4;border-top:1px solid #f0ede8;margin-top:5px">Single-tenant workspace · DSLRSWALA</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </header>
+
+    <!-- SHELL: NAV + CONTENT -->
+    <div style="flex:1;display:flex;align-items:flex-start;min-height:0">
+
+      <!-- LEFT NAV — identical to settings_unified_nav shell -->
+      <nav style="width:240px;flex:none;background:#faf9f7;border-right:1px solid #ece9e3;align-self:stretch;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;padding:18px 14px 30px">
+        <div style="font:600 12px 'Space Grotesk';letter-spacing:.1em;color:#9a9690;padding:0 6px 12px">SETTINGS</div>
+        <div style="display:flex;align-items:center;gap:8px;height:38px;padding:0 11px;border:1px solid #ece9e3;border-radius:9px;background:#fff;margin-bottom:6px">
+          <span dangerouslySetInnerHTML="{{ searchIcon }}" style="display:flex;color:#9ca3af"></span>
+          <input value="{{ search }}" onInput="{{ onSearch }}" placeholder="Search settings…" style="flex:1;min-width:0;border:none;background:transparent;font:400 13px 'Manrope';color:#26235a;padding:0" />
+          <sc-if value="{{ hasSearch }}"><span onClick="{{ clearSearch }}" style="cursor:pointer;color:#c0bdb4;font-size:14px" style-hover="color:#6b7280">✕</span></sc-if>
+        </div>
+        <sc-if value="{{ hasSearch }}"><div style="font:400 11px 'Manrope';color:#9ca3af;padding:5px 7px 10px">{{ resultLabel }}</div></sc-if>
+        <sc-if value="{{ noResults }}"><div style="padding:16px 8px;font:400 12.5px 'Manrope';color:#b0aca4;text-align:center">No settings match “{{ search }}”.</div></sc-if>
+
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px">
+          <sc-for list="{{ nav }}" as="c" hint-placeholder-count="8">
+            <div>
+              <sc-if value="{{ c.owner }}"><div style="height:1px;background:#ece9e3;margin:12px 6px 10px"></div><div style="font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#c08a2e;padding:0 7px 6px;display:flex;align-items:center;gap:6px"><span dangerouslySetInnerHTML="{{ crownIcon }}" style="display:flex"></span>OWNER-ONLY</div></sc-if>
+              <div onClick="{{ c.onToggle }}" style="display:flex;align-items:center;gap:9px;padding:8px 7px;border-radius:8px;cursor:pointer" style-hover="background:#f0ede8">
+                <span dangerouslySetInnerHTML="{{ c.icon }}" style="display:flex;color:#8a8780"></span>
+                <span style="flex:1;font:600 12px 'Space Grotesk';letter-spacing:.05em;color:#6b6860;text-transform:uppercase">{{ c.name }}</span>
+                <sc-if value="{{ c.note }}"><span style="font:600 8px 'JetBrains Mono';letter-spacing:.03em;color:#9a9690;background:#ece9e3;padding:2px 5px;border-radius:4px">{{ c.note }}</span></sc-if>
+                <span style="color:#c0bdb4;font-size:10px">{{ c.chev }}</span>
+              </div>
+              <sc-if value="{{ c.open }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:1px;padding:2px 0 6px">
+                  <sc-for list="{{ c.items }}" as="i" hint-placeholder-count="3">
+                    <div onClick="{{ i.onClick }}" style="display:flex;align-items:center;gap:10px;padding:7px 10px 7px 30px;border-radius:8px;cursor:pointer;background:{{ i.bg }}" style-hover="background:{{ i.hover }}">
+                      <span style="width:7px;height:7px;border-radius:50%;flex:none;background:{{ i.dotBg }};border:{{ i.dotBorder }}"></span>
+                      <span style="flex:1;font:{{ i.weight }} 13.5px 'Manrope';color:{{ i.color }}">{{ i.name }}</span>
+                      <sc-if value="{{ i.changed }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706;flex:none"></span></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </nav>
+
+      <!-- CONTENT -->
+      <div style="flex:1;min-width:0;padding:30px 40px 40px">
+        <div style="max-width:760px">
+
+        <!-- ===== TAX RATES (GST) ===== -->
+        <sc-if value="{{ showTax }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+            <div>
+              <h1 style="margin:0;font:600 24px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Tax Rates (GST)</h1>
+              <p style="margin:7px 0 0;font:400 13px 'Manrope';color:#8a8780">Configure GST, HSN/SAC codes and rounding for rental invoices.</p>
+            </div>
+            <sc-if value="{{ readOnly }}"><span style="display:flex;align-items:center;gap:6px;font:600 10px 'JetBrains Mono';letter-spacing:.04em;color:#6b7280;background:#f0ede8;padding:5px 9px;border-radius:7px;white-space:nowrap"><span dangerouslySetInnerHTML="{{ lockIcon }}" style="display:flex"></span>READ ONLY · {{ roleUpper }}</span></sc-if>
+          </div>
+          <div style="height:1px;background:#ece9e3;margin:20px 0 30px"></div>
+
+          <div style="display:flex;flex-direction:column;gap:38px">
+
+            <!-- ===== SECTION 1 — GST REGISTRATION ===== -->
+            <section>
+              <div style="font:600 15px 'Space Grotesk';color:#26235a;letter-spacing:-.005em">GST Registration</div>
+              <div style="height:1px;background:#f0ede8;margin:11px 0 18px"></div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:22px">
+                <sc-for list="{{ regOpts }}" as="o" hint-placeholder-count="3">
+                  <div onClick="{{ o.onSelect }}" style="display:flex;gap:12px;align-items:flex-start;padding:13px 15px;border-radius:11px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }}">
+                    <span style="width:18px;height:18px;border-radius:50%;flex:none;margin-top:1px;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:9px;height:9px;border-radius:50%;background:{{ o.fill }}"></span></span>
+                    <div><div style="font:600 13px 'Manrope';color:#26235a">{{ o.title }}</div><div style="font:400 12px 'Manrope';color:#8a8780;margin-top:2px">{{ o.desc }}</div></div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <sc-if value="{{ gstinWarn }}">
+                <div style="display:flex;align-items:center;gap:11px;padding:12px 15px;border:1px solid #f2d19a;background:#fdf6ea;border-radius:11px;margin-bottom:20px">
+                  <span dangerouslySetInnerHTML="{{ warnIcon }}" style="display:flex;color:#d97706;flex:none"></span>
+                  <div style="font:500 12.5px 'Manrope';color:#92590a">Complete your GSTIN to enable invoice generation. Invoices cannot be issued without a valid GSTIN while marked GST-registered.</div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showRegFields }}" hint-placeholder-val="{{ true }}">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px 22px;max-width:600px">
+                  <div style="grid-column:1 / -1">
+                    <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12.5px 'Manrope';color:#26235a">GSTIN</label><span style="color:#dc2626">*</span><sc-if value="{{ chg.gstin }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                    <div style="display:flex;gap:10px">
+                      <input value="{{ gstin }}" onInput="{{ onGstin }}" disabled="{{ gstinLocked }}" class="mono" style="flex:1;height:40px;border:1px solid {{ gstinBorder }};border-radius:10px;padding:0 13px;font-size:13px;color:#26235a;background:{{ gstinBg }};letter-spacing:.03em" placeholder="24AAAAA1234A1Z5" />
+                      <button style="padding:0 16px;background:#fff;border:1px solid #d8d4ee;border-radius:10px;font:600 12.5px 'Manrope';color:#4f46e5;cursor:pointer;display:flex;align-items:center;gap:6px" style-hover="background:#eef2ff"><span dangerouslySetInnerHTML="{{ checkIcon }}" style="display:flex"></span>Verify</button>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font:400 11px 'Manrope';color:{{ gstinHintColor }}">{{ gstinHint }}</div>
+                  </div>
+                  <div>
+                    <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12.5px 'Manrope';color:#26235a">PAN</label></div>
+                    <input value="{{ pan }}" class="mono" readonly="{{ true }}" style="width:100%;height:40px;border:1px solid #ece9e3;border-radius:10px;padding:0 13px;font-size:13px;color:#6b7280;background:#f4f2ee;letter-spacing:.03em" />
+                    <div style="margin-top:6px;font:400 11px 'Manrope';color:#9ca3af">Auto-populated from GSTIN</div>
+                  </div>
+                  <div>
+                    <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12.5px 'Manrope';color:#26235a">State of business</label></div>
+                    <select value="{{ stateVal }}" onChange="{{ onState }}" style="width:100%;height:40px;border:1px solid #e4e0d9;border-radius:10px;padding:0 12px;font:500 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer">
+                      <option>Gujarat</option><option>Maharashtra</option><option>Rajasthan</option><option>Madhya Pradesh</option><option>Delhi</option><option>Karnataka</option>
+                    </select>
+                    <div style="margin-top:6px;font:400 11px 'Manrope';color:#9ca3af">Determines CGST+SGST vs IGST logic</div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showComposition }}">
+                <div style="max-width:600px;background:#f7f7ff;border:1px solid #d8d4ee;border-radius:12px;padding:16px 18px;margin-top:4px">
+                  <div style="font:600 11px 'JetBrains Mono';letter-spacing:.05em;color:#4f46e5;margin-bottom:10px">COMPOSITION SCHEME — SIMPLIFIED</div>
+                  <div style="font:400 12.5px 'Manrope';color:#6b6860;line-height:1.5;margin-bottom:14px">Composition dealers charge a flat tax on turnover and <strong style="color:#26235a">cannot collect GST from customers</strong> or claim input credit. Per-line-item rates, HSN mapping and CGST/SGST split below are hidden — a single composition rate applies to all invoices.</div>
+                  <div style="display:flex;align-items:center;gap:14px">
+                    <label style="font:600 12.5px 'Manrope';color:#26235a;width:150px">Composition rate</label>
+                    <select style="width:150px;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 12px;font:500 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer"><option>1% (traders)</option><option>5% (restaurants)</option><option>6% (services)</option></select>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showNone }}">
+                <div style="max-width:600px;font:400 12.5px 'Manrope';color:#8a8780;background:#faf9f7;border:1px solid #ece9e3;border-radius:11px;padding:14px 16px">Not GST-registered — no GST is applied to invoices and the sections below are hidden. Enable GST registration above to configure rates.</div>
+              </sc-if>
+            </section>
+
+            <!-- ===== SECTIONS 2-6 only for regular scheme ===== -->
+            <sc-if value="{{ showRegular }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:38px">
+
+              <!-- ===== SECTION 2 — DEFAULT TAX RATES ===== -->
+              <section>
+                <div style="font:600 15px 'Space Grotesk';color:#26235a;letter-spacing:-.005em">Default Tax Rates</div>
+                <p style="margin:6px 0 0;font:400 12.5px 'Manrope';color:#8a8780">Default GST applied to each line-item type. Per-product overrides remain possible.</p>
+                <div style="height:1px;background:#f0ede8;margin:14px 0 18px"></div>
+
+                <div style="display:flex;flex-direction:column;gap:14px">
+                  <!-- Rental services (the LIVE / demonstrated unsaved change 18% -> 12%) -->
+                  <div style="display:grid;grid-template-columns:170px 108px 1fr;gap:14px;align-items:center">
+                    <div style="display:flex;align-items:center;gap:7px"><span style="font:600 12.5px 'Manrope';color:#26235a">Rental services</span><sc-if value="{{ chg.gstRate }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706" title="Changed 18% → 12%"></span></sc-if></div>
+                    <select value="{{ rentalRate }}" onChange="{{ onRentalRate }}" style="height:38px;border:1px solid {{ rentalRateBorder }};border-radius:9px;padding:0 10px;font:600 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer">
+                      <option value="18">18%</option><option value="12">12%</option><option value="5">5%</option><option value="28">28%</option>
+                    </select>
+                    <div style="display:flex;align-items:center;gap:9px"><span style="font:500 11.5px 'Manrope';color:#9a9690">SAC</span><input value="998552" class="mono" style="width:120px;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 11px;font-size:12.5px;color:#26235a;background:#fff" /><span style="font:400 11px 'Manrope';color:#b0aca4">renting / leasing of goods</span></div>
+                  </div>
+                  <!-- Late fees -->
+                  <div style="display:grid;grid-template-columns:170px 108px 1fr;gap:14px;align-items:center">
+                    <span style="font:600 12.5px 'Manrope';color:#26235a">Late fees</span>
+                    <select style="height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 10px;font:600 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer"><option>18%</option><option>12%</option><option>5%</option></select>
+                    <div style="display:flex;align-items:center;gap:9px"><span style="font:500 11.5px 'Manrope';color:#9a9690">SAC</span><input value="998552" class="mono" style="width:120px;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 11px;font-size:12.5px;color:#26235a;background:#fff" /><span style="font:400 11px 'Manrope';color:#b0aca4">same SAC as rental</span></div>
+                  </div>
+                  <!-- Damage recovery -->
+                  <div style="display:grid;grid-template-columns:170px 108px 1fr;gap:14px;align-items:center">
+                    <span style="font:600 12.5px 'Manrope';color:#26235a">Damage recovery</span>
+                    <select style="height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 10px;font:600 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer"><option>0%</option><option>18%</option></select>
+                    <div style="display:flex;align-items:center;gap:9px"><span style="font:500 11.5px 'Manrope';color:#9a9690">Reason</span><select style="width:200px;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 10px;font:500 12px 'Manrope';color:#26235a;background:#fff;cursor:pointer"><option>Compensation, not service</option><option>Out of scope</option></select><span style="font:400 11px 'Manrope';color:#b0aca4">CBIC circular</span></div>
+                  </div>
+                  <!-- Deposit charges -->
+                  <div style="display:grid;grid-template-columns:170px 108px 1fr;gap:14px;align-items:center">
+                    <span style="font:600 12.5px 'Manrope';color:#26235a">Deposit charges</span>
+                    <select style="height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 10px;font:600 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer"><option>0%</option><option>18%</option></select>
+                    <div style="display:flex;align-items:center;gap:9px"><span style="font:500 11.5px 'Manrope';color:#9a9690">Reason</span><select style="width:200px;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 10px;font:500 12px 'Manrope';color:#26235a;background:#fff;cursor:pointer"><option>Refundable, not revenue</option><option>Security hold</option></select></div>
+                  </div>
+                  <!-- Delivery charges -->
+                  <div style="display:grid;grid-template-columns:170px 108px 1fr;gap:14px;align-items:center">
+                    <span style="font:600 12.5px 'Manrope';color:#26235a">Delivery charges</span>
+                    <select style="height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 10px;font:600 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer"><option>18%</option><option>5%</option><option>0%</option></select>
+                    <div style="display:flex;align-items:center;gap:9px"><span style="font:500 11.5px 'Manrope';color:#9a9690">SAC</span><input value="996511" class="mono" style="width:120px;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 11px;font-size:12.5px;color:#26235a;background:#fff" /><span style="font:400 11px 'Manrope';color:#b0aca4">freight / courier</span></div>
+                  </div>
+                  <!-- Damage insurance -->
+                  <div style="display:grid;grid-template-columns:170px 108px 1fr;gap:14px;align-items:center">
+                    <span style="font:600 12.5px 'Manrope';color:#26235a">Damage insurance</span>
+                    <select style="height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 10px;font:600 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer"><option>18%</option><option>5%</option></select>
+                    <div style="display:flex;align-items:center;gap:9px"><span style="font:500 11.5px 'Manrope';color:#9a9690">SAC</span><input value="997133" class="mono" style="width:120px;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 11px;font-size:12.5px;color:#26235a;background:#fff" /><span style="font:400 11px 'Manrope';color:#b0aca4">insurance services</span></div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- ===== SECTION 3 — TAX TYPE LOGIC ===== -->
+              <section>
+                <div style="font:600 15px 'Space Grotesk';color:#26235a;letter-spacing:-.005em">Tax Type Logic</div>
+                <p style="margin:6px 0 0;font:400 12.5px 'Manrope';color:#8a8780">RentalOS auto-detects CGST+SGST vs IGST from the customer's state.</p>
+                <div style="height:1px;background:#f0ede8;margin:14px 0 18px"></div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
+                  <div style="border:1px solid #ece9e3;border-radius:12px;padding:15px 17px;background:#faf9f7">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font:600 12.5px 'Manrope';color:#26235a">Intra-state</span><span style="font:500 10px 'JetBrains Mono';color:#059669;background:#e7f6ee;padding:2px 6px;border-radius:5px">GJ → GJ</span></div>
+                    <div style="font:600 13px 'JetBrains Mono';color:#4f46e5;margin-bottom:8px">CGST 9% + SGST 9%</div>
+                    <div style="font:400 11.5px 'Manrope';color:#8a8780;line-height:1.5">₹10,000 → <span class="mono">₹900</span> CGST + <span class="mono">₹900</span> SGST</div>
+                  </div>
+                  <div style="border:1px solid #ece9e3;border-radius:12px;padding:15px 17px;background:#faf9f7">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font:600 12.5px 'Manrope';color:#26235a">Inter-state</span><span style="font:500 10px 'JetBrains Mono';color:#c08a2e;background:#fbf1de;padding:2px 6px;border-radius:5px">GJ → other</span></div>
+                    <div style="font:600 13px 'JetBrains Mono';color:#4f46e5;margin-bottom:8px">IGST 18%</div>
+                    <div style="font:400 11.5px 'Manrope';color:#8a8780;line-height:1.5">₹10,000 → <span class="mono">₹1,800</span> IGST</div>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:11px">
+                  <div onClick="{{ toggleAuto }}" style="display:flex;align-items:center;gap:12px;padding:12px 15px;border:1px solid {{ autoBorder }};border-radius:11px;cursor:pointer;background:{{ autoBg }}">
+                    <span style="width:20px;height:20px;border-radius:6px;flex:none;border:2px solid {{ autoRing }};background:{{ autoFill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ autoDetect }}"><span dangerouslySetInnerHTML="{{ checkIcon }}" style="display:flex;color:#fff"></span></sc-if></span>
+                    <div style="flex:1"><div style="font:600 12.5px 'Manrope';color:#26235a">Auto-detect based on customer address <span style="font:500 10px 'JetBrains Mono';color:#059669;background:#e7f6ee;padding:2px 6px;border-radius:5px;margin-left:4px">RECOMMENDED</span></div></div>
+                  </div>
+                  <div onClick="{{ toggleAlways }}" style="display:flex;align-items:center;gap:12px;padding:12px 15px;border:1px solid {{ alwaysBorder }};border-radius:11px;cursor:pointer;background:{{ alwaysBg }}">
+                    <span style="width:20px;height:20px;border-radius:6px;flex:none;border:2px solid {{ alwaysRing }};background:{{ alwaysFill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ alwaysIgst }}"><span dangerouslySetInnerHTML="{{ checkIcon }}" style="display:flex;color:#fff"></span></sc-if></span>
+                    <div style="flex:1"><div style="font:600 12.5px 'Manrope';color:#26235a">Always use IGST regardless of state</div></div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:9px;margin-top:14px;font:400 11.5px 'Manrope';color:#92590a">
+                  <span dangerouslySetInnerHTML="{{ warnIcon }}" style="display:flex;color:#d97706;flex:none"></span>
+                  If a customer address is missing its state, RentalOS defaults to intra-state.
+                </div>
+              </section>
+
+              <!-- ===== SECTION 4 — HSN/SAC CODES PER CATEGORY ===== -->
+              <section>
+                <div style="font:600 15px 'Space Grotesk';color:#26235a;letter-spacing:-.005em">HSN / SAC Codes Per Category</div>
+                <p style="margin:6px 0 0;font:400 12.5px 'Manrope';color:#8a8780">Default codes applied to line items when a category is rented.</p>
+                <div style="height:1px;background:#f0ede8;margin:14px 0 16px"></div>
+
+                <div style="border:1px solid #ece9e3;border-radius:14px;overflow:hidden">
+                  <div style="display:grid;grid-template-columns:1.6fr 1fr .8fr .8fr;gap:0;padding:11px 18px;background:#faf9f7;border-bottom:1px solid #ece9e3;font:600 10px 'JetBrains Mono';letter-spacing:.05em;color:#9a9690">
+                    <span>CATEGORY</span><span>HSN / SAC CODE</span><span>GST RATE</span><span style="text-align:right">ACTIONS</span>
+                  </div>
+                  <sc-for list="{{ hsnRows }}" as="h" hint-placeholder-count="7">
+                    <div style="display:grid;grid-template-columns:1.6fr 1fr .8fr .8fr;gap:0;padding:12px 18px;align-items:center;border-bottom:{{ h.border }}">
+                      <span style="font:500 13px 'Manrope';color:#26235a">{{ h.cat }}</span>
+                      <span class="mono" style="font-size:12.5px;color:#4a4760">{{ h.code }}</span>
+                      <span class="mono" style="font-size:12.5px;color:#26235a">{{ h.rate }}</span>
+                      <span style="text-align:right"><button style="padding:6px 12px;background:#fff;border:1px solid #e4e0d9;border-radius:8px;font:600 11.5px 'Manrope';color:#4f46e5;cursor:pointer" style-hover="background:#eef2ff;border-color:#d8d4ee">Edit</button></span>
+                    </div>
+                  </sc-for>
+                </div>
+                <button style="margin-top:14px;display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #d8d4ee;border-radius:9px;font:600 12px 'Manrope';color:#4f46e5;cursor:pointer" style-hover="background:#eef2ff"><span style="font-size:15px;line-height:1">+</span> Add category</button>
+              </section>
+
+              <!-- ===== SECTION 5 — TAX ROUNDING ===== -->
+              <section>
+                <div style="font:600 15px 'Space Grotesk';color:#26235a;letter-spacing:-.005em">Tax Rounding</div>
+                <p style="margin:6px 0 0;font:400 12.5px 'Manrope';color:#8a8780">How tax calculations are rounded to avoid decimal drift.</p>
+                <div style="height:1px;background:#f0ede8;margin:14px 0 18px"></div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:26px 30px;margin-bottom:20px">
+                  <div>
+                    <div style="font:600 12px 'Manrope';color:#26235a;margin-bottom:10px">Line item rounding</div>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <sc-for list="{{ lineRoundOpts }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.onSelect }}" style="display:flex;align-items:center;gap:10px;cursor:pointer"><span style="width:16px;height:16px;border-radius:50%;flex:none;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:8px;height:8px;border-radius:50%;background:{{ o.fill }}"></span></span><span style="font:500 12.5px 'Manrope';color:#4a4760">{{ o.label }}</span></div></sc-for>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font:600 12px 'Manrope';color:#26235a;margin-bottom:10px">Invoice total rounding</div>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <sc-for list="{{ totalRoundOpts }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.onSelect }}" style="display:flex;align-items:center;gap:10px;cursor:pointer"><span style="width:16px;height:16px;border-radius:50%;flex:none;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:8px;height:8px;border-radius:50%;background:{{ o.fill }}"></span></span><span style="font:500 12.5px 'Manrope';color:#4a4760">{{ o.label }}</span></div></sc-for>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font:600 12px 'Manrope';color:#26235a;margin-bottom:10px">Round-off treatment</div>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <sc-for list="{{ roundoffOpts }}" as="o" hint-placeholder-count="2"><div onClick="{{ o.onSelect }}" style="display:flex;align-items:center;gap:10px;cursor:pointer"><span style="width:16px;height:16px;border-radius:50%;flex:none;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:8px;height:8px;border-radius:50%;background:{{ o.fill }}"></span></span><span style="font:500 12.5px 'Manrope';color:#4a4760">{{ o.label }}</span></div></sc-for>
+                    </div>
+                  </div>
+                  <div style="background:#faf9f7;border:1px solid #ece9e3;border-radius:12px;padding:14px 16px">
+                    <div style="font:600 10px 'JetBrains Mono';letter-spacing:.05em;color:#9a9690;margin-bottom:9px">SAMPLE</div>
+                    <div style="display:flex;flex-direction:column;gap:4px;font:500 11.5px 'JetBrains Mono';color:#6b6860">
+                      <div style="display:flex;justify-content:space-between"><span>Line 1 · ₹8,500 × 18%</span><span style="color:#26235a">₹1,530.00</span></div>
+                      <div style="display:flex;justify-content:space-between"><span>Line 2 · ₹1,500 × 18%</span><span style="color:#26235a">₹270.00</span></div>
+                      <div style="display:flex;justify-content:space-between;border-top:1px solid #ece9e3;padding-top:5px;margin-top:2px"><span>Subtotal</span><span style="color:#26235a">₹10,000.00</span></div>
+                      <div style="display:flex;justify-content:space-between"><span>Tax</span><span style="color:#26235a">₹1,800.00</span></div>
+                      <div style="display:flex;justify-content:space-between"><span>Round off</span><span style="color:#26235a">−₹0.00</span></div>
+                      <div style="display:flex;justify-content:space-between;font-weight:600;color:#202058;border-top:1px solid #ece9e3;padding-top:5px;margin-top:2px"><span>Total</span><span>₹11,800</span></div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- ===== SECTION 6 — SAMPLE INVOICE PREVIEW ===== -->
+              <section>
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                  <div>
+                    <div style="font:600 15px 'Space Grotesk';color:#26235a;letter-spacing:-.005em">Sample Invoice Preview</div>
+                    <p style="margin:6px 0 0;font:400 12.5px 'Manrope';color:#8a8780">Computed live from your current unsaved settings.</p>
+                  </div>
+                  <div style="display:flex;background:#f0ede8;border-radius:9px;padding:3px">
+                    <div onClick="{{ setIntra }}" style="padding:6px 12px;border-radius:7px;font:600 11.5px 'Manrope';cursor:pointer;background:{{ intraTabBg }};color:{{ intraTabColor }};box-shadow:{{ intraTabShadow }}">Intra-state</div>
+                    <div onClick="{{ setInter }}" style="padding:6px 12px;border-radius:7px;font:600 11.5px 'Manrope';cursor:pointer;background:{{ interTabBg }};color:{{ interTabColor }};box-shadow:{{ interTabShadow }}">Inter-state</div>
+                  </div>
+                </div>
+                <div style="height:1px;background:#f0ede8;margin:14px 0 16px"></div>
+
+                <div style="border:1px solid #e4e0d9;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(32,32,88,.05)">
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 20px;background:#202058;color:#fff">
+                    <div><div style="font:700 15px 'Space Grotesk'">TAX INVOICE</div><div style="font:400 11px 'JetBrains Mono';color:#b8b6e0;margin-top:2px">DSLRSWALA · GSTIN {{ gstinShort }}</div></div>
+                    <div style="text-align:right"><div style="font:400 10px 'JetBrains Mono';color:#b8b6e0">SAMPLE · #INV-PREVIEW</div><div style="font:600 12px 'Manrope';margin-top:2px">{{ sampleStateLabel }}</div></div>
+                  </div>
+                  <div style="padding:16px 20px;border-bottom:1px solid #f0ede8;display:flex;justify-content:space-between;font:400 12px 'Manrope';color:#8a8780">
+                    <div><span style="color:#9a9690">Bill to</span><div style="font:600 13px 'Manrope';color:#26235a;margin-top:2px">Rahul Malhotra</div></div>
+                    <div style="text-align:right"><span style="color:#9a9690">Customer state</span><div style="font:600 13px 'Manrope';color:#26235a;margin-top:2px">{{ sampleCustState }}</div></div>
+                  </div>
+                  <div style="padding:6px 20px 14px">
+                    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f4f2ee;font:500 12.5px 'Manrope';color:#26235a"><span>Sony FX3 rental × 3 days</span><span class="mono">{{ sampleBase }}</span></div>
+                    <div style="padding-top:10px;display:flex;flex-direction:column;gap:7px">
+                      <div style="display:flex;justify-content:space-between;font:400 12px 'Manrope';color:#6b6860"><span>Taxable value</span><span class="mono">{{ sampleBase }}</span></div>
+                      <sc-for list="{{ sampleTaxRows }}" as="t" hint-placeholder-count="2">
+                        <div style="display:flex;justify-content:space-between;font:400 12px 'Manrope';color:#6b6860"><span>{{ t.k }}</span><span class="mono">{{ t.v }}</span></div>
+                      </sc-for>
+                      <div style="display:flex;justify-content:space-between;font:700 14px 'Space Grotesk';color:#202058;border-top:1px solid #ece9e3;padding-top:10px;margin-top:3px"><span>Total</span><span class="mono">{{ sampleTotal }}</span></div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+            </div>
+            </sc-if>
+
+            <!-- ===== ANNOTATIONS (spec / auditor) ===== -->
+            <section style="border:1px dashed #d8d4cc;border-radius:14px;padding:18px 20px;background:#faf9f7">
+              <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:12px">SPEC ANNOTATIONS — not shown to end users</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 20px">
+                <div><div style="font:600 12px 'Manrope';color:#26235a;margin-bottom:3px">Composition variant</div><div style="font:400 11.5px 'Manrope';color:#8a8780;line-height:1.5">Selecting <em>composition scheme</em> above collapses Sections 2–6 to a single flat rate — try it.</div></div>
+                <div><div style="font:600 12px 'Manrope';color:#26235a;margin-bottom:3px">GSTIN warning</div><div style="font:400 11.5px 'Manrope';color:#8a8780;line-height:1.5">Clearing the GSTIN while GST-registered surfaces the amber warning banner.</div></div>
+                <div><div style="font:600 12px 'Manrope';color:#26235a;margin-bottom:3px">Role visibility</div><div style="font:400 11.5px 'Manrope';color:#8a8780;line-height:1.5">Owner/Accounts: full edit · Manager: rates only, GSTIN locked · Sales: read-only · Warehouse: no access. Switch role top-right.</div></div>
+                <div><div style="font:600 12px 'Manrope';color:#26235a;margin-bottom:3px">Storage</div><div style="font:400 11.5px 'Manrope';color:#8a8780;line-height:1.5">Amounts as BIGINT paise; rates as bps (18%=1800); HSN/SAC as strings. Written to <span class="mono" style="font-size:10.5px">tax_policy</span> JSONB.</div></div>
+              </div>
+            </section>
+
+          </div>
+
+          <!-- ===== SECTION 7 — STICKY SAVE BAR ===== -->
+          <sc-if value="{{ dirty }}">
+            <div style="position:sticky;bottom:0;margin:30px -40px -40px;padding:14px 40px;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);border-top:1px solid #ece9e3;display:flex;align-items:center;gap:14px;z-index:30">
+              <span style="display:flex;align-items:center;gap:7px;font:600 12px 'Manrope';color:#92590a"><span style="width:7px;height:7px;border-radius:50%;background:#d97706"></span>{{ changedCount }} unsaved change{{ changedPlural }}</span>
+              <div style="flex:1"></div>
+              <button onClick="{{ onDiscard }}" style="padding:10px 14px;background:#fff;color:#6b7280;border:1px solid #e4e0d9;border-radius:9px;font:600 12.5px 'Manrope';cursor:pointer" style-hover="background:#faf9f7;color:#26235a">Discard</button>
+              <button onClick="{{ onSave }}" style="padding:10px 16px;background:#4f46e5;color:#fff;border:none;border-radius:9px;font:600 12.5px 'Manrope';cursor:pointer;box-shadow:0 1px 2px rgba(79,70,229,.28)" style-hover="background:#3f37c9">Save changes</button>
+            </div>
+          </sc-if>
+
+        </sc-if>
+
+        <!-- ===== GENERIC (other nav items) ===== -->
+        <sc-if value="{{ showGeneric }}">
+          <div style="display:flex;align-items:center;gap:8px;font:400 11.5px 'JetBrains Mono';color:#9ca3af;margin-bottom:10px">{{ crumbCat }} <span style="color:#cfcbc3">/</span> <span style="color:#6b6860">{{ crumbItem }}</span></div>
+          <h1 style="margin:0;font:600 24px 'Space Grotesk';color:#202058;letter-spacing:-.01em">{{ crumbItem }}</h1>
+          <p style="margin:7px 0 0;font:400 13px 'Manrope';color:#8a8780">This section lives inside the same Settings shell — its form fields render in this content area.</p>
+          <div style="height:1px;background:#ece9e3;margin:22px 0 24px"></div>
+          <div style="border:1px dashed #ddd8ce;border-radius:14px;padding:44px 30px;display:flex;flex-direction:column;align-items:center;text-align:center;background:#faf9f7">
+            <div style="width:46px;height:46px;border-radius:12px;background:#eef2ff;color:#4f46e5;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><span dangerouslySetInnerHTML="{{ slidersIcon }}" style="display:flex"></span></div>
+            <div style="font:600 15px 'Space Grotesk';color:#26235a">{{ crumbItem }}</div>
+            <div style="font:400 12.5px 'Manrope';color:#9a9690;max-width:360px;margin-top:6px">Specced in a dedicated brief. This page (DS-10.1) builds out <strong style="color:#4f46e5">Tax rates (GST)</strong> — select it under Financial.</div>
+          </div>
+        </sc-if>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:940},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#4f46e5&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#4f46e5&quot;,&quot;#202058&quot;,&quot;#059669&quot;,&quot;#d97706&quot;],&quot;section&quot;:&quot;Theme&quot;},&quot;showRail&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Owner&quot;,&quot;options&quot;:[&quot;Owner&quot;,&quot;Manager&quot;,&quot;Accounts&quot;,&quot;Sales&quot;,&quot;Warehouse&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Access&quot;}}">
+class Component extends DCLogic {
+  constructor(p){
+    super(p);
+    this.state = {
+      selected: 'tax',
+      collapsed: {},
+      search: '',
+      role: (p && p.role) || 'Owner',
+      roleOpen: false,
+      changed: { gstRate:true },   // demonstrated unsaved state: default GST 18% -> 12%
+      reg: 'regular',
+      gstin: '24AAAAA1234A1Z5',
+      pan: 'AAAAA1234A',
+      stateVal: 'Gujarat',
+      rentalRate: '12',            // changed from 18
+      autoDetect: true,
+      alwaysIgst: false,
+      lineRound: 'paisa',
+      totalRound: 'rupee',
+      roundoff: 'separate',
+      sampleMode: 'intra'
+    };
+  }
+
+  ic(path,w){ return {__html:'<svg width="'+(w||18)+'" height="'+(w||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+path+'</svg>'}; }
+
+  cats(){
+    return [
+      {id:'general', name:'General', icon:'<rect x="4" y="4" width="7" height="7" rx="1.4"/><rect x="13" y="4" width="7" height="7" rx="1.4"/><rect x="4" y="13" width="7" height="7" rx="1.4"/><rect x="13" y="13" width="7" height="7" rx="1.4"/>',
+        items:[['workspace-info','Workspace info'],['regional','Regional'],['branding','Branding']]},
+      {id:'team', name:'Team & Access', icon:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.3 2.7-6 6-6"/><path d="M16 4.5a3 3 0 0 1 0 6"/><path d="M15 14c2.5.5 4.5 2.8 4.5 6"/>',
+        items:[['staff','Staff members'],['roles','Roles & permissions'],['sessions','Session policies']]},
+      {id:'financial', name:'Financial', icon:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14" r="1.4"/>',
+        items:[['tax','Tax rates (GST)'],['invoice','Invoice format'],['deposit','Deposit policies'],['latefee','Late fee rules'],['refund','Refund policies']]},
+      {id:'rental', name:'Rental Rules', icon:'<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v4h-4"/>',
+        items:[['lifecycle','Order lifecycle'],['standby','Standby policies'],['extension','Extension rules'],['cancellation','Cancellation rules'],['substitution','Substitution defaults']]},
+      {id:'assets', name:'Assets', icon:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5"/><path d="M12 12v9"/>',
+        items:[['categories','Categories'],['custody','Custody types'],['maintenance','Maintenance defaults'],['barcode','Barcode / labels']]},
+      {id:'people', name:'People', icon:'<circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3-6.5 7-6.5s7 2.9 7 6.5"/>',
+        items:[['pvocab','Roles vocabulary'],['segments','Segment thresholds'],['trust','Trust score weights'],['commprefs','Communication preferences defaults']]},
+      {id:'notifications', name:'Notifications', icon:'<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+        items:[['events','Event notifications'],['templates','Templates'],['channels','Delivery channels'],['approvals','Approval thresholds']]},
+      {id:'advanced', name:'Advanced', icon:'<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>',
+        items:[['audit','Audit log'],['export','Data export'],['integrations','Integration status'],['sysinfo','System info']]},
+      {id:'owner', name:'Workspace', owner:true, icon:'<path d="M3 7l4 4 5-6 5 6 4-4v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+        items:[['billing','Billing'],['delete','Delete workspace']]}
+    ];
+  }
+
+  roleAccess(role){
+    switch(role){
+      case 'Owner':     return {all:true};
+      case 'Manager':   return {set:['general','team','financial','rental','assets','people','notifications','advanced']};
+      case 'Sales':     return {set:['general','notifications','people']};
+      case 'Warehouse': return {set:['general','assets'], viewOnly:['general']};
+      case 'Accounts':  return {set:['general','financial','advanced'], onlyItems:{advanced:['audit']}};
+      default: return {all:true};
+    }
+  }
+
+  roleMeta(){
+    return {
+      Owner:     {user:'Aamir Patel',   initials:'AP', scope:'Full access · all sections'},
+      Manager:   {user:'Shoaib Khan',   initials:'SK', scope:'Edit rates · GSTIN locked'},
+      Accounts:  {user:'Neha Desai',    initials:'ND', scope:'Full tax edit · Audit log'},
+      Sales:     {user:'Priya Nair',    initials:'PN', scope:'Read only'},
+      Warehouse: {user:'Ruhan Sheikh',  initials:'RS', scope:'No tax access'}
+    };
+  }
+
+  visibleCats(){
+    const acc = this.roleAccess(this.state.role);
+    return this.cats().map(c=>{
+      let vis = acc.all || (acc.set && acc.set.includes(c.id));
+      if(!vis) return null;
+      let items = c.items;
+      if(acc.onlyItems && acc.onlyItems[c.id]) items = items.filter(i=>acc.onlyItems[c.id].includes(i[0]));
+      const note = (acc.viewOnly && acc.viewOnly.includes(c.id)) ? 'VIEW' : null;
+      return {...c, items, note};
+    }).filter(Boolean);
+  }
+
+  inr(n){ return '₹'+Math.round(n).toLocaleString('en-IN'); }
+
+  renderVals(){
+    const S = this.state;
+    const accent = this.props.accent ?? '#4f46e5';
+    const q = S.search.trim().toLowerCase();
+    const hasSearch = q.length>0;
+    const meta = this.roleMeta();
+    const rm = meta[S.role];
+
+    // ---- role capability ----
+    const canAccessTax = ['Owner','Manager','Accounts','Sales'].includes(S.role);
+    const readOnly = S.role==='Sales';
+    const gstinLocked = readOnly || S.role==='Manager';
+
+    // ---- nav ----
+    let nav = [];
+    let matchCount = 0;
+    this.visibleCats().forEach(c=>{
+      let items = c.items;
+      if(hasSearch) items = items.filter(it=> it[1].toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+      if(hasSearch && items.length===0) return;
+      matchCount += items.length;
+      const open = hasSearch ? true : !S.collapsed[c.id];
+      nav.push({
+        id:c.id, name:c.name, owner:!!c.owner, note:c.note,
+        icon:this.ic(c.icon,17),
+        open, chev: open?'▾':'▸',
+        onToggle: ()=> this.setState(s=>({collapsed:{...s.collapsed,[c.id]:!(hasSearch?true:!s.collapsed[c.id])}})),
+        items: items.map(it=>{
+          const sel = S.selected===it[0];
+          return {
+            id:it[0], name:it[1],
+            onClick: ()=> this.setState({selected:it[0]}),
+            bg: sel?accent:'transparent',
+            hover: sel?accent:'#eef2ff',
+            color: sel?'#fff':'#4a4760',
+            weight: sel?'600':'500',
+            dotBg: sel?'#fff':'transparent',
+            dotBorder: sel?'none':'1.5px solid #c9c6d9',
+            changed: (it[0]==='tax') && this.dirtyCount()>0
+          };
+        })
+      });
+    });
+
+    let crumbCat='Financial', crumbItem='Tax rates (GST)';
+    this.cats().forEach(c=> c.items.forEach(it=>{ if(it[0]===S.selected){crumbCat=c.name;crumbItem=it[1];} }));
+
+    const showTax = S.selected==='tax' && canAccessTax;
+    const showGeneric = !showTax;
+
+    // ---- registration ----
+    const regOpts = [
+      ['none','Not GST-registered','Small business below the GST threshold — no GST charged.'],
+      ['regular','GST-registered (regular scheme)','Standard scheme — collect GST, claim input credit.'],
+      ['composition','GST-registered (composition scheme)','Flat turnover tax; cannot collect GST from customers.']
+    ].map(([key,title,desc])=>({
+      title, desc,
+      onSelect: readOnly ? ()=>{} : ()=> this.setState({reg:key}),
+      border: S.reg===key?accent:'#e4e0d9', bg: S.reg===key?'#f7f7ff':'#fff',
+      ring: S.reg===key?accent:'#cfcbc3', fill: S.reg===key?accent:'transparent'
+    }));
+
+    const showRegular = S.reg==='regular';
+    const showComposition = S.reg==='composition';
+    const showNone = S.reg==='none';
+    const showRegFields = S.reg!=='none';
+    const gstinEmpty = !S.gstin.trim();
+    const gstinWarn = S.reg!=='none' && gstinEmpty;
+    const gstinValid = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[0-9A-Z]{3}$/.test(S.gstin.trim());
+    const gstinHint = gstinEmpty ? 'Enter your 15-character GSTIN'
+      : gstinValid ? '✓ Valid 15-character GSTIN' : '⚠ Not a valid 15-character GSTIN format';
+    const gstinHintColor = gstinEmpty ? '#9ca3af' : gstinValid ? '#059669' : '#d97706';
+
+    // ---- changed dots / dirty ----
+    const c = S.changed;
+    const chg = { gstRate:!!c.gstRate, gstin:!!c.gstin };
+    const changedCount = this.dirtyCount();
+    const dirty = changedCount>0;
+
+    // ---- tax type checkboxes ----
+    const cb = (on,ring,fill)=>({});
+    const autoDetect = S.autoDetect, alwaysIgst = S.alwaysIgst;
+
+    // ---- HSN table ----
+    const hsnDef = [
+      ['Cameras','998552','18%'],['Lenses','998552','18%'],['Lighting','998552','18%'],
+      ['Audio','998552','18%'],['Support gear','998552','18%'],
+      ['Consumables (sold)','85423110','18%'],['Batteries','85076000','18%']
+    ];
+    const hsnRows = hsnDef.map((r,i)=>({cat:r[0],code:r[1],rate:r[2],border: i===hsnDef.length-1?'none':'1px solid #f0ede8'}));
+
+    // ---- rounding radios ----
+    const rr = (group,val,cur,label)=>({label,
+      onSelect: readOnly?()=>{}:()=> this.setState(s=>({[group]:val, changed:{...s.changed,rounding:true}})),
+      ring: cur===val?accent:'#cfcbc3', fill: cur===val?accent:'transparent'});
+    const lineRoundOpts = [
+      rr('lineRound','paisa',S.lineRound,'Round each line to nearest ₹0.01 (paisa)'),
+      rr('lineRound','rupee',S.lineRound,'Round each line to nearest ₹1 (rupee)'),
+      rr('lineRound','none',S.lineRound,'No rounding — keep full decimals')
+    ];
+    const totalRoundOpts = [
+      rr('totalRound','rupee',S.totalRound,'Round invoice total to nearest ₹1 (rupee)'),
+      rr('totalRound','paisa',S.totalRound,'Round invoice total to nearest ₹0.01 (paisa)'),
+      rr('totalRound','none',S.totalRound,'No rounding')
+    ];
+    const roundoffOpts = [
+      rr('roundoff','separate',S.roundoff,'Show as separate “Round off” line item'),
+      rr('roundoff','absorb',S.roundoff,'Absorb into last line item')
+    ];
+
+    // ---- sample invoice (live) ----
+    const base = 9000;
+    const rate = (parseFloat(S.rentalRate)||0)/100;
+    let sampleTaxRows, sampleTotal;
+    if(S.sampleMode==='intra'){
+      const half = base*rate/2;
+      sampleTaxRows = [
+        {k:'CGST '+(rate*50)+'%', v:this.inr(half)},
+        {k:'SGST '+(rate*50)+'%', v:this.inr(half)}
+      ];
+      sampleTotal = this.inr(base+half*2);
+    } else {
+      sampleTaxRows = [{k:'IGST '+(rate*100)+'%', v:this.inr(base*rate)}];
+      sampleTotal = this.inr(base+base*rate);
+    }
+
+    // ---- role menu ----
+    const roleOptions = Object.keys(meta).map(r=>{
+      const m = meta[r];
+      return {user:m.user, initials:m.initials, scope:m.scope, active:S.role===r,
+        avBg: S.role===r?'#e5e2fb':'#eef0f4',
+        bg: S.role===r?'#f7f7ff':'transparent',
+        check:this.ic('<path d="M20 6 9 17l-5-5"/>',15),
+        onSelect:()=> this.setState({role:r, roleOpen:false})
+      };
+    });
+
+    const rail = [
+      {name:'Dashboard', icon:this.ic('<rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/>',20)},
+      {name:'Rentals', icon:this.ic('<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>',20)},
+      {name:'Inventory', icon:this.ic('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5"/>',20)},
+      {name:'Customers', icon:this.ic('<circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3-6.5 7-6.5s7 2.9 7 6.5"/>',20)},
+      {name:'Finance', icon:this.ic('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1.3"/>',20)},
+      {name:'Insights', icon:this.ic('<path d="M4 20V4M4 20h16"/><rect x="7" y="12" width="3" height="5"/><rect x="12" y="8" width="3" height="9"/>',20)}
+    ];
+
+    return {
+      showRail: this.props.showRail ?? true,
+      rail,
+      nav, hasSearch, search:S.search,
+      resultLabel: matchCount+' result'+(matchCount===1?'':'s'),
+      noResults: hasSearch && matchCount===0,
+      onSearch:(e)=> this.setState({search:e.currentTarget.value}),
+      clearSearch:()=> this.setState({search:''}),
+
+      crumbCat, crumbItem,
+      showTax, showGeneric,
+      readOnly,
+
+      dirty, changedCount, chg,
+      changedPlural: changedCount===1?'':'s',
+      onSave:()=> this.setState({changed:{}}),
+      onDiscard:()=> this.setState({changed:{}}),
+
+      // registration
+      regOpts, showRegular, showComposition, showNone, showRegFields,
+      gstin:S.gstin, pan:S.pan, stateVal:S.stateVal,
+      gstinShort: S.gstin ? (S.gstin.slice(0,6)+'…'+S.gstin.slice(-4)) : '—',
+      gstinLocked, gstinBg: gstinLocked?'#f4f2ee':'#fff',
+      gstinBorder: gstinWarn?'#f2d19a':(gstinLocked?'#ece9e3':'#e4e0d9'),
+      gstinWarn, gstinHint, gstinHintColor,
+      onGstin:(e)=> this.setState(s=>({gstin:e.currentTarget.value, changed:{...s.changed, gstin:true}})),
+      onState:(e)=> this.setState({stateVal:e.currentTarget.value}),
+
+      // rates
+      rentalRate:S.rentalRate,
+      rentalRateBorder: chg.gstRate?'#f2d19a':'#e4e0d9',
+      onRentalRate:(e)=> this.setState(s=>({rentalRate:e.currentTarget.value, changed:{...s.changed, gstRate:true}})),
+
+      // tax type
+      autoDetect, alwaysIgst,
+      toggleAuto: readOnly?()=>{}:()=> this.setState(s=>({autoDetect:!s.autoDetect, changed:{...s.changed, taxType:true}})),
+      toggleAlways: readOnly?()=>{}:()=> this.setState(s=>({alwaysIgst:!s.alwaysIgst, changed:{...s.changed, taxType:true}})),
+      autoBorder: autoDetect?accent:'#e4e0d9', autoBg: autoDetect?'#f7f7ff':'#fff',
+      autoRing: autoDetect?accent:'#cfcbc3', autoFill: autoDetect?accent:'transparent',
+      alwaysBorder: alwaysIgst?accent:'#e4e0d9', alwaysBg: alwaysIgst?'#f7f7ff':'#fff',
+      alwaysRing: alwaysIgst?accent:'#cfcbc3', alwaysFill: alwaysIgst?accent:'transparent',
+
+      hsnRows,
+      lineRoundOpts, totalRoundOpts, roundoffOpts,
+
+      // sample
+      sampleTaxRows, sampleTotal, sampleBase:this.inr(base),
+      sampleStateLabel: S.sampleMode==='intra'?'Intra-state':'Inter-state',
+      sampleCustState: S.sampleMode==='intra'?'Gujarat':'Rajasthan',
+      setIntra:()=> this.setState({sampleMode:'intra'}),
+      setInter:()=> this.setState({sampleMode:'inter'}),
+      intraTabBg: S.sampleMode==='intra'?'#fff':'transparent',
+      intraTabColor: S.sampleMode==='intra'?'#26235a':'#8a8780',
+      intraTabShadow: S.sampleMode==='intra'?'0 1px 2px rgba(32,32,88,.12)':'none',
+      interTabBg: S.sampleMode==='inter'?'#fff':'transparent',
+      interTabColor: S.sampleMode==='inter'?'#26235a':'#8a8780',
+      interTabShadow: S.sampleMode==='inter'?'0 1px 2px rgba(32,32,88,.12)':'none',
+
+      // role
+      role:S.role, roleOpen:S.roleOpen,
+      roleUser:rm.user, roleInitials:rm.initials, roleUpper:S.role.toUpperCase(),
+      onToggleRole:()=> this.setState(s=>({roleOpen:!s.roleOpen})),
+      roleOptions,
+
+      // icons
+      gearIcon:this.ic('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',20),
+      gearMini:this.ic('<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8"/>',15),
+      backIcon:this.ic('<path d="M15 18l-6-6 6-6"/>',16),
+      searchIcon:this.ic('<circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/>',15),
+      caretIcon:this.ic('<path d="M6 9l6 6 6-6"/>',14),
+      crownIcon:this.ic('<path d="M4 8l4 4 4-6 4 6 4-4v9H4z"/>',12),
+      lockIcon:this.ic('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',11),
+      checkIcon:this.ic('<path d="M20 6 9 17l-5-5"/>',13),
+      warnIcon:this.ic('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',16),
+      slidersIcon:this.ic('<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>',22)
+    };
+  }
+
+  dirtyCount(){ const c=this.state.changed; return Object.keys(c).filter(k=>c[k]).length; }
+}
+</script>
+</body>
+</html>

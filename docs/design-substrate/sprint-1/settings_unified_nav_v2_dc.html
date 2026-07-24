@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f2ee;font-family:'Manrope',system-ui,sans-serif;color:#26235a;-webkit-font-smoothing:antialiased}
+a{color:#4f46e5;text-decoration:none}
+a:hover{color:#3f37c9}
+input,select,textarea{font-family:'Manrope',system-ui,sans-serif}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#ddd8ce;border-radius:6px;border:2px solid #f4f2ee}
+.mono{font-family:'JetBrains Mono',monospace}
+</style>
+</helmet>
+
+<div style="width:1280px;margin:0 auto;display:flex;background:#ffffff;min-height:100vh;position:relative">
+
+  <!-- ICON RAIL -->
+  <sc-if value="{{ showRail }}" hint-placeholder-val="{{ true }}">
+  <aside style="width:60px;flex:none;background:#faf9f7;border-right:1px solid #ece9e3;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;position:sticky;top:0;height:100vh">
+    <div style="width:32px;height:32px;border-radius:8px;background:#202058;color:#fff;font:600 16px 'Space Grotesk';display:flex;align-items:center;justify-content:center;margin-bottom:14px">R</div>
+    <sc-for list="{{ rail }}" as="r" hint-placeholder-count="6">
+      <div title="{{ r.name }}" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:{{ r.color }};background:{{ r.bg }}"><span dangerouslySetInnerHTML="{{ r.icon }}" style="display:flex"></span></div>
+    </sc-for>
+    <div style="flex:1"></div>
+    <div title="{{ systemName }}" style="width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#eef2ff;color:#4f46e5;box-shadow:inset 2px 0 0 #4f46e5"><span dangerouslySetInnerHTML="{{ gearIcon }}" style="display:flex"></span></div>
+  </aside>
+  </sc-if>
+
+  <!-- RIGHT SIDE -->
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+
+    <!-- TOP BAR -->
+    <header style="height:56px;flex:none;background:#fff;border-bottom:1px solid #ece9e3;display:flex;align-items:center;gap:18px;padding:0 22px;position:sticky;top:0;z-index:40">
+      <a href="#" style="display:flex;align-items:center;gap:7px;color:#6b7280;font:600 13px 'Manrope'" style-hover="color:#4f46e5"><span dangerouslySetInnerHTML="{{ backIcon }}" style="display:flex"></span>Back to Dashboard</a>
+      <span style="width:1px;height:20px;background:#ece9e3"></span>
+      <div style="display:flex;align-items:center;gap:8px;font:400 12.5px 'Manrope';color:#9ca3af">
+        <span dangerouslySetInnerHTML="{{ gearMini }}" style="display:flex;color:#c0bdb4"></span>
+        <span>System</span><span style="color:#cfcbc3">›</span>
+        <span>{{ crumbCat }}</span><span style="color:#cfcbc3">›</span>
+        <span style="color:#26235a;font-weight:600">{{ crumbItem }}</span>
+      </div>
+
+      <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+        <!-- Save / discard (contextual) -->
+        <sc-if value="{{ dirty }}">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="display:flex;align-items:center;gap:6px;font:600 11px 'JetBrains Mono';letter-spacing:.02em;color:#d97706;background:rgba(217,118,6,.1);padding:3px 8px;border-radius:7px"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span>{{ changedCount }} UNSAVED</span>
+            <button onClick="{{ onDiscard }}" style="padding:10px 14px;background:#fff;color:#6b7280;border:1px solid #e4e0d9;border-radius:9px;font:600 12.5px 'Manrope';cursor:pointer" style-hover="background:#faf9f7;color:#26235a">Discard</button>
+            <button onClick="{{ onSave }}" style="padding:10px 16px;background:#4f46e5;color:#fff;border:none;border-radius:9px;font:600 12.5px 'Manrope';cursor:pointer;box-shadow:0 1px 2px rgba(79,70,229,.28)" style-hover="background:#3f37c9">Save changes</button>
+          </div>
+        </sc-if>
+
+        <!-- Role / workspace switcher stub -->
+        <div style="position:relative">
+          <button onClick="{{ onToggleRole }}" style="display:flex;align-items:center;gap:9px;height:38px;padding:0 8px 0 10px;border:1px solid #ece9e3;background:#faf9f7;border-radius:20px;cursor:pointer" style-hover="border-color:#d8d4ee">
+            <span style="width:26px;height:26px;border-radius:50%;background:#eef0f4;color:#202058;font:600 10px 'Space Grotesk';display:flex;align-items:center;justify-content:center">{{ roleInitials }}</span>
+            <div style="text-align:left;line-height:1.1">
+              <div style="font:600 12px 'Manrope';color:#26235a">{{ roleUser }}</div>
+              <div style="font:600 9px 'JetBrains Mono';letter-spacing:.04em;color:#9ca3af">{{ roleUpper }}</div>
+            </div>
+            <span dangerouslySetInnerHTML="{{ caretIcon }}" style="display:flex;color:#9ca3af"></span>
+          </button>
+          <sc-if value="{{ roleOpen }}">
+            <div style="position:absolute;top:46px;right:0;width:270px;background:#fff;border:1px solid #ece9e3;border-radius:12px;box-shadow:0 14px 40px rgba(32,32,88,.16);padding:7px;z-index:60">
+              <div style="padding:7px 9px 9px;font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#9ca3af">VIEW SETTINGS AS ROLE</div>
+              <sc-for list="{{ roleOptions }}" as="ro" hint-placeholder-count="5">
+                <div onClick="{{ ro.onSelect }}" style="display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;cursor:pointer;background:{{ ro.bg }}" style-hover="background:#f4f2ee">
+                  <span style="width:28px;height:28px;border-radius:50%;background:{{ ro.avBg }};color:#202058;font:600 10px 'Space Grotesk';display:flex;align-items:center;justify-content:center;flex:none">{{ ro.initials }}</span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font:600 12.5px 'Manrope';color:#26235a">{{ ro.user }}</div>
+                    <div style="font:400 11px 'Manrope';color:#9ca3af">{{ ro.scope }}</div>
+                  </div>
+                  <sc-if value="{{ ro.active }}"><span dangerouslySetInnerHTML="{{ ro.check }}" style="display:flex;color:#4f46e5"></span></sc-if>
+                </div>
+              </sc-for>
+              <div style="padding:8px 9px 5px;font:400 10.5px 'Manrope';color:#b0aca4;border-top:1px solid #f0ede8;margin-top:5px">Single-tenant workspace · DSLRSWALA</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </header>
+
+    <!-- SHELL: NAV + CONTENT -->
+    <div style="flex:1;display:flex;align-items:flex-start;min-height:0">
+
+      <!-- LEFT NAV -->
+      <!--
+  SETTINGS SHELL SIDEBAR — Authoritative source
+
+  This sidebar structure must be identical across ALL Settings sub-pages:
+  - settings_unified_nav_dc.html (this file — shell + Workspace Info)
+  - notifications_preferences_dc.html (Notifications > Event notifications)
+  - Future: tax_rates_dc.html, deposit_policies_dc.html, team_members_dc.html, etc.
+
+  Only the "currently selected" highlight differs between pages.
+  All 8 categories, all sub-items, all spacing/typography/colors identical.
+-->
+<nav style="width:240px;flex:none;background:#faf9f7;border-right:1px solid #ece9e3;align-self:stretch;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;padding:18px 14px 30px">
+        <div style="font:600 12px 'Space Grotesk';letter-spacing:.1em;color:#9a9690;padding:0 6px 12px">SYSTEM</div>
+        <div style="display:flex;align-items:center;gap:8px;height:38px;padding:0 11px;border:1px solid #ece9e3;border-radius:9px;background:#fff;margin-bottom:6px">
+          <span dangerouslySetInnerHTML="{{ searchIcon }}" style="display:flex;color:#9ca3af"></span>
+          <input value="{{ search }}" onInput="{{ onSearch }}" placeholder="Search settings…" style="flex:1;min-width:0;border:none;background:transparent;font:400 13px 'Manrope';color:#26235a;padding:0" />
+          <sc-if value="{{ hasSearch }}"><span onClick="{{ clearSearch }}" style="cursor:pointer;color:#c0bdb4;font-size:14px" style-hover="color:#6b7280">✕</span></sc-if>
+        </div>
+        <sc-if value="{{ hasSearch }}"><div style="font:400 11px 'Manrope';color:#9ca3af;padding:5px 7px 10px">{{ resultLabel }}</div></sc-if>
+        <sc-if value="{{ noResults }}"><div style="padding:16px 8px;font:400 12.5px 'Manrope';color:#b0aca4;text-align:center">No settings match “{{ search }}”.</div></sc-if>
+
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:6px">
+          <sc-for list="{{ nav }}" as="c" hint-placeholder-count="8">
+            <div style="{{ c.wrap }}">
+              <sc-if value="{{ c.owner }}"><div style="height:1px;background:#ece9e3;margin:12px 6px 10px"></div><div style="font:600 10px 'JetBrains Mono';letter-spacing:.06em;color:#c08a2e;padding:0 7px 6px;display:flex;align-items:center;gap:6px"><span dangerouslySetInnerHTML="{{ crownIcon }}" style="display:flex"></span>OWNER-ONLY</div></sc-if>
+              <div onClick="{{ c.onToggle }}" style="display:flex;align-items:center;gap:9px;padding:8px 7px;border-radius:8px;cursor:pointer" style-hover="background:#f0ede8">
+                <span dangerouslySetInnerHTML="{{ c.icon }}" style="display:flex;color:#8a8780"></span>
+                <span style="flex:1;font:600 12px 'Space Grotesk';letter-spacing:.05em;color:#6b6860;text-transform:uppercase">{{ c.name }}</span>
+                <sc-if value="{{ c.note }}"><span style="font:600 8px 'JetBrains Mono';letter-spacing:.03em;color:#9a9690;background:#ece9e3;padding:2px 5px;border-radius:4px">{{ c.note }}</span></sc-if>
+                <span style="color:#c0bdb4;font-size:10px">{{ c.chev }}</span>
+              </div>
+              <sc-if value="{{ c.open }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:1px;padding:2px 0 6px">
+                  <sc-for list="{{ c.items }}" as="i" hint-placeholder-count="3">
+                    <div onClick="{{ i.onClick }}" style="display:flex;align-items:center;gap:10px;padding:7px 10px 7px 30px;border-radius:8px;cursor:pointer;background:{{ i.bg }}" style-hover="background:{{ i.hover }}">
+                      <span style="width:7px;height:7px;border-radius:50%;flex:none;background:{{ i.dotBg }};border:{{ i.dotBorder }}"></span>
+                      <span style="flex:1;font:{{ i.weight }} 13.5px 'Manrope';color:{{ i.color }}">{{ i.name }}</span>
+                      <sc-if value="{{ i.changed }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706;flex:none"></span></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </nav>
+
+      <!-- CONTENT -->
+      <div style="flex:1;min-width:0;padding:30px 40px 70px">
+        <div style="max-width:760px">
+
+          <!-- ===== WORKSPACE INFO ===== -->
+          <sc-if value="{{ showWorkspace }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+              <div>
+                <h1 style="margin:0;font:600 24px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Workspace Information</h1>
+                <p style="margin:7px 0 0;font:400 13px 'Manrope';color:#8a8780">Core identity and registration for your rental business.</p>
+              </div>
+            </div>
+            <div style="height:1px;background:#ece9e3;margin:20px 0 26px"></div>
+
+            <div style="display:flex;flex-direction:column;gap:26px">
+
+              <!-- Business name -->
+              <div>
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12.5px 'Manrope';color:#26235a">Business name</label><span style="color:#dc2626">*</span><sc-if value="{{ chg.businessName }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                <input data-field="businessName" onInput="{{ mark }}" value="DSLRSWALA" style="width:100%;height:40px;border:1px solid #e4e0d9;border-radius:10px;padding:0 13px;font:500 13.5px 'Manrope';color:#26235a;background:#fff" />
+              </div>
+
+              <!-- Business type + Timezone row -->
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px">
+                <div>
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12.5px 'Manrope';color:#26235a">Business type</label><span style="color:#dc2626">*</span><sc-if value="{{ chg.businessType }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                  <select data-field="businessType" onChange="{{ mark }}" style="width:100%;height:40px;border:1px solid #e4e0d9;border-radius:10px;padding:0 12px;font:500 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer">
+                    <option>Rental</option><option>Retail</option><option>Both</option><option>Service</option>
+                  </select>
+                </div>
+                <div>
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12.5px 'Manrope';color:#26235a">Timezone</label><sc-if value="{{ chg.timezone }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                  <select data-field="timezone" onChange="{{ mark }}" style="width:100%;height:40px;border:1px solid #e4e0d9;border-radius:10px;padding:0 12px;font:500 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer">
+                    <option>Asia/Kolkata (IST · GMT+5:30)</option><option>Asia/Dubai (GST)</option><option>Asia/Singapore (SGT)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Category chips -->
+              <div>
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px"><label style="font:600 12.5px 'Manrope';color:#26235a">Category</label><span style="color:#dc2626">*</span></div>
+                <div style="display:flex;flex-wrap:wrap;gap:9px">
+                  <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="5">
+                    <div onClick="{{ ch.onToggle }}" style="display:flex;align-items:center;gap:7px;min-height:34px;padding:6px 12px;border-radius:9px;cursor:pointer;border:1px solid {{ ch.border }};background:{{ ch.bg }};color:{{ ch.color }};font:600 12.5px 'Manrope'" data-chip="1">
+                      <span style="width:8px;height:8px;border-radius:50%;background:{{ ch.dot }};border:{{ ch.dotBorder }}"></span>{{ ch.name }}
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <!-- Registration -->
+              <div style="background:#faf9f7;border:1px solid #ece9e3;border-radius:14px;padding:18px 20px">
+                <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:14px">REGISTRATION</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12px 'Manrope';color:#26235a">GSTIN</label><sc-if value="{{ chg.gstin }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                    <input data-field="gstin" onInput="{{ mark }}" value="24AAECR9876F1Z5" class="mono" style="width:100%;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 12px;font-size:12.5px;color:#26235a;background:#fff;letter-spacing:.02em" />
+                  </div>
+                  <div>
+                    <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12px 'Manrope';color:#26235a">PAN</label><sc-if value="{{ chg.pan }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                    <input data-field="pan" onInput="{{ mark }}" value="AAECR9876F" class="mono" style="width:100%;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 12px;font-size:12.5px;color:#26235a;background:#fff;letter-spacing:.02em" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Address -->
+              <div>
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12.5px 'Manrope';color:#26235a">Registered address</label><sc-if value="{{ chg.address }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                <textarea data-field="address" onInput="{{ mark }}" rows="3" style="width:100%;border:1px solid #e4e0d9;border-radius:10px;padding:11px 13px;font:500 13px 'Manrope';color:#26235a;background:#fff;resize:vertical;line-height:1.5">2nd Floor, Siddharth Complex, Sayajigunj, Vadodara, Gujarat 390005</textarea>
+              </div>
+
+              <!-- Primary contact -->
+              <div>
+                <div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690;margin-bottom:12px">PRIMARY CONTACT</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px 22px">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12px 'Manrope';color:#26235a">Name</label><sc-if value="{{ chg.contactName }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                    <input data-field="contactName" onInput="{{ mark }}" value="Aamir Patel" style="width:100%;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 12px;font:500 13px 'Manrope';color:#26235a;background:#fff" />
+                  </div>
+                  <div>
+                    <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12px 'Manrope';color:#26235a">Phone</label><sc-if value="{{ chg.contactPhone }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                    <input data-field="contactPhone" onInput="{{ mark }}" value="+91 98250 41127" class="mono" style="width:100%;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 12px;font-size:12.5px;color:#26235a;background:#fff" />
+                  </div>
+                  <div style="grid-column:1 / -1">
+                    <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12px 'Manrope';color:#26235a">Email</label><sc-if value="{{ chg.contactEmail }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                    <input data-field="contactEmail" onInput="{{ mark }}" value="aamir@dslrswala.com" class="mono" style="width:100%;height:38px;border:1px solid #e4e0d9;border-radius:9px;padding:0 12px;font-size:12.5px;color:#26235a;background:#fff" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Logo + Currency -->
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start">
+                <div>
+                  <label style="display:block;font:600 12.5px 'Manrope';color:#26235a;margin-bottom:9px">Logo</label>
+                  <div style="display:flex;align-items:center;gap:14px;border:1px dashed #d8d4cc;border-radius:12px;padding:14px 16px;background:#faf9f7">
+                    <div style="width:52px;height:52px;border-radius:12px;background:#202058;color:#fff;font:700 20px 'Space Grotesk';display:flex;align-items:center;justify-content:center;flex:none">R</div>
+                    <div style="flex:1;min-width:0">
+                      <div style="font:600 12.5px 'Manrope';color:#26235a">dslrswala-mark.svg</div>
+                      <div style="font:400 11px 'JetBrains Mono';color:#9ca3af;margin-top:2px">512×512 · 8 KB</div>
+                    </div>
+                    <button style="padding:6px 12px;background:#fff;border:1px solid #e4e0d9;border-radius:8px;font:600 11.5px 'Manrope';color:#26235a;cursor:pointer" style-hover="background:#f4f2ee">Replace</button>
+                  </div>
+                </div>
+                <div>
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px"><label style="font:600 12.5px 'Manrope';color:#26235a">Currency</label><span style="display:flex;align-items:center;gap:4px;font:600 9px 'JetBrains Mono';letter-spacing:.03em;color:#9a9690;background:#ece9e3;padding:2px 6px;border-radius:4px"><span dangerouslySetInnerHTML="{{ lockIcon }}" style="display:flex"></span>LOCKED · V1</span></div>
+                  <div style="display:flex;align-items:center;gap:10px;height:40px;border:1px solid #ece9e3;border-radius:10px;padding:0 13px;background:#f4f2ee;color:#8a8780;font:500 13px 'Manrope'"><span class="mono" style="font-size:14px;color:#6b7280">₹</span>INR — Indian Rupee</div>
+                </div>
+              </div>
+
+              <!-- Business hours -->
+              <div>
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:12px"><label style="font:600 12.5px 'Manrope';color:#26235a">Business hours</label><sc-if value="{{ chg.hours }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                <div style="border:1px solid #ece9e3;border-radius:12px;overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid #f0ede8">
+                    <span style="width:96px;font:600 12.5px 'Manrope';color:#26235a">Mon – Fri</span>
+                    <input data-field="hours" onInput="{{ mark }}" value="10:00 AM" class="mono" style="width:100px;height:34px;border:1px solid #e4e0d9;border-radius:8px;padding:0 10px;font-size:12px;color:#26235a;text-align:center;background:#fff" />
+                    <span style="color:#c0bdb4">→</span>
+                    <input data-field="hours" onInput="{{ mark }}" value="8:00 PM" class="mono" style="width:100px;height:34px;border:1px solid #e4e0d9;border-radius:8px;padding:0 10px;font-size:12px;color:#26235a;text-align:center;background:#fff" />
+                  </div>
+                  <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid #f0ede8">
+                    <span style="width:96px;font:600 12.5px 'Manrope';color:#26235a">Saturday</span>
+                    <input data-field="hours" onInput="{{ mark }}" value="10:00 AM" class="mono" style="width:100px;height:34px;border:1px solid #e4e0d9;border-radius:8px;padding:0 10px;font-size:12px;color:#26235a;text-align:center;background:#fff" />
+                    <span style="color:#c0bdb4">→</span>
+                    <input data-field="hours" onInput="{{ mark }}" value="6:00 PM" class="mono" style="width:100px;height:34px;border:1px solid #e4e0d9;border-radius:8px;padding:0 10px;font-size:12px;color:#26235a;text-align:center;background:#fff" />
+                  </div>
+                  <div style="display:flex;align-items:center;gap:14px;padding:12px 16px">
+                    <span style="width:96px;font:600 12.5px 'Manrope';color:#26235a">Sunday</span>
+                    <span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:7px;background:rgba(107,114,128,.1);color:#6b7280;font:600 10.5px 'JetBrains Mono';letter-spacing:.03em">CLOSED</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </sc-if>
+
+          <!-- ===== TAX RATES (GST) ===== -->
+          <sc-if value="{{ showTax }}" hint-placeholder-val="{{ true }}">
+            <h1 style="margin:0;font:600 24px 'Space Grotesk';color:#202058;letter-spacing:-.01em">Tax Rates (GST)</h1>
+            <p style="margin:7px 0 0;font:400 13px 'Manrope';color:#8a8780">Default tax treatment applied across rental invoices.</p>
+            <div style="height:1px;background:#ece9e3;margin:20px 0 26px"></div>
+
+            <div style="display:flex;flex-direction:column;gap:26px">
+              <!-- Default rate -->
+              <div style="max-width:340px">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><label style="font:600 12.5px 'Manrope';color:#26235a">Default GST rate for rentals</label><span style="color:#dc2626">*</span><sc-if value="{{ chg.gstRate }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                <select data-field="gstRate" onChange="{{ mark }}" style="width:100%;height:40px;border:1px solid #e4e0d9;border-radius:10px;padding:0 12px;font:500 13px 'Manrope';color:#26235a;background:#fff;cursor:pointer">
+                  <option>18% (default)</option><option>5%</option><option>12%</option><option>28%</option><option>Custom…</option>
+                </select>
+              </div>
+
+              <!-- Split vs combined -->
+              <div>
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:11px"><label style="font:600 12.5px 'Manrope';color:#26235a">GST split</label><sc-if value="{{ chg.splitMode }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ splitOpts }}" as="o" hint-placeholder-count="2">
+                    <div onClick="{{ o.onSelect }}" style="display:flex;gap:12px;align-items:flex-start;padding:13px 15px;border-radius:11px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }}">
+                      <span style="width:18px;height:18px;border-radius:50%;flex:none;margin-top:1px;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:9px;height:9px;border-radius:50%;background:{{ o.fill }}"></span></span>
+                      <div><div style="font:600 13px 'Manrope';color:#26235a">{{ o.title }}</div><div style="font:400 12px 'Manrope';color:#8a8780;margin-top:2px">{{ o.desc }}</div></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <!-- Tax on deposits -->
+              <div>
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:11px"><label style="font:600 12.5px 'Manrope';color:#26235a">Tax on deposits</label><sc-if value="{{ chg.depositTax }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ depOpts }}" as="o" hint-placeholder-count="2">
+                    <div onClick="{{ o.onSelect }}" style="display:flex;gap:12px;align-items:flex-start;padding:13px 15px;border-radius:11px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }}">
+                      <span style="width:18px;height:18px;border-radius:50%;flex:none;margin-top:1px;border:2px solid {{ o.ring }};display:flex;align-items:center;justify-content:center"><span style="width:9px;height:9px;border-radius:50%;background:{{ o.fill }}"></span></span>
+                      <div><div style="font:600 13px 'Manrope';color:#26235a">{{ o.title }}</div><div style="font:400 12px 'Manrope';color:#8a8780;margin-top:2px">{{ o.desc }}</div></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <!-- HSN codes -->
+              <div style="background:#faf9f7;border:1px solid #ece9e3;border-radius:14px;padding:18px 20px">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:14px"><div style="font:600 11px 'JetBrains Mono';letter-spacing:.06em;color:#9a9690">HSN CODE DEFAULTS</div><sc-if value="{{ chg.hsn }}"><span style="width:6px;height:6px;border-radius:50%;background:#d97706"></span></sc-if></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 18px">
+                  <sc-for list="{{ hsn }}" as="h" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:12px">
+                      <span style="width:96px;font:500 12.5px 'Manrope';color:#6b6860">{{ h.label }}</span>
+                      <input data-field="hsn" onInput="{{ mark }}" value="{{ h.code }}" class="mono" style="flex:1;height:36px;border:1px solid #e4e0d9;border-radius:9px;padding:0 12px;font-size:12.5px;color:#26235a;background:#fff" />
+                    </div>
+                  </sc-for>
+                </div>
+                <button style="margin-top:15px;display:flex;align-items:center;gap:6px;padding:6px 12px;background:#fff;border:1px solid #d8d4ee;border-radius:8px;font:600 11.5px 'Manrope';color:#4f46e5;cursor:pointer" style-hover="background:#eef2ff"><span style="font-size:14px;line-height:1">+</span> Add category</button>
+              </div>
+
+              <!-- Reverse charge -->
+              <div onClick="{{ toggleReverse }}" style="display:flex;align-items:center;gap:13px;padding:14px 16px;border:1px solid {{ reverseBorder }};border-radius:12px;cursor:pointer;background:{{ reverseBg }}">
+                <span style="width:20px;height:20px;border-radius:6px;flex:none;border:2px solid {{ reverseRing }};background:{{ reverseFill }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ reverseOn }}"><span dangerouslySetInnerHTML="{{ checkIcon }}" style="display:flex;color:#fff"></span></sc-if></span>
+                <div style="flex:1"><div style="font:600 13px 'Manrope';color:#26235a">Reverse charge mechanism</div><div style="font:400 12px 'Manrope';color:#8a8780;margin-top:2px">Enable for eligible B2B transactions where the recipient pays GST.</div></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== GENERIC SECTION ===== -->
+          <sc-if value="{{ showGeneric }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:8px;font:400 11.5px 'JetBrains Mono';color:#9ca3af;margin-bottom:10px">{{ crumbCat }} <span style="color:#cfcbc3">/</span> <span style="color:#6b6860">{{ crumbItem }}</span></div>
+            <h1 style="margin:0;font:600 24px 'Space Grotesk';color:#202058;letter-spacing:-.01em">{{ crumbItem }}</h1>
+            <p style="margin:7px 0 0;font:400 13px 'Manrope';color:#8a8780">This section lives inside the same Settings shell — its form fields render in this content area.</p>
+            <div style="height:1px;background:#ece9e3;margin:22px 0 24px"></div>
+            <div style="border:1px dashed #ddd8ce;border-radius:14px;padding:44px 30px;display:flex;flex-direction:column;align-items:center;text-align:center;background:#faf9f7">
+              <div style="width:46px;height:46px;border-radius:12px;background:#eef2ff;color:#4f46e5;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><span dangerouslySetInnerHTML="{{ slidersIcon }}" style="display:flex"></span></div>
+              <div style="font:600 15px 'Space Grotesk';color:#26235a">{{ crumbItem }}</div>
+              <div style="font:400 12.5px 'Manrope';color:#9a9690;max-width:360px;margin-top:6px">Fully specced in a dedicated brief. Two reference sections — <strong style="color:#4f46e5">Workspace info</strong> and <strong style="color:#4f46e5">Tax rates (GST)</strong> — are built out to demonstrate the shell.</div>
+            </div>
+          </sc-if>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#4f46e5&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#4f46e5&quot;,&quot;#202058&quot;,&quot;#059669&quot;,&quot;#d97706&quot;],&quot;section&quot;:&quot;Theme&quot;},&quot;showRail&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  constructor(p){
+    super(p);
+    this.state = {
+      selected: 'workspace-info',
+      collapsed: {},          // categoryId -> true if collapsed
+      search: '',
+      role: 'Owner',
+      roleOpen: false,
+      changed: {},            // fieldKey -> true
+      chips: { cam:true, light:true, audio:true, video:false, studio:false },
+      split: 'split',
+      deposit: 'exempt',
+      reverse: false
+    };
+  }
+
+  ic(path,w){ return {__html:'<svg width="'+(w||18)+'" height="'+(w||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+path+'</svg>'}; }
+
+  // ---------- static config ----------
+  cats(){
+    return [
+      {id:'general', name:'General', icon:'<rect x="4" y="4" width="7" height="7" rx="1.4"/><rect x="13" y="4" width="7" height="7" rx="1.4"/><rect x="4" y="13" width="7" height="7" rx="1.4"/><rect x="13" y="13" width="7" height="7" rx="1.4"/>',
+        items:[['workspace-info','Workspace info'],['regional','Regional settings'],['branding','Branding']]},
+      {id:'team', name:'Team & Access', icon:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.3 2.7-6 6-6"/><path d="M16 4.5a3 3 0 0 1 0 6"/><path d="M15 14c2.5.5 4.5 2.8 4.5 6"/>',
+        items:[['staff','Staff members'],['roles','Roles & permissions'],['sessions','Session policies']]},
+      {id:'financial', name:'Financial', icon:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14" r="1.4"/>',
+        items:[['tax','Tax rates (GST)'],['invoice','Invoice format'],['deposit','Deposit policies'],['latefee','Late fee rules'],['refund','Refund policies']]},
+      {id:'rental', name:'Rental Rules', icon:'<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v4h-4"/>',
+        items:[['lifecycle','Order lifecycle'],['standby','Standby policies'],['extension','Extension rules'],['cancellation','Cancellation rules'],['substitution','Substitution defaults']]},
+      {id:'assets', name:'Assets', icon:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5"/><path d="M12 12v9"/>',
+        items:[['categories','Categories'],['custody','Custody types'],['maintenance','Maintenance defaults'],['barcode','Barcode / labels']]},
+      {id:'people', name:'People', icon:'<circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3-6.5 7-6.5s7 2.9 7 6.5"/>',
+        items:[['pvocab','Roles vocabulary'],['segments','Segment thresholds'],['trust','Trust score weights'],['commprefs','Communication preferences defaults']]},
+      {id:'notifications', name:'Notifications', icon:'<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+        items:[['events','Event notifications'],['templates','Templates'],['channels','Delivery channels'],['approvals','Approval thresholds']]},
+      {id:'advanced', name:'Advanced', icon:'<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>',
+        items:[['audit','Audit log'],['export','Data export'],['integrations','Integration status'],['sysinfo','System info']]},
+      {id:'owner', name:'Workspace', owner:true, icon:'<path d="M3 7l4 4 5-6 5 6 4-4v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+        items:[['billing','Billing'],['delete','Delete workspace']]}
+    ];
+  }
+
+  // role -> {categoryId: true} visible; special item filters handled in build
+  roleAccess(role){
+    switch(role){
+      case 'Owner':     return {all:true};
+      case 'Manager':   return {set:['general','team','financial','rental','assets','people','notifications','advanced']};
+      case 'Sales':     return {set:['general','notifications','people']};
+      case 'Warehouse': return {set:['general','assets'], viewOnly:['general']};
+      case 'Accounts':  return {set:['general','financial','advanced'], onlyItems:{advanced:['audit']}};
+      default: return {all:true};
+    }
+  }
+
+  roleMeta(){
+    return {
+      Owner:     {user:'Aamir Patel',   initials:'AP', scope:'Full access · all sections'},
+      Manager:   {user:'Shoaib Khan',   initials:'SK', scope:'All except Owner-only & Billing'},
+      Sales:     {user:'Priya Nair',    initials:'PN', scope:'General · Notifications · People'},
+      Warehouse: {user:'Ruhan Sheikh',  initials:'RS', scope:'General (view) · Assets'},
+      Accounts:  {user:'Neha Desai',    initials:'ND', scope:'General · Financial · Audit log'}
+    };
+  }
+
+  visibleCats(){
+    const acc = this.roleAccess(this.state.role);
+    return this.cats().map(c=>{
+      let vis = acc.all || (acc.set && acc.set.includes(c.id));
+      if(!vis) return null;
+      let items = c.items;
+      if(acc.onlyItems && acc.onlyItems[c.id]) items = items.filter(i=>acc.onlyItems[c.id].includes(i[0]));
+      const note = (acc.viewOnly && acc.viewOnly.includes(c.id)) ? 'VIEW' : null;
+      return {...c, items, note};
+    }).filter(Boolean);
+  }
+
+  firstVisibleItem(){
+    const cs = this.visibleCats();
+    for(const c of cs){ if(c.items.length) return c.items[0][0]; }
+    return null;
+  }
+
+  markChanged = (e)=>{
+    const f = e.currentTarget.dataset.field;
+    if(!f) return;
+    this.setState(s=>({changed:{...s.changed,[f]:true}}));
+  };
+
+  renderVals(){
+    const S = this.state;
+    const accent = this.props.accent ?? '#4f46e5';
+    const q = S.search.trim().toLowerCase();
+    const hasSearch = q.length>0;
+    const meta = this.roleMeta();
+    const rm = meta[S.role];
+
+    // ---- build nav ----
+    let nav = [];
+    let matchCount = 0;
+    this.visibleCats().forEach(c=>{
+      let items = c.items;
+      if(hasSearch) items = items.filter(it=> it[1].toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+      if(hasSearch && items.length===0) return;
+      matchCount += items.length;
+      const open = hasSearch ? true : !S.collapsed[c.id];
+      nav.push({
+        id:c.id, name:c.name, owner:!!c.owner, note:c.note,
+        icon:this.ic(c.icon,17),
+        open, chev: open?'▾':'▸',
+        wrap:'',
+        onToggle: ()=> this.setState(s=>({collapsed:{...s.collapsed,[c.id]:!(hasSearch?true:!s.collapsed[c.id])}})),
+        items: items.map(it=>{
+          const sel = S.selected===it[0];
+          return {
+            id:it[0], name:it[1],
+            onClick: ()=> this.setState({selected:it[0]}),
+            bg: sel?accent:'transparent',
+            hover: sel?accent:'#eef2ff',
+            color: sel?'#fff':'#4a4760',
+            weight: sel?'600':'500',
+            dotBg: sel?'#fff':'transparent',
+            dotBorder: sel?'none':'1.5px solid #c9c6d9',
+            changed:false
+          };
+        })
+      });
+    });
+
+    // find crumb + which panel
+    let crumbCat='General', crumbItem='Workspace info';
+    this.cats().forEach(c=> c.items.forEach(it=>{ if(it[0]===S.selected){crumbCat=c.name;crumbItem=it[1];} }));
+
+    const showWorkspace = S.selected==='workspace-info';
+    const showTax = S.selected==='tax';
+    const showGeneric = !showWorkspace && !showTax;
+
+    // ---- changed field dots ----
+    const c = S.changed;
+    const chg = {
+      businessName:!!c.businessName, businessType:!!c.businessType, timezone:!!c.timezone,
+      gstin:!!c.gstin, pan:!!c.pan, address:!!c.address,
+      contactName:!!c.contactName, contactPhone:!!c.contactPhone, contactEmail:!!c.contactEmail,
+      hours:!!c.hours, gstRate:!!c.gstRate, splitMode:!!c.splitMode, depositTax:!!c.depositTax,
+      hsn:!!c.hsn
+    };
+    const changedCount = Object.keys(c).filter(k=>c[k]).length;
+    const dirty = changedCount>0;
+
+    // ---- category chips ----
+    const chipDef = [['cam','Camera equipment'],['light','Lighting'],['audio','Audio'],['video','Video accessories'],['studio','Studio spaces']];
+    const chips = chipDef.map(([k,name])=>{
+      const on = S.chips[k];
+      return {name,
+        onToggle:()=> this.setState(s=>({chips:{...s.chips,[k]:!s.chips[k]}, changed:{...s.changed, category:true}})),
+        bg: on?'#eef2ff':'#fff', border: on?'#c7c2f2':'#e4e0d9', color: on?'#4338ca':'#6b6860',
+        dot: on?accent:'transparent', dotBorder: on?'none':'1.5px solid #c9c6d9'};
+    });
+
+    // ---- tax radios ----
+    const radio = (group,val,cur,title,desc)=>({
+      title,desc,
+      onSelect:()=> this.setState(s=>({[group]:val, changed:{...s.changed,[group==='split'?'splitMode':'depositTax']:true}})),
+      border: cur===val?accent:'#e4e0d9', bg: cur===val?'#f7f7ff':'#fff',
+      ring: cur===val?accent:'#cfcbc3', fill: cur===val?accent:'transparent'
+    });
+    const splitOpts = [
+      radio('split','split',S.split,'Split CGST + SGST','For intra-state transactions (same state as workspace).'),
+      radio('split','combined',S.split,'Combined IGST','For inter-state — auto-detected by customer address.')
+    ];
+    const depOpts = [
+      radio('deposit','exempt',S.deposit,'Tax-exempt','Deposits are refundable holds, not revenue.'),
+      radio('deposit','taxable',S.deposit,'Taxable','Only when a deposit is used as a revenue write-off.')
+    ];
+    const hsn = [
+      {label:'Cameras',code:'8525'},{label:'Lighting',code:'8541'},
+      {label:'Audio',code:'8518'},{label:'Accessories',code:'8529'}
+    ];
+    const reverseOn = S.reverse;
+
+    // ---- role menu ----
+    const roleOptions = Object.keys(meta).map(r=>{
+      const m = meta[r];
+      return {user:m.user, initials:m.initials, scope:m.scope, active:S.role===r,
+        avBg: S.role===r?'#e5e2fb':'#eef0f4',
+        bg: S.role===r?'#f7f7ff':'transparent',
+        check:this.ic('<path d="M20 6 9 17l-5-5"/>',15),
+        onSelect:()=> this.setState(st=>{
+          const ns = {role:r, roleOpen:false};
+          // ensure selection still visible under new role
+          const acc = this.roleAccess(r);
+          const stillVisible = this.cats().some(cc=>{
+            const v = acc.all || (acc.set&&acc.set.includes(cc.id));
+            if(!v) return false;
+            let its = cc.items; if(acc.onlyItems&&acc.onlyItems[cc.id]) its=its.filter(i=>acc.onlyItems[cc.id].includes(i[0]));
+            return its.some(i=>i[0]===st.selected);
+          });
+          if(!stillVisible){
+            for(const cc of this.cats()){
+              const v = acc.all || (acc.set&&acc.set.includes(cc.id)); if(!v) continue;
+              let its = cc.items; if(acc.onlyItems&&acc.onlyItems[cc.id]) its=its.filter(i=>acc.onlyItems[cc.id].includes(i[0]));
+              if(its.length){ ns.selected = its[0][0]; break; }
+            }
+          }
+          return ns;
+        })
+      };
+    });
+
+    // ---- rail ----
+    const rail = [
+      {name:'Dashboard', icon:this.ic('<rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><rect x="14" y="14" width="7" height="7" rx="1.2"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'Orders', icon:this.ic('<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'Assets', icon:this.ic('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'People', icon:this.ic('<circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3-6.5 7-6.5s7 2.9 7 6.5"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'Finance', icon:this.ic('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1.3"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'Insights', icon:this.ic('<path d="M4 20V4M4 20h16"/><rect x="7" y="12" width="3" height="5"/><rect x="12" y="8" width="3" height="9"/><rect x="17" y="14" width="0.1" height="3"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'Communications', icon:this.ic('<path d="M4 5h16v11H8l-4 4V5z"/><path d="M8 9h8M8 12h5"/>',20), color:'#9a9690', bg:'transparent'},
+      {name:'System', icon:this.ic('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',20), color:'#4f46e5', bg:'#eef2ff', active:true}
+    ];
+    // System is rendered as the pinned bottom module (active on all System sub-pages); the icon rail loop shows the top 7.
+    const systemName = rail[7].name;
+    const railTop = rail.slice(0, 7);
+
+    return {
+      showRail: this.props.showRail ?? true,
+      rail: railTop, systemName,
+      nav, hasSearch, search:S.search,
+      resultLabel: matchCount+' result'+(matchCount===1?'':'s'),
+      noResults: hasSearch && matchCount===0,
+      onSearch:(e)=> this.setState({search:e.currentTarget.value}),
+      clearSearch:()=> this.setState({search:''}),
+
+      crumbCat, crumbItem,
+      showWorkspace, showTax, showGeneric,
+
+      dirty, changedCount, chg,
+      onSave:()=> this.setState({changed:{}}),
+      onDiscard:()=> this.setState({changed:{}}),
+      mark:this.markChanged,
+
+      chips, splitOpts, depOpts, hsn,
+      reverseOn, toggleReverse:()=> this.setState(s=>({reverse:!s.reverse, changed:{...s.changed, reverse:true}})),
+      reverseBorder: reverseOn?accent:'#e4e0d9', reverseBg: reverseOn?'#f7f7ff':'#fff',
+      reverseRing: reverseOn?accent:'#cfcbc3', reverseFill: reverseOn?accent:'transparent',
+
+      role:S.role, roleOpen:S.roleOpen,
+      roleUser:rm.user, roleInitials:rm.initials, roleUpper:S.role.toUpperCase(),
+      onToggleRole:()=> this.setState(s=>({roleOpen:!s.roleOpen})),
+      roleOptions,
+
+      gearIcon:this.ic('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',20),
+      gearMini:this.ic('<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8"/>',15),
+      backIcon:this.ic('<path d="M15 18l-6-6 6-6"/>',16),
+      searchIcon:this.ic('<circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/>',15),
+      caretIcon:this.ic('<path d="M6 9l6 6 6-6"/>',14),
+      crownIcon:this.ic('<path d="M4 8l4 4 4-6 4 6 4-4v9H4z"/>',12),
+      lockIcon:this.ic('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',11),
+      checkIcon:this.ic('<path d="M20 6 9 17l-5-5"/>',13),
+      slidersIcon:this.ic('<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/>',22)
+    };
+  }
+}
+</script>
+</body>
+</html>

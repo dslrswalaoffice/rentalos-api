@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--
+  Substitution Modal — v1 design
+  Author: Claude Design for Aamir Patel / DSLRSWALA
+  Scope: Modal for asset substitution workflow (Item 5)
+  Reference: Follows RentalOS v2 design (see extension_modal_dc.html)
+
+  MOBILE ADAPTATION (not designed separately):
+  - Modal becomes full-screen on <768px; sections stack single-column
+  - Sticky footer remains; autocomplete becomes a full-screen overlay
+  - All sections auto-expanded on mobile (no collapse)
+-->
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Manrope',sans-serif;background:#efece6}
+  a{color:#4f46e5;text-decoration:none}
+  a:hover{color:#4338ca}
+  ::placeholder{color:#9ca3af}
+</style>
+</helmet>
+<div style="position:relative;width:1440px;min-height:1240px;background:#efece6;overflow:hidden;font-family:'Manrope',sans-serif">
+
+  <!-- ===== BACKDROP: Order 360 (blurred + dimmed) ===== -->
+  <div style="position:absolute;inset:0;filter:blur(3px);opacity:.6;pointer-events:none;user-select:none">
+    <div style="height:52px;background:#fff;border-bottom:1px solid #e6e3dc;display:flex;align-items:center;gap:28px;padding:0 32px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#202058">RentalOS</div>
+      <div style="display:flex;gap:22px;font-size:13px;color:#6b7280;font-weight:500">
+        <span>Dashboard</span><span style="color:#202058;font-weight:600">Orders</span><span>Inventory</span><span>Customers</span><span>Reports</span>
+      </div>
+      <div style="margin-left:auto;width:30px;height:30px;border-radius:50%;background:#d9d5cd"></div>
+    </div>
+    <div style="height:64px;background:#fff;border-bottom:1px solid #e6e3dc;display:flex;align-items:center;gap:16px;padding:0 32px">
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:600;font-size:15px;color:#26235a">BK2214</div>
+      <div style="color:#c9c5bd">·</div>
+      <div style="font-size:14px;color:#26235a;font-weight:600">Rahul Malhotra</div>
+      <div style="color:#c9c5bd">·</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:#eef2ff;color:#4f46e5;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em">● ON RENT</div>
+      <div style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:16px;color:#202058">₹28,000</div>
+    </div>
+    <div style="display:flex;gap:24px;padding:28px 32px">
+      <div style="flex:2;display:flex;flex-direction:column;gap:16px">
+        <div style="height:140px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:220px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:180px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px">
+        <div style="height:120px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+        <div style="height:260px;background:#fff;border:1px solid #e6e3dc;border-radius:14px"></div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;inset:0;background:rgba(38,35,90,.28);pointer-events:none"></div>
+
+  <!-- ===== MODAL ===== -->
+  <div style="position:absolute;top:40px;left:50%;transform:translateX(-50%);width:720px;max-height:1160px;background:#fff;border-radius:14px;box-shadow:0 24px 64px -12px rgba(24,22,60,.45),0 8px 24px -8px rgba(24,22,60,.30);display:flex;flex-direction:column;overflow:hidden">
+
+    <!-- HEADER -->
+    <div style="display:flex;align-items:flex-start;gap:16px;padding:26px 28px 20px;border-bottom:1px solid #eeece6">
+      <div style="flex:1">
+        <div style="display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:20px;background:#eef2ff;margin-bottom:12px">
+          <span style="width:7px;height:7px;border-radius:50%;background:#4f46e5"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.1em;color:#4f46e5">SUBSTITUTION</span>
+        </div>
+        <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:600;letter-spacing:-.01em;color:#202058">Swap an asset in this order</h2>
+        <div style="margin-top:6px;font-size:13px;color:#6b7280">Order <span style="font-family:'JetBrains Mono',monospace;color:#26235a">#BK2214</span> · Rahul Malhotra · <span style="color:#4f46e5;font-weight:600">On Rent</span></div>
+      </div>
+      <button onClick="{{ noop }}" style="width:32px;height:32px;flex:none;border:1px solid #e7e4de;background:#fff;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6b7280" style-hover="background:#f3f1ec;color:#202058">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+
+    <!-- BODY (scrollable) -->
+    <div style="flex:1;overflow-y:auto;padding:0 28px">
+
+      <!-- SECTION 1 · CURRENT LINE ITEM -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:14px">CURRENT LINE ITEM</div>
+        <div style="display:flex;gap:16px">
+          <div style="width:76px;height:76px;flex:none;border-radius:12px;background:#f3f1ec;border:1px solid #e7e4de;display:flex;align-items:center;justify-content:center;color:#b6b1a6">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:700;color:#202058">Sony FX3 Cinema Camera</div>
+            <div style="margin-top:5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:12.5px;color:#6b7280">Unit</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:#26235a">FX3-002</span>
+              <span style="font-size:11px;color:#9ca3af">(Serial)</span>
+              <span style="color:#e2dfd8">·</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#6b7280">₹2,500/day × 3 = <span style="color:#26235a;font-weight:600">₹7,500</span></span>
+            </div>
+            <div style="margin-top:8px;display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;background:#eef2ff">
+              <span style="width:6px;height:6px;border-radius:50%;background:#4f46e5"></span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.06em;color:#4f46e5">DISPATCHED</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:18px">
+          <div style="font-size:12.5px;font-weight:600;color:#26235a;margin-bottom:8px">Reason for substitution <span style="color:#dc2626">*</span></div>
+          <div style="position:relative;display:inline-block">
+            <button onClick="{{ toggleReason }}" style="display:inline-flex;align-items:center;justify-content:space-between;gap:32px;min-width:320px;height:40px;padding:0 14px;border:1px solid #d7d3ca;background:#fff;border-radius:9px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:13px;color:#26235a" style-hover="border-color:#202058">
+              <span>{{ reason }}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <sc-if value="{{ reasonOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:40;width:340px;max-height:280px;overflow-y:auto;background:#fff;border:1px solid #e2dfd8;border-radius:11px;box-shadow:0 16px 40px -10px rgba(24,22,50,.34);padding:6px">
+                <sc-for list="{{ reasonOpts }}" as="opt" hint-placeholder-count="5">
+                  <div onClick="{{ opt.onSelect }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 11px;border-radius:7px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#26235a" style-hover="background:#f5f4f0">
+                    <span>{{ opt.label }}</span>
+                    <sc-if value="{{ opt.selected }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+          <textarea placeholder="Notes (optional)…" style="display:block;width:100%;margin-top:12px;min-height:64px;resize:vertical;padding:11px 13px;border:1px solid #d7d3ca;border-radius:9px;font-family:'Manrope',sans-serif;font-size:13.5px;color:#26235a;outline:none" style-focus="border-color:#4f46e5">Reported operational fault mid-shoot — LCD flicker. Customer at doorstep for swap.</textarea>
+        </div>
+      </div>
+
+      <!-- SECTION 2 · REPLACEMENT -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:14px">REPLACEMENT</div>
+
+        <div style="font-size:12.5px;font-weight:600;color:#26235a;margin-bottom:8px">Search available assets <span style="color:#dc2626">*</span></div>
+        <div style="position:relative">
+          <div onClick="{{ toggleSearch }}" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 13px;border:1px solid #d7d3ca;border-radius:9px;cursor:text;background:#fff" style-hover="border-color:#202058">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <span style="font-size:13.5px;color:#26235a">Sony FX3</span>
+            <span style="font-size:12px;color:#9ca3af">— showing compatible units</span>
+          </div>
+          <sc-if value="{{ searchOpen }}" hint-placeholder-val="{{ true }}">
+            <div style="position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:40;background:#fff;border:1px solid #e2dfd8;border-radius:11px;box-shadow:0 16px 40px -10px rgba(24,22,50,.34);padding:6px">
+              <sc-for list="{{ searchResults }}" as="r" hint-placeholder-count="3">
+                <div onClick="{{ r.onSelect }}" style="display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:8px;cursor:pointer" style-hover="background:#f5f4f0">
+                  <div style="width:38px;height:38px;flex:none;border-radius:8px;background:#f3f1ec;border:1px solid #e7e4de;display:flex;align-items:center;justify-content:center;color:#b6b1a6">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                  </div>
+                  <div style="flex:1">
+                    <div style="font-size:13px;font-weight:600;color:#202058">{{ r.name }}</div>
+                    <div style="margin-top:2px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#6b7280">{{ r.unit }} · {{ r.note }}</div>
+                  </div>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#059669">{{ r.avail }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="margin-top:16px;font-size:12px;color:#6b7280;margin-bottom:8px">Selected replacement</div>
+        <div style="border:1.5px solid #c7d2fe;background:#f8f9ff;border-radius:12px;padding:15px;display:flex;gap:15px">
+          <div style="width:64px;height:64px;flex:none;border-radius:10px;background:#fff;border:1px solid #e0e4f5;display:flex;align-items:center;justify-content:center;color:#a9b0d4">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:14.5px;font-weight:700;color:#202058">Sony FX3 Cinema Camera</div>
+            <div style="margin-top:5px;display:flex;align-items:center;gap:10px">
+              <span style="font-size:12.5px;color:#6b7280">Unit</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:#26235a">FX3-003</span>
+              <span style="font-size:11px;color:#9ca3af">(Serial)</span>
+            </div>
+            <div style="margin-top:8px;display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#059669">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              Available for this rental window
+            </div>
+          </div>
+        </div>
+
+        <!-- COMPATIBILITY CHECK -->
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:#6b7280;margin-bottom:10px">Compatibility check</div>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span style="color:#6b7280">Mount type</span><span style="color:#26235a;font-weight:600">Sony E-Mount</span><span style="color:#059669">matches</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span style="color:#6b7280">Format</span><span style="color:#26235a;font-weight:600">Full Frame</span><span style="color:#059669">matches</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span style="color:#6b7280">Focal range</span><span style="color:#9ca3af">N/A — body only</span>
+            </div>
+            <sc-if value="{{ compatMinor }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                <span style="color:#6b7280">Stabilization</span><span style="color:#26235a;font-weight:600">IBIS vs IBIS+OSS</span><span style="color:#d97706">minor difference</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ compatOk }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span style="color:#6b7280">Stabilization</span><span style="color:#26235a;font-weight:600">IBIS</span><span style="color:#059669">matches</span>
+              </div>
+            </sc-if>
+          </div>
+
+          <sc-if value="{{ compatMinor }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top:14px;display:flex;gap:12px;border:1px solid #fcd9a4;background:#fffbeb;border-radius:12px;padding:14px 15px">
+              <div style="flex:none;color:#d97706;margin-top:1px">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:700;color:#26235a">Minor spec difference — not blocking</div>
+                <div style="margin-top:4px;font-size:12.5px;color:#6b7280;line-height:1.5">Both bodies stabilize handheld footage. Proceed and note the difference, or pick another unit.</div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ compatBlocked }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:14px;display:flex;gap:12px;border:1px solid #fcd9a4;background:#fffbeb;border-radius:12px;padding:14px 15px">
+              <div style="flex:none;color:#d97706;margin-top:1px">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:700;color:#26235a">Compatibility mismatch — override required</div>
+                <div style="margin-top:4px;font-size:12.5px;color:#6b7280;line-height:1.5">This unit differs on a key spec. You can still proceed, but a reason is required for the audit trail.</div>
+                <label style="margin-top:10px;display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:12.5px;color:#26235a">
+                  <span style="width:17px;height:17px;border-radius:5px;border:1.5px solid #4f46e5;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+                  Override and proceed — I accept the spec difference
+                </label>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <!-- SECTION 3 · TYPE + FINANCIAL HANDLING -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:14px">SUBSTITUTION TYPE &amp; FINANCIAL HANDLING</div>
+
+        <div style="display:flex;gap:28px;flex-wrap:wrap">
+          <div style="flex:1;min-width:280px">
+            <div style="font-size:12.5px;font-weight:600;color:#26235a;margin-bottom:8px">Substitution type</div>
+            <div style="font-size:12px;color:#6b7280;margin-bottom:8px">Auto-classified as <span style="font-family:'JetBrains Mono',monospace;color:#4f46e5;font-weight:600">same_product_swap</span></div>
+            <div style="position:relative;display:inline-block">
+              <button onClick="{{ toggleType }}" style="display:inline-flex;align-items:center;justify-content:space-between;gap:24px;min-width:280px;height:40px;padding:0 14px;border:1px solid #d7d3ca;background:#fff;border-radius:9px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:13px;color:#26235a" style-hover="border-color:#202058">
+                <span>{{ subType }}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <sc-if value="{{ typeOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:40;width:300px;background:#fff;border:1px solid #e2dfd8;border-radius:11px;box-shadow:0 16px 40px -10px rgba(24,22,50,.34);padding:6px">
+                  <sc-for list="{{ typeOpts }}" as="opt" hint-placeholder-count="7">
+                    <div onClick="{{ opt.onSelect }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 11px;border-radius:7px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#26235a" style-hover="background:#f5f4f0">
+                      <span>{{ opt.label }}</span>
+                      <sc-if value="{{ opt.selected }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="flex:1;min-width:280px">
+            <div style="font-size:12.5px;font-weight:600;color:#26235a;margin-bottom:8px">Financial handling</div>
+            <div style="font-size:12px;color:#6b7280;margin-bottom:8px">Default for this type <span style="font-family:'JetBrains Mono',monospace;color:#4f46e5;font-weight:600">no_change</span></div>
+            <div style="position:relative;display:inline-block">
+              <button onClick="{{ toggleFin }}" style="display:inline-flex;align-items:center;justify-content:space-between;gap:24px;min-width:280px;height:40px;padding:0 14px;border:1px solid #d7d3ca;background:#fff;border-radius:9px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:13px;color:#26235a" style-hover="border-color:#202058">
+                <span>{{ fin }}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <sc-if value="{{ finOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:40;width:300px;background:#fff;border:1px solid #e2dfd8;border-radius:11px;box-shadow:0 16px 40px -10px rgba(24,22,50,.34);padding:6px">
+                  <sc-for list="{{ finOpts }}" as="opt" hint-placeholder-count="4">
+                    <div onClick="{{ opt.onSelect }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 11px;border-radius:7px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#26235a" style-hover="background:#f5f4f0">
+                      <span>{{ opt.label }}</span>
+                      <sc-if value="{{ opt.selected }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+
+        <sc-if value="{{ showAmount }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end">
+            <div>
+              <div style="font-size:12.5px;font-weight:600;color:#26235a;margin-bottom:8px">Amount</div>
+              <div style="display:inline-flex;align-items:center;height:40px;border:1px solid #d7d3ca;border-radius:9px;overflow:hidden">
+                <span style="padding:0 12px;font-family:'JetBrains Mono',monospace;font-size:14px;color:#6b7280;background:#faf9f6;height:100%;display:flex;align-items:center;border-right:1px solid #e7e4de">₹</span>
+                <input value="500" style="width:120px;height:100%;border:none;outline:none;padding:0 12px;font-family:'JetBrains Mono',monospace;font-size:14px;color:#26235a">
+              </div>
+            </div>
+            <div>
+              <div style="font-size:12.5px;font-weight:600;color:#26235a;margin-bottom:8px">Applied as</div>
+              <button style="display:inline-flex;align-items:center;justify-content:space-between;gap:24px;height:40px;padding:0 14px;border:1px solid #d7d3ca;background:#fff;border-radius:9px;cursor:pointer;font-family:'Manrope',sans-serif;font-size:13px;color:#26235a" style-hover="border-color:#202058">
+                New line item
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+            </div>
+            <div style="font-size:12px;color:#6b7280;padding-bottom:11px">Pro-rated days auto-calculated (mid-rental)</div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- SECTION 4 · TIMING -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">WHEN DOES THE SWAP HAPPEN? <span style="color:#dc2626">*</span></div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <sc-for list="{{ timingOpts }}" as="t" hint-placeholder-count="4">
+            <div onClick="{{ t.onSelect }}" style="display:flex;align-items:flex-start;gap:11px;padding:10px 8px;border-radius:9px;cursor:pointer" style-hover="background:#faf9f6">
+              <sc-if value="{{ t.selected }}" hint-placeholder-val="{{ false }}"><span style="margin-top:1px;width:18px;height:18px;border-radius:50%;border:2px solid #4f46e5;display:flex;align-items:center;justify-content:center;flex:none"><span style="width:8px;height:8px;border-radius:50%;background:#4f46e5"></span></span></sc-if>
+              <sc-if value="{{ t.unselected }}" hint-placeholder-val="{{ true }}"><span style="margin-top:1px;width:18px;height:18px;border-radius:50%;border:2px solid #cfcbc2;flex:none"></span></sc-if>
+              <div>
+                <div style="font-size:13.5px;color:#26235a;font-weight:600">{{ t.title }}</div>
+                <div style="font-size:12px;color:#6b7280;margin-top:2px">{{ t.sub }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- SECTION 5 · FINANCIAL IMPACT -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:12px">FINANCIAL IMPACT</div>
+        <div style="border:1px solid #e0e4f5;border-radius:12px;background:#f8f9ff;padding:18px 20px">
+          <div style="display:flex;flex-direction:column;gap:10px;font-family:'JetBrains Mono',monospace;font-size:13px">
+            <div style="display:flex;justify-content:space-between"><span style="font-family:'Manrope',sans-serif;color:#4b4b63">Original item charge</span><span style="color:#26235a">₹7,500</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-family:'Manrope',sans-serif;color:#4b4b63">Days used (pro-rated)</span><span style="color:#26235a">₹5,000</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-family:'Manrope',sans-serif;color:#4b4b63">Replacement charge</span><span style="color:#26235a">₹2,500</span></div>
+            <div style="border-top:1px dashed #cdd3ee;margin:3px 0"></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-family:'Manrope',sans-serif;font-weight:700;color:#202058;font-size:14px">Net customer change</span><span style="font-weight:700;color:#059669;font-size:17px">{{ netChange }}</span></div>
+          </div>
+          <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px">
+            <span style="color:#6b7280">Deposit implication</span>
+            <span style="font-family:'JetBrains Mono',monospace;color:#26235a">{{ depositNote }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 6 · OPERATIONAL IMPACT -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:14px">OPERATIONAL IMPACT</div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;gap:13px">
+            <div style="width:9px;height:9px;border-radius:50%;background:#d97706;margin-top:5px;flex:none"></div>
+            <div style="flex:1">
+              <div style="font-size:13px;color:#26235a"><span style="font-family:'JetBrains Mono',monospace;font-weight:600">FX3-002</span> (original)</div>
+              <div style="margin-top:4px;font-size:12.5px;color:#6b7280;line-height:1.6">→ Routes to <span style="color:#26235a;font-weight:600">Damage Incident inspection queue</span> (reason = unit_damaged_in_rental)<br>→ Availability locked for damage assessment</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:13px">
+            <div style="width:9px;height:9px;border-radius:50%;background:#4f46e5;margin-top:5px;flex:none"></div>
+            <div style="flex:1">
+              <div style="font-size:13px;color:#26235a"><span style="font-family:'JetBrains Mono',monospace;font-weight:600">FX3-003</span> (replacement)</div>
+              <div style="margin-top:4px;font-size:12.5px;color:#6b7280;line-height:1.6">→ Marked as dispatched to customer · Timeline updates on Asset 360<br>→ Availability locked for remainder of rental window</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 7 · CUSTOMER NOTIFICATION -->
+      <div style="padding:22px 0;border-bottom:1px solid #eeece6">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:14px">CUSTOMER NOTIFICATION</div>
+        <div style="display:flex;gap:22px;margin-bottom:13px">
+          <div onClick="{{ toggleWa }}" style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13.5px;color:#26235a">
+            <sc-if value="{{ wa }}" hint-placeholder-val="{{ true }}"><span style="width:18px;height:18px;border-radius:5px;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span></sc-if>
+            <sc-if value="{{ notWa }}" hint-placeholder-val="{{ false }}"><span style="width:18px;height:18px;border-radius:5px;border:1.5px solid #c9c5bc"></span></sc-if>
+            Send WhatsApp
+          </div>
+          <div onClick="{{ toggleEmail }}" style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13.5px;color:#26235a">
+            <sc-if value="{{ email }}" hint-placeholder-val="{{ true }}"><span style="width:18px;height:18px;border-radius:5px;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span></sc-if>
+            <sc-if value="{{ notEmail }}" hint-placeholder-val="{{ false }}"><span style="width:18px;height:18px;border-radius:5px;border:1.5px solid #c9c5bc"></span></sc-if>
+            Send email
+          </div>
+        </div>
+        <div style="border:1px solid #e7e2d8;border-radius:12px;background:#faf9f6;padding:16px">
+          <div style="font-size:13px;color:#26235a;line-height:1.65">Hi Rahul, we've swapped your Sony FX3 (<span style="font-family:'JetBrains Mono',monospace">FX3-002</span>) with <span style="font-family:'JetBrains Mono',monospace">FX3-003</span> due to a maintenance concern. No additional charge. Your rental continues normally through <span style="font-family:'JetBrains Mono',monospace">Nov 23</span>.</div>
+        </div>
+        <div style="margin-top:9px"><a href="#" style="font-size:12px;font-weight:600">Edit message</a></div>
+      </div>
+
+      <!-- SECTION 8 · APPROVAL STATUS -->
+      <div style="padding:22px 0 24px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:#9ca3af;margin-bottom:14px">APPROVAL STATUS</div>
+        <sc-if value="{{ within }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:11px;border:1px solid #a7f3d0;background:#ecfdf5;border-radius:12px;padding:15px 16px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <div style="font-size:13.5px;font-weight:700;color:#065f46">Within your authority</div>
+            <span style="font-size:12.5px;color:#6b7280">— same-product swap, no threshold hit</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ needsApproval }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:13px;border:1px solid #fcd9a4;background:#fffbeb;border-radius:12px;padding:16px">
+            <div style="flex:none;color:#d97706;margin-top:1px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:13.5px;font-weight:700;color:#26235a">Requires approval</div>
+              <div style="margin-top:5px;font-size:13px;color:#6b7280;line-height:1.55">This <span style="font-family:'JetBrains Mono',monospace">upgrade_paid</span> substitution over ₹5,000 requires Manager approval.</div>
+              <div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:13px;color:#6b7280">
+                <span>Will be routed to:</span>
+                <span style="display:inline-flex;align-items:center;gap:7px;padding:3px 10px 3px 3px;border-radius:999px;background:#fff;border:1px solid #ece6db">
+                  <span style="width:22px;height:22px;border-radius:50%;background:#d9d5cc;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#202058">SA</span>
+                  <span style="font-size:12.5px;font-weight:600;color:#202058">Shoaib Ansari</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <!-- FOOTER (sticky) -->
+    <div style="border-top:1px solid #ece6db;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fbfaf7">
+      <button style="border:none;background:none;cursor:pointer;font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:600;color:#6b7280;padding:8px 4px" style-hover="color:#202058">Cancel</button>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+        <button style="display:inline-flex;align-items:center;gap:9px;border:none;cursor:pointer;background:#4f46e5;color:#fff;font-family:'Manrope',sans-serif;font-size:14px;font-weight:700;padding:12px 22px;border-radius:10px;box-shadow:0 2px 8px rgba(79,70,229,.28)" style-hover="background:#4338ca">
+          <sc-if value="{{ within }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v6h6"></path><path d="M20 20v-6h-6"></path><path d="M4 10a8 8 0 0 1 13.66-4.66L20 8"></path><path d="M20 14a8 8 0 0 1-13.66 4.66L4 16"></path></svg></sc-if>
+          {{ ctaLabel }}
+        </button>
+        <sc-if value="{{ needsApproval }}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;color:#9ca3af">Approver will be notified via WhatsApp</span></sc-if>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1240},&quot;approvalState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;within_authority&quot;,&quot;requires_approval&quot;],&quot;default&quot;:&quot;within_authority&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Scenario&quot;},&quot;compatibilityStatus&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compatible&quot;,&quot;minor_mismatch&quot;,&quot;blocked&quot;],&quot;default&quot;:&quot;minor_mismatch&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Scenario&quot;}}">
+class Component extends DCLogic {
+  state = {
+    reason: 'unit_damaged_in_rental',
+    subType: 'same_product_swap',
+    fin: 'no_change',
+    timing: 'rush_mid_rental',
+    wa: true, email: true,
+    reasonOpen: false, typeOpen: false, finOpen: false, searchOpen: false,
+  };
+
+  renderVals() {
+    const s = this.state;
+    const mk = (list, cur, key) => list.map(v => ({
+      label: v, selected: v === cur,
+      onSelect: () => this.setState({ [key]: v, reasonOpen: false, typeOpen: false, finOpen: false }),
+    }));
+
+    const reasons = ['unit_failed_precheck','unit_unavailable_at_dispatch','unit_damaged_in_rental','customer_preference_change','customer_upgrade_request','goodwill_upgrade','product_shortage','extension_conflict','operational_convenience','staff_error','other'];
+    const types = ['same_unit_swap','same_product_swap','equivalent_product_swap','upgrade_free','upgrade_paid','downgrade_credit','kit_component_swap'];
+    const fins = ['no_change','additional_charge','credit_to_customer','business_absorb'];
+
+    const timings = [
+      { key: 'immediate_before_dispatch', title: 'Immediate', sub: 'Before dispatch' },
+      { key: 'rush_mid_rental', title: 'Rush — mid-rental', sub: 'Customer at doorstep now' },
+      { key: 'at_next_natural_handover', title: 'At next natural handover', sub: 'Bundle with a scheduled touchpoint' },
+      { key: 'scheduled', title: 'Scheduled', sub: 'Pick a date & time' },
+    ];
+
+    const compat = this.props.compatibilityStatus ?? 'minor_mismatch';
+    const approval = this.props.approvalState ?? 'within_authority';
+    const needsApproval = approval === 'requires_approval';
+
+    const showAmount = s.fin === 'additional_charge' || s.fin === 'credit_to_customer';
+    let netChange = '+₹0', depositNote = 'No change';
+    if (s.fin === 'additional_charge') { netChange = '+₹500'; depositNote = 'Additional ₹5,000 hold'; }
+    else if (s.fin === 'credit_to_customer') { netChange = '−₹300'; depositNote = 'No change'; }
+    else if (s.fin === 'business_absorb') { netChange = '+₹0'; depositNote = 'No change (absorbed)'; }
+
+    return {
+      noop: () => {},
+      reason: s.reason, subType: s.subType, fin: s.fin,
+      reasonOpen: s.reasonOpen, typeOpen: s.typeOpen, finOpen: s.finOpen, searchOpen: s.searchOpen,
+      reasonOpts: mk(reasons, s.reason, 'reason'),
+      typeOpts: mk(types, s.subType, 'subType'),
+      finOpts: mk(fins, s.fin, 'fin'),
+      toggleReason: () => this.setState(p => ({ reasonOpen: !p.reasonOpen, typeOpen: false, finOpen: false })),
+      toggleType: () => this.setState(p => ({ typeOpen: !p.typeOpen, reasonOpen: false, finOpen: false })),
+      toggleFin: () => this.setState(p => ({ finOpen: !p.finOpen, reasonOpen: false, typeOpen: false })),
+      toggleSearch: () => this.setState(p => ({ searchOpen: !p.searchOpen })),
+
+      searchResults: [
+        { name: 'Sony FX3 Cinema Camera', unit: 'FX3-003', note: 'same model', avail: 'Available', onSelect: () => this.setState({ searchOpen: false }) },
+        { name: 'Sony FX3 Cinema Camera', unit: 'FX3-007', note: 'same model', avail: 'Available', onSelect: () => this.setState({ searchOpen: false }) },
+        { name: 'Sony FX30 Cinema Camera', unit: 'FX30-002', note: 'equivalent · Super35', avail: 'Available', onSelect: () => this.setState({ searchOpen: false }) },
+      ],
+
+      compatMinor: compat === 'minor_mismatch',
+      compatOk: compat === 'compatible',
+      compatBlocked: compat === 'blocked',
+
+      timingOpts: timings.map(t => ({
+        title: t.title, sub: t.sub,
+        selected: t.key === s.timing, unselected: t.key !== s.timing,
+        onSelect: () => this.setState({ timing: t.key }),
+      })),
+
+      showAmount, netChange, depositNote,
+
+      within: !needsApproval, needsApproval,
+      ctaLabel: needsApproval ? 'Send for Approval' : 'Execute Substitution',
+
+      wa: s.wa, notWa: !s.wa, email: s.email, notEmail: !s.email,
+      toggleWa: () => this.setState(p => ({ wa: !p.wa })),
+      toggleEmail: () => this.setState(p => ({ email: !p.email })),
+    };
+  }
+}
+</script>
+</body>
+</html>

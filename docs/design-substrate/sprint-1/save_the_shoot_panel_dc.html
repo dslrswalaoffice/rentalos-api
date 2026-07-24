@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f2ee;font-family:'Manrope',system-ui,sans-serif;color:#202058;-webkit-font-smoothing:antialiased}
+a{color:#4f46e5;text-decoration:none}
+a:hover{color:#4338ca}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#dcd8cf;border-radius:6px;border:2px solid #f4f2ee}
+</style>
+</helmet>
+<!--
+  Save The Shoot Panel — v1 design (standalone showcase)
+  Author: Claude Design for Aamir Patel / DSLRSWALA
+  Scope: Standalone visualization of Save The Shoot workflow
+
+  This is the operational continuity panel that appears as
+  Step 3 of the Damage Incident Modal (Item 4). Shown standalone
+  here as a design showcase + feature documentation.
+
+  Reference: Follows RentalOS v2 design language.
+  Note: Booqable has NO equivalent to this feature.
+
+  Mobile adaptation (not designed separately):
+  - Options stack single-column <768px
+  - All impact metrics stay visible within each card (no scroll)
+  - Customer preference panel collapses to top
+  - Execution preview shows below all options
+  - Sticky bottom action bar: [Cancel] [Execute Selected]
+-->
+<div style="max-width:1180px;margin:0 auto;padding:56px 32px 80px">
+
+  <!-- ============ REGION 1 · HERO ============ -->
+  <div style="text-align:center;margin-bottom:52px">
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 13px;border-radius:20px;background:#eef2ff;border:1px solid #c7d2fe;margin-bottom:26px">
+      <span style="width:6px;height:6px;border-radius:50%;background:#4f46e5"></span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.1em;color:#4f46e5">DESIGN SHOWCASE · RENTALOS FEATURE</span>
+    </div>
+    <h1 style="margin:0;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:74px;line-height:1;letter-spacing:-.03em;color:#202058">Save the Shoot</h1>
+    <p style="margin:22px auto 0;max-width:620px;font-size:18px;line-height:1.55;color:#6b7280">The operational continuity panel that keeps your customer working when things go wrong.</p>
+    <div style="width:64px;height:2px;background:#dcd8cf;margin:34px auto"></div>
+    <p style="margin:0 auto;max-width:600px;font-size:14px;line-height:1.6;color:#8a8676">Booqable has zero equivalent. Every other rental system treats damage as a financial event. We treat it as a workflow crisis.</p>
+  </div>
+
+  <!-- ============ REGION 2 · THE SCENARIO ============ -->
+  <div style="background:#faf9f7;border:1px solid #ece9e3;border-radius:14px;padding:28px 30px;margin-bottom:40px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <span style="width:9px;height:9px;border-radius:50%;background:#d97706;flex:none"></span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.14em;color:#9a9484;text-transform:uppercase">The situation</span>
+      <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:20px;background:#fffbeb;border:1px solid #fcd9a4">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:#b8730a">REPORTED 15 MIN AGO · 2:47 PM</span>
+      </span>
+    </div>
+
+    <div style="display:flex;gap:30px;align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px 26px;margin-bottom:22px">
+          <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#a8a292;font-weight:600;margin-bottom:4px">Customer</div><div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:#202058">Rahul Malhotra<span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:#b8730a;background:#fdf3e3;border:1px solid #f4e2c0;padding:2px 6px;border-radius:5px">★ VIP</span></div></div>
+          <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#a8a292;font-weight:600;margin-bottom:4px">Order</div><div style="font-size:14px;color:#202058"><span style="font-family:'JetBrains Mono',monospace;font-weight:600">BK2214</span> · <span style="color:#059669;font-weight:600">Currently On Rent</span></div></div>
+          <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#a8a292;font-weight:600;margin-bottom:4px">Item</div><div style="font-size:14px;color:#202058">Sony FX3 Camera <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8a8676">(FX3-002)</span></div></div>
+          <div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#a8a292;font-weight:600;margin-bottom:4px">Shoot time left</div><div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#d97706">4 hours remaining</div></div>
+        </div>
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#a8a292;font-weight:600;margin-bottom:6px">What happened</div>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#3a3a58;max-width:560px">Customer's tripod tipped during shoot. Camera fell 3 ft to concrete floor. Body has visible damage. Camera still powers on and records normally.</p>
+      </div>
+
+      <div style="width:270px;flex:none;background:#fff;border:1px solid #ece9e3;border-radius:12px;padding:18px 20px">
+        <div style="display:flex;align-items:flex-start;gap:11px;padding-bottom:14px;border-bottom:1px solid #f2efe9">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+          <div style="font-size:13px;line-height:1.5;color:#3a3a58">The customer has <strong style="color:#202058">4 hours</strong> of paid shoot time remaining. Their client is waiting.</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:14px">
+          <span style="font-size:12.5px;color:#6b7280">Preliminary cost</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;color:#202058">₹15,000</span>
+        </div>
+        <div style="font-size:11.5px;color:#9a9484;margin-top:6px;line-height:1.45">Financial resolution: <span style="font-style:italic">to be decided after operations.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ REGION 3 · THE 5 OPTIONS ============ -->
+  <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:20px">
+    <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:22px;color:#202058;letter-spacing:-.01em">Choose a path</h2>
+    <span style="font-size:13px;color:#8a8676">5 options · real-time availability checked · pick one to preview execution</span>
+  </div>
+
+  <div style="opacity:{{ optOpacity }};transform:{{ optTransform }};transition:opacity .55s ease,transform .55s ease">
+
+    <!-- FEATURED · OPTION 1 (recommended) -->
+    <div onClick="{{ feat.onClick }}" style="background:{{ feat.bg }};border:1.5px solid {{ feat.border }};border-radius:14px;box-shadow:{{ feat.ring }};padding:24px 26px;margin-bottom:18px;cursor:pointer;transition:box-shadow .2s,border-color .2s">
+      <div style="display:flex;gap:26px;align-items:flex-start">
+        <!-- left -->
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:13px;margin-bottom:12px">
+            <div style="width:44px;height:44px;border-radius:11px;background:#eef2ff;color:#4f46e5;display:flex;align-items:center;justify-content:center;flex:none">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#8a8676">OPTION 1</span>
+                <span style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:20px;background:#4f46e5;color:#fff"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1-6.3-4.6L5.7 21 8 13.9 2 9.4h7.6z"/></svg><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;letter-spacing:.05em">RECOMMENDED</span></span>
+              </div>
+              <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:18px;color:#202058;margin-top:3px">Substitute with another unit</div>
+            </div>
+            <sc-if value="{{ feat.selected }}" hint-placeholder-val="{{ true }}">
+              <span style="width:26px;height:26px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;flex:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            </sc-if>
+          </div>
+
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;margin-bottom:18px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <span style="font-size:13px;font-weight:600;color:#047857">Sony FX3 (FX3-003) available immediately</span>
+          </div>
+
+          <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#a8a292;font-weight:600;margin-bottom:9px">If chosen</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;gap:9px;font-size:13.5px;color:#3a3a58;line-height:1.45"><span style="color:#4f46e5;font-weight:700">→</span>Substitution event created (linked to this incident)</div>
+            <div style="display:flex;gap:9px;font-size:13.5px;color:#3a3a58;line-height:1.45"><span style="color:#4f46e5;font-weight:700">→</span>FX3-003 dispatched to customer today</div>
+            <div style="display:flex;gap:9px;font-size:13.5px;color:#3a3a58;line-height:1.45"><span style="color:#4f46e5;font-weight:700">→</span>FX3-002 returns to warehouse for assessment</div>
+            <div style="display:flex;gap:9px;font-size:13.5px;color:#202058;font-weight:600;line-height:1.45"><span style="color:#4f46e5;font-weight:700">→</span>Customer keeps shooting NOW</div>
+          </div>
+        </div>
+
+        <!-- right · impact -->
+        <div style="width:290px;flex:none;background:#fff;border:1px solid #e5e7f5;border-radius:12px;padding:18px 20px">
+          <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#a8a292;font-weight:600;margin-bottom:14px">Impact assessment</div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12.5px;color:#6b7280">Customer downtime</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:#059669">0 hours</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12.5px;color:#6b7280">Additional cost</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:#202058">₹0</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12.5px;color:#6b7280">Operational effort</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:#6b7280">Medium · 1 delivery</span></div>
+            <div style="height:1px;background:#f2efe9"></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12.5px;color:#6b7280">Trust impact</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:#059669">Positive</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTIONS 2-5 · grid -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+      <sc-for list="{{ rest }}" as="o" hint-placeholder-count="4">
+        <div onClick="{{ o.onClick }}" style="background:{{ o.bg }};border:1.5px solid {{ o.border }};border-radius:14px;box-shadow:{{ o.ring }};padding:22px 22px;cursor:pointer;transition:box-shadow .2s,border-color .2s;display:flex;flex-direction:column">
+          <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px">
+            <div style="width:40px;height:40px;border-radius:10px;background:#f4f2ee;border:1px solid #ece9e3;color:#6b7280;display:flex;align-items:center;justify-content:center;flex:none">
+              <span dangerouslySetInnerHTML="{{ o.iconHtml }}" style="display:flex"></span>
+            </div>
+            <div style="flex:1;min-width:0">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;color:#a8a292">OPTION {{ o.num }}</span>
+              <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15.5px;color:#202058;line-height:1.25;margin-top:2px">{{ o.name }}</div>
+            </div>
+            <sc-if value="{{ o.selected }}" hint-placeholder-val="{{ false }}">
+              <span style="width:24px;height:24px;border-radius:50%;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center;flex:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            </sc-if>
+          </div>
+
+          <div style="font-size:12.5px;color:#8a8676;line-height:1.45;margin-bottom:12px">{{ o.desc }}</div>
+
+          <div style="display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:7px;background:{{ o.availBg }};border:1px solid {{ o.availBorder }};margin-bottom:16px;align-self:flex-start">
+            <span dangerouslySetInnerHTML="{{ o.availIconHtml }}" style="display:flex"></span>
+            <span style="font-size:12px;font-weight:600;color:{{ o.availColor }}">{{ o.availText }}</span>
+          </div>
+
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a8a292;font-weight:600;margin-bottom:8px">If chosen</div>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+            <sc-for list="{{ o.routes }}" as="r" hint-placeholder-count="3">
+              <div style="display:flex;gap:8px;font-size:12.5px;color:#3a3a58;line-height:1.4"><span style="color:#4f46e5;font-weight:700">→</span>{{ r }}</div>
+            </sc-for>
+          </div>
+
+          <div style="margin-top:auto;background:#faf9f7;border:1px solid #f2efe9;border-radius:10px;padding:13px 15px">
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <sc-for list="{{ o.impact }}" as="m" hint-placeholder-count="4">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px"><span style="font-size:12px;color:#6b7280">{{ m.label }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:{{ m.valColor }};text-align:right">{{ m.value }}</span></div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ============ REGION 4 · DECISION PANEL ============ -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:40px">
+    <!-- customer preference -->
+    <div style="background:#faf9f7;border:1px solid #ece9e3;border-radius:14px;padding:24px 26px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:16px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l1.6-5A8 8 0 1 1 12 20a8 8 0 0 1-4-1z"/></svg>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.12em;color:#9a9484;text-transform:uppercase">Customer preference</span>
+      </div>
+      <div style="border-left:3px solid #a7f3d0;padding:2px 0 2px 16px">
+        <p style="margin:0;font-size:15px;line-height:1.6;color:#26235a;font-style:italic">"Please send another camera fast, our shoot ends at 6pm. I don't care about the money, just help me finish this session."</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:14px;padding-left:19px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#8a8676">— Rahul Malhotra via WhatsApp</span>
+        <span style="color:#c9c5bc">·</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#8a8676">2:52 PM</span>
+      </div>
+    </div>
+
+    <!-- staff recommendation -->
+    <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:24px 26px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.12em;color:#6366f1;text-transform:uppercase">Staff recommendation</span>
+      </div>
+      <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#312e81">Given VIP status + urgency + FX3-003 availability, recommend <strong style="color:#4f46e5">Option 1: Substitute with another unit.</strong></p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="background:#fff;border:1px solid #dfe3fb;border-radius:9px;padding:11px 13px"><div style="font-size:11px;color:#6b7280;margin-bottom:3px">Time to execute</div><div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#202058">25 min</div></div>
+        <div style="background:#fff;border:1px solid #dfe3fb;border-radius:9px;padding:11px 13px"><div style="font-size:11px;color:#6b7280;margin-bottom:3px">Available couriers</div><div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#202058">2 nearby</div></div>
+        <div style="grid-column:1 / -1;background:#fff;border:1px solid #dfe3fb;border-radius:9px;padding:11px 13px;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12.5px;color:#6b7280">Estimated arrival at customer location</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#059669">3:15 PM</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ REGION 5 · EXECUTION PREVIEW ============ -->
+  <div style="background:#202058;border-radius:16px;padding:30px 32px;margin-top:24px;color:#fff">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap">
+      <span style="width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex:none"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#c7d2fe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg></span>
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.12em;color:#9d9ac9;text-transform:uppercase">Execution preview · ready to run</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:19px;color:#fff;margin-top:3px">Executing: {{ selectedName }}</div>
+      </div>
+      <button onClick="{{ noop }}" style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border:none;border-radius:10px;background:#4f46e5;color:#fff;font-family:'Manrope',sans-serif;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 10px rgba(79,70,229,.4)" style-hover="background:#6366f1">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Execute selected
+      </button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:22px">
+      <!-- immediate -->
+      <div>
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#059669;font-weight:600;margin-bottom:13px">Immediate actions</div>
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <sc-for list="{{ selectedImmediate }}" as="x" hint-placeholder-count="5">
+            <div style="display:flex;gap:9px;align-items:flex-start"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"/></svg><span dangerouslySetInnerHTML="{{ x }}" style="font-size:12.5px;line-height:1.45;color:#e6e6f5"></span></div>
+          </sc-for>
+        </div>
+      </div>
+      <!-- deferred -->
+      <div>
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#fbbf24;font-weight:600;margin-bottom:13px">Deferred to financial resolution</div>
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <sc-for list="{{ selectedDeferred }}" as="x" hint-placeholder-count="3">
+            <div style="display:flex;gap:9px;align-items:flex-start"><span style="width:5px;height:5px;border-radius:50%;background:#fbbf24;flex:none;margin-top:7px"></span><span dangerouslySetInnerHTML="{{ x }}" style="font-size:12.5px;line-height:1.45;color:#c9c8e6"></span></div>
+          </sc-for>
+        </div>
+      </div>
+      <!-- downstream -->
+      <div>
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#a5b4fc;font-weight:600;margin-bottom:13px">Downstream events</div>
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <sc-for list="{{ selectedDownstream }}" as="x" hint-placeholder-count="3">
+            <div style="display:flex;gap:9px;align-items:flex-start"><span style="color:#a5b4fc;font-weight:700;font-size:12.5px;line-height:1.45">→</span><span dangerouslySetInnerHTML="{{ x }}" style="font-size:12.5px;line-height:1.45;color:#c9c8e6"></span></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ REGION 6 · WHY THIS MATTERS ============ -->
+  <sc-if value="{{ showWhy }}" hint-placeholder-val="{{ true }}">
+    <div style="margin-top:48px;padding-top:36px;border-top:1px solid #dcd8cf">
+      <div style="display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:300px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.14em;color:#9a9484;text-transform:uppercase;margin-bottom:14px">Why we built this</div>
+          <p style="margin:0 0 14px;font-size:14.5px;line-height:1.65;color:#3a3a58;max-width:520px">Traditional rental systems treat damage as a financial event: "Here's a charge, here's a form." That misses the actual crisis — the customer's shoot.</p>
+          <p style="margin:0;font-size:14.5px;line-height:1.65;color:#3a3a58;max-width:520px">Save the Shoot separates operational continuity from financial resolution. <strong style="color:#202058">Fix the customer's day first. Figure out the money after.</strong></p>
+        </div>
+        <div style="width:320px;flex:none;background:#faf9f7;border:1px solid #ece9e3;border-radius:12px;padding:20px 22px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f2efe9">
+            <div><div style="font-size:11px;color:#6b7280;margin-bottom:3px">With Save the Shoot</div><div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;color:#059669">2 min to decide</div></div>
+            <div style="text-align:right"><div style="font-size:11px;color:#6b7280;margin-bottom:3px">To execute</div><div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;color:#202058">25 min</div></div>
+          </div>
+          <div style="display:flex;gap:9px;align-items:flex-start">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M3 21l1.6-5A8 8 0 1 1 12 20a8 8 0 0 1-4-1z"/></svg>
+            <div style="font-size:12.5px;line-height:1.5;color:#6b7280">On a WhatsApp-only workflow, this same crisis would take <strong style="color:#b8730a">45+ minutes</strong> of frantic messages and no formal record.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="margin-top:44px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:#b0aa9c;letter-spacing:.04em">RENTALOS v2 · SAVE THE SHOOT PANEL · STEP 3 OF DAMAGE INCIDENT · INTERNAL STAFF UI</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:1600},&quot;selectedDefault&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;1&quot;,&quot;options&quot;:[&quot;1&quot;,&quot;2&quot;,&quot;3&quot;,&quot;4&quot;,&quot;5&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;animateIn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;showWhy&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    const s = Number(props.selectedDefault) || 1;
+    this.state = { selected: (s>=1&&s<=5)?s:1, mounted:false };
+  }
+  componentDidMount(){ this.setState({ mounted:true }); }
+
+  ic(path,w){ return {__html:'<svg width="'+(w||18)+'" height="'+(w||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+path+'</svg>'}; }
+  html(s){ return {__html:s}; }
+
+  renderVals(){
+    const sel = this.state.selected;
+    const tone = { success:'#059669', neutral:'#6b7280', attention:'#d97706', danger:'#dc2626', info:'#4f46e5' };
+
+    const opts = [
+      {
+        num:1, name:'Substitute with another unit',
+        exec:{
+          immediate:['Substitution event created (linked to Damage Incident <strong>#DI-2026-0142</strong>)','FX3-003 marked as dispatched to customer','FX3-002 status → "Awaiting Damage Assessment"','Customer WhatsApp sent: "Replacement dispatched — arriving 3:15 PM"','Order timeline updated'],
+          deferred:['Deposit forfeit decision (₹15,000 est.)','Insurance claim consideration','Substitution charge/credit (none — same product)'],
+          downstream:['Original Substitution flow opens (Item 5)','Financial resolution scheduled for order close','FX3-002 routes to maintenance queue after inspection']
+        }
+      },
+      {
+        num:2, name:'Dispatch replacement, keep damaged item',
+        desc:'Dual dispatch — both items on rent temporarily.',
+        icon:this.ic('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',20),
+        avail:{text:'FX3-003 free for dual dispatch',status:'ok'},
+        routes:['FX3-003 dispatched immediately','FX3-002 stays with customer (returns later)','Both items on rent through end of window'],
+        impact:[['Customer downtime','0 hours','success'],['Additional cost','₹0','neutral'],['Operational effort','High · 2 items','attention'],['Trust impact','Very positive','success']],
+        exec:{
+          immediate:['Dual-dispatch event created (linked to <strong>#DI-2026-0142</strong>)','FX3-003 dispatched immediately','FX3-002 kept with customer — both on rent','Customer WhatsApp sent: "Backup camera on the way — keep shooting"','Order timeline updated'],
+          deferred:['Deposit forfeit decision (₹15,000 est.)','Insurance claim consideration','Return logistics for 2 units at window close'],
+          downstream:['Dual-item tracking opens','Financial resolution scheduled for order close','Both units route to inspection on return']
+        }
+      },
+      {
+        num:3, name:'Early return of damaged item only',
+        desc:'Keep the rest of the rental going.',
+        icon:this.ic('<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/>',20),
+        avail:{text:'Partial solution — customer loses the unit',status:'warn'},
+        routes:['Damaged item returned now','Auto-suggests pro-rated credit','Other items continue on rental','Customer shoots with what\u2019s working'],
+        impact:[['Customer downtime','30 min','attention'],['Auto-suggested credit','₹500','info'],['Operational effort','Low · 1 pickup','success'],['Trust impact','Neutral','neutral']],
+        exec:{
+          immediate:['Early-return event created for FX3-002','Pro-rated credit auto-suggested: ₹500','Remaining items continue on rental','Return pickup scheduled for FX3-002','Order timeline updated'],
+          deferred:['Deposit forfeit decision (₹15,000 est.)','Insurance claim consideration','Credit approval at order close'],
+          downstream:['Return workflow opens for FX3-002','FX3-002 routes to maintenance queue after inspection','Financial resolution scheduled for order close']
+        }
+      },
+      {
+        num:4, name:'Continue with damaged item as-is',
+        desc:'Customer accepts operational damage.',
+        icon:this.ic('<path d="M12 2v4M12 18v4"/><path d="m7 5 2.5 3M14.5 16 17 19"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M9 12h6" stroke-dasharray="2 2"/>',20),
+        avail:{text:'Customer shoots with a damaged unit',status:'warn'},
+        routes:['Customer confirms shoot continues with damaged unit','Auto-suggests reduced rate for damage-in-service','Financial adjustment applied at return'],
+        impact:[['Customer downtime','0 hours','success'],['Auto-suggested discount','20% (₹1,500)','info'],['Operational effort','Zero','success'],['Trust impact','Depends','attention']],
+        exec:{
+          immediate:['Damage-in-service flag added to FX3-002','Reduced rate auto-suggested: 20% off remaining days (₹1,500)','Customer confirmation logged','No dispatch — customer keeps shooting','Order timeline updated'],
+          deferred:['Deposit forfeit decision (₹15,000 est.)','Insurance claim consideration','Rate adjustment applied at return'],
+          downstream:['FX3-002 routes to maintenance queue on return','Financial resolution scheduled for order close']
+        }
+      },
+      {
+        num:5, name:'Full early return',
+        desc:'Terminate the rental now.',
+        icon:this.ic('<path d="M3 9 12 3l9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M14 22V12H10v10"/><path d="M9 8 12 5l3 3"/>',20),
+        avail:{text:'Ends the shoot early — worst-case UX',status:'warn'},
+        routes:['Entire order returned early','Pro-rated refund calculated','Routes to Return workflow (Item 3)','Order closes'],
+        impact:[['Customer downtime','Full hours','danger'],['Auto-suggested refund','₹4,500','info'],['Operational effort','Medium · multi-item','attention'],['Trust impact','Negative','danger']],
+        exec:{
+          immediate:['Full early-return event created','Pro-rated refund auto-calculated: ₹4,500','All items scheduled for return pickup','Customer WhatsApp sent: "Return arranged — refund processing"','Order timeline updated'],
+          deferred:['Deposit forfeit decision (₹15,000 est.)','Insurance claim consideration','Refund approval at order close'],
+          downstream:['Return workflow opens (Item 3)','All units route to inspection','Order closes after inspection']
+        }
+      }
+    ];
+
+    const accent = (num)=>{
+      const selected = sel===num;
+      const rec = num===1;
+      return {
+        selected,
+        border: selected ? '#4f46e5' : (rec ? '#c7d2fe' : '#ece9e3'),
+        bg: selected ? '#fbfbff' : '#fff',
+        ring: selected ? '0 0 0 3px rgba(79,70,229,.16)' : '0 1px 2px rgba(32,32,88,.04)',
+        onClick: ()=>this.setState({ selected:num })
+      };
+    };
+
+    const rest = opts.slice(1).map(o=>{
+      const a = accent(o.num);
+      const ok = o.avail.status==='ok';
+      return {
+        num:o.num, name:o.name, desc:o.desc,
+        iconHtml:o.icon,
+        availText:o.avail.text,
+        availIconHtml: ok
+          ? {__html:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'}
+          : {__html:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>'},
+        availColor: ok ? '#047857' : '#b8730a',
+        availBg: ok ? '#ecfdf5' : '#fffbeb',
+        availBorder: ok ? '#a7f3d0' : '#fcd9a4',
+        routes:o.routes,
+        impact:o.impact.map(r=>({ label:r[0], value:r[1], valColor:tone[r[2]] })),
+        border:a.border, bg:a.bg, ring:a.ring, selected:a.selected, onClick:a.onClick
+      };
+    });
+
+    const chosen = opts[sel-1];
+    const feat = accent(1);
+
+    return {
+      feat,
+      rest,
+      selectedName: chosen.name,
+      selectedImmediate: chosen.exec.immediate.map(s=>this.html(s)),
+      selectedDeferred: chosen.exec.deferred.map(s=>this.html(s)),
+      selectedDownstream: chosen.exec.downstream.map(s=>this.html(s)),
+      showWhy: this.props.showWhy !== false,
+      optOpacity: (this.props.animateIn===false || this.state.mounted) ? 1 : 0,
+      optTransform: (this.props.animateIn===false || this.state.mounted) ? 'none' : 'translateY(10px)',
+      noop: ()=>{}
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#f4f2ee;font-family:'Manrope',system-ui,sans-serif;color:#26235a;-webkit-font-smoothing:antialiased}
+  a{color:#4f46e5;text-decoration:none}
+  a:hover{color:#3730a3}
+  ::selection{background:#e0dfff}
+  @keyframes cbpulse{0%{transform:scale(.6);opacity:.7}70%{transform:scale(1.8);opacity:0}100%{opacity:0}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#ffffff;display:flex;font-family:'Manrope',system-ui,sans-serif">
+
+  <!-- SIDEBAR -->
+  <aside style="width:60px;flex:none;background:#ffffff;border-right:1px solid #ece9e3;display:flex;flex-direction:column;align-items:center;padding:14px 0;position:sticky;top:0;height:100vh;gap:6px">
+    <div style="width:32px;height:32px;border-radius:9px;background:#202058;display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+      <span style="font-family:'Space Grotesk';font-weight:700;color:#fff;font-size:15px">R</span>
+    </div>
+    <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="7">
+      <div title="{{ item.label }}" style="{{ item.wrap }}">{{ item.el }}</div>
+    </sc-for>
+  </aside>
+
+  <!-- MAIN COLUMN -->
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+
+    <!-- TOP BAR -->
+    <header style="height:56px;flex:none;background:#ffffff;border-bottom:1px solid #ece9e3;display:flex;align-items:center;gap:18px;padding:0 22px;position:sticky;top:0;z-index:20">
+      <span style="width:20px;height:16px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer">
+        <span style="height:1.5px;background:#6b7280;border-radius:2px"></span>
+        <span style="height:1.5px;background:#6b7280;border-radius:2px"></span>
+        <span style="height:1.5px;background:#6b7280;border-radius:2px"></span>
+      </span>
+      <div style="flex:1;max-width:520px;height:34px;background:#f7f6f3;border:1px solid #ece9e3;border-radius:9px;display:flex;align-items:center;gap:9px;padding:0 12px;margin:0 auto">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <span style="font-size:12.5px;color:#9ca3af">Search orders, customers, inventory…</span>
+        <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:10px;color:#b8b4ac;border:1px solid #e4e1db;border-radius:4px;padding:1px 5px">⌘K</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="position:relative;cursor:pointer">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.7"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+          <span style="position:absolute;top:-3px;right:-3px;width:7px;height:7px;border-radius:50%;background:#dc2626;border:1.5px solid #fff"></span>
+        </div>
+        <div style="width:30px;height:30px;border-radius:8px;background:#e7e4dd;display:flex;align-items:center;justify-content:center">
+          <span style="font-family:'Space Grotesk';font-weight:600;font-size:12px;color:#202058">AK</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- SUB-NAV -->
+    <div style="height:44px;flex:none;background:#ffffff;border-bottom:1px solid #ece9e3;display:flex;align-items:center;gap:20px;padding:0 22px;position:sticky;top:56px;z-index:19">
+      <a href="#" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:#4f46e5">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>Cancel
+      </a>
+      <div style="width:1px;height:16px;background:#ece9e3"></div>
+      <div style="font-family:'JetBrains Mono';font-size:11px;color:#9ca3af;letter-spacing:.02em">
+        Rentals <span style="color:#cfccc4">/</span> Orders <span style="color:#cfccc4">/</span> <span style="color:#6b7280">New</span>
+      </div>
+    </div>
+
+    <!-- SCROLL BODY -->
+    <main style="flex:1;overflow:auto;background:#f7f6f3;padding:26px 22px 120px">
+      <div style="max-width:840px;margin:0 auto">
+
+        <!-- REGION 1 — TOP STRIP -->
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px">
+          <div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <h1 style="font-family:'Space Grotesk';font-weight:600;font-size:28px;color:#202058;margin:0;letter-spacing:-.01em">NEW BOOKING</h1>
+              <div style="display:flex;align-items:center;gap:6px;background:rgba(79,70,229,.08);border:1px solid rgba(79,70,229,.24);border-radius:999px;padding:4px 11px;cursor:pointer">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <span style="font-size:12px;font-weight:600;color:#4f46e5">Booking</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+            <p style="font-family:'Manrope';font-size:13px;color:#9ca3af;margin:7px 0 0">Draft — no availability blocked yet</p>
+          </div>
+        </div>
+
+        <!-- SECTION 1 — CUSTOMER -->
+        <section style="{{ cardStyle }}">
+          <div style="{{ secHeadStyle }}">
+            <span style="{{ secNumStyle }}">1</span>
+            <span style="{{ secTitleStyle }}">Customer</span>
+          </div>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+            <div style="display:flex;align-items:flex-start;gap:13px;min-width:220px">
+              <div style="width:46px;height:46px;flex:none;border-radius:11px;background:#e7e4dd;display:flex;align-items:center;justify-content:center">
+                <span style="font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#202058">RM</span>
+              </div>
+              <div>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-family:'Space Grotesk';font-weight:600;font-size:16px;color:#26235a">Rahul Malhotra</span>
+                  <span style="font-family:'JetBrains Mono';font-size:9.5px;font-weight:600;letter-spacing:.05em;color:#059669;background:rgba(5,150,105,.1);border-radius:5px;padding:2px 6px">VIP</span>
+                </div>
+                <div style="font-size:12.5px;color:#8a8680;margin-top:4px">Malhotra Studios · Wedding photography</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono';font-size:9.5px;font-weight:600;letter-spacing:.04em;color:#059669;background:rgba(5,150,105,.1);border-radius:999px;padding:4px 9px">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg>KYC VERIFIED
+              </span>
+              <div style="display:flex;align-items:center;gap:7px;background:#f7f6f3;border:1px solid #ece9e3;border-radius:999px;padding:4px 10px">
+                <span style="font-family:'JetBrains Mono';font-size:10px;font-weight:500;color:#6b7280;letter-spacing:.03em">TRUST 92/100</span>
+                <span style="width:60px;height:2px;background:#e4e1db;border-radius:2px;overflow:hidden;display:block"><span style="display:block;width:92%;height:100%;background:#059669"></span></span>
+              </div>
+            </div>
+          </div>
+          <div style="text-align:right;margin-top:14px">
+            <a href="#" style="font-size:12px;color:#9ca3af;font-weight:500">Change customer</a>
+          </div>
+        </section>
+
+        <!-- SECTION 2 — RENTAL WINDOW -->
+        <section style="{{ cardStyle }}">
+          <div style="{{ secHeadStyle }}">
+            <span style="{{ secNumStyle }}">2</span>
+            <span style="{{ secTitleStyle }}">Rental Window</span>
+          </div>
+          <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+            <div style="flex:1;min-width:300px">
+              <div style="display:flex;gap:12px">
+                <div style="flex:1;border:1px solid #ece9e3;background:#faf9f7;border-radius:11px;padding:11px 13px;display:flex;align-items:center;justify-content:space-between">
+                  <div>
+                    <div style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.06em;color:#9ca3af">START</div>
+                    <div style="font-family:'JetBrains Mono';font-size:15px;font-weight:700;color:#26235a;margin-top:4px">Fri, Nov 20</div>
+                    <div style="font-family:'JetBrains Mono';font-size:12px;color:#9ca3af;margin-top:2px">10:00 AM</div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.7"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                </div>
+                <div style="flex:1;border:1px solid #ece9e3;background:#faf9f7;border-radius:11px;padding:11px 13px;display:flex;align-items:center;justify-content:space-between">
+                  <div>
+                    <div style="font-family:'JetBrains Mono';font-size:10px;letter-spacing:.06em;color:#9ca3af">END</div>
+                    <div style="font-family:'JetBrains Mono';font-size:15px;font-weight:700;color:#26235a;margin-top:4px">Mon, Nov 23</div>
+                    <div style="font-family:'JetBrains Mono';font-size:12px;color:#9ca3af;margin-top:2px">06:00 PM</div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.7"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
+                <span style="font-family:'JetBrains Mono';font-size:10.5px;font-weight:500;color:#6b7280;background:#f7f6f3;border:1px solid #ece9e3;border-radius:999px;padding:4px 10px">Duration: 3 days</span>
+                <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#059669;font-weight:500">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg>Weekend rental
+                </span>
+              </div>
+              <div style="display:flex;align-items:center;gap:22px;margin-top:16px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                  <span style="width:16px;height:16px;border-radius:50%;border:2px solid #4f46e5;display:flex;align-items:center;justify-content:center"><span style="width:7px;height:7px;border-radius:50%;background:#4f46e5"></span></span>
+                  <span style="font-size:13px;color:#26235a;font-weight:500">Warehouse pickup</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                  <span style="width:16px;height:16px;border-radius:50%;border:2px solid #cfccc4"></span>
+                  <span style="font-size:13px;color:#9ca3af">Delivery</span>
+                </label>
+              </div>
+            </div>
+            <div style="width:230px;flex:none;background:rgba(5,150,105,.07);border:1px solid rgba(5,150,105,.22);border-radius:11px;padding:13px 14px;display:flex;gap:9px;align-items:flex-start">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.2" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>
+              <span style="font-size:12px;color:#047857;line-height:1.45;font-weight:500">Availability confirmed for all items in this window</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- SECTION 3 — EQUIPMENT -->
+        <section style="{{ cardStyle }}">
+          <div style="{{ secHeadStyle }}">
+            <span style="{{ secNumStyle }}">3</span>
+            <span style="{{ secTitleStyle }}">Equipment</span>
+          </div>
+          <div style="height:40px;border:1px solid #ece9e3;background:#faf9f7;border-radius:10px;display:flex;align-items:center;gap:10px;padding:0 13px;margin-bottom:14px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+            <span style="flex:1;font-size:13px;color:#9ca3af">Search products or scan QR to add…</span>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M14 20v.01M20 20v.01M17 17v3"/></svg>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <sc-for list="{{ items }}" as="it" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:13px;border:1px solid #ece9e3;background:#ffffff;border-radius:11px;padding:10px 12px">
+                <div style="width:48px;height:48px;flex:none;border-radius:9px;background:#f2f0ec;border:1px solid #ece9e3;display:flex;align-items:center;justify-content:center">{{ it.el }}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13.5px;font-weight:700;color:#26235a">{{ it.name }}</div>
+                  <div style="font-family:'JetBrains Mono';font-size:10.5px;color:#9ca3af;margin-top:3px">{{ it.meta }}</div>
+                </div>
+                <div style="text-align:right;flex:none">
+                  <div style="font-family:'JetBrains Mono';font-size:10.5px;color:#9ca3af">{{ it.rate }}</div>
+                  <div style="font-family:'JetBrains Mono';font-size:14px;font-weight:700;color:#26235a;margin-top:2px">{{ it.sub }}</div>
+                </div>
+                <button style="flex:none;width:26px;height:26px;border-radius:7px;border:1px solid #ece9e3;background:#faf9f7;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0" style-hover="border-color:#dc2626;background:rgba(220,38,38,.06)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top:13px;background:rgba(5,150,105,.07);border:1px solid rgba(5,150,105,.22);border-radius:10px;padding:9px 13px;display:flex;gap:8px;align-items:center">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg>
+            <span style="font-size:12px;color:#047857;font-weight:500">All items available for selected window</span>
+          </div>
+        </section>
+
+        <!-- SECTION 4 — PRICING -->
+        <section style="{{ cardStyle }}">
+          <div style="{{ secHeadStyle }}">
+            <span style="{{ secNumStyle }}">4</span>
+            <span style="{{ secTitleStyle }}">Pricing</span>
+          </div>
+          <div style="max-width:400px;margin-left:auto;display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:13px;color:#6b7280">Subtotal</span>
+              <span style="font-family:'JetBrains Mono';font-size:13px;color:#26235a">₹29,400</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:13px;color:#6b7280;display:flex;align-items:center;gap:10px">Discounts <a href="#" style="font-family:'JetBrains Mono';font-size:11px;color:#4f46e5">+ Add discount</a></span>
+              <span style="font-family:'JetBrains Mono';font-size:13px;color:#c2beb6">—</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:13px;color:#6b7280">Adjustments</span>
+              <span style="font-family:'JetBrains Mono';font-size:13px;color:#c2beb6">—</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:13px;color:#6b7280">CGST (9%)</span>
+              <span style="font-family:'JetBrains Mono';font-size:13px;color:#26235a">₹2,646</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:13px;color:#6b7280">SGST (9%)</span>
+              <span style="font-family:'JetBrains Mono';font-size:13px;color:#26235a">₹2,646</span>
+            </div>
+            <div style="border-top:1px solid #ece9e3;margin-top:2px;padding-top:12px;display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-family:'Space Grotesk';font-size:15px;font-weight:600;color:#202058">Total</span>
+              <span style="font-family:'JetBrains Mono';font-size:20px;font-weight:700;color:#202058">₹34,692</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- SECTION 5 — DEPOSIT -->
+        <section style="{{ cardStyle }}">
+          <div style="{{ secHeadStyle }}">
+            <span style="{{ secNumStyle }}">5</span>
+            <span style="{{ secTitleStyle }}">Deposit</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-size:13px;color:#6b7280">Required:</span>
+              <span style="font-family:'JetBrains Mono';font-size:16px;font-weight:700;color:#26235a">₹5,000</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;height:34px;border:1px solid #ece9e3;background:#faf9f7;border-radius:9px;padding:0 12px;cursor:pointer">
+              <span style="font-size:12.5px;color:#26235a;font-weight:500">Card pre-auth</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+            <div style="margin-left:auto;display:flex;gap:8px">
+              <button style="height:34px;padding:0 14px;border-radius:9px;border:1px solid rgba(79,70,229,.35);background:rgba(79,70,229,.08);color:#4f46e5;font-size:12.5px;font-weight:600;font-family:'Manrope';cursor:pointer">Collect at pickup</button>
+              <button style="height:34px;padding:0 14px;border-radius:9px;border:1px solid #ece9e3;background:#ffffff;color:#6b7280;font-size:12.5px;font-weight:500;font-family:'Manrope';cursor:pointer">Collect now</button>
+            </div>
+          </div>
+          <div style="font-size:11.5px;color:#9ca3af;margin-top:13px">Automatically calculated from Camera equipment deposit policy · Item 8</div>
+        </section>
+
+        <!-- SECTION 6 — NOTES & TAGS -->
+        <section style="{{ cardStyle }}">
+          <div onClick="{{ toggleNotes }}" style="display:flex;align-items:center;gap:13px;cursor:pointer">
+            <span style="{{ secNumStyle }}">6</span>
+            <div style="flex:1">
+              <div style="{{ secTitleStyle }}">Notes &amp; Tags</div>
+              <div style="font-size:12px;color:#9ca3af;margin-top:3px">Add internal or customer-facing notes</div>
+            </div>
+            <span style="{{ notesChevron }}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </span>
+          </div>
+          <sc-if value="{{ notesOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:16px;border-top:1px solid #ece9e3;padding-top:16px;display:flex;flex-direction:column;gap:12px">
+              <textarea placeholder="Internal note (not visible to customer)…" style="width:100%;min-height:60px;border:1px solid #ece9e3;background:#faf9f7;border-radius:10px;padding:10px 12px;font-family:'Manrope';font-size:13px;color:#26235a;resize:vertical"></textarea>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#6b7280;background:#f2f0ec;border-radius:6px;padding:4px 9px">wedding</span>
+                <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#6b7280;background:#f2f0ec;border-radius:6px;padding:4px 9px">repeat-client</span>
+                <span style="font-family:'JetBrains Mono';font-size:10.5px;color:#4f46e5;border:1px dashed rgba(79,70,229,.4);border-radius:6px;padding:4px 9px;cursor:pointer">+ Add tag</span>
+              </div>
+            </div>
+          </sc-if>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- STICKY FOOTER -->
+    <footer style="flex:none;background:#ffffff;border-top:1px solid #ece9e3;padding:13px 26px;display:flex;align-items:center;justify-content:space-between;position:sticky;bottom:0;z-index:20;box-shadow:0 -1px 12px rgba(38,35,90,.04)">
+      <a href="#" style="font-size:13px;color:#9ca3af;font-weight:500">Cancel</a>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button style="height:40px;padding:0 18px;border-radius:10px;border:1px solid #d9d5cd;background:#ffffff;color:#26235a;font-size:13px;font-weight:600;font-family:'Manrope';cursor:pointer" style-hover="background:#f7f6f3">Save Draft</button>
+        <button style="height:40px;padding:0 22px;border-radius:10px;border:none;background:#4f46e5;color:#ffffff;font-size:13.5px;font-weight:600;font-family:'Manrope';cursor:pointer;display:flex;align-items:center;gap:9px" style-hover="background:#4338ca">
+          <span style="position:relative;width:8px;height:8px;display:flex;align-items:center;justify-content:center">
+            <span style="{{ pulseStyle }}"></span>
+            <span style="position:relative;width:7px;height:7px;border-radius:50%;background:#6ee7b7"></span>
+          </span>
+          Confirm Booking
+        </button>
+      </div>
+    </footer>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:980}}">
+class Component extends DCLogic {
+  state = { notesOpen: false };
+
+  renderVals() {
+    const cardStyle = "background:#ffffff;border:1px solid #ece9e3;border-radius:14px;box-shadow:0 1px 3px rgba(38,35,90,.04);padding:20px 22px;margin-bottom:16px";
+    const secHeadStyle = "display:flex;align-items:center;gap:11px;margin-bottom:18px";
+    const secNumStyle = "font-family:'JetBrains Mono';font-size:10px;font-weight:600;letter-spacing:.1em;color:#b8b4ac;width:20px;height:20px;flex:none;border:1px solid #ece9e3;border-radius:6px;display:flex;align-items:center;justify-content:center;background:#faf9f7";
+    const secTitleStyle = "font-family:'Space Grotesk';font-weight:600;font-size:14px;color:#26235a";
+
+    const icon = (svg) => "display:inline-flex;color:#9ca3af";
+    const camSvg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="13" r="3.2"/></svg>';
+    const lensSvg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.4"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2"/></svg>';
+    const tripodSvg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.6"><path d="M12 3v9M12 12L6 21M12 12l6 9M9 6h6"/></svg>';
+
+    const nav = [
+      { label: "Dashboard", active: false, svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>' },
+      { label: "Rentals", active: true, svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h18M3 12h18M3 17h18"/><circle cx="7" cy="7" r="0" fill="currentColor"/></svg>' },
+      { label: "Inventory", active: false, svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>' },
+      { label: "Customers", active: false, svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.2a3 3 0 010 5.6M21 20c0-2.5-1.5-4.6-3.6-5.5"/></svg>' },
+      { label: "Finance", active: false, svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M15 9a3 3 0 00-3-2c-1.7 0-3 1-3 2.3 0 3 6 1.7 6 4.7 0 1.3-1.3 2.3-3 2.3a3 3 0 01-3-2M12 5v2M12 17v2"/></svg>' },
+      { label: "Insights", active: false, svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="M7 14l3-4 3 3 5-7"/></svg>' },
+      { label: "System", active: false, svg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1V21a2 2 0 11-4 0v-.1A1.6 1.6 0 005 19.4a2 2 0 11-2.8-2.8l.1-.1A1.6 1.6 0 003.4 14 2 2 0 013 12a2 2 0 011.4-.6 1.6 1.6 0 001.1-2.7l-.1-.1A2 2 0 118.2 5.7l.1.1A1.6 1.6 0 0011 5.4 2 2 0 0113 5a2 2 0 01.6 1.4 1.6 1.6 0 002.7 1.1l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.4 1.7z"/></svg>' },
+    ];
+    const navItems = nav.map(n => ({
+      label: n.label,
+      wrap: "width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;" + (n.active ? "background:rgba(32,32,88,.08)" : "background:transparent"),
+      el: React.createElement("span", {
+        style: { display: "inline-flex", color: n.active ? "#202058" : "#9ca3af" },
+        dangerouslySetInnerHTML: { __html: n.svg },
+      }),
+    }));
+
+    const items = [
+      { name: "Sony FX3 Body", meta: "FX3-002 · QTY 1", rate: "₹5,500/day × 3", sub: "₹16,500", svg: camSvg },
+      { name: "Sony 24-70 GM", meta: "2470GM-003 · QTY 1", rate: "₹1,800/day × 3", sub: "₹5,400", svg: lensSvg },
+      { name: "Sony 70-200", meta: "70200-005 · QTY 1", rate: "₹2,200/day × 3", sub: "₹6,600", svg: lensSvg },
+      { name: "Manfrotto Tripod", meta: "TRP-014 · QTY 1", rate: "₹300/day × 3", sub: "₹900", svg: tripodSvg },
+    ].map(i => ({ ...i, el: React.createElement("span", { style: { display: "inline-flex" }, dangerouslySetInnerHTML: { __html: i.svg } }) }));
+
+    return {
+      cardStyle, secHeadStyle, secNumStyle, secTitleStyle, navItems, items,
+      notesOpen: this.state.notesOpen,
+      toggleNotes: () => this.setState(s => ({ notesOpen: !s.notesOpen })),
+      notesChevron: "display:inline-flex;transition:transform .2s;transform:rotate(" + (this.state.notesOpen ? "180deg" : "0deg") + ")",
+      pulseStyle: "position:absolute;width:16px;height:16px;border-radius:50%;background:rgba(110,231,183,.5);animation:cbpulse 1.8s ease-out infinite",
+    };
+  }
+}
+</script>
+</body>
+</html>
