@@ -14,6 +14,7 @@ import {
   INCIDENT_TYPES, SEVERITIES, REPORTED_BY_TYPES, OPERATIONAL_DECISIONS, CUSTOMER_LIABILITIES,
   FINANCIAL_RESOLUTIONS, DEPOSIT_ACTIONS, type IncidentType, type Severity,
 } from '../lib/damage.js';
+import { applyDamageFinancialSideEffects } from '../lib/damage_lifecycle.js';
 
 // ============================================================================
 // src/routes/damage.ts (Sub-slice 2.3)
@@ -197,7 +198,32 @@ damageIncidents.post('/:id/financial-resolution', requirePermission('damage.reso
     insuranceEligible: p.insurance_eligible ?? null, customerDisputed: p.customer_disputed ?? null, ip: ipAddress, userAgent,
   });
   if (!r.ok) return c.json({ error: r.error }, 409);
-  return c.json({ ok: true, requires_approval: r.requires_approval });
+
+  // Slice 11 (Q3/Q4/Q5): when the resolution SETTLES (no approval pending), fire
+  // the money + inventory side-effects — deposit forfeit payment, damage invoice
+  // line (additional-only), and asset dispositions. Fail-soft: a side-effect
+  // error never fails the resolution save; each effect is idempotent.
+  let sideEffects: unknown = null;
+  if (!r.requires_approval) {
+    try {
+      const meta2 = await query<{ incident_number: string; auto: boolean }>(sql`
+        SELECT di.incident_number,
+               COALESCE((w.settings->'damage_policy'->>'auto_execute_deposit_forfeit')::boolean, true) AS auto
+        FROM damage_incidents di JOIN workspaces w ON w.id = di.workspace_id
+        WHERE di.id = ${meta.id}::uuid AND di.workspace_id = ${session.workspace.id}::uuid LIMIT 1
+      `);
+      sideEffects = await applyDamageFinancialSideEffects({
+        workspaceId: session.workspace.id, orderId: meta.order_id, damageIncidentId: meta.id,
+        incidentNumber: meta2[0]?.incident_number ?? '', actorUserId: session.user.id,
+        customerLiability: p.customer_liability, finalCostPaise: p.final_cost_paise ?? null,
+        depositAction: p.deposit_action, depositForfeitAmountPaise: p.deposit_forfeit_amount_paise ?? null,
+        autoExecuteForfeit: meta2[0]?.auto ?? true, ip: ipAddress, userAgent,
+      });
+    } catch (e) {
+      console.error('[damage] financial side-effects failed', e);
+    }
+  }
+  return c.json({ ok: true, requires_approval: r.requires_approval, side_effects: sideEffects });
 });
 
 damageIncidents.post('/:id/approve', requirePermission('damage.approve'), async (c) => {
