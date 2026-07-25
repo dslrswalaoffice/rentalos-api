@@ -25,6 +25,7 @@ import { recommendations } from './routes/recommendations.js';
 import { invitations } from './routes/invitations.js';
 import { members } from './routes/members.js';
 import { approvals } from './routes/approvals.js';
+import { reviews } from './routes/reviews.js';
 import { standbys } from './routes/standbys.js';
 import { substitutions } from './routes/substitutions.js';
 import { damageIncidents } from './routes/damage.js';
@@ -92,6 +93,7 @@ app.route('/api/recommendations', recommendations);
 app.route('/api/invitations', invitations);
 app.route('/api/members', members);
 app.route('/api/approvals', approvals);
+app.route('/api/reviews', reviews);
 app.route('/api/standbys', standbys);
 // Sub-slice 2.3 — id-scoped substitution + damage routes. Order-scoped variants
 // (/api/orders/:id/substitutions, /:id/damage-incidents) are FOLDED into the

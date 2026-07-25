@@ -15,6 +15,8 @@ import {
   FINANCIAL_RESOLUTIONS, DEPOSIT_ACTIONS, type IncidentType, type Severity,
 } from '../lib/damage.js';
 import { applyDamageFinancialSideEffects } from '../lib/damage_lifecycle.js';
+import { createApprovalRequest } from '../lib/approvals.js';
+import { orderBlock, reason as reasonB } from '../lib/blocked_action.js';
 
 // ============================================================================
 // src/routes/damage.ts (Sub-slice 2.3)
@@ -204,6 +206,7 @@ damageIncidents.post('/:id/financial-resolution', requirePermission('damage.reso
   // line (additional-only), and asset dispositions. Fail-soft: a side-effect
   // error never fails the resolution save; each effect is idempotent.
   let sideEffects: unknown = null;
+  let approvalRequestId: string | null = null;
   if (!r.requires_approval) {
     try {
       const meta2 = await query<{ incident_number: string; auto: boolean }>(sql`
@@ -222,8 +225,35 @@ damageIncidents.post('/:id/financial-resolution', requirePermission('damage.reso
     } catch (e) {
       console.error('[damage] financial side-effects failed', e);
     }
+  } else {
+    // Session 2 — the resolution is now routed through the canonical approval
+    // engine: create the request (freezing the resolution inputs in the snapshot),
+    // populate the dormant approval_request_id FK, and let the executor fire the
+    // Slice-11 side-effects ON APPROVE. Owner-routed (preserves the old owner-only
+    // damage.approve gate). Fail-soft — the resolution row already recorded.
+    try {
+      const inc = (await query<{ incident_number: string }>(sql`
+        SELECT incident_number FROM damage_incidents WHERE id = ${meta.id}::uuid AND workspace_id = ${session.workspace.id}::uuid LIMIT 1
+      `))[0];
+      const ap = await createApprovalRequest({
+        workspaceId: session.workspace.id, requesterUserId: session.user.id, requiredRole: 'owner',
+        resourceType: 'damage_financial_resolution', resourceId: meta.id, orderId: meta.order_id,
+        reasonTag: 'damage_financial_over_threshold', reasonNotes: null,
+        requestSnapshot: {
+          incident_number: inc?.incident_number ?? '', customer_liability: p.customer_liability,
+          liability_percent: p.liability_percent ?? null, final_cost_paise: p.final_cost_paise ?? null,
+          deposit_action: p.deposit_action, deposit_forfeit_amount_paise: p.deposit_forfeit_amount_paise ?? null,
+        },
+        policySnapshot: {},
+      });
+      approvalRequestId = ap.id;
+      await sql`UPDATE damage_incidents SET approval_request_id = ${ap.id}::uuid, updated_at = now()
+                WHERE id = ${meta.id}::uuid AND workspace_id = ${session.workspace.id}::uuid`;
+    } catch (e) {
+      console.error('[damage] approval request creation failed', e);
+    }
   }
-  return c.json({ ok: true, requires_approval: r.requires_approval, side_effects: sideEffects });
+  return c.json({ ok: true, requires_approval: r.requires_approval, side_effects: sideEffects, approval_request_id: approvalRequestId });
 });
 
 damageIncidents.post('/:id/approve', requirePermission('damage.approve'), async (c) => {
@@ -231,6 +261,21 @@ damageIncidents.post('/:id/approve', requirePermission('damage.approve'), async 
   const { ipAddress, userAgent } = clientCtx(c);
   const meta = await loadIncidentMeta(c.req.param('id'), session.workspace.id);
   if (!meta) return c.json({ error: 'not_found' }, 404);
+  // Session 2 — when a resolution now routes through the canonical engine, the
+  // decision must be made in the Approvals inbox (which fires the side-effects the
+  // legacy path never did). Block the legacy path with an Item-12 fix_link rather
+  // than silently under-executing. Legacy incidents with no engine request still
+  // use the old path (backward compat).
+  const pending = (await query<{ approval_request_id: string | null; status: string }>(sql`
+    SELECT ar.id AS approval_request_id, ar.status
+    FROM damage_incidents di LEFT JOIN approval_requests ar ON ar.id = di.approval_request_id
+    WHERE di.id = ${meta.id}::uuid AND di.workspace_id = ${session.workspace.id}::uuid LIMIT 1
+  `))[0];
+  if (pending?.approval_request_id && pending.status === 'pending') {
+    return c.json(orderBlock('APPROVAL_MOVED', 'Decide this in the Approvals inbox', [
+      reasonB('approval_pending', 'USE_APPROVALS_INBOX', 'This resolution is now decided in Approvals, which applies the forfeit + damage line + dispositions on approve.', { type: 'internal', target: '/approvals.html' }),
+    ]), 409);
+  }
   const r = await approveDamageIncident({ workspaceId: session.workspace.id, orderId: meta.order_id, damageIncidentId: meta.id, actorUserId: session.user.id, actorName: actorName(session), ip: ipAddress, userAgent });
   if (!r.ok) return c.json({ error: r.error }, 409);
   return c.json({ approved: true });
