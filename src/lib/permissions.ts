@@ -65,6 +65,8 @@ export const PERMISSIONS = {
   // Notifications (Slice 10)
   'notifications.review':   'Review and approve pending notifications',
   'settings.edit_notifications':'Configure notification policy',
+  // Approvals (Approval Engine Unification S1)
+  'approvals.review':       'Review and decide on pending approvals',
   // Workspace
   'settings.manage':        'Manage workspace settings',
   'team.manage':            'Invite and manage team members',
@@ -83,6 +85,7 @@ export const PERMISSION_GROUPS: { label: string; keys: PermissionKey[] }[] = [
   { label: 'People',    keys: ['people.view','people.manage','people.view_sensitive','people.review_kyc'] },
   { label: 'Insight',   keys: ['reports.view','reports.export','audit.view'] },
   { label: 'Notifications', keys: ['notifications.review','settings.edit_notifications'] },
+  { label: 'Approvals', keys: ['approvals.review'] },
   { label: 'Workspace', keys: ['settings.manage','team.manage'] },
 ];
 
@@ -107,6 +110,9 @@ export const PRESETS: { owner: '*'; manager: PermissionKey[]; staff: PermissionK
     // Slice 10: manager reviews the notification queue + edits notification policy
     // (a narrower grant than settings.manage, which stays owner-only).
     'notifications.review', 'settings.edit_notifications',
+    // Approval Engine Unification S1 — manager decides manager-routed approvals
+    // (role routing still gates which ones; this grants the capability).
+    'approvals.review',
     // NOT: inventory.costs, audit.view, settings.manage, team.manage
   ],
   staff: [

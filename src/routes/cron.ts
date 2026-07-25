@@ -3,6 +3,7 @@ import { sql, query } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { emitNotification, emitCustomerNotification } from '../lib/notify.js';
 import { releaseStandbyHold } from '../lib/standby.js';
+import { resourceLabel } from '../lib/approval_executors.js';
 import { config } from '../lib/config.js';
 
 // ============================================================================
@@ -191,4 +192,68 @@ cron.post('/quote-tick', async (c) => {
     }
   }
   return c.json({ ok: true, expired, expiring_reminders: expiringReminders });
+});
+
+// ----------------------------------------------------------------------------
+// POST /api/cron/approvals-tick  (Approval Engine Unification S1)
+// Expire pending approvals past expires_at (notify the requester) + remind on
+// stale ones (notify the approver, once). Idempotent + self-throttling
+// (status guard + reminded_at flag). Fail-soft per notification.
+// ----------------------------------------------------------------------------
+cron.post('/approvals-tick', async (c) => {
+  const authErr = cronAuthError(c);
+  if (authErr) return authErr;
+  let expiredCount = 0, reminders = 0;
+
+  for (const ws of await allWorkspaces()) {
+    const routing = ws.settings?.approval_routing ?? {};
+    const remindAfterHours = Number(routing.remind_after_hours ?? 24);
+
+    // 1) Expire pending approvals past expires_at.
+    const overdue = await query<{ id: string; resource_type: string; requester_user_id: string; order_id: string | null }>(sql`
+      SELECT id, resource_type, requester_user_id, order_id FROM approval_requests
+      WHERE workspace_id = ${ws.id}::uuid AND status = 'pending'
+        AND expires_at IS NOT NULL AND expires_at < now()
+      LIMIT 200
+    `);
+    for (const ap of overdue) {
+      await sql`UPDATE approval_requests SET status = 'expired', decision_at = now(), updated_at = now()
+                WHERE id = ${ap.id}::uuid AND workspace_id = ${ws.id}::uuid AND status = 'pending'`;
+      await audit({ workspaceId: ws.id, actorUserId: null, eventType: 'approvals.expired', targetType: 'approval_request', targetId: ap.id, payload: { resource_type: ap.resource_type }, ipAddress: null, userAgent: null });
+      try {
+        await emitNotification({
+          workspaceId: ws.id, actorUserId: null, eventType: 'approval_expired',
+          targetType: 'approval_request', targetId: ap.id,
+          linkUrl: ap.order_id ? `/order-360.html?id=${ap.order_id}` : '/approvals.html',
+          emailRecipientUserId: ap.requester_user_id,
+          metadata: { resource_label: resourceLabel(ap.resource_type) },
+        });
+      } catch { /* fail-soft */ }
+      expiredCount++;
+    }
+
+    // 2) Reminder for stale pending approvals (once, via reminded_at).
+    const stale = await query<{ id: string; resource_type: string; requester_user_id: string; approver_user_id: string | null; order_id: string | null }>(sql`
+      SELECT id, resource_type, requester_user_id, approver_user_id, order_id FROM approval_requests
+      WHERE workspace_id = ${ws.id}::uuid AND status = 'pending' AND reminded_at IS NULL
+        AND requested_at + make_interval(hours => ${remindAfterHours}::int) < now()
+      LIMIT 200
+    `);
+    for (const ap of stale) {
+      await sql`UPDATE approval_requests SET reminded_at = now(), updated_at = now()
+                WHERE id = ${ap.id}::uuid AND workspace_id = ${ws.id}::uuid`;
+      const requester = (await query<{ display_name: string | null }>(sql`SELECT display_name FROM users WHERE id = ${ap.requester_user_id}::uuid LIMIT 1`))[0];
+      try {
+        await emitNotification({
+          workspaceId: ws.id, actorUserId: null, eventType: 'approval_reminder',
+          targetType: 'approval_request', targetId: ap.id,
+          linkUrl: ap.order_id ? `/order-360.html?id=${ap.order_id}` : '/approvals.html',
+          emailRecipientUserId: ap.approver_user_id,
+          metadata: { resource_label: resourceLabel(ap.resource_type), requester_name: requester?.display_name ?? 'A team member' },
+        });
+      } catch { /* fail-soft */ }
+      reminders++;
+    }
+  }
+  return c.json({ ok: true, expired: expiredCount, reminders });
 });

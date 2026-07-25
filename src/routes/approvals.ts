@@ -11,8 +11,8 @@ import {
 import { idempotencyMiddleware } from '../lib/idempotency.js';
 import { orderBlock, reason as reasonB } from '../lib/blocked_action.js';
 import { roleSatisfies, loadWorkspaceSettings, type ApproverRole } from '../lib/approvals.js';
-import { applyExtensionEffects, applyCancellationEffects } from '../lib/order_actions.js';
-import { activateStandby, releaseStandbyHold } from '../lib/standby.js';
+import { executeApproval, rejectApproval, RESOURCE_LABEL } from '../lib/approval_executors.js';
+import { can } from '../lib/permissions.js';
 
 // ============================================================================
 // src/routes/approvals.ts (Sub-slice 2.1) — approval inbox + decisions
@@ -37,13 +37,6 @@ function clientCtx(c: Context) {
   const userAgent = c.req.header('user-agent') ?? null;
   return { ipAddress, userAgent };
 }
-
-const RESOURCE_LABEL: Record<string, string> = {
-  order_extension: 'Extension',
-  order_cancellation: 'Cancellation',
-  standby: 'Standby',
-  quote_withdrawal: 'Quote withdrawal',
-};
 
 type ApprovalRow = {
   id: string; workspace_id: string; requester_user_id: string;
@@ -158,6 +151,13 @@ approvals.post('/:id/decide', async (c) => {
       reasonB('permission', 'ROLE_INSUFFICIENT', `This approval must be decided by a ${ap.approver_role_required}`),
     ]), 403);
   }
+  // Permission floor (S1) — role routing gates WHO, the permission gates the
+  // CAPABILITY. Both must pass; the permission engine is the security floor.
+  if (!can(session, 'approvals.review')) {
+    return c.json(orderBlock('APPROVAL_BLOCKED', 'You cannot decide approvals', [
+      reasonB('permission', 'PERMISSION_DENIED', 'You lack the approvals.review permission'),
+    ]), 403);
+  }
 
   // Record the decision on the approval row.
   await sql`
@@ -167,45 +167,19 @@ approvals.post('/:id/decide', async (c) => {
     WHERE id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid
   `;
 
-  let resourceResult: unknown = null;
-  if (decision === 'approved') {
-    if (ap.resource_type === 'order_extension') {
-      resourceResult = await applyExtensionEffects({
-        workspaceId: session.workspace.id, orderId: ap.order_id!, actorUserId: session.user.id,
-        extensionId: ap.resource_id, approvedByUserId: session.user.id,
-        ctx: { ipAddress, userAgent },
-      });
-    } else if (ap.resource_type === 'order_cancellation') {
-      const settings = await loadWorkspaceSettings(session.workspace.id);
-      resourceResult = await applyCancellationEffects({
-        workspaceId: session.workspace.id, orderId: ap.order_id!, actorUserId: session.user.id,
-        cancellationId: ap.resource_id, approvedByUserId: session.user.id, settings,
-        ctx: { ipAddress, userAgent },
-      });
-    } else if (ap.resource_type === 'standby') {
-      // Sub-slice 2.2 — approving a standby activates the hold.
-      await activateStandby({ workspaceId: session.workspace.id, standbyId: ap.resource_id, actorUserId: session.user.id });
-      resourceResult = { activated: true };
-    } else if (ap.resource_type === 'quote_withdrawal') {
-      // Approving a post-acceptance withdrawal withdraws the accepted quote.
-      await sql`UPDATE quote_versions SET status = 'withdrawn', withdrawn_at = now(), withdrawn_by_user_id = ${session.user.id}::uuid,
-                  withdrawn_reason = ${reason_notes ?? null}::text, tracking_link_url = NULL, updated_at = now()
-                WHERE id = ${ap.resource_id}::uuid AND workspace_id = ${session.workspace.id}::uuid`;
-      resourceResult = { withdrawn: true };
-    }
-  } else {
-    // Rejected → mark the resource rejected so it's not left dangling.
-    if (ap.resource_type === 'order_extension') {
-      await sql`UPDATE order_extensions SET status = 'rejected', status_reason = ${reason_notes ?? null}::text, updated_at = now()
-                WHERE id = ${ap.resource_id}::uuid AND workspace_id = ${session.workspace.id}::uuid`;
-    } else if (ap.resource_type === 'order_cancellation') {
-      await sql`UPDATE order_cancellations SET status = 'rejected', status_reason = ${reason_notes ?? null}::text, updated_at = now()
-                WHERE id = ${ap.resource_id}::uuid AND workspace_id = ${session.workspace.id}::uuid`;
-    } else if (ap.resource_type === 'standby') {
-      // Rejecting a standby releases its hold.
-      await releaseStandbyHold({ workspaceId: session.workspace.id, standbyId: ap.resource_id, actorUserId: session.user.id, newStatus: 'rejected', orderStatus: 'cancelled', outcomeReason: 'approval_rejected' });
-    }
-  }
+  // Canonical execution — the resource_type → executor registry replaces the old
+  // inline switch. Uniform across every type; a missing executor throws (fail-fast)
+  // rather than silently doing nothing (the asset_bulk_retire bug this closes).
+  const settings = await loadWorkspaceSettings(session.workspace.id);
+  const executorCtx = {
+    workspaceId: session.workspace.id, approvalRequestId: id, resourceType: ap.resource_type,
+    resourceId: ap.resource_id, requestSnapshot: (ap.request_snapshot ?? {}) as Record<string, unknown>,
+    orderId: ap.order_id, actorUserId: session.user.id, requesterUserId: ap.requester_user_id,
+    settings, reasonNotes: reason_notes ?? null, ctx: { ipAddress, userAgent },
+  };
+  const resourceResult = decision === 'approved'
+    ? await executeApproval(executorCtx)
+    : await rejectApproval(executorCtx);
 
   await audit({
     workspaceId: session.workspace.id, actorUserId: session.user.id,

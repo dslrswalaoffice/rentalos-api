@@ -12,6 +12,8 @@
 // ============================================================================
 
 import { sql, query } from '../db.js';
+import { emitNotification } from './notify.js';
+import { resourceLabel } from './approval_executors.js';
 
 export type ApproverRole = 'manager' | 'owner';
 
@@ -180,7 +182,32 @@ export async function createApprovalRequest(args: {
     )
     RETURNING id, approver_user_id, expires_at
   `);
-  return rows[0]!;
+  const created = rows[0]!;
+
+  // Approval-requested notification (S1) — in-product to the members + email to
+  // the routed approver (or role-fanned when role-gated). Fail-soft + policy-flag
+  // gated: a notification failure NEVER blocks approval creation.
+  if (settings.approval_routing?.approval_requested_notification_enabled !== false) {
+    try {
+      const requester = (await query<{ display_name: string | null }>(sql`
+        SELECT display_name FROM users WHERE id = ${args.requesterUserId}::uuid LIMIT 1
+      `))[0];
+      await emitNotification({
+        workspaceId: args.workspaceId, actorUserId: args.requesterUserId,
+        eventType: 'approval_requested', targetType: 'approval_request', targetId: created.id,
+        linkUrl: '/approvals.html',
+        emailRecipientUserId: created.approver_user_id, // null → role-fanned email
+        metadata: {
+          resource_label: resourceLabel(args.resourceType),
+          requester_name: requester?.display_name ?? 'A team member',
+          approver_role: args.requiredRole,
+          reason_notes: args.reasonNotes ?? '',
+          order_suffix: args.orderId ? '' : '',
+        },
+      });
+    } catch { /* fail-soft — the approval already exists */ }
+  }
+  return created;
 }
 
 /** Can this session role decide an approval routed to requiredRole? Owner always;
