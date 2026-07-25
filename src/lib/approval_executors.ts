@@ -20,6 +20,9 @@ import { sql, query } from '../db.js';
 import { audit } from './audit.js';
 import { applyExtensionEffects, applyCancellationEffects } from './order_actions.js';
 import { activateStandby, releaseStandbyHold } from './standby.js';
+// Imported from damage_lifecycle (NOT damage.ts) to avoid an import cycle — the
+// route, not the damage lib, creates the approval request (see src/routes/damage.ts).
+import { applyDamageFinancialSideEffects } from './damage_lifecycle.js';
 
 // Human labels — the single source, imported by the route + createApprovalRequest.
 export const RESOURCE_LABEL: Record<string, string> = {
@@ -28,6 +31,7 @@ export const RESOURCE_LABEL: Record<string, string> = {
   standby: 'Standby',
   quote_withdrawal: 'Quote withdrawal',
   asset_bulk_retire: 'Bulk asset retire',
+  damage_financial_resolution: 'Damage resolution',
 };
 export function resourceLabel(resourceType: string): string {
   return RESOURCE_LABEL[resourceType] ?? resourceType;
@@ -143,6 +147,50 @@ const APPROVAL_EXECUTORS: Record<string, Executor> = {
       return { success: true, detail: `retired ${retired.length}, skipped ${skipped}`, side_effects: [`retired_${retired.length}_assets`] };
     },
     reject: async () => ({ success: true, side_effects: [] }), // rejecting leaves every asset untouched
+  },
+  damage_financial_resolution: {
+    // Approving fires the SAME Slice-11 side-effects the direct (below-threshold)
+    // path fires — deposit forfeit payment, additional-only damage invoice line,
+    // asset dispositions — then settles the incident. This closes the no-op where
+    // an approval-required resolution used to settle WITHOUT executing anything.
+    // applyDamageFinancialSideEffects is idempotent (forfeit-once via
+    // deposit_forfeit_payment_id), so a double-approve can't double-charge.
+    execute: async (ctx) => {
+      const s = ctx.requestSnapshot || {};
+      const autoForfeit = ctx.settings?.damage_policy?.auto_execute_deposit_forfeit !== false;
+      let effects: any = null;
+      try {
+        effects = await applyDamageFinancialSideEffects({
+          workspaceId: ctx.workspaceId, orderId: ctx.orderId!, damageIncidentId: ctx.resourceId,
+          incidentNumber: String(s.incident_number ?? ''), actorUserId: ctx.actorUserId,
+          customerLiability: String(s.customer_liability ?? 'no'),
+          finalCostPaise: s.final_cost_paise == null ? null : Number(s.final_cost_paise),
+          depositAction: String(s.deposit_action ?? 'none'),
+          depositForfeitAmountPaise: s.deposit_forfeit_amount_paise == null ? null : Number(s.deposit_forfeit_amount_paise),
+          autoExecuteForfeit: autoForfeit, ip: ctx.ctx.ipAddress, userAgent: ctx.ctx.userAgent,
+        });
+      } catch (e) { console.error('[approval_executors] damage side-effects failed', e); }
+      await sql`UPDATE damage_incidents SET status = 'financial_settled', requires_approval = false,
+                  approved_by = ${ctx.actorUserId}::uuid, approved_at = now(), updated_at = now()
+                WHERE id = ${ctx.resourceId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid`;
+      await sql`INSERT INTO damage_incident_events (workspace_id, damage_incident_id, event_type, actor_type, actor_id, actor_name, title)
+                VALUES (${ctx.workspaceId}::uuid, ${ctx.resourceId}::uuid, 'financial_resolution_approved', 'user', ${ctx.actorUserId}::uuid,
+                        COALESCE((SELECT display_name FROM users WHERE id = ${ctx.actorUserId}::uuid), 'Approver'), 'Resolution approved')`.catch(() => {});
+      const se: string[] = [];
+      if (effects?.deposit_forfeit_payment_id) se.push('deposit_forfeit');
+      if (effects?.damage_line_paise) se.push(`damage_line_${effects.damage_line_paise}`);
+      if (Array.isArray(effects?.asset_effects) && effects.asset_effects.length) se.push(`asset_dispositions_${effects.asset_effects.length}`);
+      return { success: true, side_effects: se.length ? se : ['settled'] };
+    },
+    reject: async (ctx) => {
+      // Revert to investigating; NO money/inventory side-effects (approver said no).
+      await sql`UPDATE damage_incidents SET status = 'investigating', requires_approval = false, updated_at = now()
+                WHERE id = ${ctx.resourceId}::uuid AND workspace_id = ${ctx.workspaceId}::uuid`;
+      await sql`INSERT INTO damage_incident_events (workspace_id, damage_incident_id, event_type, actor_type, actor_id, actor_name, title, body)
+                VALUES (${ctx.workspaceId}::uuid, ${ctx.resourceId}::uuid, 'financial_resolution_rejected', 'user', ${ctx.actorUserId}::uuid,
+                        COALESCE((SELECT display_name FROM users WHERE id = ${ctx.actorUserId}::uuid), 'Approver'), 'Resolution rejected', ${ctx.reasonNotes ?? null}::text)`.catch(() => {});
+      return { success: true, side_effects: ['reverted_to_investigating'] };
+    },
   },
 };
 
