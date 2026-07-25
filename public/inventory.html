@@ -3227,7 +3227,7 @@
         const r = await api.post('/api/inventory/assets/bulk-retire', { asset_ids: ids, reason });
         avrModal.classList.remove('open');
         toast(r.requires_approval
-          ? `Approval requested for ${unitWord(r.count)} (₹${Math.round(r.total_value_paise / 100).toLocaleString('en-IN')}). An owner must approve before they retire.`
+          ? `Approval requested for ${unitWord(r.count)} (₹${Math.round(r.total_value_paise / 100).toLocaleString('en-IN')}). An owner must approve it in Approvals before they retire.`
           : `Retired ${unitWord(r.retired)}.`);
         loadAssets();
       } catch (e) { err.textContent = 'Retire failed: ' + ((e.body && e.body.error) || e.message); err.style.display = ''; }

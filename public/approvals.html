@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202058">
+  <title>Approvals · RentalOS</title>
+  <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f46e5'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
+  <!--
+    Approval Engine Unification S1 · canonical Approvals inbox. Wired to the
+    existing GET /api/approvals + POST /api/approvals/:id/decide engine. Mirrors
+    the kyc_review_queue.html pattern (warm palette, canonical shell). Surfaces
+    EVERY resource_type the executor registry handles (extensions, cancellations,
+    standby, quote withdrawal, bulk asset retire) — the last had no UI before.
+  -->
+  <style>
+    :root{
+      --ink:#202058; --head:#26235a; --muted:#8a8780; --muted2:#9ca3af; --muted3:#6b7280;
+      --indigo:#4f46e5; --indigo-hover:#3f37c9; --indigo-soft:rgba(79,70,229,.1);
+      --green:#059669; --blue:#2563eb; --amber:#d97706; --red:#dc2626;
+      --page:#f4f2ee; --card:#ffffff; --rail:#faf9f7; --line:#ece9e3; --field:#faf9f7;
+      --disp:system-ui,sans-serif; --body:system-ui,sans-serif; --mono:ui-monospace,'JetBrains Mono',monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--page);font-family:var(--body);color:var(--head);-webkit-font-smoothing:antialiased}
+    a{color:var(--indigo);text-decoration:none} a:hover{color:var(--indigo-hover)}
+    .shell{width:100%;max-width:1440px;margin:0 auto;display:flex;background:var(--card);min-height:100vh;position:relative}
+    main{flex:1;min-width:0;display:flex;flex-direction:column}
+    .subnav{height:34px;flex:none;border-bottom:1px solid #f0ede8;display:flex;align-items:center;padding:0 24px;font:600 10px var(--mono);letter-spacing:.08em;color:var(--muted2);text-transform:uppercase}
+    .content{flex:1;padding:24px 32px 48px}
+    .strip{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px}
+    h1{font:700 22px var(--disp);margin:0;color:var(--ink)}
+    .subline{margin:5px 0 0;font-size:13px;color:var(--muted)}
+    .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    .chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;color:var(--muted3);font:500 12px var(--body);cursor:pointer;background:transparent;border:none}
+    .chip .n{font:600 11px var(--mono)}
+    .chip.active{background:var(--indigo-soft);color:var(--indigo);font-weight:600}
+    .filters{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+    .filters select,.filters input{height:34px;border:1px solid var(--line);border-radius:8px;background:var(--field);padding:0 10px;font-size:13px;color:var(--head)}
+    .filters input{min-width:240px}
+    table{width:100%;border-collapse:collapse}
+    thead th{text-align:left;font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted2);padding:8px 10px;border-bottom:1px solid var(--line)}
+    tbody td{padding:11px 10px;border-bottom:1px solid #f4f1ec;font-size:13px;vertical-align:middle}
+    tbody tr:hover{background:#faf9f7}
+    .avatar-sm{width:28px;height:28px;border-radius:50%;background:#eef0f4;color:var(--ink);font:600 10px var(--disp);display:flex;align-items:center;justify-content:center;flex:none}
+    .who{display:flex;align-items:center;gap:9px}
+    .badge{display:inline-flex;padding:2px 8px;border-radius:6px;background:#eef0f4;color:var(--head);font:600 11px var(--mono)}
+    .rolepill{display:inline-flex;padding:2px 8px;border-radius:6px;font:600 10px var(--mono);text-transform:uppercase;letter-spacing:.03em}
+    .rolepill.owner{background:rgba(79,70,229,.1);color:var(--indigo)} .rolepill.manager{background:rgba(37,99,235,.1);color:var(--blue)}
+    .mono{font-family:var(--mono)}
+    .act{display:inline-flex;gap:6px;justify-content:flex-end}
+    .btn{padding:5px 11px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent}
+    .btn-v{background:var(--green);color:#fff;border:none} .btn-r{background:#fff;color:var(--red);border:1px solid var(--red)}
+    .btn-view{background:#fff;color:var(--indigo);border:1px solid var(--line)}
+    .empty{padding:40px;text-align:center;color:var(--muted);font-size:14px}
+    .rejbox{margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+    .rejbox textarea{width:100%;padding:7px;border:1px solid var(--line);border-radius:7px;font-size:12px;margin-bottom:7px}
+    .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:9px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50}
+    .toast.show{opacity:1} .toast.err{background:var(--red)}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- Rail + top-bar injected by /_lib/shell.js -->
+    <main>
+      <div class="subnav">System &nbsp;&rsaquo;&nbsp; Approvals</div>
+      <div class="content">
+        <div class="strip">
+          <div>
+            <h1>Approvals</h1>
+            <p class="subline" id="subline">Loading…</p>
+          </div>
+        </div>
+
+        <div class="chips" id="chips"></div>
+
+        <div class="filters">
+          <select id="f-type">
+            <option value="">All types</option>
+            <option value="order_extension">Order Extension</option>
+            <option value="order_cancellation">Order Cancellation</option>
+            <option value="standby">Standby</option>
+            <option value="quote_withdrawal">Quote Withdrawal</option>
+            <option value="asset_bulk_retire">Asset Bulk Retire</option>
+          </select>
+          <input id="f-q" type="search" placeholder="Search requester…" autocomplete="off">
+        </div>
+
+        <table>
+          <thead><tr>
+            <th>Requester</th><th>Type</th><th>Resource</th><th>Requested</th><th>Expires</th><th>Role</th><th style="text-align:right">Actions</th>
+          </tr></thead>
+          <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import { api, ensureAuth } from '/_lib/api.js';
+    import { renderShell } from '/_lib/shell.js?v=6';
+    renderShell('approvals', { breadcrumb: 'System &rsaquo; Approvals' });
+
+    const RES_LABEL = { order_extension:'Order Extension', order_cancellation:'Order Cancellation', standby:'Standby', quote_withdrawal:'Quote Withdrawal', asset_bulk_retire:'Asset Bulk Retire' };
+    const esc=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    const initials=(n)=>{const p=String(n||'').trim().split(/\s+/).filter(Boolean);return ((p[0]?.[0]||'?')+(p[1]?.[0]||'')).toUpperCase();};
+    const fmtRel=(iso)=>{if(!iso)return '';const d=new Date(iso);const days=Math.floor((Date.now()-d.getTime())/86400000);return days<=0?'today':days===1?'1d ago':days+'d ago';};
+    function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(err?' err':'');setTimeout(()=>t.className='toast',2800);}
+    function expiresCell(iso){
+      if(!iso) return '<span style="color:var(--muted2)">—</span>';
+      const ms=new Date(iso).getTime()-Date.now();
+      if(ms<=0) return '<span style="color:var(--red);font-weight:600">overdue</span>';
+      const h=Math.floor(ms/3600000);
+      const label = h<24 ? h+'h' : Math.floor(h/24)+'d';
+      return `<span class="mono" style="color:${h<24?'var(--red)':'var(--muted3)'};${h<24?'font-weight:600':''}">${label}</span>`;
+    }
+    function resourcePreview(a){
+      if(a.order_number!=null) return '<a href="/order-360.html?id='+esc(a.order_id)+'" class="mono">#'+esc(String(a.order_number))+'</a>';
+      const s=a.request_snapshot||{};
+      if(a.resource_type==='asset_bulk_retire'){ const n=s.count ?? (Array.isArray(s.asset_ids)?s.asset_ids.length:0); return '<span class="mono">'+esc(String(n))+' unit'+(n===1?'':'s')+'</span>'; }
+      return '<span style="color:var(--muted2)">—</span>';
+    }
+    function viewLink(a){
+      if(a.order_id) return '/order-360.html?id='+esc(a.order_id);
+      if(a.resource_type==='asset_bulk_retire') return '/inventory.html';
+      return '';
+    }
+
+    const state={ status:'pending', type:'', q:'', rows:[] };
+
+    function renderChips(total){
+      const chips=[['pending','Pending'],['expired','Expired'],['rejected','Rejected'],['approved','Approved']];
+      document.getElementById('chips').innerHTML=chips.map(([k,l])=>
+        `<button class="chip ${state.status===k?'active':''}" data-status="${k}">${l}${state.status===k?` <span class="n">(${total})</span>`:''}</button>`).join('');
+    }
+
+    function visibleRows(){
+      return state.rows.filter(a=>
+        (!state.type || a.resource_type===state.type) &&
+        (!state.q || String(a.requester_name||'').toLowerCase().includes(state.q.toLowerCase())));
+    }
+
+    async function load(){
+      let data;
+      try{ data=await api.get('/api/approvals?status='+encodeURIComponent(state.status)); }
+      catch(err){
+        document.getElementById('rows').innerHTML=`<tr><td colspan="7" class="empty">${err.status===403?'You do not have permission to review approvals.':'Could not load approvals.'}</td></tr>`;
+        document.getElementById('subline').textContent='';
+        return;
+      }
+      state.rows=data.approvals||[];
+      renderChips(state.rows.length);
+      const n=visibleRows().length;
+      document.getElementById('subline').textContent=`${n} ${state.status} approval${n===1?'':'s'}`;
+      renderRows();
+    }
+
+    function renderRows(){
+      const rows=visibleRows();
+      if(!rows.length){ document.getElementById('rows').innerHTML=`<tr><td colspan="7" class="empty">Nothing ${esc(state.status)}. ✅</td></tr>`; return; }
+      document.getElementById('rows').innerHTML=rows.map(a=>{
+        const canDecide = state.status==='pending';
+        const vl=viewLink(a);
+        const actions = canDecide
+          ? `<button class="btn btn-v" data-act="approve" data-id="${esc(a.id)}">Approve</button>`
+            + `<button class="btn btn-r" data-act="reject-open" data-id="${esc(a.id)}">Reject</button>`
+            + (vl?`<a class="btn btn-view" href="${vl}">View →</a>`:'')
+          : (vl?`<a class="btn btn-view" href="${vl}">View →</a>`:'<span style="color:var(--muted2)">—</span>');
+        const reasons = [a.request_reason_notes, a.request_reason_tag].filter(Boolean).join(' · ');
+        return `<tr>
+          <td><div class="who"><span class="avatar-sm">${esc(initials(a.requester_name))}</span><span>${esc(a.requester_name||'—')}</span></div></td>
+          <td><span class="badge">${esc(RES_LABEL[a.resource_type]||a.resource_type)}</span></td>
+          <td>${resourcePreview(a)}${reasons?`<div style="font-size:11px;color:var(--muted3);margin-top:2px">${esc(reasons)}</div>`:''}</td>
+          <td class="mono" style="color:var(--muted3)">${esc(fmtRel(a.requested_at))}</td>
+          <td>${expiresCell(a.expires_at)}</td>
+          <td><span class="rolepill ${esc(a.approver_role_required)}">${esc(a.approver_role_required)}</span></td>
+          <td style="text-align:right"><div class="act">${actions}</div>
+            <div class="rejbox" id="rej-${esc(a.id)}" style="display:none;text-align:left">
+              <textarea class="rej-notes" placeholder="Reason for rejection (optional)"></textarea>
+              <button class="btn btn-r" data-act="reject-confirm" data-id="${esc(a.id)}">Confirm rejection</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    function decideError(err){
+      const b=err.body||{};
+      // The engine returns Item-12 blocked-action shapes on 403/409.
+      if(Array.isArray(b.reasons)&&b.reasons[0]) return b.reasons[0].detail||b.reasons[0].code||'blocked';
+      return b.message||b.error||err.message||'failed';
+    }
+
+    document.addEventListener('click', async (e)=>{
+      const chip=e.target.closest('[data-status]');
+      if(chip){ state.status=chip.getAttribute('data-status'); load(); return; }
+      const btn=e.target.closest('[data-act]'); if(!btn) return;
+      const act=btn.getAttribute('data-act'); const id=btn.getAttribute('data-id');
+      if(act==='approve'){
+        try{ await api.post('/api/approvals/'+id+'/decide',{decision:'approved'}); toast('Approved — changes applied'); load(); }
+        catch(err){ toast('Approve failed: '+decideError(err),true); }
+      } else if(act==='reject-open'){
+        const box=document.getElementById('rej-'+id); if(box) box.style.display=box.style.display==='none'?'block':'none';
+      } else if(act==='reject-confirm'){
+        const box=document.getElementById('rej-'+id);
+        const notes=box.querySelector('.rej-notes').value.trim();
+        try{ await api.post('/api/approvals/'+id+'/decide',{decision:'rejected',reason_notes:notes||undefined}); toast('Rejected'); load(); }
+        catch(err){ toast('Reject failed: '+decideError(err),true); }
+      }
+    });
+
+    let qTimer;
+    document.getElementById('f-type').addEventListener('change',(e)=>{ state.type=e.target.value; renderRows(); document.getElementById('subline').textContent=`${visibleRows().length} ${state.status} approval${visibleRows().length===1?'':'s'}`; });
+    document.getElementById('f-q').addEventListener('input',(e)=>{ clearTimeout(qTimer); state.q=e.target.value.trim(); qTimer=setTimeout(()=>{ renderRows(); },250); });
+
+    (async ()=>{ try{ await ensureAuth(); }catch{ return; } load(); })();
+  </script>
+</body>
+</html>
