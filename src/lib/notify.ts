@@ -397,6 +397,20 @@ const TEMPLATES: Record<string, { title: string; body?: string }> = {
     title: 'Rejected: {resource_label} · Order #{order_number}',
     body: 'Rejected by {actor_name}.{reason_suffix}',
   },
+  // Approval Engine Unification S1 — request / expiry / reminder (resource may be
+  // non-order-scoped, e.g. bulk asset retire, so no order number is assumed).
+  'approval_requested': {
+    title: 'Approval needed: {resource_label}',
+    body: 'Requested by {requester_name}. Open Approvals to approve or reject.',
+  },
+  'approval_expired': {
+    title: 'Approval expired: {resource_label}',
+    body: 'Your request expired without a decision. You can re-submit it.',
+  },
+  'approval_reminder': {
+    title: 'Reminder: {resource_label} awaiting approval',
+    body: 'Requested by {requester_name} — still pending. Please review.',
+  },
   // Sub-slice 2.2 — internal staff feed.
   'standby_staff_reminder': {
     title: 'Standby {standby_number} expiring soon',

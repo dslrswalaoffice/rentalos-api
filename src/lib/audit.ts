@@ -81,6 +81,7 @@ export type AuditEventType =
   | 'approvals.approved'
   | 'approvals.rejected'
   | 'approvals.withdrawn'
+  | 'approvals.expired'
   | 'standbys.created'
   | 'standbys.released'
   | 'standbys.activated'
