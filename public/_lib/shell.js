@@ -178,11 +178,15 @@ function wireApprovals() {
   btn.addEventListener('click', () => { window.location.href = '/approvals.html'; });
   const badge = document.getElementById('tb-approvals-badge');
   if (!badge) return;
-  fetch('/api/approvals?status=pending', { credentials: 'include' })
+  // Unified "attention" count (S2): approvals + KYC + notification review, each
+  // permission-gated server-side. Tooltip shows the breakdown. Fail-soft.
+  fetch('/api/reviews/summary', { credentials: 'include' })
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
-      const n = d && Array.isArray(d.approvals) ? d.approvals.length : 0;
+      if (!d) return;
+      const n = Number(d.total_pending) || 0;
       if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); badge.hidden = false; }
+      btn.title = `Reviews — ${d.approvals_pending || 0} approvals · ${d.kyc_pending || 0} KYC · ${d.notifications_pending || 0} notifications`;
     })
     .catch(() => { /* fail-soft — no badge */ });
 }

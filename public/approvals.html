@@ -71,6 +71,7 @@
             <h1>Approvals</h1>
             <p class="subline" id="subline">Loading…</p>
           </div>
+          <div class="subline" id="cross-nav" style="text-align:right"></div>
         </div>
 
         <div class="chips" id="chips"></div>
@@ -103,7 +104,8 @@
     import { renderShell } from '/_lib/shell.js?v=6';
     renderShell('approvals', { breadcrumb: 'System &rsaquo; Approvals' });
 
-    const RES_LABEL = { order_extension:'Order Extension', order_cancellation:'Order Cancellation', standby:'Standby', quote_withdrawal:'Quote Withdrawal', asset_bulk_retire:'Asset Bulk Retire' };
+    const RES_LABEL = { order_extension:'Order Extension', order_cancellation:'Order Cancellation', standby:'Standby', quote_withdrawal:'Quote Withdrawal', asset_bulk_retire:'Asset Bulk Retire', damage_financial_resolution:'Damage Resolution' };
+    const rupees=(paise)=>'₹'+Math.round(Number(paise)/100).toLocaleString('en-IN');
     const esc=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     const initials=(n)=>{const p=String(n||'').trim().split(/\s+/).filter(Boolean);return ((p[0]?.[0]||'?')+(p[1]?.[0]||'')).toUpperCase();};
     const fmtRel=(iso)=>{if(!iso)return '';const d=new Date(iso);const days=Math.floor((Date.now()-d.getTime())/86400000);return days<=0?'today':days===1?'1d ago':days+'d ago';};
@@ -117,8 +119,18 @@
       return `<span class="mono" style="color:${h<24?'var(--red)':'var(--muted3)'};${h<24?'font-weight:600':''}">${label}</span>`;
     }
     function resourcePreview(a){
-      if(a.order_number!=null) return '<a href="/order-360.html?id='+esc(a.order_id)+'" class="mono">#'+esc(String(a.order_number))+'</a>';
       const s=a.request_snapshot||{};
+      // Damage: order link + a financial breakdown (from the frozen snapshot).
+      if(a.resource_type==='damage_financial_resolution'){
+        const order = a.order_number!=null ? '<a href="/order-360.html?id='+esc(a.order_id)+'" class="mono">#'+esc(String(a.order_number))+'</a>' : '';
+        const bits=[];
+        if(s.incident_number) bits.push(esc(String(s.incident_number)));
+        if(s.customer_liability) bits.push('liability '+esc(String(s.customer_liability)));
+        if(s.final_cost_paise!=null) bits.push(rupees(s.final_cost_paise));
+        if(s.deposit_forfeit_amount_paise) bits.push('forfeit '+rupees(s.deposit_forfeit_amount_paise));
+        return order + (bits.length?'<div style="font-size:11px;color:var(--muted3);margin-top:2px">'+bits.join(' · ')+'</div>':'');
+      }
+      if(a.order_number!=null) return '<a href="/order-360.html?id='+esc(a.order_id)+'" class="mono">#'+esc(String(a.order_number))+'</a>';
       if(a.resource_type==='asset_bulk_retire'){ const n=s.count ?? (Array.isArray(s.asset_ids)?s.asset_ids.length:0); return '<span class="mono">'+esc(String(n))+' unit'+(n===1?'':'s')+'</span>'; }
       return '<span style="color:var(--muted2)">—</span>';
     }
@@ -215,7 +227,20 @@
     document.getElementById('f-type').addEventListener('change',(e)=>{ state.type=e.target.value; renderRows(); document.getElementById('subline').textContent=`${visibleRows().length} ${state.status} approval${visibleRows().length===1?'':'s'}`; });
     document.getElementById('f-q').addEventListener('input',(e)=>{ clearTimeout(qTimer); state.q=e.target.value.trim(); qTimer=setTimeout(()=>{ renderRows(); },250); });
 
-    (async ()=>{ try{ await ensureAuth(); }catch{ return; } load(); })();
+    // Cross-navigation to the sibling review desks, with live counts (only the
+    // queues this user can action show a link). Fail-soft.
+    async function loadCrossNav(){
+      try{
+        const s=await api.get('/api/reviews/summary');
+        const links=[];
+        if(s.kyc_pending!=null && (s.kyc_pending>0 || s.approvals_pending!=null)) links.push('<a href="/kyc_review_queue.html">KYC review'+(s.kyc_pending?' ('+s.kyc_pending+')':'')+'</a>');
+        if(s.notifications_pending!=null) links.push('<a href="/notification_review_queue.html">Notification review'+(s.notifications_pending?' ('+s.notifications_pending+')':'')+'</a>');
+        const el=document.getElementById('cross-nav');
+        if(el && links.length) el.innerHTML='Also review: '+links.join(' · ');
+      }catch{}
+    }
+
+    (async ()=>{ try{ await ensureAuth(); }catch{ return; } load(); loadCrossNav(); })();
   </script>
 </body>
 </html>
