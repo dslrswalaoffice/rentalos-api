@@ -2051,14 +2051,21 @@ async function damageViewAction(kind){
       const s=damageSideEffects(d);
       const resp=await api.post('/api/damage-incidents/'+id+'/financial-resolution',{customer_liability:d.liability||'pending_investigation',financial_resolution:d.resolution,deposit_action:d.deposit,final_cost_paise:d.finalCost?Math.round(Number(d.finalCost)*100):undefined,deposit_forfeit_amount_paise:s.forfeitPaise||undefined});
       const se=resp&&resp.side_effects;
-      let msg='Resolution recorded';
+      // S2: an above-threshold resolution now routes to the Approvals inbox (which
+      // fires the side-effects on approve); below-threshold fires them immediately.
+      let msg = resp&&resp.requires_approval ? 'Resolution recorded — needs owner approval. Track it in Approvals.' : 'Resolution recorded';
       if(se){const bits=[];if(se.deposit_forfeit_payment_id)bits.push('deposit forfeit executed');if(se.damage_line_paise>0)bits.push('damage added to invoice');if(se.asset_effects&&se.asset_effects.length)bits.push(se.asset_effects.length+' asset action(s)');if(bits.length)msg+=' · '+bits.join(' · ');}
       toast(msg,'ok');
     }
     else if(kind==='approve'){await api.post('/api/damage-incidents/'+id+'/approve',{});toast('Approved','ok');}
     else if(kind==='close'){await api.post('/api/damage-incidents/'+id+'/close',{});toast('Incident closed','ok');}
     mclose();await load();
-  }catch(err){toast('Action failed: '+((err.body&&err.body.error)||err.message),'err');}
+  }catch(err){
+    // Honor Item-12 fix_links — e.g. a damage resolution now decided in Approvals.
+    const fix = err.body && Array.isArray(err.body.reasons) ? err.body.reasons.find(r=>r.fix_link_target) : null;
+    if(fix){ toast(err.body.message||'Decide this in Approvals','err'); setTimeout(()=>{ window.location.href=fix.fix_link_target; }, 1000); return; }
+    toast('Action failed: '+((err.body&&err.body.error)||err.message),'err');
+  }
 }
 
 // ------------------------------------------------------------------ boot
