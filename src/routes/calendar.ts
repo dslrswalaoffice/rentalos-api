@@ -48,6 +48,12 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const rangeSchema = z.object({
   from: z.string().datetime(),
   to: z.string().datetime(),
+  // Phase 1 S2 enhancements — all optional, backward compatible (omitted => the
+  // pre-S2 unfiltered response). view_status is applied CLIENT-side (warnings
+  // depend on the full booking set), so it is not accepted here.
+  category: z.string().trim().min(1).max(120).optional(),
+  location_id: z.string().uuid().optional(),
+  search: z.string().trim().min(1).max(120).optional(),
 });
 
 type ProductRow = {
@@ -61,6 +67,7 @@ type BookingRow = {
   product_id: string;
   order_id: string;
   order_number: number;
+  customer_person_id: string;
   customer_name: string;
   start: string;
   end: string;
@@ -71,11 +78,17 @@ type BookingRow = {
 type Booking = {
   order_id: string;
   order_number: number;
+  customer_person_id: string;
   customer_name: string;
   start: string;
   end: string;
   quantity: number;
   status: string;
+  // Standby soft-reservation metadata (Slice 4). Null / false for non-standby bars.
+  is_standby: boolean;
+  expires_at: string | null;
+  is_grace_period: boolean;
+  is_expiring_soon: boolean;
 };
 
 type Warning = {
@@ -94,7 +107,11 @@ type Warning = {
 // before starts at the same instant so a hand-back-then-re-rent at the same
 // timestamp is NOT flagged as a conflict.
 // ----------------------------------------------------------------------------
-function computeWarnings(product: ProductRow, bookings: Booking[]): Warning[] {
+// computeWarnings only reads start/end/quantity, so it accepts a minimal
+// interval — decoupled from the (richer) Booking shape the API returns.
+type BookingInterval = { start: string; end: string; quantity: number };
+
+function computeWarnings(product: ProductRow, bookings: BookingInterval[]): Warning[] {
   const events: { t: number; delta: number }[] = [];
   for (const b of bookings) {
     events.push({ t: new Date(b.start).getTime(), delta: b.quantity });
@@ -136,6 +153,9 @@ calendar.get('/', async (c) => {
   const parsed = rangeSchema.safeParse({
     from: c.req.query('from'),
     to: c.req.query('to'),
+    category: c.req.query('category') || undefined,
+    location_id: c.req.query('location_id') || undefined,
+    search: c.req.query('search') || undefined,
   });
   if (!parsed.success) {
     return c.json({
@@ -144,7 +164,7 @@ calendar.get('/', async (c) => {
       issues: parsed.error.issues,
     }, 400);
   }
-  const { from, to } = parsed.data;
+  const { from, to, category, location_id, search } = parsed.data;
 
   const fromMs = new Date(from).getTime();
   const toMs = new Date(to).getTime();
@@ -171,6 +191,7 @@ calendar.get('/', async (c) => {
     WHERE p.workspace_id = ${session.workspace.id}
       AND p.is_active = true
       AND p.deleted_at IS NULL
+      AND (${category ?? null}::text IS NULL OR p.category = ${category ?? null}::text)
     ORDER BY p.name ASC
   `);
 
@@ -181,6 +202,7 @@ calendar.get('/', async (c) => {
       oi.product_id,
       o.id            AS order_id,
       o.order_number,
+      pe.id           AS customer_person_id,
       pe.display_name AS customer_name,
       o.rental_start  AS start,
       o.rental_end    AS end,
@@ -195,25 +217,55 @@ calendar.get('/', async (c) => {
       AND oi.product_id IS NOT NULL
       AND o.deleted_at IS NULL
       AND o.status::text NOT IN ('draft', 'cancelled')
+      -- Location filter (Phase 1 S2): v1 forces pickup = return, so pickup is the
+      -- order's location. Omitted => all locations (single-location workspaces).
+      AND (${location_id ?? null}::uuid IS NULL OR o.pickup_location_id = ${location_id ?? null}::uuid)
       AND o.rental_start <= ${to}::timestamptz
       AND o.rental_end   >= ${from}::timestamptz
-    GROUP BY oi.product_id, o.id, o.order_number, pe.display_name,
+    GROUP BY oi.product_id, o.id, o.order_number, pe.id, pe.display_name,
              o.rental_start, o.rental_end, o.status
     ORDER BY o.rental_start ASC
   `);
+
+  // Standby soft-reservation metadata (Slice 4). Order-backed standby bars pull
+  // their expiry + grace window so the calendar can flag holds that are in the
+  // grace period or about to expire. One keyed query, only when standby bars exist.
+  const standbyOrderIds = [...new Set(bookingRows.filter((r) => r.status === 'standby').map((r) => r.order_id))];
+  const standbyMeta = new Map<string, { expires_at: string; grace_period_ends_at: string | null }>();
+  if (standbyOrderIds.length) {
+    const sbRows = await query<{ order_id: string; expires_at: string; grace_period_ends_at: string | null }>(sql`
+      SELECT DISTINCT ON (order_id) order_id, expires_at, grace_period_ends_at
+      FROM standbys
+      WHERE workspace_id = ${session.workspace.id}::uuid
+        AND status = 'active'
+        AND order_id::text = ANY(string_to_array(${standbyOrderIds.join(',')}::text, ','))
+      ORDER BY order_id, hold_started_at DESC
+    `);
+    for (const r of sbRows) standbyMeta.set(r.order_id, { expires_at: r.expires_at, grace_period_ends_at: r.grace_period_ends_at });
+  }
+  const nowMs = Date.now();
+  const ONE_HOUR_MS = 3600 * 1000;
 
   // Group bookings by product, normalising timestamps to ISO.
   const byProduct = new Map<string, Booking[]>();
   for (const r of bookingRows) {
     const list = byProduct.get(r.product_id) ?? [];
+    const isStandby = r.status === 'standby';
+    const sb = isStandby ? standbyMeta.get(r.order_id) : undefined;
+    const expiresMs = sb?.expires_at ? new Date(sb.expires_at).getTime() : null;
     list.push({
       order_id: r.order_id,
       order_number: r.order_number,
+      customer_person_id: r.customer_person_id,
       customer_name: r.customer_name,
       start: new Date(r.start).toISOString(),
       end: new Date(r.end).toISOString(),
       quantity: Number(r.quantity),
       status: r.status,
+      is_standby: isStandby,
+      expires_at: sb?.expires_at ? new Date(sb.expires_at).toISOString() : null,
+      is_grace_period: !!(sb?.grace_period_ends_at && new Date(sb.grace_period_ends_at).getTime() > nowMs),
+      is_expiring_soon: expiresMs != null && expiresMs > nowMs && expiresMs <= nowMs + ONE_HOUR_MS,
     });
     byProduct.set(r.product_id, list);
   }
@@ -279,7 +331,7 @@ calendar.get('/', async (c) => {
     if (!res) return;
     // Exclude downtime rows (Sub-turn 8a) — they aren't bookings and get their
     // own gray bars; counting them here would fire spurious overbook warnings.
-    const bookings: Booking[] = res.conflicts
+    const bookings: BookingInterval[] = res.conflicts
       .filter((cf) => cf.type !== 'downtime')
       .map((cf) => ({
         order_id: cf.order_id,
@@ -293,9 +345,26 @@ calendar.get('/', async (c) => {
     warnings.push(...computeWarnings(p, bookings));
   });
 
+  // Search (Phase 1 S2) — server-side text match over product name/sku and each
+  // product's booking customer names / order numbers. A product survives if it
+  // matches by name/sku OR carries a matching booking; warnings are pruned to the
+  // surviving set so the client never renders a mask for a hidden row.
+  let outProducts = productsOut;
+  let outWarnings = warnings;
+  if (search) {
+    const q = search.toLowerCase();
+    outProducts = productsOut.filter((p) =>
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      p.bookings.some((b) => (b.customer_name ?? '').toLowerCase().includes(q) || String(b.order_number).includes(q)),
+    );
+    const keep = new Set(outProducts.map((p) => p.id));
+    outWarnings = warnings.filter((w) => keep.has(w.product_id));
+  }
+
   return c.json({
     range: { from, to },
-    products: productsOut,
-    warnings,
+    products: outProducts,
+    warnings: outWarnings,
   });
 });

@@ -52,6 +52,12 @@
       --bad-solid:      #b42318;
       --bad-soft:       #fdecec;
       --bad-strong:     #b42318;
+      /* Phase 1 S2 — indigo accent for the new filter controls + standby bars,
+         matching the inventory Products view filter language. Existing Gantt bars
+         keep their orange/warn palette (unchanged). */
+      --indigo:         #4f46e5;
+      --indigo-soft:    #eef0fe;
+      --indigo-strong:  #3730a3;
       --font-display: 'Space Grotesk', 'Arzachel', system-ui, -apple-system, sans-serif;
       --font-body:    'Manrope', 'Ponjoung', system-ui, -apple-system, sans-serif;
       --font-mono:    'JetBrains Mono', ui-monospace, monospace;
@@ -130,6 +136,35 @@
     .booking-bar.status-active     { background: var(--orange); }
     .booking-bar.status-returned   { background: var(--ok-solid); }
     .booking-bar.status-closed     { background: var(--muted-strong); }
+    /* Standby soft-reservation (Slice 4). Was INVISIBLE before S2 (no class →
+       transparent bar). Hatched indigo tint + dashed indigo border = "held, not
+       committed". Grace period = amber dashed; expiring within 1h = red dashed +
+       pulse. Terminal standby states get a muted fill so they're never invisible. */
+    .booking-bar.status-standby {
+      background: repeating-linear-gradient(45deg, var(--indigo-soft), var(--indigo-soft) 5px, #ffffff 5px, #ffffff 10px);
+      color: var(--indigo-strong);
+      border: 1px dashed var(--indigo);
+      box-shadow: none;
+    }
+    .booking-bar.status-standby.grace-period { border-color: var(--warn-solid); color: var(--warn-strong); }
+    .booking-bar.status-standby.expiring-soon { border-color: var(--bad-solid); color: var(--bad-strong); animation: standbyPulse 1.5s ease-in-out infinite; }
+    .booking-bar.status-standby_expired,
+    .booking-bar.status-standby_released { background: var(--chrome); color: var(--muted); border: 1px dashed var(--border-strong); box-shadow: none; }
+    @keyframes standbyPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+    /* ===== Phase 1 S2 filter row (indigo controls, inventory-view language) ===== */
+    .cal-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+    .view-chips { display: inline-flex; gap: 6px; }
+    .view-chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font-family: var(--font-body); font-size: 12.5px; font-weight: 600; color: var(--muted-strong); cursor: pointer; }
+    .view-chip:hover { background: var(--thead); color: var(--ink); }
+    .view-chip.active { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+    .view-chip .chip-count { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 20px; background: var(--indigo-soft); color: var(--indigo-strong); }
+    .view-chip.active .chip-count { background: rgba(255,255,255,0.22); color: #fff; }
+    .cal-select, .cal-search, .cal-date { height: 34px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); padding: 0 10px; font-family: var(--font-body); font-size: 12.5px; color: var(--ink); }
+    .cal-search { min-width: 190px; }
+    .cal-search:focus, .cal-select:focus, .cal-date:focus { outline: none; border-color: var(--indigo); box-shadow: 0 0 0 3px var(--indigo-soft); }
+    .cal-filter-clear { height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; }
+    .cal-filter-clear:hover { color: var(--ink); background: var(--thead); }
 
     .overbook-mask { position: absolute; top: 0; bottom: 0; background: rgba(204, 51, 64, 0.09); border-left: 1px dashed rgba(204,51,64,0.35); border-right: 1px dashed rgba(204,51,64,0.35); pointer-events: none; z-index: 1; }
     /* Downtime band (Sub-turn 8a) — gray, behind bookings, distinct from bars. */
@@ -150,11 +185,16 @@
 
     .boot-loading { padding: 48px; text-align: center; color: var(--muted); font-size: 13px; font-family: var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
 
-    /* Tooltip */
-    .cal-tooltip { position: fixed; z-index: 100; pointer-events: none; background: var(--ink); color: #fff; padding: 8px 11px; border-radius: 8px; font-size: 11.5px; line-height: 1.5; box-shadow: 0 8px 24px -6px rgba(32,32,88,0.5); max-width: 260px; display: none; }
+    /* Tooltip — interactive since S2 (holds a clickable customer → person-360
+       link), so pointer-events are enabled and it persists on hover. */
+    .cal-tooltip { position: fixed; z-index: 100; pointer-events: auto; background: var(--ink); color: #fff; padding: 8px 11px; border-radius: 8px; font-size: 11.5px; line-height: 1.5; box-shadow: 0 8px 24px -6px rgba(32,32,88,0.5); max-width: 280px; display: none; }
     .cal-tooltip .tt-title { font-weight: 700; margin-bottom: 2px; }
+    .cal-tooltip .tt-cust { color: #fff; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+    .cal-tooltip .tt-cust:hover { color: #cdd0f7; }
     .cal-tooltip .tt-meta { color: #c7c9e6; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.02em; }
     .cal-tooltip .tt-dates { color: #e6e7f5; margin-top: 3px; font-variant-numeric: tabular-nums; }
+    .cal-tooltip .tt-standby { margin-top: 4px; font-size: 10.5px; font-weight: 600; color: #fcd9b6; }
+    .cal-tooltip .tt-standby.expiring { color: #ffb3ab; }
 
     /* Toast */
     .toast-stack { position: fixed; bottom: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
@@ -227,6 +267,20 @@
             <button data-view="month">Month</button>
           </div>
         </div>
+        <!-- Phase 1 S2 filter row: view chips + category/location + search + jump-to-date. -->
+        <div class="cal-filters">
+          <div class="view-chips" id="view-chips" role="group" aria-label="Booking filter">
+            <button class="view-chip active" data-vs="all">All <span class="chip-count" id="cnt-all">0</span></button>
+            <button class="view-chip" data-vs="confirmed">Confirmed <span class="chip-count" id="cnt-confirmed">0</span></button>
+            <button class="view-chip" data-vs="standby">Standby <span class="chip-count" id="cnt-standby">0</span></button>
+            <button class="view-chip" data-vs="overdue">Overdue <span class="chip-count" id="cnt-overdue">0</span></button>
+          </div>
+          <select class="cal-select" id="filter-category" aria-label="Category"><option value="">All categories</option></select>
+          <select class="cal-select" id="filter-location" aria-label="Location" hidden><option value="">All locations</option></select>
+          <input class="cal-search" id="filter-search" type="search" placeholder="Search customer, order #, product…" autocomplete="off" aria-label="Search">
+          <input class="cal-date" id="filter-date" type="date" aria-label="Jump to date">
+          <button class="cal-filter-clear" id="filter-clear" hidden>Clear</button>
+        </div>
         <div class="cal-card" id="cal-card">
           <div class="cal-legend">
             <span class="legend-item"><span class="legend-swatch" style="background:var(--warn-soft);box-shadow:inset 0 0 0 1px rgba(138,90,18,0.28);"></span>Quoted</span>
@@ -234,6 +288,7 @@
             <span class="legend-item"><span class="legend-swatch" style="background:var(--orange);"></span>Dispatched</span>
             <span class="legend-item"><span class="legend-swatch" style="background:var(--ok-solid);"></span>Returned</span>
             <span class="legend-item"><span class="legend-swatch" style="background:var(--muted-strong);"></span>Closed</span>
+            <span class="legend-item"><span class="legend-swatch" style="background:repeating-linear-gradient(45deg,var(--indigo-soft),var(--indigo-soft) 3px,#fff 3px,#fff 6px);border:1px dashed var(--indigo);"></span>Standby</span>
             <span class="legend-item"><span style="color:var(--bad-solid);">⚠</span> Overbooked</span>
           </div>
           <div class="cal-spinner" aria-hidden="true"></div>
@@ -273,6 +328,13 @@
         products: [],
         warnings: [],
         loading: false,
+        // Phase 1 S2 filters.
+        category: '',            // '' = all
+        locationId: '',          // '' = all
+        viewStatus: 'all',       // 'all' | 'confirmed' | 'standby' | 'overdue' (client-side)
+        search: '',              // server-side text match
+        categories: [],
+        locations: [],
       },
     };
 
@@ -317,6 +379,10 @@
       const params = new URLSearchParams();
       params.set('view', cal.view);
       params.set('date', dateKey(cal.anchorDate));
+      if (cal.category) params.set('category', cal.category);
+      if (cal.locationId) params.set('location_id', cal.locationId);
+      if (cal.viewStatus && cal.viewStatus !== 'all') params.set('view_status', cal.viewStatus);
+      if (cal.search) params.set('search', cal.search);
       history.replaceState(null, '', location.pathname + '?' + params.toString());
     }
     function readUrl() {
@@ -331,6 +397,11 @@
           if (!isNaN(d.getTime())) state.calendar.anchorDate = d;
         }
       }
+      state.calendar.category = params.get('category') || '';
+      state.calendar.locationId = params.get('location_id') || '';
+      const vs = params.get('view_status');
+      if (['all', 'confirmed', 'standby', 'overdue'].includes(vs)) state.calendar.viewStatus = vs;
+      state.calendar.search = params.get('search') || '';
     }
 
     // ---------- title ----------
@@ -399,6 +470,9 @@
       document.getElementById('cal-card').classList.add('loading');
       try {
         const qs = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
+        if (cal.category) qs.set('category', cal.category);
+        if (cal.locationId) qs.set('location_id', cal.locationId);
+        if (cal.search) qs.set('search', cal.search);
         const data = await api.get('/api/calendar?' + qs.toString());
         cal.products = data.products || [];
         cal.warnings = data.warnings || [];
@@ -413,6 +487,32 @@
         cal.loading = false;
         document.getElementById('cal-card').classList.remove('loading');
       }
+    }
+
+    // ---------- view-status (client-side) ----------
+    // Overdue = still-out order (dispatched/active) whose rental_end has passed.
+    function isOverdue(b) {
+      return (b.status === 'dispatched' || b.status === 'active') && new Date(b.end).getTime() < Date.now();
+    }
+    function matchesViewStatus(b, vs) {
+      if (vs === 'confirmed') return b.status === 'confirmed';
+      if (vs === 'standby') return !!b.is_standby;
+      if (vs === 'overdue') return isOverdue(b);
+      return true; // 'all'
+    }
+    function updateChipCounts() {
+      let all = 0, confirmed = 0, standby = 0, overdue = 0;
+      for (const p of state.calendar.products) for (const b of (p.bookings || [])) {
+        all++;
+        if (b.status === 'confirmed') confirmed++;
+        if (b.is_standby) standby++;
+        if (isOverdue(b)) overdue++;
+      }
+      const set = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = String(n); };
+      set('cnt-all', all); set('cnt-confirmed', confirmed); set('cnt-standby', standby); set('cnt-overdue', overdue);
+      document.querySelectorAll('#view-chips .view-chip').forEach((c) => {
+        c.classList.toggle('active', c.dataset.vs === state.calendar.viewStatus);
+      });
     }
 
     // ---------- render ----------
@@ -475,7 +575,7 @@
           return `<div class="downtime-band" style="left:${left}px;width:${width}px" title="${escapeAttr(title)}"></div>${tag}`;
         }).join('');
 
-        const barsHtml = sorted.map((b) => {
+        const barsHtml = sorted.filter((b) => matchesViewStatus(b, cal.viewStatus)).map((b) => {
           const bl = clamp((new Date(b.start).getTime() - from.getTime()) / span, 0, 1);
           const br = clamp((new Date(b.end).getTime() - from.getTime()) / span, 0, 1);
           const left = bl * trackW;
@@ -484,7 +584,11 @@
           const label = width < 60
             ? `#${b.order_number}`
             : `#${b.order_number} · ${escapeHtml(b.customer_name)}`;
-          return `<div class="booking-bar status-${escapeAttr(b.status)}"
+          // Standby sub-state classes (grace / expiring drive border + pulse).
+          const extra = b.is_standby
+            ? (b.is_expiring_soon ? ' expiring-soon' : (b.is_grace_period ? ' grace-period' : ''))
+            : '';
+          return `<div class="booking-bar status-${escapeAttr(b.status)}${extra}"
             style="left:${left}px;width:${width}px;top:${top}px"
             data-order="${escapeAttr(b.order_id)}"
             data-booking="${escapeAttr(JSON.stringify(b))}">${label}</div>`;
@@ -525,44 +629,68 @@
         </div>`;
 
       wireBars(scroll);
+      updateChipCounts();
     }
 
     // ---------- bar interactions ----------
+    // Tooltip is now INTERACTIVE (holds a customer → person-360 link), so it is
+    // anchored to the bar (not mouse-following) and persists while the pointer is
+    // over the bar OR the tooltip. A short hide delay bridges the gap between them.
+    let ttHideTimer = null;
     function wireBars(scroll) {
       scroll.querySelectorAll('.booking-bar').forEach((bar) => {
-        bar.addEventListener('click', () => {
+        bar.addEventListener('click', (e) => {
+          // A click on the customer link inside the tooltip must not also open the order.
+          if (e.target.closest && e.target.closest('.tt-cust')) return;
           location.href = '/order-360.html?id=' + encodeURIComponent(bar.dataset.order);
         });
-        bar.addEventListener('mouseenter', (e) => showTooltip(e, bar));
-        bar.addEventListener('mousemove', moveTooltip);
-        bar.addEventListener('mouseleave', hideTooltip);
+        bar.addEventListener('mouseenter', () => showTooltip(bar));
+        bar.addEventListener('mouseleave', scheduleHideTooltip);
       });
     }
 
     const tooltip = document.getElementById('tooltip');
-    function showTooltip(e, bar) {
+    tooltip.addEventListener('mouseenter', () => { if (ttHideTimer) { clearTimeout(ttHideTimer); ttHideTimer = null; } });
+    tooltip.addEventListener('mouseleave', hideTooltip);
+
+    function showTooltip(bar) {
+      if (ttHideTimer) { clearTimeout(ttHideTimer); ttHideTimer = null; }
       let b;
       try { b = JSON.parse(bar.dataset.booking); } catch { return; }
       const qty = `${b.quantity} unit${b.quantity === 1 ? '' : 's'}`;
-      const statusLabel = STATUS_LABELS[b.status] || b.status;
+      const statusLabel = b.is_standby ? 'Standby' : (STATUS_LABELS[b.status] || b.status);
+      const cust = b.customer_person_id
+        ? `<a class="tt-cust" href="/person-360.html?id=${escapeAttr(b.customer_person_id)}">${escapeHtml(b.customer_name)}</a>`
+        : escapeHtml(b.customer_name);
+      let standbyLine = '';
+      if (b.is_standby && b.expires_at) {
+        const cls = b.is_expiring_soon ? ' expiring' : '';
+        const tag = b.is_expiring_soon ? '⏳ Expiring ' : (b.is_grace_period ? '◷ Grace · expires ' : 'Hold expires ');
+        standbyLine = `<div class="tt-standby${cls}">${tag}${escapeHtml(fmtDateTime(b.expires_at))}</div>`;
+      }
       tooltip.innerHTML = `
-        <div class="tt-title">#${b.order_number} ${escapeHtml(b.customer_name)}</div>
+        <div class="tt-title">#${b.order_number} ${cust}</div>
         <div class="tt-meta">${qty} · ${escapeHtml(statusLabel)}</div>
-        <div class="tt-dates">${escapeHtml(fmtDateTime(b.start))} → ${escapeHtml(fmtDateTime(b.end))}</div>`;
+        <div class="tt-dates">${escapeHtml(fmtDateTime(b.start))} → ${escapeHtml(fmtDateTime(b.end))}</div>
+        ${standbyLine}`;
       tooltip.style.display = 'block';
-      moveTooltip(e);
+      anchorTooltip(bar);
     }
-    function moveTooltip(e) {
-      const pad = 14;
-      let x = e.clientX + pad;
-      let y = e.clientY + pad;
-      const rect = tooltip.getBoundingClientRect();
-      if (x + rect.width > window.innerWidth - 8) x = e.clientX - rect.width - pad;
-      if (y + rect.height > window.innerHeight - 8) y = e.clientY - rect.height - pad;
+    function anchorTooltip(bar) {
+      const r = bar.getBoundingClientRect();
+      const tt = tooltip.getBoundingClientRect();
+      let x = r.left;
+      let y = r.top - tt.height - 8;               // above the bar
+      if (y < 8) y = r.bottom + 8;                 // flip below if no room above
+      if (x + tt.width > window.innerWidth - 8) x = window.innerWidth - tt.width - 8;
       tooltip.style.left = Math.max(8, x) + 'px';
       tooltip.style.top = Math.max(8, y) + 'px';
     }
-    function hideTooltip() { tooltip.style.display = 'none'; }
+    function scheduleHideTooltip() {
+      if (ttHideTimer) clearTimeout(ttHideTimer);
+      ttHideTimer = setTimeout(hideTooltip, 220);
+    }
+    function hideTooltip() { if (ttHideTimer) { clearTimeout(ttHideTimer); ttHideTimer = null; } tooltip.style.display = 'none'; }
 
     // ---------- formatters ----------
     function fmtDateTime(iso) {
@@ -604,6 +732,93 @@
       loadCalendar();
     });
 
+    // ---------- Phase 1 S2 filter wiring ----------
+    function anyFilterActive() {
+      const c = state.calendar;
+      return !!(c.category || c.locationId || c.search || (c.viewStatus && c.viewStatus !== 'all'));
+    }
+    // Reflect state into the filter controls (values + Clear visibility). Called on
+    // boot and after Clear; per-control changes below keep the DOM authoritative.
+    function refreshFilterChrome() {
+      const c = state.calendar;
+      const catSel = document.getElementById('filter-category');
+      const locSel = document.getElementById('filter-location');
+      const search = document.getElementById('filter-search');
+      const clear = document.getElementById('filter-clear');
+      if (catSel) catSel.value = c.category || '';
+      if (locSel) locSel.value = c.locationId || '';
+      if (search && search.value !== c.search) search.value = c.search || '';
+      document.querySelectorAll('#view-chips .view-chip').forEach((chip) => {
+        chip.classList.toggle('active', chip.dataset.vs === c.viewStatus);
+      });
+      if (clear) clear.hidden = !anyFilterActive();
+    }
+
+    // view_status is CLIENT-side (warnings need the full set) → re-render, no fetch.
+    document.getElementById('view-chips').addEventListener('click', (e) => {
+      const chip = e.target.closest('.view-chip'); if (!chip) return;
+      state.calendar.viewStatus = chip.dataset.vs || 'all';
+      syncUrl(); refreshFilterChrome();
+      if (state.calendar.range) render();
+    });
+    document.getElementById('filter-category').addEventListener('change', (e) => {
+      state.calendar.category = e.target.value || '';
+      refreshFilterChrome(); loadCalendar();
+    });
+    document.getElementById('filter-location').addEventListener('change', (e) => {
+      state.calendar.locationId = e.target.value || '';
+      refreshFilterChrome(); loadCalendar();
+    });
+    let searchTimer;
+    document.getElementById('filter-search').addEventListener('input', (e) => {
+      const v = e.target.value.trim();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => { state.calendar.search = v; refreshFilterChrome(); loadCalendar(); }, 300);
+    });
+    document.getElementById('filter-search').addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.target.value = ''; clearTimeout(searchTimer); state.calendar.search = ''; refreshFilterChrome(); loadCalendar(); }
+    });
+    document.getElementById('filter-date').addEventListener('change', (e) => {
+      const parts = (e.target.value || '').split('-').map(Number);
+      if (parts.length === 3 && parts.every(Number.isFinite)) {
+        const d = new Date(parts[0], parts[1] - 1, parts[2]);
+        if (!isNaN(d.getTime())) { state.calendar.anchorDate = d; loadCalendar(); }
+      }
+    });
+    document.getElementById('filter-clear').addEventListener('click', () => {
+      const c = state.calendar;
+      c.category = ''; c.locationId = ''; c.search = ''; c.viewStatus = 'all';
+      const s = document.getElementById('filter-search'); if (s) s.value = '';
+      refreshFilterChrome(); loadCalendar();
+    });
+
+    // Populate category + location dropdowns once (reuses existing endpoints; both
+    // fail-soft — a fetch error just leaves the "All …" option). Location select is
+    // shown only for multi-location workspaces (DSLRSWALA is single-location).
+    async function populateFilterOptions() {
+      try {
+        const { categories } = await api.get('/api/inventory/categories');
+        const sel = document.getElementById('filter-category');
+        for (const cat of (categories || [])) {
+          const opt = document.createElement('option'); opt.value = cat; opt.textContent = cat; sel.appendChild(opt);
+        }
+        sel.value = state.calendar.category || '';
+      } catch (err) { console.error('categories load failed', err); }
+      try {
+        const locRes = await api.get('/api/locations');
+        const locs = (locRes.locations || locRes || []).filter((l) => l.is_active !== false);
+        state.calendar.locations = locs;
+        if (locs.length > 1) {
+          const sel = document.getElementById('filter-location');
+          for (const l of locs) {
+            const opt = document.createElement('option'); opt.value = l.id; opt.textContent = l.name; sel.appendChild(opt);
+          }
+          sel.value = state.calendar.locationId || '';
+          sel.hidden = false;
+        }
+      } catch (err) { console.error('locations load failed', err); }
+    }
+
     // Re-render (recompute column widths) on resize without re-fetching.
     let resizeTimer;
     window.addEventListener('resize', () => {
@@ -631,9 +846,10 @@
     (async () => {
       try {
         readUrl();
+        refreshFilterChrome();
         // loadCalendar reads the range from readUrl() (already run) and is
-        // independent of the identity fetch — run the two concurrently.
-        await Promise.all([hydrateIdentity(), loadCalendar()]);
+        // independent of the identity + filter-option fetches — run concurrently.
+        await Promise.all([hydrateIdentity(), populateFilterOptions(), loadCalendar()]);
       } catch (err) {
         console.error('boot failed', err);
         showToast('Could not load the calendar.', true);
