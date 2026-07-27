@@ -316,24 +316,11 @@ export async function recordFinancialResolution(args: {
   return { ok: true, requires_approval: approval.requires };
 }
 
-export async function approveDamageIncident(args: { workspaceId: string; orderId: string; damageIncidentId: string; actorUserId: string; actorName: string; ip?: string | null; userAgent?: string | null }): Promise<{ ok: boolean; error?: string }> {
-  const inc = (await query<{ status: string; incident_number: string }>(sql`SELECT status, incident_number FROM damage_incidents WHERE id = ${args.damageIncidentId}::uuid AND workspace_id = ${args.workspaceId}::uuid LIMIT 1`))[0];
-  if (!inc) return { ok: false, error: 'not_found' };
-  if (!inc.status || !['resolution_proposed', 'reported', 'investigating'].includes(inc.status)) return { ok: false, error: 'not_approvable' };
-  await sql`UPDATE damage_incidents SET approved_by = ${args.actorUserId}::uuid, approved_at = now(), requires_approval = false, status = 'financial_settled', updated_at = now() WHERE id = ${args.damageIncidentId}::uuid AND workspace_id = ${args.workspaceId}::uuid`;
-  await addDamageEvent({ workspaceId: args.workspaceId, damageIncidentId: args.damageIncidentId, eventType: 'approved', actorType: 'user', actorId: args.actorUserId, actorName: args.actorName, title: 'Resolution approved' });
-  await audit({ workspaceId: args.workspaceId, actorUserId: args.actorUserId, eventType: 'damage_incidents.approved', targetType: 'damage_incident', targetId: args.damageIncidentId, payload: { order_id: args.orderId, incident_number: inc.incident_number }, ipAddress: args.ip ?? null, userAgent: args.userAgent ?? null });
-  return { ok: true };
-}
-
-export async function rejectDamageIncident(args: { workspaceId: string; orderId: string; damageIncidentId: string; actorUserId: string; actorName: string; reason?: string | null; ip?: string | null; userAgent?: string | null }): Promise<{ ok: boolean; error?: string }> {
-  const inc = (await query<{ status: string; incident_number: string }>(sql`SELECT status, incident_number FROM damage_incidents WHERE id = ${args.damageIncidentId}::uuid AND workspace_id = ${args.workspaceId}::uuid LIMIT 1`))[0];
-  if (!inc) return { ok: false, error: 'not_found' };
-  await sql`UPDATE damage_incidents SET requires_approval = false, status = 'investigating', updated_at = now() WHERE id = ${args.damageIncidentId}::uuid AND workspace_id = ${args.workspaceId}::uuid`;
-  await addDamageEvent({ workspaceId: args.workspaceId, damageIncidentId: args.damageIncidentId, eventType: 'rejected', actorType: 'user', actorId: args.actorUserId, actorName: args.actorName, title: 'Resolution rejected', body: args.reason ?? null });
-  await audit({ workspaceId: args.workspaceId, actorUserId: args.actorUserId, eventType: 'damage_incidents.rejected', targetType: 'damage_incident', targetId: args.damageIncidentId, payload: { order_id: args.orderId, incident_number: inc.incident_number, reason: args.reason ?? null }, ipAddress: args.ip ?? null, userAgent: args.userAgent ?? null });
-  return { ok: true };
-}
+// approveDamageIncident / rejectDamageIncident were REMOVED in Phase 1 S3 — the
+// legacy /approve + /reject endpoints that called them are retired. Damage
+// resolutions are approved/rejected only through the Approval Engine executor
+// (src/lib/approval_executors.ts → damage_financial_resolution), which fires the
+// Slice-11 side-effects the legacy bare status-flip never did.
 
 export async function closeDamageIncident(args: { workspaceId: string; orderId: string; damageIncidentId: string; actorUserId: string; actorName: string; ip?: string | null; userAgent?: string | null }): Promise<{ ok: boolean; error?: string }> {
   const inc = (await query<{ status: string; incident_number: string; requires_approval: boolean; customer_person_id: string | null }>(sql`

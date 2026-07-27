@@ -39,7 +39,9 @@ export const PERMISSIONS = {
   // Money-adjacent (Sub-slice 2.3) — staff (warehouse) NEVER holds these.
   'substitutions.financial':'Substitutions that charge or credit the customer',
   'damage.resolve_financial':'Set damage liability, resolution, and deposit action',
-  'damage.approve':         'Approve high-value or disputed damage resolutions',
+  // (damage.approve retired in Phase 1 S3 — damage approvals are decided through
+  //  the Approval Engine's damage_financial_resolution executor, gated by the
+  //  approval request's approver role, not a dedicated damage permission.)
   // Money
   'payments.record':        'Record payments',
   'payments.refund':        'Issue refunds',
@@ -79,7 +81,7 @@ export const ALL_PERMISSION_KEYS = Object.keys(PERMISSIONS) as PermissionKey[];
 // Grouping for the Team editor UI (label → keys). Order matters for rendering.
 export const PERMISSION_GROUPS: { label: string; keys: PermissionKey[] }[] = [
   { label: 'Orders',    keys: ['orders.view','orders.create','orders.edit','orders.cancel','orders.revert_status','orders.override_period','orders.override_price','orders.apply_discount'] },
-  { label: 'Operations', keys: ['dispatch.execute','returns.execute','damage.record','substitutions.manage','substitutions.financial','damage.resolve_financial','damage.approve','inspections.perform'] },
+  { label: 'Operations', keys: ['dispatch.execute','returns.execute','damage.record','substitutions.manage','substitutions.financial','damage.resolve_financial','inspections.perform'] },
   { label: 'Money',     keys: ['payments.record','payments.refund','deposits.retain','deposits.transfer_custody','invoices.manage'] },
   { label: 'Inventory', keys: ['inventory.view','inventory.manage','inventory.pricing','inventory.costs','inventory.retire'] },
   { label: 'People',    keys: ['people.view','people.manage','people.view_sensitive','people.review_kyc'] },

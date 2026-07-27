@@ -63,9 +63,13 @@ test('damage route — above-threshold resolution routes through the engine + FK
   assert.match(damageRoute, /UPDATE damage_incidents SET approval_request_id/);
 });
 
-test('damage route — legacy /approve 409-redirects when an engine request is pending', () => {
-  assert.match(damageRoute, /USE_APPROVALS_INBOX/);
-  assert.match(damageRoute, /\/approvals\.html/);
+test('damage route — legacy /approve + /reject endpoints are RETIRED (Phase 1 S3)', () => {
+  // The parallel legacy approval path is gone; the engine is the only surface.
+  assert.doesNotMatch(damageRoute, /post\('\/:id\/approve'/);
+  assert.doesNotMatch(damageRoute, /post\('\/:id\/reject'/);
+  assert.doesNotMatch(damageRoute, /damageRejectSchema/);
+  // /close stays — a distinct action, never engine-routed.
+  assert.match(damageRoute, /post\('\/:id\/close'/);
 });
 
 // ---------- Rule E/source — reviews summary ----------

@@ -2045,7 +2045,15 @@ function damageSideEffectPreview(d){
 }
 function renderDamageView(){
   const x=M.data.inc;const d=M.data;
-  const canFin=(x.status!=='closed');const canApprove=x.requires_approval;const canClose=(x.status!=='closed'&&!x.requires_approval);
+  const canFin=(x.status!=='closed');
+  // Phase 1 S3: damage approvals are decided in the Approvals inbox, not inline.
+  // A routed incident (requires_approval + an engine request) links there; a
+  // requires_approval incident with NO request is a stuck orphan (should not exist
+  // post-migration 070) — surface an explicit error rather than a dead button.
+  const needsApproval=x.requires_approval;
+  const canReviewInApprovals=needsApproval&&!!x.approval_request_id;
+  const approvalMisconfigured=needsApproval&&!x.approval_request_id;
+  const canClose=(x.status!=='closed'&&!needsApproval);
   return '<div class="m-hd"><div><div class="mono" style="display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:20px;background:var(--danger-bg);color:var(--danger);font-size:10px;font-weight:700;letter-spacing:.1em"><span style="width:7px;height:7px;border-radius:50%;background:var(--danger)"></span>DAMAGE INCIDENT</div>'
     +'<h3 class="m-title" style="margin-top:10px">'+escapeHtml(x.incident_number)+'</h3><div style="font-size:12.5px;color:var(--neutral);margin-top:4px">'+escapeHtml(titleize(x.incident_type))+' · '+escapeHtml(titleize(x.severity))+' · '+escapeHtml(String(x.status).replace(/_/g,' '))+'</div></div><button class="m-x" data-mclose>'+I('cancel',16)+'</button></div>'
     +'<div class="m-bd">'
@@ -2063,7 +2071,8 @@ function renderDamageView(){
     +(canFin?'<button class="btn btn-tiny btn-primary" style="margin-top:10px" data-dfin '+(damageNeedsAck(d)&&!d.sideEffectAck?'disabled':'')+'>Record resolution</button>':'')
     +'</div>'
     +'<div class="m-ft"><button class="m-ghost" data-mclose>Close</button><div style="display:flex;gap:8px">'
-    +(canApprove?'<button class="btn btn-tiny btn-secondary" data-dapprove>Approve</button>':'')
+    +(canReviewInApprovals?'<a class="btn btn-tiny btn-secondary" href="/approvals.html?resource_id='+escapeAttr(x.id)+'&type=damage_financial_resolution">Review in Approvals →</a>':'')
+    +(approvalMisconfigured?'<span class="mono" style="font-size:11px;color:var(--danger);align-self:center">Approval configuration error — contact support.</span>':'')
     +(canClose?'<button class="m-btn" data-dclose-inc>Close incident</button>':'')+'</div></div>';
 }
 async function submitDamage(){
@@ -2113,7 +2122,6 @@ document.addEventListener('click',(e)=>{
   if(t.closest('[data-dsubmit]')){submitDamage();return;}
   if(t.closest('[data-dsave-shoot]')){damageViewAction('save-the-shoot');return;}
   if(t.closest('[data-dfin]')){damageViewAction('financial-resolution');return;}
-  if(t.closest('[data-dapprove]')){damageViewAction('approve');return;}
   if(t.closest('[data-dclose-inc]')){damageViewAction('close');return;}
 },true);
 async function damageViewAction(kind){
@@ -2131,7 +2139,6 @@ async function damageViewAction(kind){
       if(se){const bits=[];if(se.deposit_forfeit_payment_id)bits.push('deposit forfeit executed');if(se.damage_line_paise>0)bits.push('damage added to invoice');if(se.asset_effects&&se.asset_effects.length)bits.push(se.asset_effects.length+' asset action(s)');if(bits.length)msg+=' · '+bits.join(' · ');}
       toast(msg,'ok');
     }
-    else if(kind==='approve'){await api.post('/api/damage-incidents/'+id+'/approve',{});toast('Approved','ok');}
     else if(kind==='close'){await api.post('/api/damage-incidents/'+id+'/close',{});toast('Incident closed','ok');}
     mclose();await load();
   }catch(err){
