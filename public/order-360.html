@@ -386,9 +386,13 @@ function renderStrip(){
 function renderOverflow(){
   const rs=resolvedStatus();
   const cancelBlocked=(rs==='closed'||rs==='cancelled'||rs==='fully_dispatched'||rs==='active'||rs==='partial_return');
+  // Late fee: available once gear is out (overdue) or after return, never on a
+  // closed/cancelled/pre-dispatch order (the endpoint blocks closed/cancelled).
+  const lateEligible=['dispatched','active','fully_dispatched','partially_dispatched','partial_return','awaiting_inspection','ready_to_close','returned'].includes(rs);
   return '<div class="overflow" data-stop>'
     +'<div class="ovi" data-ov="edit">'+I('edit',16)+'Edit order details</div>'
     +'<div class="ovi" data-ov="send-update">'+I('chat',16)+'Send Update to Customer</div>'
+    +(lateEligible?'<div class="ovi" data-ov="late-fee">'+I('info',16)+'Add late fee</div>':'')
     +'<div class="ovi" data-ov="print">'+I('print',16)+'Print / export invoice</div>'
     +'<div class="ovi" data-ov="duplicate">'+I('dup',16)+'Duplicate order</div>'
     +'<div class="ovsep"></div>'
@@ -547,6 +551,14 @@ function cardPricing(){
   return function(){
     let html='<div class="pr-row"><div><div style="font-size:13px;color:var(--head)">'+nItems+' line item'+(nItems===1?'':'s')+'</div><div style="font-size:11.5px;color:var(--neutral);margin-top:2px">see Equipment above for details</div></div>'
       +'<span class="money" style="font-size:13px;color:var(--head)">'+formatINR(o.subtotal_paise)+' <span style="color:var(--neutral);font-size:11px">subtotal</span></span></div>';
+    // Surcharge lines (late fee / damage / delivery / other) shown explicitly.
+    const CHARGE_LABEL={late_fee:'Late return fee',damage:'Damage',delivery_fee:'Delivery',other:'Other charge'};
+    const charges=(S.items||[]).filter(i=>['late_fee','damage','delivery_fee','other'].includes(i.item_type)&&Number(i.total_amount_paise||0)>0);
+    if(charges.length){
+      html+='<div class="pr-grouplabel">Charges</div>'+charges.map(i=>
+        '<div class="pr-row" style="padding-left:14px"><span style="font-size:13px;color:var(--head)">'+escapeHtml(i.description||CHARGE_LABEL[i.item_type]||'Charge')+'</span>'
+        +'<span class="money" style="font-size:13px;color:var(--head)">+ '+formatINR(i.total_amount_paise)+'</span></div>').join('');
+    }
     const disc=Number(o.discount_paise||0);
     if(disc>0){
       const code=S.coupon&&S.coupon.code?(' · '+S.coupon.code):'';
@@ -753,7 +765,7 @@ function eventMeta(type){
   if(/return/.test(t))return {cat:'Actions',icon:'✓',bg:'var(--success-bg)',color:'var(--success)'};
   if(/extend/.test(t))return {cat:'Actions',icon:'⏱',bg:'var(--info-bg)',color:'var(--info)'};
   if(/item/.test(t))return {cat:'Actions',icon:'✎',bg:'var(--neutral-bg)',color:'var(--neutral)'};
-  if(/payment|deposit|coupon|invoice|refund|forfeit/.test(t))return {cat:'Financial',icon:'💼',bg:'var(--attention-bg)',color:'var(--attention)'};
+  if(/payment|deposit|coupon|invoice|refund|forfeit|late_fee/.test(t))return {cat:'Financial',icon:'💼',bg:'var(--attention-bg)',color:'var(--attention)'};
   if(/note/.test(t))return {cat:'Notes',icon:'📝',bg:'var(--neutral-bg)',color:'var(--neutral)'};
   if(/contract|approval/.test(t))return {cat:'System',icon:'🔒',bg:'var(--neutral-bg)',color:'var(--neutral)'};
   if(/comm|whatsapp|email|sms|notif/.test(t))return {cat:'System',icon:'💬',bg:'var(--neutral-bg)',color:'var(--neutral)'};
@@ -766,6 +778,7 @@ function eventLabel(e){
   else if(/dispatch/.test(t))base='Equipment dispatched';
   else if(/return/.test(t))base='Equipment returned';
   else if(/extend/.test(t))base='Rental extended'+(p.delta_days?(' · +'+p.delta_days+'d'):'');
+  else if(/late_fee/.test(t))base='Late fee '+(p.amount_paise!=null?formatINR(p.amount_paise)+' ':'')+'applied'+(p.reason?' · '+p.reason:'');
   else if(/payment/.test(t)&&p.amount_paise!=null)base='Payment '+formatINR(p.amount_paise)+' recorded';
   else base=base.charAt(0).toUpperCase()+base.slice(1);
   return escapeHtml(base);
@@ -975,6 +988,7 @@ function handleOverflow(kind,disabled){
     renderStrip();openCancellationModal();return;
   }
   if(kind==='send-update'){renderStrip();openSendUpdateModal();return;}
+  if(kind==='late-fee'){renderStrip();openLateFeeModal();return;}
   if(kind==='edit'){notInThisView('Editing');return;}
   if(kind==='print'){window.location.href='/invoice.html?order='+S.id;return;}
   if(kind==='duplicate'){toast('Duplicate order — not wired in this view');renderStrip();return;}
@@ -1331,6 +1345,9 @@ document.addEventListener('input',(e)=>{
   else if(key==='rf_amount'){M.data.amountRupees=e.target.value;updateRefundFoot();}
   else if(key==='rf_ref'){M.data.reference=e.target.value;}
   else if(key==='rf_notes'){M.data.notes=e.target.value;}
+  // late-fee modal
+  else if(key==='lf_amount'){M.data.amountRupees=e.target.value;updateLateFeePreview();}
+  else if(key==='lf_reason'){M.data.reason=e.target.value;updateLateFeeFoot();}
 });
 async function handleModal(kind){
   const d=M.data;
@@ -1345,10 +1362,12 @@ async function handleModal(kind){
   if(kind==='submit-send')return submitSend();
   if(kind==='submit-payment')return submitPayment();
   if(kind==='submit-refund')return submitRefund();
+  if(kind==='tog-lf-confirm'){d.confirmed=!d.confirmed;renderLateFeeModal();return;}
+  if(kind==='submit-latefee')return submitLateFee();
   if(kind==='decide-approve')return submitDecide('approved');
   if(kind==='decide-reject')return submitDecide('rejected');
 }
-function rerenderModal(){if(M.kind==='extension')renderExtensionModal();else if(M.kind==='cancellation')renderCancellationModal();else if(M.kind==='send')renderSendModal();else if(M.kind==='payment')renderPaymentModal();else if(M.kind==='refund')renderRefundModal();}
+function rerenderModal(){if(M.kind==='extension')renderExtensionModal();else if(M.kind==='cancellation')renderCancellationModal();else if(M.kind==='send')renderSendModal();else if(M.kind==='payment')renderPaymentModal();else if(M.kind==='refund')renderRefundModal();else if(M.kind==='latefee')renderLateFeeModal();}
 function chans(d){const c=[];if(d.wa)c.push('whatsapp');if(d.email)c.push('email');return c;}
 async function submitExtension(){
   const d=M.data;const iso=localInputToIso(d.newEnd);if(!iso){toast('Pick a valid date','err');return;}
@@ -1387,6 +1406,61 @@ function showModalError(err,rerender){
   if(struct){toast('Blocked: '+(struct.reasons[0]&&struct.reasons[0].message||struct.message),'err');}
   else toast('Failed: '+(err.body&&err.body.error||err.message),'err');
   if(rerender)rerender();
+}
+// ==================================================================== LATE FEE MODAL (Phase 1)
+// Suggest-only (Q1): prefill from the policy computation, operator confirms (or
+// overrides) and applies. No approval routing in v1 (Q6). The apply endpoint is
+// idempotency-key safe at the router; the fee is deliberately re-appliable.
+function openLateFeeModal(){
+  M.kind='latefee';M.data={amountRupees:'',reason:'',confirmed:false,computed:null,loading:true};M.busy=false;
+  renderLateFeeModal();
+  api.post('/api/orders/'+S.id+'/late-fee/suggest',{}).then(r=>{
+    if(M.kind!=='latefee')return;
+    M.data.computed=r.computed_fee||null;M.data.loading=false;
+    if(r.suggested&&r.computed_fee){
+      M.data.amountRupees=String(Math.round(r.computed_fee.total_computed_fee_paise/100));
+      M.data.reason='Late return — '+Math.round(r.computed_fee.hours_late)+'h late (auto-computed)';
+    }
+    renderLateFeeModal();
+  }).catch(()=>{if(M.kind==='latefee'){M.data.loading=false;renderLateFeeModal();}});
+}
+function lfAmountPaise(){const r=Number(String(M.data.amountRupees||'').replace(/[^0-9.]/g,''));return r>0?Math.round(r*100):0;}
+function lfCanSubmit(){return lfAmountPaise()>0&&(M.data.reason||'').trim().length>0&&M.data.confirmed&&!M.busy;}
+function lfPreviewHtml(amt,newTotal){
+  if(amt<=0)return '<div style="font-size:12.5px;color:var(--neutral)">Enter an amount to preview.</div>';
+  return '<div style="font-size:12.5px;color:var(--head);line-height:1.6">This adds <strong>'+formatINR(amt)+'</strong> to Order #'+escapeHtml(S.order.order_number)+'.<br>Current total '+formatINR(S.order.total_paise)+' → <strong>'+formatINR(newTotal)+'</strong>. The customer will be notified.</div>';
+}
+function updateLateFeePreview(){const amt=lfAmountPaise();const el=document.getElementById('lf-preview');if(el)el.innerHTML=lfPreviewHtml(amt,Number(S.order.total_paise||0)+amt);updateLateFeeFoot();}
+function updateLateFeeFoot(){const b=document.getElementById('lf-submit');if(b)b.disabled=!lfCanSubmit();}
+function renderLateFeeModal(){
+  if(M.kind!=='latefee')return;const o=S.order;const d=M.data;const f=d.computed;
+  const amt=lfAmountPaise();const newTotal=Number(o.total_paise||0)+amt;
+  let meta='';
+  if(d.loading)meta='<div style="font-size:12.5px;color:var(--neutral)">Checking lateness…</div>';
+  else if(f)meta='<div class="m-frow"><span class="l">Scheduled return</span><span class="v">'+fmtDateTime(o.rental_end)+'</span></div>'
+      +'<div class="m-frow"><span class="l">Hours late</span><span class="v">'+Math.round(f.hours_late)+'h · '+f.grace_hours_applied+'h grace · '+f.billable_hours+' billable</span></div>'
+      +'<div class="m-frow"><span class="l">Policy rate</span><span class="v">'+f.percent+'%/hr → '+formatINR(f.effective_hourly_rate_paise)+'/hr</span></div>';
+  else meta='<div style="font-size:12.5px;color:var(--neutral)">This order is not late per policy (or within the grace window). You can still add a manual late fee below.</div>';
+  let b='';
+  b+='<div class="m-sec"><div class="m-lbl">Late return</div>'+meta+'</div>';
+  b+='<div class="m-sec"><div class="m-lbl">Amount (₹)</div><input class="m-input" data-mfield="lf_amount" inputmode="numeric" placeholder="0" value="'+escapeAttr(d.amountRupees||'')+'" style="width:200px"></div>';
+  b+='<div class="m-sec"><div class="m-lbl">Reason</div><textarea class="m-ta" data-mfield="lf_reason" placeholder="Why is this fee being charged?" style="min-height:70px">'+escapeHtml(d.reason||'')+'</textarea></div>';
+  b+='<div class="m-sec" id="lf-preview">'+lfPreviewHtml(amt,newTotal)+'</div>';
+  b+='<div class="m-sec"><label class="m-cb'+(d.confirmed?' on':'')+'" data-m="tog-lf-confirm"><span class="m-cbbox">'+(d.confirmed?I('check',12):'')+'</span>I confirm this late fee is authorized</label></div>';
+  const foot='<button class="m-ghost" data-m="close">Cancel</button>'
+    +'<button class="m-btn" id="lf-submit" data-m="submit-latefee"'+(lfCanSubmit()?'':' disabled')+'>'+(M.busy?'Adding…':'Add late fee')+'</button>';
+  mrender(mHead('LATE FEE — #'+escapeHtml(o.order_number),escapeHtml(o.customer_name||''))+'<div class="m-bd">'+b+'</div><div class="m-ft">'+foot+'</div>');
+}
+async function submitLateFee(){
+  const d=M.data;const amt=lfAmountPaise();
+  if(amt<=0){toast('Enter an amount above zero','err');return;}
+  if(!(d.reason||'').trim()){toast('A reason is required','err');return;}
+  const isComputed=!!(d.computed&&amt===d.computed.total_computed_fee_paise);
+  M.busy=true;renderLateFeeModal();
+  try{
+    const r=await api.post('/api/orders/'+S.id+'/late-fee',{amount_paise:amt,reason:d.reason.trim(),apply_computed:isComputed});
+    mclose();toast('Late fee added'+(r&&r.notification_sent?' · customer notified':''),'ok');await load();
+  }catch(err){M.busy=false;showModalError(err,renderLateFeeModal);}
 }
 // ==================================================================== PAYMENT MODAL (Slice 7)
 const PM_ALL_METHODS=['upi','bank_transfer','cash','card','cheque','wallet','other'];

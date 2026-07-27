@@ -153,6 +153,7 @@ import { renderShell } from '/_lib/shell.js?v=6';
 
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const $=(id)=>document.getElementById(id);
+const inrFmt=(p)=>'₹'+new Intl.NumberFormat('en-IN',{maximumFractionDigits:0}).format(Math.round(Number(p||0)/100));
 function toast(m,k){const t=$('toast');t.textContent=m;t.className='toast show'+(k?' '+k:'');setTimeout(()=>{t.className='toast'+(k?' '+k:'');},2800);}
 renderShell('orders',{topbar:true,breadcrumb:'<a href="/orders.html" style="color:inherit;text-decoration:none">Orders</a> &rsaquo; Return'});
 
@@ -272,6 +273,7 @@ function renderRouting(){
     <div class="card"><div class="sec-head"><span class="sec-label">Return summary</span><span class="mono" style="margin-left:auto;font-size:11px;color:var(--muted)">${esc(S.r.return_number||'')}</span></div>
       ${items}<div class="divider"></div>
       <div class="${c&&c.notification_sent?'info-banner':'warn'}" style="margin-top:10px">${c&&c.notification_sent?'✅ ':'⚠️ '}${esc(nMsg)}</div></div>
+    ${lateFeeCard()}
     <div class="card"><div class="sec-head"><span class="sec-label">Inspection routing</span></div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Gear is held <strong>Awaiting Inspection</strong> (out of availability) until an inspector clears it.</div>
       <div class="route-btns">
@@ -283,6 +285,58 @@ function renderRouting(){
   $('back').textContent='‹ Back to Order'; $('back').onclick=null; $('back').href='/order-360.html?id='+esc(S.r.order_id);
   $('rt-now').onclick=openInspectionModal;
   $('rt-later').onclick=()=>{ toast('Inspection scheduled for the warehouse','ok'); setTimeout(()=>location.href='/order-360.html?id='+esc(S.r.order_id),1200); };
+  wireLateFee();
+}
+
+// ---- Late-fee suggest flow (Phase 1, Q1 — suggest-only; nothing auto-posts) ----
+let lateFeeState='pending'; // 'pending' | 'applied' | 'skipped'
+function lateFeeCard(){
+  const f=S.completed&&S.completed.late_fee_suggestion;
+  if(!f||!(f.total_computed_fee_paise>0))return '';
+  if(lateFeeState==='applied')return `<div class="card" id="latefee-card"><div class="sec-head"><span class="sec-label">Late fee</span></div><div class="info-banner">✅ Late fee added to the order. It appears on the customer's next invoice.</div></div>`;
+  if(lateFeeState==='skipped')return `<div class="card" id="latefee-card"><div class="sec-head"><span class="sec-label">Late fee</span></div><div style="font-size:13px;color:var(--muted)">Skipped — no late fee charged (goodwill / waived).</div></div>`;
+  return `<div class="card" id="latefee-card"><div class="sec-head"><span class="sec-label">⏰ Late return fee</span></div>
+    <div style="font-size:13px;color:var(--head);margin-bottom:4px">Returned <strong>${esc(Math.round(f.hours_late))}h</strong> late · ${esc(f.grace_hours_applied)}h grace · <strong>${esc(f.billable_hours)}</strong> billable hour(s) @ ${esc(f.percent)}%/hr of daily rate.</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Suggested fee: <strong style="color:var(--head)">${inrFmt(f.total_computed_fee_paise)}</strong> (${inrFmt(f.effective_hourly_rate_paise)}/hr). Suggest-only — you decide.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn primary small" id="lf-apply">Apply ${inrFmt(f.total_computed_fee_paise)}</button>
+      <button class="btn ghost small" id="lf-custom">Custom amount</button>
+      <button class="btn ghost small" id="lf-skip">Skip — no fee</button>
+    </div></div>`;
+}
+function refreshLateFeeCard(){ const el=$('latefee-card'); if(el)el.outerHTML=lateFeeCard(); wireLateFee(); }
+function wireLateFee(){
+  const f=S.completed&&S.completed.late_fee_suggestion; if(!f||lateFeeState!=='pending')return;
+  const a=$('lf-apply'),cu=$('lf-custom'),sk=$('lf-skip');
+  if(a)a.onclick=()=>applyLateFee(f.total_computed_fee_paise,'Late return — '+Math.round(f.hours_late)+'h late (auto-computed)');
+  if(cu)cu.onclick=openLateFeeModal;
+  if(sk)sk.onclick=()=>{ lateFeeState='skipped'; refreshLateFeeCard(); toast('Late fee skipped','ok'); };
+}
+async function applyLateFee(amountPaise,reason){
+  if(!(amountPaise>0)){ toast('Enter an amount above zero','err'); return; }
+  const btn=$('lf-apply')||$('lf-custom-submit'); if(btn){btn.disabled=true;btn.textContent='Applying…';}
+  try{
+    const r=await api.post('/api/orders/'+S.r.order_id+'/late-fee',{ amount_paise:Math.round(amountPaise), reason:reason||'Late return fee', apply_computed:true });
+    lateFeeState='applied'; $('modal-root').innerHTML=''; refreshLateFeeCard();
+    toast('Late fee added'+(r&&r.notification_sent?' · customer notified':''),'ok');
+  }catch(err){ if(btn){btn.disabled=false;btn.textContent='Apply';} toast('Late fee failed: '+errMsg(err),'err'); }
+}
+function openLateFeeModal(){
+  const f=S.completed&&S.completed.late_fee_suggestion;
+  const def=f?Math.round(f.total_computed_fee_paise/100):0;
+  $('modal-root').innerHTML=`<div class="modal-back"><div class="modal"><h3>Custom late fee</h3>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">Enter the amount to charge and a reason. This is added as a late-fee line and appears on the invoice.</div>
+    <div class="field" style="margin-bottom:10px"><div class="lbl">Amount (₹)</div><input id="lf-amt" class="mono" inputmode="numeric" value="${def}"></div>
+    <div class="field" style="margin-bottom:4px"><div class="lbl">Reason <span class="req">*</span></div><textarea id="lf-reason" placeholder="e.g. Returned 2 days late; partial waiver agreed"></textarea></div>
+    <div class="modal-actions"><button class="btn ghost small" id="lf-cancel">Cancel</button><button class="btn primary small" id="lf-custom-submit">Add late fee</button></div></div></div>`;
+  $('lf-cancel').onclick=()=>{$('modal-root').innerHTML='';};
+  $('lf-custom-submit').onclick=()=>{
+    const rupees=Number(($('lf-amt').value||'').replace(/[^0-9.]/g,''));
+    const reason=($('lf-reason').value||'').trim();
+    if(!(rupees>0)){ toast('Enter an amount above zero','err'); return; }
+    if(!reason){ toast('A reason is required','err'); return; }
+    applyLateFee(Math.round(rupees*100),reason);
+  };
 }
 
 function openInspectionModal(){

@@ -37,6 +37,7 @@ import { idempotencyMiddleware } from '../lib/idempotency.js';
 import { audit, type AuditEventType } from '../lib/audit.js';
 import { createInspectionHolds } from '../lib/return_commit.js';
 import { emitCustomerNotification } from '../lib/notify.js';
+import { computeLateFeeAtReturn } from '../lib/late_fee_lifecycle.js';
 
 type SessionVar = { sessionId: string; user: SessionUser; workspace: SessionWorkspace } | null;
 type Env = { Variables: { session: SessionVar } };
@@ -724,10 +725,18 @@ returns.post('/:returnId/complete', requirePermission('returns.execute'), async 
   const notificationSent = notify.deliveries.some((x) => x.status === 'sent');
   const notificationReason = notificationSent ? null : (notify.deliveries.find((x) => x.reason === 'no_active_adapter' || x.reason === 'noop_adapter') ? 'provider_not_configured' : (notify.deliveries[0]?.reason ?? 'not_sent'));
 
+  // Late-fee SUGGESTION (Phase 1, Q1 — suggest-only, never auto-applies). If the
+  // return is past the policy grace window, surface a computed proposal so
+  // return.html can prompt the operator (Apply suggested / custom / skip). The
+  // fee is applied only via POST /api/orders/:id/late-fee. Fail-soft.
+  let lateFeeSuggestion: Awaited<ReturnType<typeof computeLateFeeAtReturn>> = null;
+  try { lateFeeSuggestion = await computeLateFeeAtReturn(workspaceId, r.order_id, new Date().toISOString()); }
+  catch (e) { console.error('late-fee suggest on return complete failed', e); }
+
   await recordReturnEvent({
     workspaceId, orderId: r.order_id, actorUserId: session.user.id,
     timelineType: 'order.return.completed', auditType: 'returns.completed',
-    payload: { return_id: r.id, return_number: r.return_number, item_count: items.length, inspection_event_ids: inspectionIds, order_status: orderAdvanced ? 'returned' : order[0]?.status, notification_sent: notificationSent },
+    payload: { return_id: r.id, return_number: r.return_number, item_count: items.length, inspection_event_ids: inspectionIds, order_status: orderAdvanced ? 'returned' : order[0]?.status, notification_sent: notificationSent, late_fee_suggested: !!lateFeeSuggestion, late_fee_suggested_paise: lateFeeSuggestion?.total_computed_fee_paise ?? null },
     ip: ipAddress, ua: userAgent,
   });
 
@@ -736,5 +745,6 @@ returns.post('/:returnId/complete', requirePermission('returns.execute'), async 
     item_count: items.length,
     inspection_routing_options: { default_action: policy.inspection_default_action, inspection_event_ids: inspectionIds },
     notification_sent: notificationSent, notification_reason: notificationReason,
+    late_fee_suggestion: lateFeeSuggestion,
   }, 200);
 });
