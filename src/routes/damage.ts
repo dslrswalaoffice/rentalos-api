@@ -9,14 +9,13 @@ import {
 import { requirePermission } from '../lib/permissions.js';
 import { idempotencyMiddleware } from '../lib/idempotency.js';
 import {
-  createDamageIncident, saveTheShoot, recordFinancialResolution, approveDamageIncident,
-  rejectDamageIncident, closeDamageIncident, loadDamageIncident, loadDamageTimeline,
+  createDamageIncident, saveTheShoot, recordFinancialResolution,
+  closeDamageIncident, loadDamageIncident, loadDamageTimeline,
   INCIDENT_TYPES, SEVERITIES, REPORTED_BY_TYPES, OPERATIONAL_DECISIONS, CUSTOMER_LIABILITIES,
   FINANCIAL_RESOLUTIONS, DEPOSIT_ACTIONS, type IncidentType, type Severity,
 } from '../lib/damage.js';
 import { applyDamageFinancialSideEffects } from '../lib/damage_lifecycle.js';
 import { createApprovalRequest } from '../lib/approvals.js';
-import { orderBlock, reason as reasonB } from '../lib/blocked_action.js';
 
 // ============================================================================
 // src/routes/damage.ts (Sub-slice 2.3)
@@ -30,8 +29,8 @@ import { orderBlock, reason as reasonB } from '../lib/blocked_action.js';
 //   report                → damage.record (staff has it)
 //   save-the-shoot        → damage.record (operational)
 //   financial-resolution  → damage.resolve_financial (manager+; staff blocked)
-//   approve               → damage.approve (owner-only; in no preset)
-//   reject/close          → damage.resolve_financial
+//   close                 → damage.resolve_financial
+//   (approve/reject were RETIRED in Phase 1 S3 — decided via the Approval Engine.)
 // ============================================================================
 type SessionVar = { sessionId: string; user: SessionUser; workspace: SessionWorkspace } | null;
 type Env = { Variables: { session: SessionVar } };
@@ -85,7 +84,6 @@ export const financialResolutionSchema = z.object({
   insurance_eligible: z.boolean().nullish(),
   customer_disputed: z.boolean().nullish(),
 });
-export const damageRejectSchema = z.object({ reason: z.string().max(2000).nullish() });
 
 // ---------------------------------------------------------------------------
 // Order-scoped (folded).
@@ -102,7 +100,7 @@ orderDamage.get('/:id/damage-incidents', async (c) => {
   const rows = await query<any>(sql`
     SELECT id, incident_number, reported_by_type, occurred_at, incident_type, severity, status,
            operational_decision, customer_liability, financial_resolution, deposit_action,
-           requires_approval, customer_notified, customer_disputed, linked_substitution_id, created_at
+           requires_approval, approval_request_id, customer_notified, customer_disputed, linked_substitution_id, created_at
     FROM damage_incidents WHERE order_id = ${c.req.param('id')}::uuid AND workspace_id = ${session.workspace.id}::uuid
     ORDER BY created_at DESC
   `);
@@ -256,43 +254,15 @@ damageIncidents.post('/:id/financial-resolution', requirePermission('damage.reso
   return c.json({ ok: true, requires_approval: r.requires_approval, side_effects: sideEffects, approval_request_id: approvalRequestId });
 });
 
-damageIncidents.post('/:id/approve', requirePermission('damage.approve'), async (c) => {
-  const session = c.get('session')!;
-  const { ipAddress, userAgent } = clientCtx(c);
-  const meta = await loadIncidentMeta(c.req.param('id'), session.workspace.id);
-  if (!meta) return c.json({ error: 'not_found' }, 404);
-  // Session 2 — when a resolution now routes through the canonical engine, the
-  // decision must be made in the Approvals inbox (which fires the side-effects the
-  // legacy path never did). Block the legacy path with an Item-12 fix_link rather
-  // than silently under-executing. Legacy incidents with no engine request still
-  // use the old path (backward compat).
-  const pending = (await query<{ approval_request_id: string | null; status: string }>(sql`
-    SELECT ar.id AS approval_request_id, ar.status
-    FROM damage_incidents di LEFT JOIN approval_requests ar ON ar.id = di.approval_request_id
-    WHERE di.id = ${meta.id}::uuid AND di.workspace_id = ${session.workspace.id}::uuid LIMIT 1
-  `))[0];
-  if (pending?.approval_request_id && pending.status === 'pending') {
-    return c.json(orderBlock('APPROVAL_MOVED', 'Decide this in the Approvals inbox', [
-      reasonB('approval_pending', 'USE_APPROVALS_INBOX', 'This resolution is now decided in Approvals, which applies the forfeit + damage line + dispositions on approve.', { type: 'internal', target: '/approvals.html' }),
-    ]), 409);
-  }
-  const r = await approveDamageIncident({ workspaceId: session.workspace.id, orderId: meta.order_id, damageIncidentId: meta.id, actorUserId: session.user.id, actorName: actorName(session), ip: ipAddress, userAgent });
-  if (!r.ok) return c.json({ error: r.error }, 409);
-  return c.json({ approved: true });
-});
-
-damageIncidents.post('/:id/reject', requirePermission('damage.resolve_financial'), async (c) => {
-  const session = c.get('session')!;
-  const { ipAddress, userAgent } = clientCtx(c);
-  const meta = await loadIncidentMeta(c.req.param('id'), session.workspace.id);
-  if (!meta) return c.json({ error: 'not_found' }, 404);
-  const body = await c.req.json().catch(() => ({}));
-  const parsed = damageRejectSchema.safeParse(body ?? {});
-  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
-  const r = await rejectDamageIncident({ workspaceId: session.workspace.id, orderId: meta.order_id, damageIncidentId: meta.id, actorUserId: session.user.id, actorName: actorName(session), reason: parsed.data.reason ?? null, ip: ipAddress, userAgent });
-  if (!r.ok) return c.json({ error: r.error }, 409);
-  return c.json({ rejected: true });
-});
+// NOTE (Phase 1 S3): the legacy POST /:id/approve and /:id/reject endpoints were
+// RETIRED here. Damage financial resolutions are decided exclusively through the
+// Approval Engine — the request is created at financial-resolution time
+// (above threshold) and decided in the Approvals inbox, whose executor fires the
+// deposit forfeit + damage line + asset dispositions on approve. Pre-engine
+// "orphan" incidents (requires_approval=true, approval_request_id NULL) are
+// backfilled into engine requests by migration 070, so every incident that needs
+// approval now has exactly one canonical decision surface. POST /:id/close stays
+// (a distinct action, never engine-routed).
 
 damageIncidents.post('/:id/close', requirePermission('damage.resolve_financial'), async (c) => {
   const session = c.get('session')!;

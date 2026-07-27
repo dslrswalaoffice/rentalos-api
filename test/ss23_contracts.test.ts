@@ -14,7 +14,7 @@ import {
   substitutionCreateSchema, substitutionRevertSchema, substitutionRejectSchema,
 } from '../src/routes/substitutions.js';
 import {
-  damageCreateSchema, saveTheShootSchema, financialResolutionSchema, damageRejectSchema,
+  damageCreateSchema, saveTheShootSchema, financialResolutionSchema,
 } from '../src/routes/damage.js';
 import { isFinancialSubstitution } from '../src/lib/substitutions.js';
 
@@ -123,5 +123,5 @@ test('financialResolutionSchema — liability + resolution + deposit action', ()
   assertRejects(financialResolutionSchema, { customer_liability: 'maybe', financial_resolution: 'customer_pays', deposit_action: 'hold' }, 'bad liability');
   assertRejects(financialResolutionSchema, { customer_liability: 'yes', financial_resolution: 'lottery', deposit_action: 'hold' }, 'bad resolution');
   assertRejects(financialResolutionSchema, { customer_liability: 'yes', liability_percent: 150, financial_resolution: 'customer_pays', deposit_action: 'hold' }, 'liability_percent > 100');
-  assertParses(damageRejectSchema, { reason: 'insufficient evidence' }, 'reject with reason');
+  // damageRejectSchema retired with the legacy /reject endpoint (Phase 1 S3).
 });
