@@ -41,6 +41,7 @@ import { emitCustomerNotification } from '../lib/notify.js';
 import { commitDispatchToPhysicalState } from '../lib/dispatch_commit.js';
 import { commitReturnToPhysicalState, type Disposition } from '../lib/return_commit.js';
 import { commitOrderToClosedState } from '../lib/order_close.js';
+import { computeLateFeeAtReturn, applyLateFeeToOrder } from '../lib/late_fee_lifecycle.js';
 
 // ============================================================================
 // src/routes/orders.ts
@@ -1089,6 +1090,89 @@ const addItemSchema = z.object({
   // discount / goodwill). Custom lines are excluded from the deposit base.
   is_custom_line: z.boolean().optional(),
   custom_name:    z.string().min(1).max(200).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Late fees (Phase 1 completion). Suggest a policy-computed late-return fee, then
+// apply it (suggested or a custom amount) as a first-class `late_fee` line. The
+// pricing engine already folds late_fee into subtotal + GST + total, Slice 6
+// renders it on the invoice, Slice 7 reconciles it. SUGGEST-ONLY (Q1): nothing
+// auto-posts. Both endpoints are orders.edit; the apply path is retry-safe via
+// the router's idempotencyMiddleware (Idempotency-Key). No approval routing in v1
+// (Q6) — the operator is the authority.
+// ---------------------------------------------------------------------------
+const lateFeeApplySchema = z.object({
+  amount_paise: z.number().int().positive(),
+  reason: z.string().min(1).max(500),
+  apply_computed: z.boolean().optional(),
+  actual_return_at: z.string().datetime().optional(),
+  hours_late_override: z.number().nonnegative().max(1e6).optional(),
+});
+
+// POST /:id/late-fee/suggest — compute a proposal (never mutates). The frontend
+// calls this on return-complete and from the order-360 Late Fee modal.
+orders.post('/:id/late-fee/suggest', requirePermission('orders.edit'), async (c) => {
+  const session = c.get('session')!;
+  const id = c.req.param('id');
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+  if (order.status === 'closed' || order.status === 'cancelled') return c.json({ error: 'locked' }, 409);
+
+  const actualReturnAt = c.req.query('actual_return_at') || new Date().toISOString();
+  let computed = null;
+  try { computed = await computeLateFeeAtReturn(session.workspace.id, id, actualReturnAt); }
+  catch (e) { console.error('late-fee suggest failed', e); }
+  const suggested = !!(computed && computed.total_computed_fee_paise > 0);
+  return c.json({ suggested, computed_fee: computed, reason: suggested ? null : 'within_grace_or_not_late' }, 200);
+});
+
+// POST /:id/late-fee — apply the fee (suggested or custom). Idempotency-Key
+// handled by the router middleware; the fee itself is deliberately re-appliable
+// (dispute -> remove -> re-apply is a legitimate operator flow).
+orders.post('/:id/late-fee', requirePermission('orders.edit'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => null);
+  const parsed = lateFeeApplySchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const input = parsed.data;
+
+  const order = await loadOrder(id, session.workspace.id);
+  if (!order) return c.json({ error: 'not_found' }, 404);
+  if (order.status === 'closed' || order.status === 'cancelled') return c.json({ error: 'locked' }, 409);
+
+  // Compute for provenance (rate + hours) regardless of amount. When the applied
+  // amount equals the computed total we show the effective per-hour rate on the
+  // invoice line; for a custom (overridden) amount we omit the rate so the line
+  // never implies rate * hours = amount when it doesn't.
+  const actualReturnAt = input.actual_return_at || new Date().toISOString();
+  let computed = null;
+  try { computed = await computeLateFeeAtReturn(session.workspace.id, id, actualReturnAt); } catch { computed = null; }
+
+  const isComputedAmount = computed != null && input.amount_paise === computed.total_computed_fee_paise;
+  const hoursLate = input.hours_late_override ?? computed?.hours_late ?? null;
+  const billableHours = computed?.billable_hours ?? (hoursLate != null ? Math.ceil(hoursLate) : null);
+  const hourlyRate = isComputedAmount ? computed!.effective_hourly_rate_paise : null;
+
+  const applied = await applyLateFeeToOrder({
+    workspaceId: session.workspace.id, orderId: id, feeAmountPaise: input.amount_paise,
+    actorUserId: session.user.id, reason: input.reason,
+    hoursLate, billableHours, hourlyRatePaise: hourlyRate,
+    computedFeePaise: computed?.total_computed_fee_paise ?? null,
+    ip: ipAddress, userAgent,
+  });
+
+  return c.json({
+    status: 'applied',
+    order_item_id: applied.order_item_id,
+    applied_amount_paise: applied.applied_amount_paise,
+    updated_total_paise: applied.updated_total_paise,
+    notification_sent: applied.notification_sent,
+    notification_reason: applied.notification_reason,
+    invoice_revision_created: applied.invoice_revision.revised,
+    new_invoice_id: applied.invoice_revision.new_invoice_id,
+  }, 201);
 });
 
 orders.post('/:id/items', requirePermission('orders.edit'), async (c) => {
