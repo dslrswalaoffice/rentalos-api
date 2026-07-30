@@ -21,7 +21,10 @@ import {
   type SessionWorkspace,
 } from '../middleware/session.js';
 import { requirePermission, can } from '../lib/permissions.js';
-import { computeAssetMetricsBatch, computeAssetLifetimeMetrics } from '../lib/asset_analytics.js';
+import {
+  computeAssetMetricsBatch, computeAssetLifetimeMetrics,
+  computeAssetLifecycleFlags, readAssetAttentionPolicy,
+} from '../lib/asset_analytics.js';
 import { computeProductMetricsBatch, computeSingleProductMetrics } from '../lib/product_analytics.js';
 import { createApprovalRequest } from '../lib/approvals.js';
 
@@ -1505,7 +1508,10 @@ export const assetListSchema = z.object({
   search: z.string().max(120).optional(),
   has_open_damage: z.coerce.boolean().optional(),
   utilization_range: z.enum(['under_20', '20_to_80', 'over_80']).optional(),
-  sort: z.enum(['code_asc', 'code_desc', 'ytd_revenue_desc', 'utilization_desc', 'last_used_desc']).default('code_asc'),
+  // Phase 2 S1 — warranty + maintenance attention filters (client convenience).
+  warranty_status: z.enum(['expiring_soon', 'expired']).optional(),
+  maintenance_status: z.enum(['due_soon', 'overdue']).optional(),
+  sort: z.enum(['code_asc', 'code_desc', 'ytd_revenue_desc', 'utilization_desc', 'last_used_desc', 'warranty_expiry_asc', 'next_service_due_asc']).default('code_asc'),
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
@@ -1523,6 +1529,7 @@ inventory.get('/assets', requirePermission('inventory.view'), async (c) => {
   const rows = await query<any>(sql`
     SELECT a.id AS asset_id, a.asset_code, a.serial_number, a.status::text AS status,
            a.location_id, l.name AS location_name,
+           a.warranty_expiry, a.next_service_due,
            a.purchase_cost_paise,
            COALESCE(a.purchase_cost_paise, p.default_purchase_cost_paise) AS effective_cost_paise,
            p.id AS product_id, p.name AS product_name, p.sku AS product_sku,
@@ -1553,9 +1560,14 @@ inventory.get('/assets', requirePermission('inventory.view'), async (c) => {
   `);
 
   const metrics = await computeAssetMetricsBatch(session.workspace.id, rows.map((r) => r.asset_id), 30);
+  // Attention thresholds (Phase 2 S1) — one settings read for the whole page.
+  const wsSettings = (await query<{ settings: unknown }>(sql`SELECT settings FROM workspaces WHERE id = ${session.workspace.id}::uuid LIMIT 1`))[0]?.settings ?? null;
+  const attnPolicy = readAssetAttentionPolicy(wsSettings);
+  const now = new Date();
   let enriched = rows.map((r) => {
     const m = metrics.get(r.asset_id) ?? { utilization_percent: 0, revenue_paise: 0, last_used_at: null };
     const util = m.utilization_percent;
+    const lc = computeAssetLifecycleFlags({ warranty_expiry: r.warranty_expiry, next_service_due: r.next_service_due }, attnPolicy, now);
     return {
       asset_id: r.asset_id, asset_code: r.asset_code, serial_number: r.serial_number,
       product_id: r.product_id, product_name: r.product_name, product_sku: r.product_sku,
@@ -1570,7 +1582,13 @@ inventory.get('/assets', requirePermission('inventory.view'), async (c) => {
       ytd_revenue_paise: showCost ? m.revenue_paise : null, utilization_percent: util, last_used_at: m.last_used_at,
       has_open_damage_incident: r.has_open_damage_incident === true,
       active_downtime: r.active_downtime === true,
-      attention_flags: { utilization_over_80: util > 80, utilization_under_20: util < 20, has_open_damage: r.has_open_damage_incident === true },
+      // Lifecycle dates (not cost-sensitive → never redacted).
+      warranty_expiry: r.warranty_expiry, next_service_due: r.next_service_due,
+      attention_flags: {
+        utilization_over_80: util > 80, utilization_under_20: util < 20, has_open_damage: r.has_open_damage_incident === true,
+        warranty_expiring: lc.warranty_expiring, warranty_expired: lc.warranty_expired,
+        maintenance_due: lc.maintenance_due, maintenance_overdue: lc.maintenance_overdue,
+      },
     };
   });
 
@@ -1579,14 +1597,22 @@ inventory.get('/assets', requirePermission('inventory.view'), async (c) => {
   if (q.utilization_range === 'under_20') enriched = enriched.filter((e) => e.utilization_percent < 20);
   else if (q.utilization_range === '20_to_80') enriched = enriched.filter((e) => e.utilization_percent >= 20 && e.utilization_percent <= 80);
   else if (q.utilization_range === 'over_80') enriched = enriched.filter((e) => e.utilization_percent > 80);
+  if (q.warranty_status === 'expiring_soon') enriched = enriched.filter((e) => e.attention_flags.warranty_expiring);
+  else if (q.warranty_status === 'expired') enriched = enriched.filter((e) => e.attention_flags.warranty_expired);
+  if (q.maintenance_status === 'due_soon') enriched = enriched.filter((e) => e.attention_flags.maintenance_due);
+  else if (q.maintenance_status === 'overdue') enriched = enriched.filter((e) => e.attention_flags.maintenance_overdue);
 
-  // Sort.
+  // Sort. Date sorts push NULLs (no data) to the end.
+  const dateAsc = (x: string | null, y: string | null) =>
+    (x ? new Date(x).getTime() : Infinity) - (y ? new Date(y).getTime() : Infinity);
   const cmp: Record<string, (a: any, b: any) => number> = {
     code_asc: (a, b) => a.asset_code.localeCompare(b.asset_code),
     code_desc: (a, b) => b.asset_code.localeCompare(a.asset_code),
     ytd_revenue_desc: (a, b) => (b.ytd_revenue_paise ?? 0) - (a.ytd_revenue_paise ?? 0),
     utilization_desc: (a, b) => b.utilization_percent - a.utilization_percent,
     last_used_desc: (a, b) => new Date(b.last_used_at ?? 0).getTime() - new Date(a.last_used_at ?? 0).getTime(),
+    warranty_expiry_asc: (a, b) => dateAsc(a.warranty_expiry, b.warranty_expiry),
+    next_service_due_asc: (a, b) => dateAsc(a.next_service_due, b.next_service_due),
   };
   // A revenue sort leaks revenue ORDERING even with values nulled → fall back to
   // code_asc for members without inventory.costs.
@@ -1618,6 +1644,7 @@ inventory.get('/assets/:id', requirePermission('inventory.view'), async (c) => {
   const arows = await query<any>(sql`
     SELECT a.id, a.asset_code, a.serial_number, a.condition::text AS condition, a.status::text AS status,
            a.purchase_date, a.purchase_source, a.notes, a.location_id, l.name AS location_name,
+           a.warranty_expiry, a.warranty_notes, a.next_service_due, a.last_service_date,
            a.purchase_cost_paise, COALESCE(a.purchase_cost_paise, p.default_purchase_cost_paise) AS effective_cost_paise,
            a.stock_type::text AS stock_type, a.available_from, a.available_until,
            p.id AS p_id, p.sku AS p_sku, p.name AS p_name, p.category AS p_category, p.description AS p_description,
@@ -1660,6 +1687,9 @@ inventory.get('/assets/:id', requirePermission('inventory.view'), async (c) => {
     ORDER BY start_at DESC LIMIT 50
   `);
   const lifetime = await computeAssetLifetimeMetrics(session.workspace.id, id);
+  // Warranty + maintenance attention (Phase 2 S1) — same helper as the list.
+  const wsSettings = (await query<{ settings: unknown }>(sql`SELECT settings FROM workspaces WHERE id = ${session.workspace.id}::uuid LIMIT 1`))[0]?.settings ?? null;
+  const lifecycleFlags = computeAssetLifecycleFlags({ warranty_expiry: a.warranty_expiry, next_service_due: a.next_service_due }, readAssetAttentionPolicy(wsSettings));
 
   // Derived timeline (dispatch/return + damage + downtime), newest first, 50.
   const timeline = [
@@ -1679,7 +1709,10 @@ inventory.get('/assets/:id', requirePermission('inventory.view'), async (c) => {
       purchase_cost_paise: showCost ? a.purchase_cost_paise : null,
       effective_cost_paise: showCost ? a.effective_cost_paise : null,
       stock_type: a.stock_type, available_from: a.available_from, available_until: a.available_until,
+      warranty_expiry: a.warranty_expiry, warranty_notes: a.warranty_notes,
+      next_service_due: a.next_service_due, last_service_date: a.last_service_date,
     },
+    attention_flags: lifecycleFlags,
     product: { id: a.p_id, sku: a.p_sku, name: a.p_name, category: a.p_category, description: a.p_description, image_url: a.p_image_url, daily_rate: a.p_daily_rate, deposit: a.p_deposit, replacement_value: a.p_replacement_value, hsn_code: a.p_hsn_code, is_kit: a.p_is_kit },
     current_holder: holderRows[0] ? { order_id: holderRows[0].order_id, order_number: holderRows[0].order_number, customer_person_id: holderRows[0].customer_person_id, customer_name: holderRows[0].customer_name, dispatched_at: holderRows[0].dispatched_at, expected_return_at: holderRows[0].expected_return_at } : null,
     order_history: orderHistory,
@@ -1688,6 +1721,67 @@ inventory.get('/assets/:id', requirePermission('inventory.view'), async (c) => {
     lifetime_metrics: { ...lifetime, total_revenue_paise: showCost ? lifetime.total_revenue_paise : null, average_revenue_per_rental_paise: showCost ? lifetime.average_revenue_per_rental_paise : null, lifetime_utilization_percent: 0 },
     timeline,
   });
+});
+
+// ============================================================================
+// POST /api/inventory/assets/:id/warranty + /:id/maintenance (Phase 2 S1) —
+// set a unit's warranty / service dates. Nullable (clear a field with null).
+// Naturally idempotent (a date SET). Audited via inventory.asset.updated with a
+// `fields` payload flag (sub-action convention — no new audit type). Dates are
+// 'YYYY-MM-DD'; the DATE column stores them tz-free.
+// ============================================================================
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+export const assetWarrantySchema = z.object({
+  warranty_expiry: z.string().regex(DATE_RE).nullable(),
+  warranty_notes: z.string().max(2000).nullable(),
+});
+export const assetMaintenanceSchema = z.object({
+  next_service_due: z.string().regex(DATE_RE).nullable(),
+  last_service_date: z.string().regex(DATE_RE).nullable(),
+});
+
+inventory.post('/assets/:id/warranty', requirePermission('inventory.manage'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+  const parsed = assetWarrantySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const p = parsed.data;
+  const upd = await query<{ id: string }>(sql`
+    UPDATE assets SET warranty_expiry = ${p.warranty_expiry}::date, warranty_notes = ${p.warranty_notes}::text, updated_at = now()
+    WHERE id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid AND deleted_at IS NULL
+    RETURNING id
+  `);
+  if (!upd.length) return c.json({ error: 'not_found' }, 404);
+  await audit({
+    workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'inventory.asset.updated',
+    targetType: 'asset', targetId: id,
+    payload: { fields: ['warranty_expiry', 'warranty_notes'], warranty_expiry: p.warranty_expiry },
+    ipAddress, userAgent,
+  });
+  return c.json({ ok: true, warranty_expiry: p.warranty_expiry, warranty_notes: p.warranty_notes });
+});
+
+inventory.post('/assets/:id/maintenance', requirePermission('inventory.manage'), async (c) => {
+  const session = c.get('session')!;
+  const { ipAddress, userAgent } = clientCtx(c);
+  const id = c.req.param('id');
+  const parsed = assetMaintenanceSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'invalid_request', issues: parsed.error.issues }, 400);
+  const p = parsed.data;
+  const upd = await query<{ id: string }>(sql`
+    UPDATE assets SET next_service_due = ${p.next_service_due}::date, last_service_date = ${p.last_service_date}::date, updated_at = now()
+    WHERE id = ${id}::uuid AND workspace_id = ${session.workspace.id}::uuid AND deleted_at IS NULL
+    RETURNING id
+  `);
+  if (!upd.length) return c.json({ error: 'not_found' }, 404);
+  await audit({
+    workspaceId: session.workspace.id, actorUserId: session.user.id, eventType: 'inventory.asset.updated',
+    targetType: 'asset', targetId: id,
+    payload: { fields: ['next_service_due', 'last_service_date'], next_service_due: p.next_service_due },
+    ipAddress, userAgent,
+  });
+  return c.json({ ok: true, next_service_due: p.next_service_due, last_service_date: p.last_service_date });
 });
 
 // ============================================================================
