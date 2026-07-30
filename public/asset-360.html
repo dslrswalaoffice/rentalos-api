@@ -91,6 +91,17 @@
     .srow .sk{color:var(--sub)} .srow .sv{font-family:var(--mono);color:var(--head);font-weight:600}
     .actbtn{width:100%;height:38px;border-radius:10px;border:1px solid #e0e0ea;background:#fff;color:var(--head);font:600 13px var(--body);cursor:pointer;margin-top:8px}
     .actbtn:hover{background:var(--page)} .actbtn.danger{color:var(--red);border-color:#f2c9c9}
+    /* Phase 2 S1 — warranty/service edit modal */
+    .wm-back{position:fixed;inset:0;background:rgba(38,35,90,.28);z-index:300;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:60px 16px}
+    .wm{width:420px;max-width:100%;background:#fff;border-radius:14px;box-shadow:0 24px 64px -12px rgba(24,22,60,.45);padding:22px}
+    .wm h3{font:700 16px var(--disp,var(--body));margin:0 0 4px;color:var(--head)}
+    .wm .sub{font-size:12.5px;color:var(--sub);margin-bottom:16px}
+    .wm label{display:block;font:600 11px var(--body);text-transform:uppercase;letter-spacing:.04em;color:var(--muted2);margin:12px 0 5px}
+    .wm input,.wm textarea{width:100%;border:1px solid #e0e0ea;border-radius:9px;padding:8px 10px;font:400 13px var(--body);color:var(--head)}
+    .wm input:focus,.wm textarea:focus{outline:none;border-color:var(--indigo);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+    .wm-ft{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+    .wm-btn{height:36px;padding:0 16px;border-radius:9px;border:none;background:var(--indigo);color:#fff;font:600 13px var(--body);cursor:pointer}
+    .wm-btn.ghost{background:#fff;color:var(--muted2);border:1px solid #e0e0ea}
     .tl{display:flex;flex-direction:column}
     .tlrow{display:flex;gap:11px;padding:10px 0;border-top:1px solid var(--line2)}
     .tlrow:first-child{border-top:none}
@@ -241,12 +252,31 @@
           <span class="minipill amber"><span class="d" style="background:currentColor"></span>${esc(String(x.kind).toUpperCase())}</span>
           <div style="flex:1"><div class="mono" style="font-size:12px">${fmtDate(x.start_at)} → ${x.end_at ? fmtDate(x.end_at) : '<span style="color:var(--amber-d)">open</span>'}</div>${x.notes ? `<div style="font-size:12px;color:var(--sub);margin-top:2px">${esc(x.notes)}</div>` : ''}</div></div>`).join('') : '<div class="stub">No downtime recorded. Scheduled-maintenance tracking is a future capability.</div>');
 
+      // f2) Warranty & Service (Phase 2 S1) — real data + attention indicators.
+      const a2 = A.asset || {}, af = A.attention_flags || {};
+      const daysBetween = (ds) => { if (!ds) return null; const d = new Date(String(ds).slice(0,10) + 'T00:00:00Z'); const t0 = new Date(); const today = Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), t0.getUTCDate()); return Math.round((d.getTime() - today) / 86400000); };
+      const attnPill = (expired, soon, days) => {
+        if (expired) return `<span class="minipill red"><span class="d" style="background:currentColor"></span>${days == null ? 'Expired' : (Math.abs(days) + 'd overdue')}</span>`;
+        if (soon) return `<span class="minipill amber"><span class="d" style="background:currentColor"></span>${days == null ? 'Due soon' : ('in ' + days + 'd')}</span>`;
+        return '';
+      };
+      const wRow = (label, val, pill) => `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line2)"><span class="sk" style="min-width:120px">${label}</span><span style="flex:1;font-size:13px;font-weight:600">${val}</span>${pill || ''}</div>`;
+      const wBody =
+        wRow('Warranty expiry', a2.warranty_expiry ? fmtDate(a2.warranty_expiry) : dash, attnPill(af.warranty_expired, af.warranty_expiring, daysBetween(a2.warranty_expiry)))
+        + (a2.warranty_notes ? `<div style="font-size:12px;color:var(--sub);padding:2px 0 8px">${esc(a2.warranty_notes)}</div>` : '')
+        + wRow('Next service due', a2.next_service_due ? fmtDate(a2.next_service_due) : dash, attnPill(af.maintenance_overdue, af.maintenance_due, daysBetween(a2.next_service_due)))
+        + wRow('Last serviced', a2.last_service_date ? fmtDate(a2.last_service_date) : dash, '')
+        + `<div style="display:flex;gap:9px;margin-top:12px"><button class="actbtn" style="width:auto;padding:0 14px;margin:0" id="edit-warranty">Edit warranty</button><button class="actbtn" style="width:auto;padding:0 14px;margin:0" id="edit-maint">Edit service</button></div>`;
+      h += card('var(--indigo)', 'Warranty & Service', null, wBody);
+
       // g) Timeline
       const tl = A.timeline || [];
       h += card('var(--muted2)', 'Timeline', tl.length ? `${tl.length} event(s)` : null,
         tl.length ? `<div class="tl">${tl.map(e => `<div class="tlrow"><span class="tldot ${esc(e.event_type)}"></span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">${esc(e.title || titl(e.event_type))}</div><div class="mono" style="font-size:11px;color:var(--sub)">${fmtDate(e.occurred_at)} · ${relTime(e.occurred_at)}</div>${e.body ? `<div style="font-size:12px;color:var(--sub);margin-top:2px">${esc(e.body)}</div>` : ''}</div></div>`).join('')}</div>` : '<div class="stub">No events yet.</div>');
 
       document.getElementById('maincol').innerHTML = h;
+      const ew = document.getElementById('edit-warranty'); if (ew) ew.addEventListener('click', openWarrantyEdit);
+      const em = document.getElementById('edit-maint'); if (em) em.addEventListener('click', openMaintenanceEdit);
     }
 
     function renderSide() {
@@ -260,7 +290,8 @@
           <div class="srow"><span class="sk">Replacement</span><span class="sv">${fmtINR(p.replacement_value)}</span></div>
           <div class="srow"><span class="sk">Lifetime rentals</span><span class="sv">${lm.total_rentals_count ?? 0}</span></div>
           <div class="srow"><span class="sk">Damage incidents</span><span class="sv">${lm.total_damage_incidents ?? 0}</span></div>
-          <div class="srow"><span class="sk">Warranty</span><span class="sv">${dash}</span></div>
+          <div class="srow"><span class="sk">Warranty</span><span class="sv">${a.warranty_expiry ? fmtDate(a.warranty_expiry) : dash}${(A.attention_flags||{}).warranty_expired ? ' <span class="minipill red" style="margin-left:4px"><span class="d" style="background:currentColor"></span>expired</span>' : ((A.attention_flags||{}).warranty_expiring ? ' <span class="minipill amber" style="margin-left:4px"><span class="d" style="background:currentColor"></span>soon</span>' : '')}</span></div>
+          <div class="srow"><span class="sk">Next service</span><span class="sv">${a.next_service_due ? fmtDate(a.next_service_due) : dash}${(A.attention_flags||{}).maintenance_overdue ? ' <span class="minipill red" style="margin-left:4px"><span class="d" style="background:currentColor"></span>overdue</span>' : ((A.attention_flags||{}).maintenance_due ? ' <span class="minipill amber" style="margin-left:4px"><span class="d" style="background:currentColor"></span>due</span>' : '')}</span></div>
         </div>
         <div class="scard"><div class="stitle">Actions</div>
           <button class="actbtn" id="act-transfer2">Transfer location</button>
@@ -288,6 +319,43 @@
       try { await api.post('/api/inventory/assets/bulk-location-transfer', { asset_ids: [A.asset.id], target_location_id: locs[idx].id }); alert('Transferred to ' + locs[idx].name + '.'); load(); }
       catch (err) { alert('Transfer failed: ' + ((err.body && err.body.error) || err.message)); }
     }
+    // Phase 2 S1 — warranty / service edit modals (date inputs → POST).
+    function closeWM() { const m = document.getElementById('wm-root'); if (m) m.remove(); }
+    function mountWM(html) { closeWM(); const d = document.createElement('div'); d.id = 'wm-root'; d.innerHTML = html; document.body.appendChild(d); d.querySelector('.wm-back').addEventListener('click', (e) => { if (e.target.classList.contains('wm-back')) closeWM(); }); }
+    const dval = (ds) => ds ? String(ds).slice(0, 10) : '';
+    function openWarrantyEdit() {
+      const a = A.asset || {};
+      mountWM(`<div class="wm-back"><div class="wm">
+        <h3>Edit warranty</h3><div class="sub">${esc(a.asset_code || '')} · leave a field blank to clear it.</div>
+        <label>Warranty expiry</label><input type="date" id="wm-exp" value="${esc(dval(a.warranty_expiry))}">
+        <label>Notes (provider / terms / claim ref)</label><textarea id="wm-notes" rows="2" maxlength="2000">${esc(a.warranty_notes || '')}</textarea>
+        <div class="wm-ft"><button class="wm-btn ghost" id="wm-cancel">Cancel</button><button class="wm-btn" id="wm-save">Save</button></div></div></div>`);
+      document.getElementById('wm-cancel').addEventListener('click', closeWM);
+      document.getElementById('wm-save').addEventListener('click', async () => {
+        const btn = document.getElementById('wm-save'); btn.disabled = true; btn.textContent = 'Saving…';
+        try {
+          await api.post('/api/inventory/assets/' + A.asset.id + '/warranty', { warranty_expiry: document.getElementById('wm-exp').value || null, warranty_notes: (document.getElementById('wm-notes').value || '').trim() || null });
+          closeWM(); load();
+        } catch (err) { btn.disabled = false; btn.textContent = 'Save'; alert('Save failed: ' + ((err.body && err.body.error) || err.message)); }
+      });
+    }
+    function openMaintenanceEdit() {
+      const a = A.asset || {};
+      mountWM(`<div class="wm-back"><div class="wm">
+        <h3>Edit service schedule</h3><div class="sub">${esc(a.asset_code || '')} · leave a field blank to clear it.</div>
+        <label>Next service due</label><input type="date" id="wm-due" value="${esc(dval(a.next_service_due))}">
+        <label>Last serviced</label><input type="date" id="wm-last" value="${esc(dval(a.last_service_date))}">
+        <div class="wm-ft"><button class="wm-btn ghost" id="wm-cancel">Cancel</button><button class="wm-btn" id="wm-save">Save</button></div></div></div>`);
+      document.getElementById('wm-cancel').addEventListener('click', closeWM);
+      document.getElementById('wm-save').addEventListener('click', async () => {
+        const btn = document.getElementById('wm-save'); btn.disabled = true; btn.textContent = 'Saving…';
+        try {
+          await api.post('/api/inventory/assets/' + A.asset.id + '/maintenance', { next_service_due: document.getElementById('wm-due').value || null, last_service_date: document.getElementById('wm-last').value || null });
+          closeWM(); load();
+        } catch (err) { btn.disabled = false; btn.textContent = 'Save'; alert('Save failed: ' + ((err.body && err.body.error) || err.message)); }
+      });
+    }
+
     async function doRetire() {
       const reason = prompt('Retire this unit. Reason (end_of_life / damage_write_off / sold / other):', 'end_of_life');
       if (!reason) return;

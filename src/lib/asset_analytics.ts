@@ -13,6 +13,67 @@
 
 import { sql, query } from '../db.js';
 
+// ---------------------------------------------------------------------------
+// Asset lifecycle attention (Phase 2 S1) — warranty + maintenance-due flags.
+// These are intrinsic per-asset DATE fields (not order-history), so they are a
+// PURE date comparison against the workspace's asset_attention_policy thresholds.
+// Kept as a shared helper so the assets LIST and the asset-360 DETAIL compute the
+// exact same flags, and so it is unit-testable with no DB. Postgres DATE columns
+// arrive over the Neon HTTP driver as 'YYYY-MM-DD' strings.
+// ---------------------------------------------------------------------------
+export type AssetAttentionPolicy = { warranty_expiring_days: number; maintenance_due_days: number };
+export type AssetLifecycleFlags = {
+  warranty_expiring: boolean;   // within threshold, not yet expired
+  warranty_expired: boolean;    // past the date
+  maintenance_due: boolean;     // within threshold, not yet overdue
+  maintenance_overdue: boolean; // past the date
+};
+
+export const DEFAULT_ASSET_ATTENTION_POLICY: AssetAttentionPolicy = { warranty_expiring_days: 30, maintenance_due_days: 14 };
+
+/** Read + validate the thresholds from workspace.settings (falls back to defaults). */
+export function readAssetAttentionPolicy(settings: unknown): AssetAttentionPolicy {
+  const p = (settings as Record<string, any> | null)?.asset_attention_policy ?? {};
+  const num = (v: unknown, d: number) => { const x = Number(v); return Number.isFinite(x) && x >= 0 ? x : d; };
+  return {
+    warranty_expiring_days: num(p.warranty_expiring_days, DEFAULT_ASSET_ATTENTION_POLICY.warranty_expiring_days),
+    maintenance_due_days: num(p.maintenance_due_days, DEFAULT_ASSET_ATTENTION_POLICY.maintenance_due_days),
+  };
+}
+
+function dateOnlyUTC(d: Date): number {
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+/** Compute the four lifecycle flags for one asset. Null dates => all false (a unit
+ *  with no warranty/service data never raises attention). "Expires today" counts
+ *  as expiring, not expired. */
+export function computeAssetLifecycleFlags(
+  dates: { warranty_expiry?: string | null; next_service_due?: string | null },
+  policy: AssetAttentionPolicy,
+  now: Date = new Date(),
+): AssetLifecycleFlags {
+  const flags: AssetLifecycleFlags = { warranty_expiring: false, warranty_expired: false, maintenance_due: false, maintenance_overdue: false };
+  const today = dateOnlyUTC(now);
+  const DAY = 86400000;
+  const parse = (s?: string | null): number | null => {
+    if (!s) return null;
+    const t = new Date(`${String(s).slice(0, 10)}T00:00:00Z`).getTime();
+    return Number.isNaN(t) ? null : t;
+  };
+  const w = parse(dates.warranty_expiry);
+  if (w != null) {
+    if (w < today) flags.warranty_expired = true;
+    else if (w <= today + policy.warranty_expiring_days * DAY) flags.warranty_expiring = true;
+  }
+  const s = parse(dates.next_service_due);
+  if (s != null) {
+    if (s < today) flags.maintenance_overdue = true;
+    else if (s <= today + policy.maintenance_due_days * DAY) flags.maintenance_due = true;
+  }
+  return flags;
+}
+
 export type AssetMetrics = {
   utilization_percent: number;   // 0-100+ (a unit can't exceed 100 but we don't clamp)
   revenue_paise: number;         // line-share revenue in the window

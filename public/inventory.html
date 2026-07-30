@@ -500,7 +500,9 @@
             <select id="av-category" class="av-filter"><option value="">All categories</option></select>
             <select id="av-location" class="av-filter"><option value="">All locations</option></select>
             <select id="av-util" class="av-filter"><option value="">Any utilization</option><option value="under_20">Under 20%</option><option value="20_to_80">20–80%</option><option value="over_80">Over 80%</option></select>
-            <select id="av-sort" class="av-filter"><option value="code_asc">Code A–Z</option><option value="code_desc">Code Z–A</option><option value="ytd_revenue_desc">YTD revenue</option><option value="utilization_desc">Utilization</option><option value="last_used_desc">Last used</option></select>
+            <select id="av-warranty" class="av-filter"><option value="">Any warranty</option><option value="expiring_soon">Warranty expiring</option><option value="expired">Warranty expired</option></select>
+            <select id="av-maint" class="av-filter"><option value="">Any service</option><option value="due_soon">Service due</option><option value="overdue">Service overdue</option></select>
+            <select id="av-sort" class="av-filter"><option value="code_asc">Code A–Z</option><option value="code_desc">Code Z–A</option><option value="ytd_revenue_desc">YTD revenue</option><option value="utilization_desc">Utilization</option><option value="last_used_desc">Last used</option><option value="warranty_expiry_asc">Warranty soonest</option><option value="next_service_due_asc">Service due soonest</option></select>
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--neutral);"><input type="checkbox" id="av-damage"> Has open damage</label>
             <label class="search" for="av-search" style="max-width:260px;"><input id="av-search" type="search" placeholder="Search code / serial / product…" autocomplete="off"></label>
           </div>
@@ -3120,6 +3122,8 @@
       if (g('av-category')) p.set('category', g('av-category'));
       if (g('av-location')) p.set('location_id', g('av-location'));
       if (g('av-util')) p.set('utilization_range', g('av-util'));
+      if (g('av-warranty')) p.set('warranty_status', g('av-warranty'));
+      if (g('av-maint')) p.set('maintenance_status', g('av-maint'));
       if (g('av-sort')) p.set('sort', g('av-sort'));
       if (document.getElementById('av-damage').checked) p.set('has_open_damage', '1');
       if (g('av-search').trim()) p.set('search', g('av-search').trim());
@@ -3136,7 +3140,7 @@
       AV.rows = res.data || [];
       if (!AV.rows.length) {
         wrap.innerHTML = `<div class="empty-state"><p>No assets match the filters. <a href="#" id="av-clear">Clear filters</a></p></div>`;
-        const c = document.getElementById('av-clear'); if (c) c.addEventListener('click', (e) => { e.preventDefault(); ['av-status', 'av-category', 'av-location', 'av-util'].forEach(id => document.getElementById(id).value = ''); document.getElementById('av-damage').checked = false; document.getElementById('av-search').value = ''; loadAssets(); });
+        const c = document.getElementById('av-clear'); if (c) c.addEventListener('click', (e) => { e.preventDefault(); ['av-status', 'av-category', 'av-location', 'av-util', 'av-warranty', 'av-maint'].forEach(id => document.getElementById(id).value = ''); document.getElementById('av-damage').checked = false; document.getElementById('av-search').value = ''; loadAssets(); });
         return;
       }
       const showCost = canManageCost();
@@ -3147,9 +3151,15 @@
         ${showCost ? '<th>YTD revenue</th>' : ''}<th>Utilization</th><th>Attention</th><th></th></tr></thead>
         <tbody>${AV.rows.map(r => {
           const attn = [];
-          if (r.attention_flags.has_open_damage) attn.push('<span class="attn red">● Open damage</span>');
-          if (r.attention_flags.utilization_over_80) attn.push('<span class="attn amber">▲ Over-utilized</span>');
-          if (r.attention_flags.utilization_under_20) attn.push('<span class="attn amber">▽ Under-utilized</span>');
+          const af = r.attention_flags || {};
+          const dDays = (ds) => { if (!ds) return null; const d = new Date(String(ds).slice(0,10)+'T00:00:00Z'); const n = new Date(); return Math.round((d.getTime() - Date.UTC(n.getUTCFullYear(),n.getUTCMonth(),n.getUTCDate()))/86400000); };
+          if (af.has_open_damage) attn.push('<span class="attn red">● Open damage</span>');
+          if (af.warranty_expired) attn.push('<span class="attn red">🛡 Warranty expired</span>');
+          else if (af.warranty_expiring) attn.push(`<span class="attn amber">🛡 Warranty in ${dDays(r.warranty_expiry)}d</span>`);
+          if (af.maintenance_overdue) attn.push(`<span class="attn red">🔧 Service ${Math.abs(dDays(r.next_service_due))}d overdue</span>`);
+          else if (af.maintenance_due) attn.push(`<span class="attn amber">🔧 Service in ${dDays(r.next_service_due)}d</span>`);
+          if (af.utilization_over_80) attn.push('<span class="attn amber">▲ Over-utilized</span>');
+          if (af.utilization_under_20) attn.push('<span class="attn amber">▽ Under-utilized</span>');
           const holder = r.current_holder ? `<a href="/order-360.html?id=${esc(r.current_holder.order_id)}">#${esc(String(r.current_holder.order_number))}</a> · ${esc(r.current_holder.customer_name || '')}` : '—';
           return `<tr>
             <td><input type="checkbox" class="av-row" data-id="${esc(r.asset_id)}"></td>
@@ -3246,7 +3256,7 @@
 
     (function initAssetsView() {
       document.querySelectorAll('#view-toggle .vt-btn').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
-      ['av-status', 'av-category', 'av-location', 'av-util', 'av-sort'].forEach(id => document.getElementById(id).addEventListener('change', loadAssets));
+      ['av-status', 'av-category', 'av-location', 'av-util', 'av-warranty', 'av-maint', 'av-sort'].forEach(id => document.getElementById(id).addEventListener('change', loadAssets));
       document.getElementById('av-damage').addEventListener('change', loadAssets);
       let t; document.getElementById('av-search').addEventListener('input', () => { clearTimeout(t); t = setTimeout(loadAssets, 300); });
       document.getElementById('av-transfer').addEventListener('click', bulkTransfer);
