@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#202058">
-  <title>Inventory · RentalOS</title>
+  <title>Assets · RentalOS</title>
   <!-- Sub-turn 9b — preconnect to the API origin (perceived-speed). -->
   <link rel="preconnect" href="https://rentalos-api.vercel.app" crossorigin>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e88020'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='system-ui,sans-serif' font-weight='800' font-size='19' fill='%23ffffff'%3ER%3C/text%3E%3C/svg%3E">
@@ -505,6 +505,13 @@
             <select id="av-sort" class="av-filter"><option value="code_asc">Code A–Z</option><option value="code_desc">Code Z–A</option><option value="ytd_revenue_desc">YTD revenue</option><option value="utilization_desc">Utilization</option><option value="last_used_desc">Last used</option><option value="warranty_expiry_asc">Warranty soonest</option><option value="next_service_due_asc">Service due soonest</option></select>
             <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--neutral);"><input type="checkbox" id="av-damage"> Has open damage</label>
             <label class="search" for="av-search" style="max-width:260px;"><input id="av-search" type="search" placeholder="Search code / serial / product…" autocomplete="off"></label>
+          </div>
+          <!-- Discoverability hint (Phase 2 S1): warranty/service columns are nullable
+               with no backfill, so with no dates entered the Assets view shows no
+               badges. Nudge the operator to add dates from Asset-360. Hidden until the
+               response confirms zero warranty/service data across a non-empty result. -->
+          <div id="av-lifecycle-hint" hidden style="font-size:12.5px;color:var(--neutral);background:var(--thead);border:1px solid var(--border);border-radius:9px;padding:9px 13px;margin:0 0 12px;">
+            🛡 No warranty or service dates yet. Open any unit (<strong>View →</strong>) to add them from Asset-360 — then <em>Warranty expiring</em> / <em>Service due</em> filters and row badges light up here.
           </div>
           <div id="assets-table-wrap"><div class="data-container"><div class="skeleton-table-row" style="--cols:9;"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div></div>
           <div class="bulk-bar" id="av-bulk-bar">
@@ -3138,6 +3145,17 @@
       try { res = await api.get('/api/inventory/assets?' + avParams()); }
       catch (err) { wrap.innerHTML = `<div class="empty-state"><p>${err.status === 403 ? 'You do not have permission to view assets.' : 'Could not load assets.'}</p></div>`; return; }
       AV.rows = res.data || [];
+      // Discoverability hint: show only when there ARE assets but NONE carry any
+      // warranty/service data (all four flags false + both dates null). Any data,
+      // or an empty/filtered result, hides it.
+      const lcHint = document.getElementById('av-lifecycle-hint');
+      if (lcHint) {
+        const noLifecycleData = AV.rows.length > 0 && AV.rows.every((r) => {
+          const f = r.attention_flags || {};
+          return !f.warranty_expiring && !f.warranty_expired && !f.maintenance_due && !f.maintenance_overdue && !r.warranty_expiry && !r.next_service_due;
+        });
+        lcHint.hidden = !noLifecycleData;
+      }
       if (!AV.rows.length) {
         wrap.innerHTML = `<div class="empty-state"><p>No assets match the filters. <a href="#" id="av-clear">Clear filters</a></p></div>`;
         const c = document.getElementById('av-clear'); if (c) c.addEventListener('click', (e) => { e.preventDefault(); ['av-status', 'av-category', 'av-location', 'av-util', 'av-warranty', 'av-maint'].forEach(id => document.getElementById(id).value = ''); document.getElementById('av-damage').checked = false; document.getElementById('av-search').value = ''; loadAssets(); });
